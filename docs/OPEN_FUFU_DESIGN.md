@@ -33,7 +33,7 @@ The controller is expected to be able to reason about and control areas such as:
 - spatial population allocation;
 - attack concentration and geometry;
 - defense;
-- retreat/controlled abandonment where supported;
+- retreat/controlled abandonment;
 - economy;
 - construction and upgrades;
 - unit/naval operations;
@@ -240,6 +240,7 @@ runtime / lastDecision
 The conceptual write/action surface includes low-level legal operations such as:
 
 - desired Population allocation/spatial weighting;
+- deliberate territory relinquishment/retreat;
 - construction;
 - upgrades;
 - unit creation;
@@ -369,7 +370,7 @@ Certification should use the real production controller contract/runtime constra
 - invalid outputs/API arguments;
 - timeout/memory/output limits.
 
-Certification is not a mathematical proof that arbitrary user code can never fail in every possible future state.
+The certification/benchmarking pipeline should make a first-turn runtime failure extremely unlikely in ordinary use, but certification is not a mathematical proof that arbitrary user code can never fail in every possible future state.
 
 ### 7.2 Controller execution is transactional
 
@@ -433,12 +434,21 @@ On failure:
 - the failure is logged;
 - later controller invocations are attempted again.
 
+If the **first-ever invocation** fails before any valid directives exist, the deterministic baseline is:
+
+```text
+100% Population in Reserve
+no new actions/orders/directives
+```
+
+The faction remains inert under that baseline while the controller retries according to the normal failure policy. No starter controller or replacement AI takes over.
+
 Repeated persistent failures trigger a deterministic circuit breaker:
 
 - initial failures retry normally;
 - persistent failures cause increasingly sparse retries;
 - sufficiently persistent failure marks the controller **FAULTED** for the remainder of the match;
-- a faulted faction continues on its last valid directives rather than receiving a replacement built-in AI.
+- a faulted faction continues on its last valid directives, or the initial inert baseline if none ever committed, rather than receiving a replacement built-in AI.
 
 Early-match and late-match failures use the same rule.
 
@@ -505,11 +515,11 @@ A **Segment** is an immutable deterministic strategic/geographical region genera
 
 Segments are not faction-owned simulation buckets.
 
-Every strategically traversable map cell belongs to one segment, including **water cells**.
+**Every real map cell belongs to exactly one segment**, including land, water, and impassable cells.
 
 Segment identity does not change merely because ownership/combat changes.
 
-One segment may therefore be partially controlled by several factions and/or neutral territory simultaneously.
+One segment may therefore be partially controlled by several factions and/or neutral territory simultaneously where ownership is applicable.
 
 Segments are a controller-facing spatial index/lens over the underlying map.
 
@@ -520,8 +530,9 @@ A segment may expose aggregate information such as:
 - adjacency;
 - terrain composition;
 - dominant terrain;
-- ownership distribution;
+- ownership distribution where applicable;
 - coastal/water relationships;
+- impassable/geographical composition;
 - other static or derived summaries.
 
 Terrain remains fundamentally a cell property.
@@ -675,7 +686,7 @@ Private:
 
 Knowing a distant coastline exists does not reveal its defense.
 
-A controller may deliberately target/rout toward known remote geography without possessing local operational intelligence there.
+A controller may deliberately target/route toward known remote geography without possessing local operational intelligence there.
 
 ---
 
@@ -979,7 +990,7 @@ The engine should avoid hidden strategic bonuses unrelated to explicit mechanics
 
 ### 12.3 Territorial advantage
 
-Accepted V1 mathematical direction:
+Accepted V1 mathematical direction for a simple attacker/defender contest:
 
 ```text
 advantage = (A - D) / (A + D)
@@ -999,7 +1010,7 @@ Exact rate coefficients are balance data.
 
 Casualties and territorial movement are separate outcomes.
 
-Accepted casualty direction uses bilateral engagement intensity, approximately:
+Accepted two-party casualty direction uses bilateral engagement intensity, approximately:
 
 ```text
 engagement ~= 2AD / (A + D)
@@ -1025,13 +1036,51 @@ undefended area
 
 Exact casualty coefficients are tuning data.
 
-### 12.5 Multiple hostile factions
+### 12.5 Multiple hostile factions: all-vs-all local combat
 
-Multiple hostile factions may exert pressure on the same local area simultaneously.
+A contested cell in FFA is a genuine **all-vs-all** engagement. Co-attacking factions do not receive a temporary alliance, free gang-up, or immunity from one another merely because they currently share an owner as a target.
 
-Do not force all combat into isolated pairwise duels and do not treat co-attacking enemies as allies.
+Every hostile faction present at the local contest is hostile to every other hostile faction present.
 
-If multiple factions attack the current owner, all relevant pressures participate in deterministic local resolution. If the owner loses control, the strongest successful claimant takes the cell according to the combat/capture rules, while all other hostile relationships remain intact.
+The accepted starting resolution direction is **pressure-proportional all-vs-all engagement**:
+
+- each faction has one finite local effective combat-pressure budget;
+- that budget is distributed across all other hostile factions in the cell in proportion to those opponents' effective local pressures;
+- pairwise casualty effects are then resolved simultaneously;
+- a faction's full pressure is therefore **not duplicated once per opponent**;
+- no attackers are pooled into one allied super-force.
+
+Example with effective local pressures:
+
+```text
+Tanya = 40
+Fufu  = 30
+Ski   = 30
+```
+
+Tanya faces two equally strong opponents, so her outgoing engagement pressure splits approximately:
+
+```text
+20 -> Fufu
+20 -> Ski
+```
+
+Fufu distributes its 30 according to opponent pressure `40:30`:
+
+```text
+~17.1 -> Tanya
+~12.9 -> Ski
+```
+
+Ski behaves symmetrically.
+
+This is not a hard-coded `40/30/30` casualty rule; it is the natural result of the actual local effective pressures. Different pressure values produce different shares.
+
+All multi-party local effects should be computed from the same pre-resolution state and committed simultaneously so iteration order cannot determine the winner.
+
+The current owner retains political ownership until the capture/control rules cause it to lose the cell. If ownership is lost while multiple hostile claimants remain, the strongest successful surviving claimant receives the cell according to deterministic local control/capture rules; the other factions remain hostile and may immediately continue contesting it.
+
+Exact multi-party casualty/capture coefficients remain ruleset tuning and may be adjusted after simulation testing, but the **all-vs-all, no-free-coalition** rule is a design invariant.
 
 ### 12.6 Neutral expansion
 
@@ -1050,6 +1099,16 @@ Terrain and explicit modifiers may alter expansion efficiency.
 Blitzkrieg-like concentration, broad pushes, compact defense, reserve-heavy behavior, opportunistic attacks, and other doctrines should emerge from player-written allocation/targeting logic and the common simulation rules.
 
 There is no privileged named combat mechanic required for those doctrines.
+
+### 12.8 Deliberate retreat and territory relinquishment
+
+Controllers must have a mechanical primitive that allows them to **deliberately relinquish owned territory** rather than relying on the enemy to capture undefended cells incidentally.
+
+This allows player code to express controlled retreat, salient abandonment, defensive contraction, and similar strategy directly.
+
+Relinquishment changes political control according to the final legal retreat rule; it must not create hidden combat bonuses or teleport Population. Existing Population commitment still obeys the ordinary desired/actual allocation and Redeployment Rate rules.
+
+The exact relinquishment speed, neutralization behavior, structure consequences, and other inherited interactions are ruleset/audit details to settle against the current OpenFront mechanics.
 
 ---
 
@@ -1137,6 +1196,8 @@ In FFA, every non-team faction is legally attackable at all times.
 There are no formal alliances.
 
 Controllers may still create emergent ceasefires/coalition-like behavior by independently choosing not to attack particular factions or by focusing a runaway leader.
+
+Such strategic restraint does not change the local combat rule: if mutually hostile factions commit Population to the same contested cell, local combat remains all-vs-all.
 
 ### 15.3 Derived `atWar`
 
@@ -1255,6 +1316,8 @@ Difficulty comes from the concrete official AI faction/controller presets placed
 
 The game creator authors the official AI presets; players do **not** create new PvE AI presets.
 
+There is therefore no user-authored PvE-AI approval marketplace or promotion pipeline to design.
+
 ### 18.2 Same game rules as players
 
 Official PvE AI must obey the same gameplay rules available to player controllers:
@@ -1273,7 +1336,15 @@ Official AI may be trusted executable code operationally and therefore does not 
 
 Its difficulty should come from strategy, not simulation cheats.
 
-### 18.3 AI personality directions
+### 18.3 Creator-shipped PvE content is progression-valid
+
+PvE maps, modes/configurations, and AI presets deliberately shipped by the game creator as normal progression content are legitimate progression sources by definition.
+
+There is no separate approval status that player-authored AI presets can acquire, because players do not create PvE AI presets.
+
+Player-controller testing, custom non-progression experiments, and PvP do not become PvE reward sources merely because they use the same simulation engine.
+
+### 18.4 AI personality directions
 
 Official presets may be built from reusable internal strategic components.
 
@@ -1289,7 +1360,7 @@ These names are design references rather than final shipped content policy.
 
 ## 19. PvE progression and item loadouts
 
-Persistent collection/meta progression is earned through PvE.
+Persistent collection/meta progression is earned through creator-shipped PvE progression content.
 
 The standard PvE loadout contains **7 equipped item slots**.
 
@@ -1399,7 +1470,7 @@ base victory rolls
 = solo-equivalent roll count
 ```
 
-The AI only needs to have been present in the won official PvE match. The player/team does not need personal elimination credit for that AI.
+The AI only needs to have been present in the won creator-shipped PvE match. The player/team does not need personal elimination credit for that AI.
 
 The game samples independently that many times and awards the **rarest sampled item** according to its inherent normal-table rarity/weight.
 
@@ -1503,6 +1574,7 @@ The following are accepted **directions/current starting values** and should be 
 - population utilization curve anchor percentages;
 - base capture/advance rate;
 - casualty-rate coefficient;
+- multi-party pressure/casualty coefficients;
 - terrain modifiers;
 - structure values;
 - Population Capacity values;
@@ -1528,6 +1600,7 @@ These do not block the OpenFront compatibility audit:
 
 - exact combat casualty coefficient;
 - exact territorial advance/capture speed;
+- exact multi-party combat coefficient details;
 - exact Population growth curve values;
 - exact redeployment rate constants;
 - exact segment target sizes/heuristics;
@@ -1557,6 +1630,7 @@ These should be decided only after inspecting current OpenFront source rather th
 - inherited naval/trade/rail mechanics;
 - strategic weapon behavior;
 - elimination/capitulation cleanup semantics;
+- exact retreat/relinquishment interactions with inherited structures and territory state;
 - current terrain/map representation compatibility;
 - inherited match/config/player-count behavior;
 - which current mechanics can remain unchanged versus require translation/replacement.
