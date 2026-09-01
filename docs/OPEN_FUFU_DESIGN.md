@@ -1,20 +1,16 @@
-# Open Fufu — Consolidated Design Contract
+# Open Fufu — Canonical Design Contract
 
 ## Status
 
-This document is the **consolidated Open Fufu target-design contract**.
+This document is the **single canonical Open Fufu target-design contract and game-design source of truth**.
 
-It combines the latest accepted decisions from the earlier provisional Open Fufu design documents into one coherent specification.
+It contains the latest accepted design decisions from the pre-implementation Open Fufu mechanics and architecture discussion. The earlier provisional design/decision documents were removed after a full coverage audit and standalone consistency pass; Git history preserves them as historical evidence, but they are not normative.
 
-During this consolidation review, the older Open Fufu design/decision documents remain present only as temporary source material. Once this document has passed the final standalone consistency review, it becomes the **single canonical Open Fufu design source of truth**, and those provisional Open Fufu design documents should be deleted rather than retained as a precedence chain.
-
-This document defines **what Open Fufu is intended to be**. It is not the OpenFront compatibility/migration plan. A separate compatibility audit will later compare the existing fork against this design and produce one integration/migration plan.
+This document defines **what Open Fufu is intended to be**. It is not the OpenFront compatibility/migration plan. A separate compatibility audit will compare the existing fork against this design and produce one integration/migration plan.
 
 Where this document distinguishes between **design rules**, **provisional tuning values**, **implementation choices**, **audit-dependent inherited behavior**, and **deliberately deferred systems**, those distinctions are intentional.
 
-The governing consolidation rule is simple:
-
-> Where earlier provisional documents contain several versions of the same idea, the latest accepted design decision is authoritative here. Superseded proposals are intentionally omitted.
+Historical or superseded proposals do not override this contract. Future accepted Open Fufu design changes should update this document rather than creating a competing mechanics source of truth.
 
 ---
 
@@ -293,6 +289,22 @@ The starter controller should demonstrate lawful/basic use of the major mechanic
 It should function correctly but should not reliably win serious matches. Winning with it should be largely circumstantial rather than the result of hidden built-in intelligence.
 
 Documentation may contain examples/snippets, but the product should not substitute a large privileged built-in strategy library for player programming.
+
+### 5.5 Browser authoring surface
+
+The browser should be the primary rich authoring/debugging surface for player controllers rather than turning Foof/Discord into an IDE.
+
+The intended product surface should support capabilities equivalent to:
+
+- edit controller source;
+- save incomplete drafts;
+- inspect controller API documentation/types;
+- run tests/certification/benchmarking;
+- inspect diagnostics and replays;
+- publish immutable certified versions;
+- select/manage controller presets and versions.
+
+Exact UI/workflow implementation is product/architecture work.
 
 ---
 
@@ -867,13 +879,13 @@ Percentage-based desired allocations naturally recalculate against the current t
 
 ### 10.7 Initial allocation
 
-Before normal game-time redeployment begins, the first valid controller allocation establishes the faction's initial actual allocation directly.
+A successful controller allocation accepted during the pre-live startup/initialization phase establishes the faction's initial actual allocation directly.
 
 The opening state should not require every faction to spend time moving its initial Population out of an artificial fictional Reserve unless the controller deliberately chooses Reserve.
 
-If no valid allocation has ever committed, the safe baseline remains 100% Reserve.
+If no valid startup allocation commits, the safe live-match baseline is 100% Reserve.
 
-After initialization, changes are governed normally by Redeployment Rate.
+Once live simulation begins, including recovery after a failed startup invocation, later allocation changes are governed normally by Redeployment Rate rather than receiving a delayed free initialization teleport.
 
 ### 10.8 Casualties
 
@@ -1658,13 +1670,12 @@ Each participating human performs that many independent rolls and receives the r
 
 A human whose faction was eliminated earlier still receives the victory/reward if their human team wins.
 
-Example:
+Example for a lobby whose solo-equivalent reward is 9 rolls:
 
 ```text
-solo-equivalent rolls: 9
-1 human -> 9
-2 humans -> 5 each
-3 humans -> 3 each
+solo PvE           -> 9 rolls
+2-human team PvE   -> 5 rolls each
+3-human team PvE   -> 3 rolls each
 ```
 
 The division rule is accepted; later balance testing may still change the broader reward economy if needed.
@@ -1806,7 +1817,7 @@ These should be decided only after inspecting current OpenFront source rather th
 
 ## 26. Next step: broad OpenFront compatibility audit
 
-Once this consolidated document passes its final standalone consistency review and is accepted as the sole Open Fufu design contract, the next major task is a **broad source-level OpenFront compatibility audit**.
+The next major task is a **broad source-level OpenFront compatibility audit** using this document as the target contract.
 
 That audit must compare this target design against the current fork across more than structures.
 
@@ -1847,4 +1858,4 @@ OPENFRONT_INTEGRATION_PLAN.md
     How the inherited fork will be transformed into it.
 ```
 
-The provisional Open Fufu decision documents should be deleted after this design contract has been reviewed and confirmed to contain the latest accepted version of every decision.
+No additional competing Open Fufu mechanics document should be introduced; future accepted target-design changes belong in `OPEN_FUFU_DESIGN.md`.
