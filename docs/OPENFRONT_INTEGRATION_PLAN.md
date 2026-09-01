@@ -4,15 +4,15 @@
 
 This document is the **single canonical Open Fufu integration, migration, and upgrade plan** for transforming the current OpenFront fork into Open Fufu.
 
-It is deliberately a work in progress. Sections marked **Accepted** record migration decisions that have already been agreed. Sections marked **Provisional** or **Open** must not be treated as implementation authorization or settled architecture.
-
 The target game design is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains the single canonical Open Fufu design contract and takes precedence over this document if the two ever conflict.
 
 This document defines **how the existing OpenFront codebase should be reused, adapted, replaced, or extended to reach that target**.
 
-Future accepted migration decisions should update this file rather than creating competing Open Fufu upgrade-plan documents. Older OpenFront architecture/refactor documents may remain useful historical or upstream references, but they are not normative for the Open Fufu migration.
+Future accepted migration decisions must update this file rather than creating competing Open Fufu upgrade-plan documents. Older inherited OpenFront architecture/refactor documents remain useful evidence of the current/upstream implementation but are not normative for Open Fufu.
 
-No gameplay implementation is authorized merely by the existence of this plan. Major migration stages require explicit implementation approval.
+No gameplay implementation is authorized merely by the existence of this plan. Major migration stages still require explicit implementation approval.
+
+Sections marked **Accepted** are settled migration direction. **Open** items remain to be decided or measured before implementation reaches them.
 
 ---
 
@@ -20,13 +20,13 @@ No gameplay implementation is authorized merely by the existence of this plan. M
 
 The current fork is a strong basis for Open Fufu and should **not** be rewritten from scratch.
 
-The broad migration strategy is:
+The migration strategy is:
 
-> Keep OpenFront's cell/map engine, deterministic execution machinery, pathfinding, many unit/structure mechanics, rendering foundations, substantial lobby/network infrastructure, and test/performance tooling. Replace the client-authoritative match model and the central scalar-troop/attack/resource semantics. Build Open Fufu's Population, controller, visibility, progression, and persistence systems around the retained deterministic core.
+> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse offensive-operation model rather than building a dense faction-by-cell Population field.
 
-The useful architectural seam already present in the codebase is the separation between high-level input and deterministic `Execution` objects that mutate canonical game state.
+A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
 
-Conceptually, the current path is approximately:
+Current conceptual path:
 
 ```text
 human input
@@ -36,17 +36,15 @@ human input
 → Game mutation
 ```
 
-The intended Open Fufu path should instead become conceptually:
+Target conceptual path:
 
 ```text
 controller observation
 → transactional controller decision
-→ validated directives/actions
+→ validated operation/action changes
 → deterministic simulation work
 → canonical Game mutation
 ```
-
-The exact server/controller boundary is still open and is treated separately below.
 
 ---
 
@@ -59,123 +57,179 @@ The exact server/controller boundary is still open and is treated separately bel
 | Pathfinding, water connectivity, rail graph | **Keep** |
 | Generic unit/build lifecycle | **Keep / Adapt** |
 | Renderer, camera, map visualization foundations | **Keep heavily** |
-| Server lobby/roster/socket/auth-gate/telemetry infrastructure | **Keep / Adapt** |
+| Lobby/roster/socket/routing/telemetry infrastructure | **Keep / Adapt** |
 | Client-authoritative simulation | **Replace** |
 | Turn relay as simulation authority | **Replace** |
 | Client hash/winner/live-stat consensus as authority | **Remove** |
-| Scalar `troops` warfare model | **Replace** |
-| Current `Attack` / `AttackExecution` land-war semantics | **Replace** |
+| Scalar `troops` storage concept | **Adapt into global quantized Population** |
+| Current `Attack` object/lifecycle shape | **Reuse selectively** |
+| Current `AttackExecution` combat semantics | **Replace substantially** |
 | Passive worker gold | **Remove** |
-| Current troop growth/capacity model | **Replace** |
+| Current troop growth/capacity formulas | **Replace** |
 | Global Easy/Medium/Hard gameplay difficulty scalar | **Remove** |
 | Official-AI simulation cheats | **Remove** |
 | Mutable alliances/relations diplomacy | **Remove** |
 | Current partial-territory/overtime/doomsday victory rules | **Replace / Remove** |
-| Spatial Population commitment and Redeployment | **New** |
+| Dense defensive Population allocation field | **Do not build** |
+| Old desired/actual cell Redeployment subsystem | **Do not build** |
+| Available/Committed Population accounting | **New / Adapt scalar troop plumbing** |
+| Sparse offensive operations with spatial intent | **New / Adapt attack plumbing** |
+| Automatic shared defense | **New** |
+| Active counter-responses | **New** |
+| Deployment Rate | **New** |
 | Immutable strategic Segments | **New** |
-| Runtime-derived territorial Contacts | **New** |
+| Runtime-derived Contacts | **New** |
 | Secure operational visibility/observation model | **New** |
 | Player controller runtime/sandbox | **New** |
 | Controller publishing/certification/memory/diagnostics | **New** |
-| Open Fufu FFY/account item/progression systems | **New** |
-| Open Fufu-owned persistent backend | **New / Adapt surrounding auth/session infrastructure** |
+| Open Fufu FFY/items/progression | **New** |
+| Open Fufu-owned persistent backend | **New / Adapt surrounding session infrastructure** |
 
 ---
 
 ## 3. Core/headless boundary — Accepted
 
-OpenFront's shared deterministic core should be retained as the foundation, but it must become genuinely browser-independent.
+OpenFront's shared deterministic core should remain the simulation foundation, but it must become genuinely browser-independent.
 
-The desired dependency direction is:
+Required dependency direction:
 
 ```text
 core simulation
     ↑
 authoritative match runtime
     ↑
-controller execution
+validated controller decisions
 
 core-derived observer protocol
     ↓
 browser viewers
 ```
 
-The core must not depend on browser presentation helpers. Existing imports from `src/client` into shared simulation code should be removed or moved behind neutral formatting/event interfaces as part of the migration.
+Existing imports from `src/client` into shared simulation code should be removed or moved behind neutral formatting/event interfaces.
 
 ### Acceptance condition
 
-A Node/headless process can load a map, run an entire match, determine its result, produce a replay record, and replay the match without importing DOM/browser/client-presentation code.
+A Node/headless process can load a map, run a complete match, determine its result, produce a replay record, and replay that match without importing DOM/browser presentation code.
 
 ---
 
-## 4. Simulation authority — Open, with accepted requirements
+## 4. Server authority and process topology — Accepted
 
-The **exact server authority architecture is intentionally not yet locked**. It is the next major design/engineering question to settle before this plan becomes a staged implementation roadmap.
+Each live match has exactly **one canonical authoritative server simulation**.
 
-However, the following product requirements are already accepted and constrain every valid solution:
+Browsers never determine simulation progress, canonical hashes, winner state, or authoritative statistics.
 
-- a match must continue without any connected browser;
-- browser disconnects must not determine simulation progress or outcome;
-- Foof or another trusted service must be able to start matches without a browser player acting as authority;
-- headless tournaments and batch simulations must be possible;
-- deterministic replay/testing must not depend on a live browser;
-- player controller code must not receive privileged access merely because it runs close to authoritative state;
-- normal browser clients should eventually become viewers/editor/debugger surfaces rather than moment-to-moment authoritative command clients.
+### 4.1 V1 process model
 
-The current OpenFront architecture does not satisfy these requirements because the game server primarily relays turns while clients run the simulation and participate in hash/winner/live-stat consensus.
-
-### Performance implications of authority choices
-
-The current OpenFront **server** is exceptionally cheap per match because it does not run the map simulation. That does not mean the current **match as a whole** is cheap: every participating player or spectator runs a duplicate full simulation.
-
-A server-authoritative architecture moves CPU and memory cost onto the game host but removes duplicated client simulations.
+The accepted V1 topology is **one OS child process per active authoritative match**.
 
 Conceptually:
 
 ```text
-Current 4-player + 3-spectator match
-≈ relay server + 7 full simulations
-
-Single-authority target
-≈ 1 canonical simulation + controller runtimes + 7 lightweight observer streams
+Browser / Foof
+      |
+   HTTPS / WS
+      |
+Open Fufu gateway/API/lobby
+      |
+Match supervisor
+   |       |       |
+Match A  Match B  Match C
+process  process  process
 ```
 
-Expected resource direction:
+Reasons:
 
-| Resource | Current model | Server-authoritative direction |
-| --- | --- | --- |
-| Game-server CPU | Very low | **Higher** |
-| Game-server RAM | Very low | **Higher** |
-| Client CPU | Full simulation per viewer | **Much lower** |
-| Client RAM | Full simulation state per viewer | **Lower** |
-| Total duplicated simulation work | Scales with viewers | **Usually much lower** |
-| Outbound server bandwidth | Mostly compact turns/intents | **Likely higher** because state projections/deltas must be sent |
-| Headless/no-client execution | Poor fit | **Natural** |
-| Hidden-information security | Cannot be robust | **Can be enforced** |
+- independent V8 heaps/GC;
+- one match crash does not kill unrelated matches;
+- simple process termination and resource accounting;
+- straightforward per-match profiling/logging;
+- multi-core CPU use without serializing all matches through one Node event loop;
+- fixed process overhead is acceptable for the expected small concurrency envelope.
 
-For a one-player/headless match, a single-authority design approximately moves the one simulation from a browser to the server and adds controller-runtime overhead. As player/spectator count rises, total-system compute increasingly favors one canonical simulation rather than N replicas.
+Worker threads or pooled multi-match processes remain possible future optimizations only if measurements justify changing the topology.
 
-This comparison is independent of one additional fact: **Open Fufu's cell-level Population model will itself be more expensive than OpenFront's scalar troop model**, regardless of authority. We therefore must not infer Fufubox match capacity from current OpenFront server load.
+### 4.2 Expected operating envelope
 
-Before locking worker counts or simultaneous-match capacity, we require real measurements on the intended server hardware for:
+Open Fufu is intentionally a small friends-oriented deployment.
 
-- one live authoritative Open Fufu match;
-- multiple simultaneous matches;
-- accelerated headless matches;
+Current realistic planning assumptions are:
+
+- **1–3 concurrent matches** is the normal meaningful envelope;
+- **4 concurrent matches** should be rare;
+- **5 concurrent matches** should be very rare;
+- higher numbers are not a useful V1 design target;
+- total live human/browser viewers across the service are expected to be roughly **5 or fewer** most of the time.
+
+These are planning assumptions, not hard protocol limits.
+
+### 4.3 Benchmark before capacity claims
+
+Do not derive production capacity from current OpenFront relay-server load.
+
+Before setting hard limits, benchmark the real authoritative Open Fufu simulation on Fufubox at least for:
+
+- 1 live match;
+- 3 simultaneous matches;
+- 5 simultaneous matches as a stress case;
 - controller-runtime overhead;
-- Population-field memory;
 - observer projection/delta construction;
-- controller certification workloads.
+- accelerated certification/batch mode.
 
-No fixed concurrency target is accepted yet.
+Record at minimum:
+
+- mean/p50/p95/p99/max tick time;
+- ticks exceeding the 100 ms budget at provisional 10 Hz;
+- CPU utilization;
+- process RSS/PSS/heap;
+- GC pauses/churn;
+- active operation/front counts;
+- observer bandwidth;
+- controller runtime cost.
+
+The existing `tests/perf/fullgame` tooling is a strong starting point but will need adaptation for Open Fufu mechanics and authoritative process topology.
 
 ---
 
-## 5. Tick, decision, and Execution model — Accepted
+## 5. Controller-runtime isolation — Accepted direction
 
-The deterministic Execution pattern should be retained rather than replaced wholesale.
+Player controller code must not execute with unrestricted access inside the canonical match process.
 
-Open Fufu must distinguish three layers:
+Conceptually:
+
+```text
+Authoritative Match
+       |
+immutable legal observation
+       |
+Controller runtime isolation
+       |
+proposed transactional decision
+       |
+validation
+       |
+canonical commit/reject
+```
+
+Controller failure must never become match-process corruption.
+
+Do **not** assume one permanent OS process per controller. A reusable isolated controller-runtime pool is preferred if compatible with the selected sandbox technology, because per-match persistent controller state is explicitly serialized by the game contract and does not require a warm process per faction.
+
+Exact sandbox/runtime technology remains **Open**.
+
+### Deterministic parallel controller execution
+
+Controllers at the same decision tick may execute concurrently against immutable snapshots of the same canonical tick.
+
+Completion order must not create gameplay advantage. Results are collected and validated/committed according to deterministic rules.
+
+---
+
+## 6. Tick, decision, and Execution model — Accepted
+
+Retain the deterministic Execution pattern rather than replacing it wholesale.
+
+Open Fufu distinguishes:
 
 ```text
 lifecycle/admin commands
@@ -185,153 +239,262 @@ simulation executions/state transitions
 
 Player controllers must not simply become another source of today's browser wire intents.
 
-A controller invocation operates transactionally against one legal immutable observation. On successful validation, its memory/directive changes commit together. On failure, all temporary changes are discarded and the match continues according to the controller failure rules in the design contract.
+A controller invocation operates transactionally against one immutable legal observation. On success, memory/operation/action changes commit together. On failure, all temporary output is discarded.
 
-The existing execution/state-mutation machinery should be reused wherever its semantics still match the new game.
+Provisional cadence remains:
 
-### Acceptance condition
+```text
+simulation: 10 Hz
+controller decisions: 2 Hz
+```
 
-Controller failure cannot partially mutate authoritative match state, and deterministic state mutation remains centrally ordered.
+Both are logical-tick rules. Accelerated simulations execute the same logical ticks without real-time waiting.
 
 ---
 
-## 6. Map, cells, terrain, and topology — Accepted
+## 7. Map, cells, terrain, and Segments — Accepted
 
 The current dense integer `TileRef`/typed-array map substrate is a primary reuse target.
 
-Retain and adapt:
+Retain/adapt:
 
 - integer cell references;
-- compact terrain storage;
+- compact terrain/state storage;
 - deterministic adjacency;
-- ownership lookup/mutation infrastructure;
-- water-component/pathfinding support;
+- ownership lookup/mutation;
+- water/pathfinding support;
 - authored map compilation/loading;
-- impassable terrain support;
+- impassable terrain;
 - map-scale optimized iteration patterns.
 
-### New static Segment layer
+### 7.1 Segment layer
 
-Every initial map cell, including water and impassable cells, will belong to one immutable Segment generated or compiled from static geography.
+Add a compact immutable Segment identity for every real map cell, including water and impassable terrain, plus immutable Segment metadata/adjacency.
 
-Likely supporting data includes a compact `segmentIdByTile` representation plus immutable Segment metadata and adjacency information. Exact representation remains an implementation decision.
+Segments remain strategic/query indexes rather than physical simulation buckets.
 
-Segments are a controller/query lens and **must not become the physical simulation resolution**.
+Dynamic terrain changes such as nuke-created water do not regenerate Segment identity.
 
-Dynamic terrain changes such as strategic-weapon effects must not silently regenerate Segment identity.
+### 7.2 Future procedural maps
 
-### Random maps
-
-Procedural/random map generation is a new Open Fufu capability. The existing authored-map compiler is retained, while the procedural generation pipeline will eventually need to produce terrain and the same immutable Segment model deterministically from a seed/version.
-
-### Acceptance condition
-
-Changing only artificial Segment boundaries cannot alter a match unless a controller itself changes behavior in response to the changed metadata.
+Procedural/random map generation is new. It must deterministically produce terrain plus the same immutable Segment model from seed/version.
 
 ---
 
-## 7. Ownership and neutral expansion — Accepted
+## 8. Ownership and neutral expansion — Accepted
 
-Retain and adapt the low-level cell ownership machinery, including incremental territory/border bookkeeping.
+Retain and adapt low-level cell ownership and incremental territory/border bookkeeping.
 
-Do not retain old attack semantics merely because ownership changes currently flow through them.
+Current `conquer()`/`relinquish()`-style primitives are useful infrastructure.
 
-Neutral expansion becomes an ordinary result of Population commitment and cell-level simulation rather than a special old `AttackExecution` path.
-
-V1 neutral settlement must not inherit arbitrary automatic colonization deaths.
-
-### Acceptance condition
-
-Ownership changes remain deterministic and incremental, but all neutral capture/expansion rules come from the Open Fufu Population model.
+Neutral expansion should no longer inherit old arbitrary troop-death behavior. It becomes an operation using ordinary Population and spatial intent, with capture still resolving through cells.
 
 ---
 
-## 8. Faction resources and Population state — Accepted
+## 9. Population state — Accepted, redesigned
 
-The existing scalar troop/gold gameplay model is a semantic replacement zone.
+The earlier planned faction-by-cell Population field is removed from the migration target.
 
-The future faction state is centered on at least:
+### 9.1 Global quantized Population
 
-- Population;
-- Population Capacity;
-- Growth Potential;
-- reserve Population;
-- desired spatial Population commitments;
-- actual spatial Population commitments;
-- FFY;
-- structures and mobile units;
-- fixed team state;
-- derived `atWar` state;
-- exact controller version binding;
-- PvE loadout where applicable.
+Adapt the useful scalar shape of OpenFront troop storage into one global deterministic quantized Population value per faction.
 
-The current scalar `troops` value must not remain the authoritative military representation.
-
-`gold` may be mechanically migrated toward FFY storage, but generic passive population/worker income must be removed. FFY is produced by explicit economic/world events defined by the design contract.
-
-Difficulty-specific hidden Population/growth multipliers for official AI must also be removed.
-
----
-
-## 9. Land combat — Accepted
-
-The current `Attack`/`AttackExecution` land-war model should be replaced rather than incrementally mutated into Open Fufu warfare.
-
-Open Fufu resolves military effects at the finest meaningful world resolution: cells.
-
-Reusable lower-level primitives include:
-
-- cell adjacency;
-- terrain lookup;
-- cell ownership mutation;
-- nearby-structure queries;
-- deterministic iteration/event infrastructure.
-
-The old global attack-stack model, global defender troop-density substitute, bulk conquest semantics, and hidden large-territory combat bonuses must not leak into the replacement combat system.
-
-### Acceptance condition
-
-Authoritative land combat never substitutes a faction-wide troop scalar for actual local Population commitment/pressure.
-
----
-
-## 10. Spatial Population commitment and Redeployment — Accepted
-
-This is a new core subsystem.
-
-The system must represent, per faction, the relationship among:
-
-- desired Population distribution;
-- actual Population distribution;
-- reserve;
-- deficits/excesses awaiting movement;
-- explicit Redeployment capacity/rate.
-
-The exact internal representation is not yet locked.
-
-### Critical performance invariant
-
-OpenFront maps may contain millions of cells, so a naive dense allocation matrix of:
+Faction Population state centers on:
 
 ```text
-number of factions × number of cells × desired/actual values
+Total Population
+Available Population
+Committed offensive Population
+Committed counter-response Population
+Population aboard transports
+Population Capacity
+Growth Potential
+Deployment Rate
 ```
 
-is not acceptable.
+Conceptually:
 
-The implementation should be sparse or otherwise compact over strategically active/non-zero commitments, with efficient indexes for both faction-oriented and cell-oriented simulation/query work.
+```text
+Total
+= Available
++ attacks/expansion operations
++ counter-responses
++ transports
+```
 
-Segments and runtime Contacts may provide efficient higher-level query/indexing views without becoming simulation buckets.
+There is no separate persistent Reserve pool.
 
-### Acceptance condition
+### 9.2 Capacity from owned cells
 
-Stress testing must demonstrate that Population-allocation memory does not scale as a full dense `players × mapCells` matrix.
+Population Capacity becomes an extremely simple derived quantity:
+
+```text
+Capacity = owned population-bearing cells
+```
+
+For V1, one ordinary conquerable land cell contributes exactly one Capacity.
+
+The existing incremental territory count should make Capacity an O(1)-style derived/read value rather than requiring map scans.
+
+Remove/avoid:
+
+- City Capacity bonuses;
+- item max-Population/Capacity bonuses;
+- terrain Capacity multipliers;
+- hidden faction Capacity multipliers.
+
+Cities move to growth effects.
+
+### 9.3 Quantization
+
+Prefer integer/packed Population representation in authoritative state.
+
+The map-derived Capacity bound makes 32-bit/fixed-point approaches practical for ordinary V1 values. Exact encoding must be selected during implementation, but do not store large Population systems as object-heavy arbitrary floats unless profiling justifies it.
 
 ---
 
-## 11. Structures — Accepted
+## 10. No defensive occupancy field — Accepted
 
-Retain the generic spatial structure lifecycle where useful:
+Do not implement persistent defensive Population values on cells, Segments, Contacts, or fronts.
+
+This removes the previously proposed data structures for:
+
+- desired defensive cell allocation;
+- actual defensive cell allocation;
+- per-cell excess/deficit tracking;
+- defensive cell-to-cell Redeployment.
+
+Available Population is one shared automatic defensive pool.
+
+When several incoming operations attack a defender simultaneously, derive the defender's finite available defensive pressure across them proportionally to incoming effective pressure. The same defenders must never count in full against every front.
+
+Apply local terrain/structure defensive modifiers after deriving the finite shared defensive response.
+
+The derivation must be resistant to attack-fragmentation exploits.
+
+### Performance consequence
+
+This is a major simplification relative to the previous audit plan.
+
+The authoritative simulation should iterate primarily over:
+
+- active operations;
+- their currently actionable front cells;
+- active counter-responses;
+- active units/structures/economic events;
+
+rather than over `factions × map cells`.
+
+No dense Population matrix should exist.
+
+---
+
+## 11. Offensive operations and land combat — Accepted
+
+The OpenFront `Attack` concept is now closer to the target than under the superseded defensive-cell model, but its existing semantics are still not authoritative.
+
+### 11.1 Reuse selectively
+
+Potentially reuse/adapt useful structural ideas such as:
+
+- attack/operation identity;
+- owner/target linkage;
+- committed scalar Population;
+- lifecycle/execution plumbing;
+- border/actionability helpers;
+- deterministic cell traversal/capture notifications.
+
+Do not inherit blindly:
+
+- old global defender troop formulas;
+- old attack casualty formulas;
+- bulk-conquest shortcuts;
+- hidden large-faction bonuses;
+- bot difficulty modifiers;
+- mutable-relation side effects.
+
+### 11.2 Target operation model
+
+An operation should conceptually contain:
+
+```text
+committedPopulation
+target
+spatialIntent
+activeFrontGeometry
+```
+
+Spatial intent may target/filter/weight Segments, Contacts, cells, controller-defined areas, terrain, or objectives.
+
+Local operation pressure is **derived** over currently actionable front cells rather than persisted as Population occupancy per cell.
+
+A finite operation's Population cannot be duplicated across every cell or opponent.
+
+### 11.3 Automatic defense
+
+Available Population automatically defends.
+
+The defender's finite automatic defensive response is shared among simultaneous incoming operations according to the canonical design rule rather than manually allocated by the controller.
+
+### 11.4 Counter-responses
+
+Add an explicit counter-response operation type allowing the controller to commit Available Population against a particular incoming hostile operation.
+
+Counter-response Population leaves the generic Available defensive pool while committed and is subject to Deployment Rate.
+
+### 11.5 Combat math
+
+Replace old OpenFront combat coefficients with the canonical Open Fufu local effective-pressure model, including separate casualty and capture outcomes and all-vs-all local multi-faction handling.
+
+### Acceptance condition
+
+No authoritative combat path duplicates the same Available defenders or committed attackers merely because multiple fronts/operations exist.
+
+---
+
+## 12. Deployment Rate — Accepted
+
+Do not build the superseded desired/actual cell Redeployment system.
+
+Implement one explicit Deployment Rate controlling Population entering/leaving active commitments such as:
+
+- Available ↔ attack/expansion operation;
+- Available ↔ counter-response;
+- Available ↔ transport payload.
+
+Passive automatic defense is exempt because Available Population defends by definition.
+
+V1 has no land strategic-distance cost in Deployment Rate.
+
+The previously accepted sublinear scaling direction may be retained as provisional tuning:
+
+```text
+R(P) = Rref × (P / Pref)^(2/3)
+```
+
+Exact reference values are balance work.
+
+---
+
+## 13. Population growth and Cities — Accepted
+
+Replace current OpenFront troop growth/cap formulas.
+
+Capacity is territory count, while Population growth remains a separate system.
+
+Preserve the accepted sublinear growth direction and utilization curve from the canonical design.
+
+Cities should contribute to Population growth, **not Capacity**.
+
+Items may modify explicit growth/Deployment rules but must not modify Capacity/max Population while the one-cell-one-Capacity invariant is active.
+
+Remove passive worker-gold coupling from Population entirely.
+
+---
+
+## 14. Structures — Accepted
+
+Retain useful generic spatial structure lifecycle infrastructure:
 
 - build legality;
 - construction duration;
@@ -341,360 +504,326 @@ Retain the generic spatial structure lifecycle where useful:
 - health/destruction;
 - type-specific execution behavior.
 
-Individual semantics will be adapted to Open Fufu rather than inherited blindly.
-
-Initial direction:
+Initial semantic direction:
 
 | Structure | Migration direction |
 | --- | --- |
-| City | Adapt toward explicit Capacity/Growth effects |
-| Defense Post | Adapt toward surfaced local defensive effects |
-| Port | Keep naval role; adapt trade/FFY rules |
+| City | **Growth**, not Capacity |
+| Defense Post | Explicit local defense modifier |
+| Port | Keep naval role; adapt trade/FFY |
 | Factory | Preserve rail/economic identity initially |
-| Missile Silo | Preserve strategic-weapon infrastructure |
+| Missile Silo | Preserve weapon infrastructure |
 | SAM Launcher | Preserve interception identity |
-| Structure upgrades/levels | Keep framework |
+| Upgrades/levels | Keep framework |
 
-No structure should recreate a hidden global Military Power stat.
-
-Any future rail/structure Redeployment modifier must be explicit and surfaced rather than silently inherited.
+Structures must not recreate a hidden global Military Power stat.
 
 ---
 
-## 12. Generic units/mobile objects — Accepted
+## 15. Generic units, naval, amphibious, trade, and rail — Accepted
 
-Retain and adapt the existing generic unit framework rather than replacing it during the first migration.
-
-Useful retained concepts include:
-
-- stable unit IDs;
-- owner;
-- current/previous cell;
-- movement;
-- target tile/unit information;
-- health;
-- deletion;
-- ownership transfer;
-- construction state;
-- upgrades/levels;
-- type-specific runtime state.
-
-Transport unit troop payloads map naturally to **carried Population** under the new model.
-
-Presentation/client dependencies must be removed from authoritative unit logic.
-
----
-
-## 13. Naval, amphibious, trade, and rail — Accepted
-
-These systems are substantially reusable but require semantic adaptation.
+Retain/adapt the generic unit framework: stable IDs, ownership, movement, target state, health, deletion, transfer, construction, upgrades, and type-specific runtime state.
 
 ### Transport ships
 
-Retain physical carried Population, deterministic water pathing, interception/destruction, retreat, and landing movement.
+Current transport payload maps naturally to committed Population.
 
-Replace the current landing transition into old `AttackExecution` with normal Open Fufu cell-level operational commitment/combat.
+Carried Population is not Available for defense while aboard the ship. On legal landing it joins the local offensive engagement rather than triggering old attack semantics unchanged.
 
-### Trade ships
+### Trade ships and Ports
 
-Retain the core world-event model:
+The inherited physical trade-event model is a strong fit:
 
 ```text
 Port
 → TradeShip
 → physical route
-→ successful arrival/capture
-→ economic event
+→ arrival/capture
+→ FFY event
 ```
 
-Convert rewards to FFY and apply the explicit Open Fufu wartime trade rules rather than mutable alliance/embargo rules.
+Replace alliance/embargo assumptions with Open Fufu fixed-team/FFA/`atWar` trade rules.
 
 ### Trains and rail
 
-Retain physical train/rail infrastructure and explicit economic stop/arrival events where compatible.
+Retain useful physical/economic rail infrastructure and explicit stop/arrival events.
 
-Do not automatically grant rail a Redeployment advantage in V1. Any such effect must be added later as an explicit designed modifier.
+Do not give rail hidden Deployment advantages in V1. Any future effect must be explicit.
 
 ### Warships
 
-Retain and adapt physical patrol, combat, transport interception, piracy, retreat/repair, health, and veterancy mechanics where they remain useful.
-
-Friend/enemy decisions must be translated to the fixed-team/FFA/derived-`atWar` Open Fufu relationship model.
+Retain/adapt patrol, combat, transport interception, piracy, retreat/repair, health, and veterancy where compatible.
 
 ---
 
-## 14. Strategic weapons and SAM — Accepted
+## 16. Strategic weapons and SAM — Accepted infrastructure, one open semantic detail
 
-Retain strategic weapon physical identity and substantial existing deterministic infrastructure:
+Retain substantial deterministic launch/trajectory/interception infrastructure:
 
-- silo launch;
-- missile flight/trajectory;
+- silos;
+- missile flight;
 - warning/visibility events where allowed;
 - SAM interception;
-- detonation radius;
-- spatial structure/unit/terrain effects.
+- detonation geometry;
+- structure/unit/terrain effects.
 
-Replace old damage semantics that operate directly on global troop/attack-stack state or mutable alliances.
+Replace old scalar-troop/attack-stack casualty handling and mutable-alliance side effects.
 
-Population casualties must be expressed through the new explicit Population model.
+### Open: non-front Population casualty mapping
 
-### Acceptance condition
+Because passive defenders no longer occupy cells, strategic weapons that should kill ordinary home/available Population require an explicit deterministic casualty rule that does not pretend defensive Population has hidden cell positions.
 
-Strategic weapon execution no longer depends on old scalar-troop warfare or mutable alliance APIs.
+Do not solve this by silently reintroducing defensive occupancy. The exact rule remains **Open** for later mechanics review.
 
 ---
 
-## 15. Teams, diplomacy, trade relationships, and `atWar` — Accepted
+## 17. Teams, diplomacy, `atWar`, trade, and victory — Accepted
 
 Retain fixed pre-match teams.
 
 Remove mutable alliance/relation diplomacy as a core match system.
 
-FFA opponents remain attackable regardless of `atWar`.
+FFA opponents remain legally attackable regardless of `atWar`.
 
-`atWar` becomes symmetric derived recent-hostility state as defined by the design contract rather than a permission gate.
+`atWar` becomes symmetric recent-hostility state rather than a permission gate.
 
-Wartime trade remains possible and receives explicit Open Fufu penalties/modifiers rather than being represented as ordinary embargo prohibition.
+Trade with enemies remains possible with the canonical explicit wartime penalty rather than ordinary embargo prohibition.
 
-Existing troop/gold donation mechanics must not survive merely because they exist upstream. Any future team transfer mechanic requires a deliberate Open Fufu design decision.
+Do not inherit troop/gold donations automatically.
 
----
+Replace old partial-territory/overtime/doomsday victory rules with the canonical 100%-territory / opposition-defeated rules.
 
-## 16. Visibility and observer projection — Provisional pending authority decision
+Human resignation and AI capitulation are explicit lifecycle operations.
 
-The product requirement is accepted: knowing global geography/ownership/public macro statistics must not imply access to hidden enemy operational deployment or controller state.
-
-The exact implementation depends on the server-authority architecture still to be settled.
-
-A likely conceptual separation is:
-
-```text
-Global public information
-    terrain
-    ownership
-    immutable Segments
-    Population
-    Territory %
-    FFY
-
-Faction operational observation
-    own detailed state
-    legally visible local enemy pressure
-    legally visible mobile units/structures
-    runtime contact information
-
-Private controller state
-    never exposed to opponents/ordinary viewers
-```
-
-The controller must receive a legal observation surface rather than unrestricted direct access to complete simulation internals.
-
-Official PvE AI should obey the same gameplay-information boundary even if its trusted implementation does not require the same hostile-code sandbox.
-
-This section will be finalized alongside the authority architecture.
+Detailed lobby UI/UX is expected to diverge substantially from OpenFront and remains later product work even where backend lobby primitives are reused.
 
 ---
 
-## 17. Official AI and player controller boundary — Accepted
+## 18. Visibility and observer projection — Accepted architecture
 
-OpenFront's compositional AI behavior pattern is useful design precedent, but existing Nation AI must not remain the privileged gameplay API.
+OpenFront's client-replicated full simulation cannot securely enforce Open Fufu's hidden operational information.
 
-Player controllers and official PvE controllers should reason over substantially the same primitive game observation/action contract.
-
-The trust distinction is expected to be:
-
-```text
-player controller
-→ hostile/untrusted sandbox
-
-official controller
-→ trusted runtime
-```
-
-not:
-
-```text
-official controller
-→ omniscient/cheating simulation access
-```
-
-Global Easy/Medium/Hard gameplay difficulty and hidden AI resource multipliers are not part of Open Fufu.
-
----
-
-## 18. Lobby, match lifecycle, and UI — Accepted direction; presentation details deferred
-
-Substantial lobby/roster/network lifecycle infrastructure may be reusable internally, but Open Fufu's **lobby UI and user experience are expected to change significantly**.
-
-Do not preserve existing lobby presentation or interaction flows merely because their backend machinery is retained.
-
-Useful backend concepts may include:
-
-- roster management;
-- players vs spectators/viewers;
-- private/public match lifecycle primitives;
-- fixed-team assignment;
-- reconnect/session handling;
-- match creation/start lifecycle;
-- trusted service/API-driven match creation.
-
-The eventual Open Fufu lobby UX, controller selection, loadout selection, PvE setup, Foof integration, and viewer flow will be designed separately.
-
-### Victory/lifecycle rules
-
-Replace inherited partial-territory/overtime/doomsday victory behavior with the Open Fufu victory/capitulation/resignation rules in the design contract.
-
-No match should end because an inherited OpenFront 80/95% threshold, overtime rule, or Doomsday mechanic fired.
-
-Exact defeat-state cleanup/inheritance behavior for remaining territory/structures is still an implementation/design detail to settle.
-
----
-
-## 19. Replay, records, determinism, and observability — Provisional pending authority decision
-
-Retain the strong deterministic replay philosophy and existing headless replay/performance tooling as foundations.
-
-The exact live-record format depends on the authority architecture still to be settled.
-
-Historical match identity must eventually bind every rule-bearing input required for deterministic reconstruction, including at least the versioned inputs defined by the design contract:
-
-- ruleset version;
-- map and Segment generator/version/hash;
-- controller runtime/API version;
-- exact player controller versions;
-- official AI versions/presets;
-- item identities and generator version;
-- rule-bearing lobby configuration;
-- deterministic seed/input data.
-
-It is likely useful to archive committed controller outputs and controller failure/diagnostic events so ordinary replay does not require executing historical untrusted code merely to watch a match. That is not yet locked as the final record format.
-
-This section will be finalized with the authority architecture.
-
----
-
-## 20. Browser role — Accepted direction; protocol details deferred
-
-The browser should evolve away from being the authoritative simulation/player-command surface and toward being principally:
-
-- a live match viewer;
-- controller editor;
-- controller debugger/diagnostics UI;
-- replay viewer;
-- loadout/progression UI;
-- lobby/match-setup UI.
-
-Rendering, camera, map visualization, animation/motion-plan concepts, and other presentation infrastructure should be retained heavily where practical.
-
-The exact live state snapshot/delta protocol depends on the server-authority decision.
-
-Late join/reconnect should not require replaying an entire long match from turn zero merely to reconstruct present state if the chosen authoritative architecture can provide checkpoints/snapshots efficiently.
-
----
-
-## 21. Authentication and identity — Open; current preference recorded
-
-Open Fufu authentication has **not yet been formally designed or locked**.
-
-The current OpenFront authentication backend should therefore not be treated as the target architecture merely because some surrounding session/JWT patterns are reusable.
-
-Current preferred starting direction:
-
-- **Discord authorization is the leading candidate for the initial universal login path**, potentially for all users at first;
-- users with Fufubox access may later also authenticate through the existing Fufubox/Foof/fufu-control challenge/trust model;
-- the exact relationship between Discord identity and Fufubox identity is deferred;
-- Open Fufu itself should own its controller/progression/match data rather than Foof directly manipulating a game database.
-
-This section remains **Open** until the identity/auth contract is explicitly discussed.
-
----
-
-## 22. Persistence and Foof service boundary — Accepted direction
-
-Open Fufu will require its own persistent backend for game-specific state. Exact storage technology is not yet selected by this plan.
-
-Expected persistent concepts eventually include:
-
-- users/linked external identities;
-- controller drafts;
-- immutable published controller versions;
-- certification state/results;
-- active/default controller selection;
-- item catalogue/version metadata;
-- owned items/loadouts;
-- duplicate/gambling currency;
-- match records/replays;
-- progression/rewards;
-- official AI/version metadata.
-
-Foof remains a Discord-facing management/integration service and must call Open Fufu through a game API rather than directly owning or mutating the game database.
+The authoritative match process must generate legal observer/controller projections **before** information reaches the gateway/browser.
 
 Conceptually:
 
 ```text
-Discord
-  ↓
-Foof
-  ↓ Open Fufu API
-Open Fufu service
-  ├ authoritative match runtime
-  ├ controller system
-  ├ persistence
-  ├ PvE/progression
-  └ replay/history
+canonical match state
+    |
+    ├─ Fufu legal observation
+    ├─ Ski legal observation
+    ├─ official-AI legal observation
+    └─ spectator/public observation
 ```
 
-Foof disappearing must not destroy Open Fufu's ownership of its own game/account/controller/progression state.
+Use the same underlying visibility/projection rules for player controllers, official AI, and browser faction views so one surface cannot reveal information another hides accidentally.
+
+The gateway should forward projections rather than mirror full secret world state for filtering.
+
+Compute one projection per perspective/state version and fan it out to multiple viewers rather than recomputing identical perspectives for each socket.
+
+The new hybrid Population model simplifies visibility because there is no hidden defensive cell deployment; hidden operational information mainly concerns active operations, counter-responses, mobile units, structures/details, and controller intent.
+
+Exact spectator policy remains **Open** (omniscient, delayed, faction perspective, public-only, etc.).
 
 ---
 
-## 23. Tests, benchmarks, build tooling, and deployment — Accepted direction; concrete tooling changes expected
+## 19. Browser synchronization and rendering — Accepted architecture
 
-Existing tests, replay harnesses, performance suites, map tools, TypeScript checks, and server/client build machinery are valuable migration assets, **not sacred interfaces**.
+Keep OpenFront's rendering/camera/map/unit visualization foundations heavily where useful.
 
-Many tests and benchmarks will necessarily change because they currently encode mechanics that Open Fufu is deliberately replacing. Some build/deployment tooling will also change when the server starts carrying authoritative map/simulation state.
+Remove the browser's authoritative simulation responsibility.
 
-The migration should therefore classify tests individually:
+The target browser becomes primarily:
 
-- retain tests that protect still-valid deterministic/core behavior;
-- adapt tests around reused systems whose semantics change;
-- replace tests for removed OpenFront mechanics with Open Fufu contract tests;
-- preserve historical removed tests only when useful as migration evidence, not as permanent requirements.
+```text
+viewer
+controller editor
+debugger
+replay viewer
+loadout UI
+lobby UI
+```
 
-### Mandatory performance work before capacity claims
+### Snapshot + deltas
 
-Benchmark on the intended Fufubox/server environment:
+Live connection/reconnect should use:
 
-- baseline headless OpenFront core;
-- authoritative Open Fufu core once viable;
-- Population allocation memory/CPU;
-- cell combat;
-- controller invocation/sandbox cost;
-- observer projection/network serialization;
-- accelerated simulations;
-- concurrent live matches;
-- controller certification batches;
-- long-match memory/GC behavior.
+```text
+authoritative legal snapshot
+→ incremental observer deltas
+→ fresh snapshot on resync if needed
+```
 
-Do not choose production worker counts from the current OpenFront server topology, because that server currently does not simulate maps.
+Do not require a reconnecting browser to replay the entire historical turn stream to catch up.
+
+Static map/terrain resources can remain separately cached/versioned; live snapshots should focus on dynamic observed state.
+
+Observer publishing must be optional in headless certification/batch simulations so accelerated runs do not spend CPU/network work producing renderer payloads nobody consumes.
 
 ---
 
-## 24. Proprietary asset removal gate — Accepted
+## 20. Replay, records, and crash behavior — Accepted direction
 
-The `proprietary/` directory should ultimately be removed from Open Fufu rather than relied upon as product content.
+Preserve OpenFront's deterministic archive/replay philosophy but make the server the source of canonical state/hashes.
 
-**Do not delete it yet.** Before removal, each asset must be inventoried and an original or appropriately licensed replacement must exist, or the code referencing the asset must be deliberately removed.
+### Normal replay
 
-Current repository inventory:
+Archive the exact committed controller decisions/operation changes that drove the simulation so ordinary replay does **not** need to re-execute historical untrusted controller code.
+
+A stronger verification/debug mode may separately re-run the exact archived controller/runtime and compare its outputs with committed decisions.
+
+Historical records must bind all canonical design version inputs.
+
+### Controller crash/failure
+
+Controller failure never crashes the match and follows the canonical transactional/fault policy.
+
+### Match-process crash
+
+V1 may treat an authoritative engine/process crash as:
+
+```text
+match aborted
+no progression reward
+detailed crash record retained
+```
+
+Architect the record format so later deterministic replay-to-last-tick or periodic-checkpoint recovery remains possible, but crash-resume is not required for the first playable version.
+
+---
+
+## 21. Authentication and identity — Accepted initial direction
+
+Open Fufu should own an internal user identity independent of any single authentication provider.
+
+Preferred V1 authentication is **Discord authorization/OAuth**, potentially as the only ordinary login method initially.
+
+Conceptually:
+
+```text
+Discord identity
+    ↓
+Open Fufu internal user
+    ↓
+Open Fufu session/token
+    ↓
+API / WebSocket
+```
+
+Do not make Discord's raw ID the universal primary key for all game data.
+
+A later Fufubox/fufu-control challenge credential may be linked to the same internal Open Fufu user rather than creating a separate account universe.
+
+Discord should be needed for login/refresh, not consulted on every match tick/message. Existing authenticated sessions and running matches should survive a temporary Discord outage.
+
+Match processes receive only game-facing internal identity/configuration data, never Discord access tokens.
+
+Foof should use a scoped service/API credential rather than database access.
+
+Exact token/session implementation remains **Open**.
+
+---
+
+## 22. Persistence ownership — Accepted boundary
+
+Open Fufu must own its persistent game state rather than depending on OpenFront's external account/archive backend.
+
+Persistent concepts eventually include:
+
+- internal users/linked identities;
+- controller drafts;
+- immutable published controller versions;
+- certification status;
+- active presets;
+- item catalogue version;
+- owned items;
+- loadouts;
+- duplicate/gambling currency;
+- official AI versions;
+- matches/results;
+- replay records;
+- progression/rewards.
+
+Exact database/storage technology remains **Open**.
+
+---
+
+## 23. Deployment and maintenance — Accepted simple model
+
+Open Fufu does **not** require zero-downtime old/new-build draining for V1.
+
+This is a small friends-oriented service. Planned deployments may use ordinary maintenance windows:
+
+```text
+announce maintenance
+ask players not to begin long matches beforehand
+stop Open Fufu
+deploy / migrate
+restart
+verify health
+```
+
+Do not add multi-build match draining/routing complexity unless future usage genuinely requires it.
+
+Historical replay/version identity remains necessary even though live deployments may use downtime.
+
+---
+
+## 24. Build, tests, benchmarks, and performance tooling — Accepted direction
+
+Retain useful TypeScript/build/test infrastructure where compatible, but expect substantial changes because the architecture and core mechanics change.
+
+Existing useful foundations include:
+
+- TypeScript type checking;
+- Vite/browser build;
+- Node server tooling;
+- Vitest;
+- server/lobby tests;
+- full-game performance tooling;
+- GC/heap profiling;
+- replay harnesses;
+- Go map generator.
+
+Do not preserve tests whose only purpose is asserting intentionally removed OpenFront behavior. Replace them with Open Fufu invariants.
+
+### Required new performance coverage
+
+Performance tests should specifically cover:
+
+- process-per-match overhead;
+- 1/3/5 simultaneous authoritative matches;
+- quantized Population operations;
+- number/size of active offensive fronts;
+- automatic multi-front defense derivation;
+- counter-responses;
+- controller execution;
+- observer projection/deltas;
+- accelerated/headless runs;
+- memory/GC under long matches.
+
+### Key performance invariant
+
+Simulation work must scale primarily with **active strategic work**, not full `factions × cells` products.
+
+The new design intentionally avoids persistent defensive occupancy and dense Population matrices.
+
+---
+
+## 25. Proprietary assets — Accepted removal plan, do not delete yet
+
+The inherited `proprietary/` directory is not a safe long-term Open Fufu dependency and should eventually be removed/replaced.
+
+However, **do not delete it until all current references are identified and original/replacement assets are ready**.
+
+Current inventory found during the audit:
 
 ### Font
 
 - `proprietary/fonts/OpenFront.ttf`
 
-Replacement requirement: an original/Open-Fufu-appropriate UI/display font strategy. A bespoke icon/font replacement may be required depending on how the file is used; usage must be audited before deletion.
-
-### Branding/images
+### Branding / logo / favicon images
 
 - `proprietary/images/Favicon.svg`
 - `proprietary/images/OF.png`
@@ -705,8 +834,6 @@ Replacement requirement: an original/Open-Fufu-appropriate UI/display font strat
 - `proprietary/images/OpenFrontLogo.svg`
 - `proprietary/images/OpenFrontLogoDark.svg`
 
-These appear to be OpenFront branding/logo/favicon assets rather than core gameplay artwork. They should be replaced by original Open Fufu branding assets before deletion.
-
 ### Music
 
 - `proprietary/sounds/music/evan.mp3`
@@ -716,126 +843,77 @@ These appear to be OpenFront branding/logo/favicon assets rather than core gamep
 - `proprietary/sounds/music/war.mp3`
 - `proprietary/sounds/music/win.mp3`
 
-These require an original or otherwise appropriately licensed Open Fufu soundtrack/replacement set, or removal of music playback until replacements exist.
+No proprietary gameplay map corpus, unit-art library, or large gameplay-SFX collection was found in this directory during the audit.
 
-### Current conclusion
+Replacement work should therefore focus primarily on:
 
-The proprietary inventory is relatively narrow: one font, OpenFront branding imagery, and six music tracks. No proprietary gameplay unit sprites, map corpus, or large sound-effect library have been identified under this directory.
+- Open Fufu branding/favicon/logo assets;
+- an original/permissively licensed UI font;
+- original/permissively licensed soundtrack replacement;
+- removing all code/build references to the old assets;
+- then deleting `proprietary/`.
 
-### Removal acceptance condition
-
-`proprietary/` is deleted only after:
-
-1. all runtime/build references are enumerated;
-2. every required visual/font/music role has an approved replacement or deliberate removal decision;
-3. the production build no longer copies or references the directory;
-4. build/tests pass without the directory.
+Keep normal attribution/provenance review for the separate non-proprietary resource/map corpus.
 
 ---
 
-## 25. Licensing/attribution — Accepted
+## 26. Licensing — Accepted constraint
 
-Retain AGPL obligations and OpenFront attribution as required.
+OpenFront code is AGPL-3.0 and applicable source/attribution obligations must be preserved.
 
-Do not assume every non-`proprietary/` asset is restriction-free. Maps/data/assets with their own licenses and attribution requirements must remain tracked through `CREDITS.md` or its eventual Open Fufu successor.
+Non-proprietary map/resource assets have their own provenance/licenses and require continued attribution review.
 
-The proprietary removal work above is separate from the attribution/provenance audit for reusable third-party assets.
+Do not conflate code licensing with permission to reuse the inherited `proprietary/` assets.
 
 ---
 
-## 26. Dependency facts already established
+## 27. Migration dependency spine — Accepted high-level order
 
-Although exact implementation phases will be written only after the authority question is settled, the audit established several dependency constraints that the final staged roadmap must respect:
-
-- server/headless authority choices affect visibility, replay, browser protocol, deployment, and controller placement;
-- the new Population representation must exist before final cell-combat and Population-damage semantics can be completed;
-- structure/naval/weapon modifiers should be translated after their target Population/FFY/combat concepts exist, rather than implemented twice;
-- the controller API must be designed against the legal observation/action model rather than unrestricted `GameImpl` access;
-- sandbox/certification depend on a stable-enough controller observation/action/runtime contract;
-- persistence/progression/Foof integration depend on stable match/controller identities and record formats;
-- production concurrency/process topology must wait for authoritative-core and controller benchmarks.
-
-A provisional dependency spine is therefore:
+The audit establishes the following dependency order. This is not yet an implementation authorization checklist, but later implementation phases should respect these dependencies:
 
 ```text
-authority + headless/core boundary
-        ↓
-Open Fufu faction/ruleset foundations
-        ↓
-Segments + observation/visibility model
-        ↓
-Population allocation + Redeployment
-        ↓
-cell expansion/combat
-        ↓
-controller decision API/runtime contract
-        ↓
-sandbox + certification
-        ↓
-structure/naval/rail/weapon semantic translation
-        ↓
-match record/replay finalization
-        ↓
-persistence/progression/Foof integration
-        ↓
-final browser editor/debug/lobby experience
+1. HEADLESS CORE CLEANUP
+       ↓
+2. AUTHORITATIVE MATCH PROCESS + SUPERVISOR
+       ↓
+3. OPEN FUFU FACTION/POPULATION/GROWTH STATE
+       ↓
+4. SEGMENTS + CONTACT/OBSERVATION MODEL
+       ↓
+5. OFFENSIVE OPERATIONS + AUTOMATIC DEFENSE + DEPLOYMENT
+       ↓
+6. CONTROLLER DECISION CONTRACT
+       ↓
+7. CONTROLLER SANDBOX + CERTIFICATION
+       ↓
+8. STRUCTURE / NAVAL / RAIL / WEAPON TRANSLATION
+       ↓
+9. MATCH LIFECYCLE + REPLAY / OBSERVER PROTOCOL
+       ↓
+10. PERSISTENCE / AUTH / PROGRESSION / FOOF API
+       ↓
+11. BROWSER EDITOR / DEBUG / FINAL LOBBY UX
 ```
 
-This is a dependency map, not yet the authorized implementation phase schedule.
+Some workstreams may overlap, but downstream systems must not force premature contracts onto unresolved upstream mechanics.
 
 ---
 
-## 27. Open questions that block the next plan revision
+## 28. Remaining open integration questions
 
-The next canonical revision should settle the **server authority family of decisions together**, because they are tightly coupled.
+The following are still legitimately open after the authority and Population redesign:
 
-### A. Authority/process topology
+1. **Controller sandbox implementation** — exact isolation/runtime technology and resource enforcement.
+2. **Observer/spectator policy** — omniscient vs delayed vs faction/public perspectives.
+3. **Strategic-weapon casualties without defensive occupancy** — explicit Population-loss rule for area weapons/special effects.
+4. **Persistence technology/schema** — database/storage choices and record retention.
+5. **Exact Discord/session implementation** and later optional Fufubox credential linking.
+6. **Exact TypeScript controller API types/names.**
+7. **Exact Population integer/fixed-point encoding.**
+8. **Real Fufubox performance capacity** after a representative authoritative Open Fufu simulation exists.
+9. **Exact structure/naval/rail/weapon balance translations** where the design contract leaves tuning/mechanic details open.
+10. **Defeated-faction territory/structure cleanup semantics.**
+11. **Detailed lobby/UI/UX redesign.**
+12. **Replacement asset creation and final proprietary-directory removal.**
 
-Decide the exact authoritative match architecture, including:
-
-- where the canonical simulation runs;
-- whether one process owns one or many matches;
-- how controller runtimes are isolated from the simulation process;
-- failure containment between controller, match, and server worker;
-- live-match tick scheduling versus accelerated/headless scheduling;
-- restart/crash-recovery expectations for live matches.
-
-### B. Observer state protocol and visibility enforcement
-
-Once authority is selected, define:
-
-- snapshot/checkpoint representation;
-- incremental state delta/update representation;
-- per-viewer visibility projection;
-- spectator/public-view semantics;
-- reconnect/catch-up behavior;
-- whether controller observations share internal projection infrastructure with browser observations.
-
-### C. Replay/record architecture
-
-Choose whether the canonical historical record stores:
-
-- controller decision outputs;
-- controller source/version only;
-- periodic checkpoints;
-- authoritative state hashes;
-- observer events separately from simulation events;
-- enough data for ordinary replay without historical untrusted-code execution.
-
-### D. Authentication
-
-Discuss and lock the initial identity model, with Discord OAuth currently the leading starter option and Fufubox challenge/trust integration deferred or layered later.
-
-### E. Server performance budget
-
-After an authority candidate is concrete enough to prototype, benchmark it on Fufubox before locking simultaneous-match targets or worker topology.
-
----
-
-## 28. Next work items
-
-1. Discuss and settle the authority/process architecture and its failure-containment model.
-2. Update this **same document** with the accepted authority choice and the resulting visibility/replay/browser/deployment decisions.
-3. Convert the dependency map into explicit implementation phases with affected subsystems/files, invariants, validation gates, rollback/checkpoint expectations, and tests.
-4. Audit all code references to `proprietary/` and prepare an exact replacement checklist before any proprietary asset deletion.
-5. Only after the migration plan is complete and approved, begin implementation in explicitly approved stages.
+These should be resolved by updating this same canonical integration plan rather than creating additional migration-plan documents.
