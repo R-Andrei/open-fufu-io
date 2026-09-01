@@ -4,13 +4,11 @@
 
 This document is the **single canonical Open Fufu target-design contract and game-design source of truth**.
 
-It contains the latest accepted design decisions from the pre-implementation Open Fufu mechanics and architecture discussion. The earlier provisional design/decision documents were removed after a full coverage audit and standalone consistency pass; Git history preserves them as historical evidence, but they are not normative.
+It defines **what Open Fufu is intended to be**. The separate [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) defines how the inherited OpenFront codebase should be migrated to this target.
 
-This document defines **what Open Fufu is intended to be**. It is not the OpenFront compatibility/migration plan. A separate compatibility audit will compare the existing fork against this design and produce one integration/migration plan.
+Historical or superseded proposals do not override this contract. Future accepted Open Fufu design changes must update this document rather than creating competing mechanics documents.
 
 Where this document distinguishes between **design rules**, **provisional tuning values**, **implementation choices**, **audit-dependent inherited behavior**, and **deliberately deferred systems**, those distinctions are intentional.
-
-Historical or superseded proposals do not override this contract. Future accepted Open Fufu design changes should update this document rather than creating a competing mechanics source of truth.
 
 ---
 
@@ -26,20 +24,20 @@ The player does not normally issue moment-to-moment commands during a match. Ins
 
 Once the match begins, the controller governs the faction.
 
-The controller is expected to be able to reason about and control areas such as:
+The controller is expected to reason about and control systems such as:
 
 - neutral expansion;
-- target selection;
-- spatial Population allocation;
+- enemy target selection;
+- offensive Population commitments;
 - attack concentration and geometry;
-- defense;
-- retreat/controlled abandonment;
+- active counter-responses;
+- retreat and deliberate territorial abandonment;
 - economy;
 - construction and upgrades;
-- unit/naval operations;
+- unit and naval operations;
 - threat assessment;
 - fixed-team/FFA relationships;
-- persistent in-match strategic state.
+- persistent in-match strategic memory.
 
 The game should reward **programming and strategy**, not manual reaction speed.
 
@@ -52,25 +50,23 @@ Normal matches should remain understandable as territorial strategy rather than 
 The programming surface must support both:
 
 - a **low entry floor**, where an ordinary player can modify a simple working controller without learning computational geometry or manually manipulating thousands of cells; and
-- a **high skill ceiling**, where advanced players can reason directly about cells, geometry, statistics, optimization, spatial weighting, and custom abstractions.
+- a **high skill ceiling**, where advanced players can reason directly about cells, Segments, Contacts, front geometry, statistics, optimization, weighting, and custom abstractions.
 
-The cell-level allocation field is the universal underlying mechanic, but raw cell-by-cell manipulation must not be the only practical way to play well.
+The engine should expose low-level strategy-neutral primitives while still allowing useful higher-level geographic queries. Raw cell-by-cell programming must not be the only practical way to play well.
 
-Strategy-neutral map abstractions such as Segments and Contacts, ordinary query/select/filter primitives, weight normalization, documentation, examples, and the starter controller should make sensible controller behavior approachable without giving beginners privileged combat powers unavailable to advanced code.
+Segments, Contacts, ordinary query/select/filter primitives, spatial weights, documentation, examples, and the starter controller should make sensible behavior approachable without granting privileged combat powers unavailable to advanced code.
 
 ### 1.2 Transparent mechanics
 
-Open Fufu should strongly prefer explicit, surfaced mechanics over hidden modifiers and special cases.
+Open Fufu should strongly prefer explicit, surfaced mechanics over hidden modifiers and corrective special cases.
 
-If a modifier meaningfully affects Population growth, combat pressure, Redeployment Rate, trade, structure behavior, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an item, a ruleset value, or another explicit mechanic.
+If a modifier materially affects Population growth, Deployment Rate, combat, trade, structure behavior, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an item, a ruleset value, or another explicit mechanic.
 
 Do not quietly grant hidden reserve bonuses, hidden large/small-faction bonuses, invisible AI cheats, or similar behavior merely to steer outcomes.
 
 ### 1.3 Match-duration target
 
-Match duration is a practical pacing target rather than a hard rule.
-
-A broad range of roughly **15 minutes to 2 hours** is acceptable, with ordinary games preferably finishing in under an hour. Exact pacing is balance work.
+A broad range of roughly **15 minutes to 2 hours** is acceptable, with ordinary games preferably finishing in under an hour. Exact pacing is balance work rather than a hard design constant.
 
 ---
 
@@ -78,22 +74,7 @@ A broad range of roughly **15 minutes to 2 hours** is acceptable, with ordinary 
 
 Open Fufu is a fork of OpenFront and may reuse substantial inherited infrastructure, but OpenFront is a technical starting point rather than a ruleset or architecture that Open Fufu must preserve.
 
-The project is expected to diverge substantially in areas including:
-
-- player input;
-- simulation authority;
-- territorial expansion;
-- combat;
-- force/Population allocation;
-- AI architecture;
-- persistence and progression;
-- match orchestration.
-
 Useful inherited systems should be retained where they fit the target design. Existing behavior is not authoritative merely because it already exists.
-
-Early implementation may use simple versions of long-term mechanics, but it should avoid new contracts that make the accepted target design impossible without another unnecessary rewrite.
-
-### 2.1 Foof boundary
 
 Open Fufu remains a separate game/service from `foof-bot`.
 
@@ -114,17 +95,10 @@ Open Fufu service
    |- controller versions
    |- progression / items
    |- matches / replays / logs
-   `- browser viewer/editor
+   `- browser viewer/editor/debugger
 ```
 
-Foof may own Discord-facing concerns such as:
-
-- commands;
-- identity handoff;
-- lobby/match initiation;
-- controller/loadout selection through Discord where useful;
-- links into browser surfaces;
-- result/reward presentation.
+Foof may own Discord-facing concerns such as commands, identity handoff, lobby/match initiation, controller/loadout selection where useful, links into browser surfaces, and result/reward presentation.
 
 Foof must not:
 
@@ -134,39 +108,19 @@ Foof must not:
 
 Open Fufu should remain independently coherent if Foof is absent.
 
-### 2.2 Licensing/attribution
+### 2.1 Licensing and attribution
 
-The fork must preserve applicable OpenFront licensing and attribution obligations. Exact compliance steps are part of the later compatibility/integration audit, but the target architecture must not assume inherited derivative game code can be hidden inside the private Foof repository.
+The fork must preserve applicable OpenFront licensing and attribution obligations. Inherited proprietary assets must not be assumed usable merely because they exist in the fork; the integration plan owns the replacement/removal work.
 
 ---
 
 ## 3. Authoritative simulation architecture
 
-Open Fufu requires a **canonical authoritative simulation running on the server/Fufubox**.
+Open Fufu requires a **single canonical authoritative simulation for each match running on the server/Fufubox**.
 
 A browser must not be required for the match to progress.
 
-Conceptually:
-
-```text
-                  Open Fufu server
-                         |
-              authoritative simulation
-                         |
-          +--------------+--------------+
-          |              |              |
- player controller   player controller   PvE AI
-          |              |              |
-          +------- decisions/actions ----+
-                         |
-                      next state
-                         |
-                  canonical match state
-                         |
-              browser / Foof observers
-```
-
-This architecture must support:
+The architecture must support:
 
 - unattended matches;
 - headless simulations;
@@ -176,7 +130,11 @@ This architecture must support:
 - deterministic replay/analysis;
 - browser disconnects without match interruption.
 
-The browser is primarily a viewer/editor/debugging surface, not the authority for the world state.
+The browser is primarily a viewer/editor/debugging surface, not the authority for world state.
+
+Player controller code is untrusted and must execute behind an isolation boundary. Official PvE AI may be trusted operational code but does not receive gameplay-information privileges.
+
+Exact process topology, protocol, persistence, and sandbox technology are implementation architecture and are specified in the integration plan rather than this design contract.
 
 ---
 
@@ -202,9 +160,9 @@ Changing a combat formula, controller API, AI preset, item generator, or map lat
 Replay/debug tooling should eventually expose:
 
 - deterministic replay;
-- controller decision/event logs;
+- committed controller decision/event logs;
 - optional controller debug logs;
-- action counts and action/rejection/failure history;
+- action/rejection/failure history;
 - Population/FFY/territory histories;
 - relevant spatial/contact histories;
 - controller runtime/CPU/resource-budget information;
@@ -222,8 +180,6 @@ The V1 controller language is **TypeScript**, with ordinary JavaScript-style cod
 
 The goal is a low entry floor with optional strong typing/autocomplete for advanced users.
 
-Alternate languages may be considered later if real demand exists; they are not a V1 requirement.
-
 ### 5.2 Controller presets and immutable versions
 
 Players may maintain multiple controller presets/strategies.
@@ -236,14 +192,7 @@ A match binds the exact published controller version selected at match start.
 
 The controller API should expose **small, composable, strategy-neutral primitives**.
 
-The engine should not provide privileged strategic policies such as:
-
-- `blitzkrieg()`;
-- `turtle()`;
-- `weakestPointPolicy()`;
-- `threatWeightedStrategy()`.
-
-Those are player strategy.
+The engine should not provide privileged strategic policies such as `blitzkrieg()`, `turtle()`, `weakestPointPolicy()`, or `threatWeightedStrategy()`.
 
 The conceptual read surface includes areas such as:
 
@@ -257,12 +206,16 @@ structures
 units
 economy
 population
+operations
 runtime / lastDecision
 ```
 
 The conceptual write/action surface includes low-level legal operations such as:
 
-- desired Population allocation/spatial weighting;
+- creating/changing/withdrawing offensive Population commitments;
+- specifying offensive spatial intent/weighting;
+- creating/changing/withdrawing active counter-responses;
+- neutral expansion intent;
 - deliberate territory relinquishment/retreat;
 - construction;
 - upgrades;
@@ -272,23 +225,24 @@ The conceptual write/action surface includes low-level legal operations such as:
 - strategic weapon use;
 - surrender/capitulation where applicable.
 
+There is **no controller primitive for manually allocating passive defensive Population across owned cells**. Passive defense is automatic under the Population rules below.
+
 Exact names and TypeScript types are API-design work.
 
 ### 5.4 Starter controller
 
 Every player begins with one **minimal complete working controller**.
 
-The starter controller should demonstrate lawful/basic use of the major mechanics while being intentionally strategically unsophisticated. It may:
+The starter controller should demonstrate lawful/basic use of major mechanics while being intentionally strategically unsophisticated. It may:
 
 - expand monotonously;
-- distribute Population approximately evenly;
+- launch simple opportunistic attacks with simple spatial weighting;
+- use a basic counter-response rule;
 - build/upgrade in a simple even pattern;
 - use ordinary available mechanics;
 - avoid sophisticated doctrine, prediction, threat analysis, or policy systems.
 
-It should function correctly but should not reliably win serious matches. Winning with it should be largely circumstantial rather than the result of hidden built-in intelligence.
-
-Documentation may contain examples/snippets, but the product should not substitute a large privileged built-in strategy library for player programming.
+It should function correctly but should not reliably win serious matches.
 
 ### 5.5 Browser authoring surface
 
@@ -304,8 +258,6 @@ The intended product surface should support capabilities equivalent to:
 - publish immutable certified versions;
 - select/manage controller presets and versions.
 
-Exact UI/workflow implementation is product/architecture work.
-
 ---
 
 ## 6. Controller invocation contract
@@ -314,11 +266,9 @@ Exact UI/workflow implementation is product/architecture work.
 
 Each controller invocation receives one immutable deterministic observation snapshot corresponding to a specific authoritative simulation state.
 
-The simulation does not advance underneath the controller while that invocation is executing.
+The simulation does not advance underneath the controller while that invocation executes.
 
-Repeated reads during one invocation therefore see the same world.
-
-Returned collection ordering and other observable iteration behavior must be deterministic.
+Repeated reads during one invocation therefore see the same world. Returned collection ordering and other observable iteration behavior must be deterministic.
 
 ### 6.2 Provisional simulation/controller cadence
 
@@ -330,9 +280,7 @@ Controller decision cadence: every 5 simulation ticks
 Controller decisions: 2/second
 ```
 
-These are **provisional tuning values**, not sacred design constants.
-
-The important architectural rules are:
+These are provisional tuning values. The architectural rules are:
 
 - cadence is deterministic;
 - cadence is expressed in simulation ticks, not wall-clock time;
@@ -365,7 +313,7 @@ arrays
 plain structured objects
 ```
 
-Controllers must not rely on mutable module/global runtime state surviving between invocations. The sandbox may recreate the execution environment; only the explicit memory contract is guaranteed writable persistence.
+Controllers must not rely on mutable module/global runtime state surviving between invocations. Only the explicit memory contract is guaranteed writable persistence.
 
 Current provisional memory limit: **128 KiB serialized per faction per match**.
 
@@ -381,18 +329,7 @@ Broken/incomplete drafts may be saved.
 
 Only controller versions that pass mandatory certification may be published/used in real matches.
 
-Conceptually:
-
-```text
-Edit
- -> save draft
- -> certification
- -> PASS
- -> publish immutable version
- -> eligible for matches
-```
-
-Certification should use the real production controller contract/runtime constraints and rapidly exercise representative legal situations including:
+Certification should use the production controller contract/runtime constraints and rapidly exercise representative situations including:
 
 - startup;
 - neutral expansion;
@@ -406,74 +343,47 @@ Certification should use the real production controller contract/runtime constra
 - rapid territory changes;
 - `atWar` transitions;
 - very low Population;
-- invalid/mathematically impossible requested operations;
-- target disappearance and other normal game-state races;
+- simultaneous attacks requiring automatic defense and counter-response decisions;
+- invalid or impossible Population commitments;
+- target disappearance and normal state races;
 - runtime time/memory/output-limit conditions.
 
-Certification must reject failures such as:
+Certification must reject failures such as syntax/type/compile errors, runtime exceptions, timeout/memory violations, non-finite numeric output, invalid API arguments, malformed decisions, impossible commitments, and other controller-contract violations.
 
-- syntax/type/compile errors;
-- runtime exceptions;
-- timeout or memory-budget violations;
-- invalid/non-finite numeric output such as `NaN`/`Infinity` where finite values are required;
-- invalid API arguments;
-- malformed decisions;
-- impossible top-level allocations;
-- other controller-contract violations.
+Certification failure blocks publication and returns useful diagnostics.
 
-Certification failure blocks publication and must return useful diagnostics.
-
-The certification/benchmarking pipeline should make a first-turn runtime failure extremely unlikely in ordinary use, but certification is not a mathematical proof that arbitrary user code can never fail in every possible future state.
-
-### 7.2 Controller execution is transactional
+### 7.2 Transactional execution
 
 Each invocation is all-or-nothing over:
 
 - controller memory mutations;
-- proposed directives;
+- proposed persistent operation/directive changes;
 - proposed game actions.
-
-Conceptually:
-
-```text
-canonical memory + snapshot
-        |
-     execute
-        |
-temporary memory + proposed decision
-        |
-     validate
-      /    \
-   pass    fail
-    |       |
- commit   discard
-```
 
 No partial decision cycle is applied.
 
-### 7.3 Ordinary gameplay failure is structured, not exceptional
+### 7.3 Ordinary gameplay failure is structured
 
 Lawful API use should normally produce structured game results/rejections when the world prevents an action.
 
-Examples:
+Examples include:
 
 ```text
 INVALID_TARGET
 INSUFFICIENT_FFY
+INSUFFICIENT_AVAILABLE_POPULATION
 NO_LONGER_OWNED
 OUT_OF_RANGE
 TARGET_DESTROYED
-ALLOCATION_LIMIT
+COMMITMENT_LIMIT
 ...
 ```
 
 Ordinary dynamic game-state races should not require blanket `try/catch` logic.
 
-Exceptions/timeouts should primarily represent actual program/runtime failures such as user-thrown exceptions, invalid JS/TS behavior, null/undefined misuse, resource-budget exhaustion, or sandbox violations.
-
 ### 7.4 Invalid decisions
 
-A complete invalid controller decision, such as top-level Population commitments exceeding 100%, is rejected as a whole.
+A complete invalid controller decision, such as requesting simultaneous commitments that exceed legal Available Population, is rejected as a whole.
 
 The engine does not silently normalize or partially apply it.
 
@@ -484,307 +394,94 @@ A controller exception, timeout, sandbox violation, malformed output, or invalid
 On failure:
 
 - all output/memory from that invocation is discarded;
-- the faction keeps the last successfully committed directives;
-- actual allocation continues following the last valid desired state;
+- the faction keeps the last successfully committed operations/directives;
+- existing attacks, counter-responses, withdrawals, builds, units, and other previously valid actions continue under normal simulation rules;
 - the failure is logged;
 - later controller invocations are attempted again.
 
 If the **first-ever invocation** fails before any valid directives exist, the deterministic baseline is:
 
 ```text
-100% Population in Reserve
+all Population is Available
+no offensive commitments
+no active counter-responses
 no new actions/orders/directives
 ```
 
-The faction remains inert under that baseline while the controller retries according to the normal failure policy. No starter controller or replacement AI takes over.
+The faction therefore still receives its normal automatic defense, but takes no new strategic action until a later invocation succeeds. No starter controller or replacement AI takes over.
 
-Repeated persistent failures trigger a deterministic circuit breaker:
-
-- initial failures retry normally;
-- persistent failures cause increasingly sparse retries;
-- sufficiently persistent failure marks the controller **FAULTED** for the remainder of the match;
-- a faulted faction continues on its last valid directives, or the initial inert baseline if none ever committed, rather than receiving a replacement built-in AI.
-
-Exact retry thresholds/cooldowns are tuning/implementation values, but they must be deterministic and surfaced in diagnostics.
-
-Early-match and late-match failures use the same rule.
+Repeated persistent failures trigger a deterministic circuit breaker. Exact retry thresholds/cooldowns are tuning/implementation values, but sufficiently persistent failure marks the controller **FAULTED** for the remainder of the match. A faulted faction continues its last valid operations, or the inert baseline if none ever committed.
 
 ### 7.6 `game.lastDecision`
 
-The controller API should expose structured previous-decision information equivalent to:
+The controller API should expose structured previous-decision information equivalent to `game.lastDecision`, including previous commit/reject state, structured rejection codes, request failure details where appropriate, and other deterministic metadata useful for programmatic recovery.
 
-```ts
-game.lastDecision
-```
+### 7.7 Human-facing diagnostics
 
-This may include:
-
-- previous commit/reject state;
-- structured rejection codes;
-- which high-level request failed and why where safely useful;
-- other deterministic metadata useful for programmatic recovery.
-
-Human-facing stack traces/debug diagnostics may be richer than what is exposed back into controller code.
-
-### 7.7 Human-facing diagnostics are first-class
-
-Controller/runtime failures and decision rejections must produce useful human-facing diagnostics in debugging and replay tooling.
-
-A diagnostic should make clear, where applicable:
-
-- what failed;
-- the relevant structured error/rejection code;
-- useful exception/stack information for genuine program failures;
-- that the failed invocation was not partially applied;
-- which previous valid directives remain active;
-- retry/faulted status when relevant.
-
-The goal is that a player can reproduce and fix a controller failure rather than merely seeing that the faction stopped adapting.
-
-### 7.8 Sandbox security boundary
-
-Player code is untrusted and potentially malicious.
-
-The execution boundary must prevent at minimum:
-
-- host filesystem access;
-- arbitrary networking;
-- subprocess execution;
-- environment-variable access;
-- secret access;
-- unrestricted native modules;
-- unrestricted system/wall clock dependence;
-- uncontrolled CPU/instruction/time use;
-- uncontrolled memory use;
-- uncontrolled action/output volume.
-
-Game randomness must be deterministic and game-provided where randomness is allowed.
-
-Raw `eval`, `Function`, or an ordinary in-process JavaScript VM wrapper alone is not an adequate security boundary.
-
-Exact sandbox technology is implementation architecture, not game design.
+Controller/runtime failures and decision rejections must produce useful human-facing diagnostics showing what failed, relevant structured codes, useful exception/stack information for real program errors, transaction rollback status, which previous valid directives remain active, and retry/faulted status where relevant.
 
 ---
 
-## 8. Core world ontology
+## 8. Controller sandbox and security
 
-### 8.1 Cells are the authoritative spatial resolution
+Player controller code must be treated as hostile.
 
-The authoritative territorial/combat simulation operates at the finest meaningful map resolution: **cells**.
+It must not receive unrestricted access to:
 
-Cell-level state may include things such as:
+- filesystem;
+- network;
+- subprocesses;
+- environment variables;
+- system clock as a strategic information source;
+- arbitrary native modules;
+- host process objects;
+- unrestricted memory or CPU.
 
-- terrain;
-- political ownership where applicable;
-- structures/spatial effects;
-- faction Population commitment/pressure where applicable;
-- local combat/capture state.
+The runtime must provide deterministic game RNG rather than exposing uncontrolled randomness.
 
-Higher-order concepts must not secretly replace cell-level simulation.
+CPU, memory, output/logging, persistent-memory, and action budgets must be explicit.
 
-### 8.2 Segments are immutable map-wide spatial lenses
-
-A **Segment** is an immutable deterministic strategic/geographical region generated as part of map creation/preprocessing.
-
-Segments are not faction-owned simulation buckets.
-
-**Every real map cell belongs to exactly one segment**, including land, water, and impassable cells.
-
-Segment identity does not change merely because ownership/combat changes.
-
-One segment may therefore be partially controlled by several factions and/or neutral territory simultaneously where ownership is applicable.
-
-Segments are a controller-facing spatial index/lens over the underlying map.
-
-A segment may expose aggregate information such as:
-
-- stable identity;
-- geometry/cells;
-- adjacency;
-- terrain composition;
-- dominant terrain;
-- ownership distribution where applicable;
-- coastal/water relationships;
-- impassable/geographical composition;
-- other static or derived summaries.
-
-Terrain remains fundamentally a cell property.
-
-### 8.3 Segment count is derived, not prescribed
-
-The map is **not** assigned an arbitrary fixed number of segments.
-
-Likewise, segments are not a rigid uniform square grid.
-
-Segment generation uses a roughly consistent strategic scale with variable shape/size:
-
-- larger maps naturally yield more segments;
-- smaller maps yield fewer;
-- important geographic features may create small segments;
-- large homogeneous areas are subdivided;
-- tiny meaningless slivers should normally be merged sensibly.
-
-Conceptually the generator may tune:
-
-```text
-minimum useful area
-preferred area
-maximum useful area
-```
-
-These are guidelines rather than absolute limits.
-
-### 8.4 Geography guides segmentation
-
-Strong segmentation boundaries should prefer features such as:
-
-- ocean/coast relationships;
-- impassable terrain;
-- disconnected landmasses;
-- major rivers;
-- major ridges/mountain systems;
-- strong chokepoints.
-
-Soft preferences may include:
-
-- terrain transitions;
-- elevation change;
-- geographic coherence.
-
-Segments may contain mixed terrain where forcing purity would create pathological geometry.
-
-### 8.5 Terrain is strategically meaningful
-
-Terrain is not merely cosmetic. Cell terrain may explicitly influence systems such as:
-
-- Population Capacity/Growth Value;
-- attack or defense pressure;
-- expansion/capture efficiency;
-- movement or future logistics;
-- economic-event value/efficiency;
-- naval behavior where applicable.
-
-Illustrative identity, not locked balance:
-
-- plains may favor Population growth and/or easier expansion;
-- highlands may offer moderate defensive value;
-- mountains may offer stronger defense and slower advance;
-- future desert-like terrain may favor some economic behavior;
-- water terrain may alter naval movement/combat/trade.
-
-Exact terrain catalogue and modifiers remain ruleset/audit/tuning work.
-
-### 8.6 Water terrain
-
-V1 may continue using a simple ocean model, but the ontology must support future water terrain variants such as:
-
-- deep water;
-- shallow water;
-- turbulent water;
-- clear water;
-- reefs/currents or similar future map features.
-
-Such water types may later carry explicit naval/movement/combat modifiers.
-
-### 8.7 Authored and procedural maps
-
-Open Fufu should support both authored/static maps and optional deterministic procedural maps.
-
-Conceptually:
-
-```text
-map seed/version
- -> terrain/geography
- -> deterministic segmentation
- -> immutable final map identity
-```
-
-Authored maps may eventually override/hand-author segment data if useful, but automatic segmentation must work as the baseline.
-
-Exact generator heuristics and target area values are tuning/implementation work.
+Raw `eval` and Node `vm` alone are not sufficient security boundaries. Exact sandbox technology is an implementation decision.
 
 ---
 
-## 9. Contacts and visibility
+## 9. Spatial ontology
 
-### 9.1 TerritorialContact
+### 9.1 Cells
 
-`TerritorialContact` is derived political geometry, not stored segment identity.
+Cells are the finest meaningful territorial simulation resolution.
 
-A territorial contact exists where adjacent territorial cells are controlled by different factions, or faction/neutral ownership where useful for expansion reasoning.
+Ownership, terrain, capture, structures, and local combat geometry ultimately resolve through cells.
 
-It is derived at runtime from current ownership.
+### 9.2 Segments
 
-A connected territorial contact may cross several immutable segments; one segment may contain several independent contacts.
+A Segment is an immutable deterministic strategic geographic region generated/compiled with the map.
 
-Because territory ownership and static geography are globally known, the political geometry of territorial contact is globally derivable even where local tactical information remains hidden.
+Every real map cell belongs to exactly one Segment, including:
 
-### 9.2 OperationalContact / operational visibility
+- ordinary land;
+- water;
+- impassable terrain.
 
-`OperationalContact` is a broader visibility/combat concept.
+Segments are a query/index/strategy lens, **not a simulation bucket**. Segment borders have no intrinsic combat, capture, movement, or physical effect.
 
-Operational contact may arise through:
+Segment count is an output of map scale and geography rather than a fixed input. Generation should use approximate minimum/preferred/maximum useful area guidance while respecting major geographic boundaries such as coasts, rivers, ridges, mountains, chokepoints, islands, and impassables.
 
-- hostile territorial adjacency;
-- active land combat;
-- naval units encountering one another;
-- transports/warships reaching hostile coasts;
-- amphibious landings;
-- other direct unit interactions.
+Future maps may contain richer water terrain types such as deep, shallow, turbulent, or clear water. The Segment ontology must not assume `segment == land`.
 
-Operational contact determines when detailed local tactical information becomes available.
+### 9.3 Contacts
 
-### 9.3 No canonical Front object
+**TerritorialContact** is derived adjacency geometry between differently owned cells.
 
-Open Fufu does **not** require an engine-defined first-class `Front` entity.
+**OperationalContact** is the broader runtime interaction/visibility state created by territorial contact, combat, naval encounters, amphibious arrival, or other operational interaction.
 
-Players may define their own front concepts in controller code from:
+Exact API naming may change, but the conceptual distinction is accepted.
 
-- cells;
-- segments;
-- territorial/operational contacts;
-- factions;
-- ownership;
-- terrain;
-- visibility;
-- arbitrary player-defined grouping logic.
+### 9.4 Fronts
 
-Different controllers may define fronts differently or not use them at all.
+There is no engine-level canonical `Front` object that dictates strategy.
 
-If a common helper later becomes universally useful, it may be supplied transparently as example/SDK code without becoming a privileged simulation primitive.
-
-### 9.4 Visibility model
-
-Globally visible:
-
-- static geography/terrain;
-- territory ownership/political shape;
-- stable segment geometry;
-- exactly three macro faction statistics for each surviving faction:
-  - **Population**;
-  - **Territory %**;
-  - **FFY**.
-
-Operational/local rather than globally visible:
-
-- enemy local Population commitment;
-- local combat pressure;
-- mobile enemy units;
-- detailed local structures/defenses where visibility rules require contact;
-- tactical modifiers/state.
-
-Private:
-
-- controller memory;
-- desired future allocation/orders;
-- intended future targets;
-- internal decision state.
-
-Knowing a distant coastline exists does not reveal its defense.
-
-A controller may deliberately target/route toward known remote geography without possessing local operational intelligence there.
-
-The design must preserve the possibility of genuine surprise naval/amphibious attacks.
+Controllers may derive their own fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility. Documentation/SDK utilities may offer transparent grouping helpers, but no privileged front strategy is built into the engine.
 
 ---
 
@@ -792,1070 +489,724 @@ The design must preserve the possibility of genuine surprise naval/amphibious at
 
 ### 10.1 One global Population resource
 
-Each faction has one total current **Population** value.
+Each faction has one global **Total Population**.
 
-Do not introduce a hidden mobilizable fraction, civilian/military split, manpower resource, army resource, or freestanding Military Power stat for V1.
+Population is used for:
 
-If total Population is 100,000 and a controller commits 55%, that means literally 55,000 current Population.
+- offensive land operations;
+- neutral expansion operations;
+- active counter-responses;
+- carried Population aboard transports;
+- automatic defense while Available;
+- casualties.
 
-### 10.2 Population commitment is abstract effective presence
+There is no separate civilian/army/manpower resource and no hidden mobilizable fraction.
 
-Population does **not** represent resident civilian population stored cell-by-cell.
+### 10.2 Population Capacity is exactly territory-derived
 
-Cell commitment is an abstract effective faction presence used for:
+**Population Capacity is exactly the number of owned population-bearing cells.**
 
-- defense;
-- attack;
-- neutral expansion;
-- other territorial pressure.
+For V1, population-bearing cells are ordinary conquerable land cells unless a future explicit terrain rule says otherwise.
 
-Several factions may have effective commitment associated with the same contested cell.
-
-Example:
-
-```text
-Cell X owner: Tanya
-
-Tanya actual commitment: 4,000 -> defensive pressure
-Fufu actual commitment:  5,500 -> attacking pressure
-Ski actual commitment:   2,000 -> separate hostile pressure
-```
-
-Co-attacking enemies do not become allies merely because they are attacking the same owner.
-
-### 10.3 Actionable-cell restriction
-
-The controller may use arbitrary known geography as a strategic objective, but ordinary Population pressure cannot be teleported to arbitrary remote cells.
-
-Owned eligible territorial cells may hold faction commitment.
-
-Neutral/hostile cells may receive ordinary land attack/expansion commitment only when they are **actionable under the current territorial rules**, for example through valid land adjacency/contact.
-
-Remote hostile cells require an explicit mechanic that makes them actionable, such as amphibious transport/landing.
-
-### 10.4 Population allocation primitive
-
-The universal underlying spatial-control mechanism is:
+Therefore:
 
 ```text
-Population budget
-+ eligible/actionable cell set
-+ per-cell weights
-    -> normalized desired cell-level Population distribution
+1 owned population-bearing cell = 1 Population Capacity
 ```
 
-Higher-level reasoning via segments, contacts, factions, coastlines, objectives, or custom regions is merely a way to choose the cell set and weights.
+If a faction owns 125,000 eligible cells, its Capacity is 125,000.
 
-The engine must not create separate privileged military mechanics for different high-level abstractions.
+No structure, item, faction trait, terrain productivity multiplier, or hidden modifier may increase Population Capacity while this rule is in force.
 
-A simple controller may use broad selectors and distribute evenly. An advanced controller may construct arbitrary deterministic cell weighting.
+Cities therefore do **not** increase Capacity. Items must not provide `+Population Capacity`, `+Max Population`, or equivalent effects.
 
-Normalization of weights **within an already valid Population budget** is expected and is distinct from silently normalizing invalid top-level commitments that exceed 100%.
+Territorial loss may leave current Population temporarily above Capacity. Capacity loss does not instantly kill the excess Population; ordinary positive growth is instead suppressed according to the growth rules until the faction returns to a sustainable state.
 
-### 10.5 Top-level allocation validity and Reserve
+### 10.3 Available and Committed Population
 
-Top-level Population commitments may not exceed 100% of current total Population.
-
-Requests above 100% are invalid and rejected transactionally rather than silently normalized.
-
-Any unassigned Population is **Reserve**.
-
-Reserve:
-
-- is not a separate resource;
-- provides no hidden combat/redeployment bonus;
-- remains part of total Population;
-- follows the same Redeployment Rate rules when assigned later.
-
-### 10.6 Desired versus actual commitment
-
-The controller defines a **desired** Population field.
-
-The simulation maintains an **actual** Population field that converges toward desired over time.
-
-This prevents instantaneous strategic reorientation.
-
-Percentage-based desired allocations naturally recalculate against the current total Population when Population changes.
-
-### 10.7 Initial allocation
-
-A successful controller allocation accepted during the pre-live startup/initialization phase establishes the faction's initial actual allocation directly.
-
-The opening state should not require every faction to spend time moving its initial Population out of an artificial fictional Reserve unless the controller deliberately chooses Reserve.
-
-If no valid startup allocation commits, the safe live-match baseline is 100% Reserve.
-
-Once live simulation begins, including recovery after a failed startup invocation, later allocation changes are governed normally by Redeployment Rate rather than receiving a delayed free initialization teleport.
-
-### 10.8 Casualties
-
-Casualties reduce both:
-
-- the local faction actual commitment where the casualty occurred;
-- the faction's total current Population.
-
-The controller's existing desired percentage logic remains interpreted against the new lower total Population, and normal redeployment later moves actual allocation toward the resulting desired field.
-
-### 10.9 Population growth enters Reserve
-
-Newly generated Population enters **Reserve** first.
-
-Population growth must not become a hidden bypass around Redeployment Rate by magically appearing at the desired combat location.
-
-### 10.10 Redeployment Rate
-
-Open Fufu V1 has one surfaced **Redeployment Rate/Capacity** governing how quickly a faction's actual Population commitment field may change.
-
-It applies to any reassignment of effective commitment, including:
-
-- reserve -> frontline;
-- one conflict -> another;
-- one cell concentration -> another;
-- continuing an advance from a captured cell into the next target cell.
-
-Capturing the cell underneath an already-existing commitment does not itself move that commitment. Further advance requires a new change in the field and therefore consumes redeployment throughput.
-
-V1 deliberately has no intrinsic distance cost for ordinary redeployment.
-
-Moving 10,000 commitment locally and moving 10,000 commitment across a larger land distance use the same throughput amount unless an explicit mechanic says otherwise.
-
-Do not add hidden special cases such as reserve bonus speed, emergency reinforcement, or home-territory acceleration.
-
-Explicit future items/structures/terrain/rail/faction effects may modify the surfaced mechanic.
-
-Redeployment Rate is a valid item/stat family.
-
-### 10.11 Desired-to-actual transition
-
-At each simulation interval:
-
-- locations above desired contain `excess`;
-- locations below desired contain `deficit`;
-- the faction has a deterministic movement budget:
+Population is divided conceptually into:
 
 ```text
-movement budget = Redeployment Rate x dt
+Total Population
+= Available Population
++ offensive commitments
++ active counter-responses
++ Population aboard transports
 ```
 
-At most that amount of Population moves from excess allocation toward deficits.
+There is no separate persistent `Reserve` resource.
 
-With no V1 distance cost, deficit filling may be deterministic/proportional.
+**Available Population** is Population not currently committed to an active operation/transport. It automatically forms the faction's passive defensive pool and can also be deployed into new attacks, counter-responses, or transports.
 
-### 10.12 No separate V1 redeploying pool
+### 10.4 No defensive cell allocation
 
-Because V1 does not model physical travel time for ordinary land redeployment, no persistent `redeploying Population` pool is required.
+There is **no persistent defensive Population allocation by cell, Segment, Contact, or front**.
+
+Controllers cannot stack passive defenders onto selected owned cells.
+
+A faction with 100,000 Available Population has a single 100,000-person automatic defensive pool. The simulation derives how much defensive pressure applies to simultaneous incoming attacks without creating persistent defensive occupancy records.
+
+This is an intentional abstraction and performance/design simplification.
+
+### 10.5 Quantized Population
+
+Population should use deterministic quantized arithmetic rather than unconstrained floating-point quantities.
+
+The public/controller-facing model should prefer whole Population units. Internal deterministic fixed-point residuals may be used where formulas require sub-unit precision.
+
+Because Capacity is bounded by owned population-bearing cells, ordinary Population values have predictable map-derived numerical bounds.
+
+---
+
+## 11. Population growth
+
+Population growth is separate from Population Capacity.
+
+Capacity says **how much Population can be sustainably supported**. Growth systems say **how quickly Population recovers/grows toward that limit**.
+
+Raw growth capacity comes from explicit sources such as:
+
+- base territory-derived growth potential;
+- Cities and other explicit growth structures;
+- allowed item modifiers;
+- future explicit faction/class modifiers.
+
+Cities affect growth rather than Capacity.
+
+### 11.1 Sublinear empire scaling
+
+The accepted mathematical direction is sublinear growth scaling with population-bearing territory/Capacity, approximately:
+
+```text
+GrowthPotential ∝ PopulationCapacity^0.75
+```
+
+The exact exponent is tuning data, with roughly `0.7–0.8` considered a reasonable test range.
+
+This prevents a faction with 10× the territory from automatically receiving 10× the absolute regeneration throughput.
+
+### 11.2 Utilization curve
+
+Let:
+
+```text
+u = TotalPopulation / PopulationCapacity
+```
+
+The accepted qualitative utilization curve is:
+
+- broad full-growth optimum around roughly 40–60% utilization;
+- progressively reduced growth below 40%, but never making recovery hopeless;
+- progressively reduced growth above 60%, with harsher suppression toward Capacity;
+- ordinary positive growth approaches zero at ~100% Capacity;
+- no instantaneous Population deletion merely for being over Capacity.
+
+Useful provisional anchors remain approximately:
+
+| Utilization | Growth multiplier |
+| ---: | ---: |
+| 10% | 45% |
+| 20% | 70% |
+| 30% | 88% |
+| 40% | 100% |
+| 50% | 100% |
+| 60% | 100% |
+| 70% | 85% |
+| 80% | 60% |
+| 90% | 35% |
+| 100% | 0% |
+
+Exact interpolation and coefficients are balance work.
 
 Conceptually:
 
 ```text
-Total Population
-= actual active commitment
-+ Reserve
+ActualGrowth
+= GrowthPotential
+× utilizationMultiplier(u)
+× explicit growth modifiers
 ```
 
-Actual commitment changes only within Redeployment Rate throughput.
-
-A true in-transit state may be introduced later if distance/logistics/rail/supply mechanics make physical travel time meaningful.
-
-### 10.13 Sublinear redeployment scaling
-
-Larger factions should have greater absolute redeployment capacity, but not linearly proportional strategic agility.
-
-Accepted V1 starting direction:
-
-```text
-RedeploymentCapacity(P)
-= Rref * (P / Pref)^(2/3)
-```
-
-The `2/3` exponent is a starting design direction subject to balance testing.
-
-Approximate effect:
-
-```text
-2x Population  -> 1.59x redeployment capacity
-4x             -> 2.52x
-8x             -> 4x
-27x            -> 9x
-```
-
-`Pref`, `Rref`, and exact application are tuning data.
+Newly grown Population enters **Available Population**.
 
 ---
 
-## 11. Population Capacity and growth
+## 12. Deployment Rate
 
-### 11.1 Capacity and Growth Potential are separate
+The old concept of moving persistent defensive Population between cells is removed.
 
-Population growth uses distinct concepts:
+Instead, factions have one explicit **Deployment Rate** governing how quickly Population may move between Available Population and active strategic commitments.
 
-- **Population Capacity**: how much Population the faction's land/infrastructure can sustainably support;
-- **raw Productive Growth Value**: productive demographic contribution of owned territory/infrastructure;
-- **Growth Potential**: empire-level sublinearly scaled replacement/growth throughput;
-- **utilization multiplier**: current Population relative to Capacity.
+Deployment Rate applies to transitions such as:
 
-### 11.2 Capacity
+- Available → offensive operation;
+- offensive operation → Available during withdrawal;
+- Available → active counter-response;
+- counter-response → Available during release/withdrawal;
+- Available ↔ carried Population on transports where applicable.
 
-Capacity may scale approximately linearly/generously with useful territory quality and explicit capacity-providing structures/items.
+Passive automatic defense does **not** consume Deployment Rate. Available Population defends automatically by definition.
 
-A larger successful empire may therefore sustain a substantially larger eventual Population.
+V1 deliberately has no strategic distance cost for land deployment. Moving Population into an operation one cell away or across the empire uses the same throughput abstraction, subject to operation actionability rules.
 
-### 11.3 Growth Potential is sublinear
-
-Replacement/growth throughput should scale sublinearly with productive territorial value so large empires gain a strong advantage without multiplying replacement speed linearly with their size.
-
-Accepted starting direction:
+The previously accepted scaling direction remains a provisional starting point:
 
 ```text
-GrowthPotential ~= ProductiveTerritory^0.75
+DeploymentRate(P) = Rref × (P / Pref)^(2/3)
 ```
 
-Expected test range for the exponent is roughly `0.7-0.8`.
+Exact `Rref`, `Pref`, units, and modifiers are tuning data.
 
-Exact coefficients/exponent remain balance values.
-
-Growth-related structures should normally contribute to raw Capacity and/or raw Productive Growth Value before empire-wide sublinear scaling so they do not trivially bypass the anti-snowballing model.
-
-### 11.4 Broad optimal utilization band
-
-Define:
-
-```text
-utilization = current Population / current Population Capacity
-```
-
-Growth should have a broad comfortable plateau rather than one exact mathematical optimum.
-
-Approximately **40-60% utilization** should realize 100% of Growth Potential.
-
-Outside that range, efficiency falls smoothly.
-
-Current tuning anchors:
-
-```text
-10% utilization  -> ~45%
-20%              -> ~70%
-30%              -> ~88%
-40-60%           -> 100%
-70%              -> ~85%
-80%              -> ~60%
-90%              -> ~35%
-100%             -> 0%
-```
-
-These values are provisional tuning anchors; the accepted design is the broad plateau and soft asymmetric penalties.
-
-Very low Population remains recoverable. Very high utilization suppresses replacement strongly but does not normally reach zero before full capacity.
-
-The curve should be smoothly interpolated rather than implemented as abrupt hidden steps.
-
-### 11.5 Capacity loss does not kill Population instantly
-
-If Capacity falls below current Population because territory/infrastructure is lost, excess Population is not automatically deleted.
-
-Ordinary positive growth is suppressed until utilization becomes sustainable again through casualties, territorial recovery, new capacity, or other explicit mechanics.
-
-### 11.6 No hidden losing-player growth bonus
-
-There is no special `last place` or hidden rubber-band growth modifier.
-
-Recovery emerges from universal Capacity/utilization rules and sublinear empire scaling.
+Items, structures, terrain, rail, or future faction mechanics may modify Deployment Rate only through explicit surfaced rules. V1 does not silently give rail or home defense a hidden deployment bonus.
 
 ---
 
-## 12. Territorial combat and expansion
+## 13. Offensive operations and spatial intent
 
-### 12.1 Cell-level local pressure
+### 13.1 Operation-based Population commitment
 
-Combat, casualties, and territorial changes are resolved at cell level.
+Offensive Population is attached primarily to **operations**, not stored as persistent Population quantities on every affected cell.
 
-Segments, Contacts, factions, and player-defined fronts remain reasoning/query abstractions only.
-
-A useful invariant is:
-
-> If a segment boundary is redrawn through otherwise identical cells and no controller changes its decisions because of that metadata, the authoritative match result should remain unchanged.
-
-### 12.2 Effective local pressure
-
-At a contested cell/location, conceptual effective pressure is:
+Conceptually:
 
 ```text
-local actual committed Population
-x explicit attack/defense modifiers
+AttackOperation {
+    committedPopulation
+    target
+    spatialIntent
+    activeFrontGeometry
+}
 ```
 
-Explicit modifiers may come from:
+The controller chooses how much Population to commit and where the operation should focus.
 
+Spatial intent may be expressed through combinations of:
+
+- target faction;
+- target Segment(s);
+- target Contact(s);
+- explicit cells/areas;
+- controller-defined cell sets;
+- weights favoring particular approaches/terrain/objectives.
+
+The engine derives the operation's local pressure over currently actionable cells from this finite committed Population and spatial intent. It does not need to persist a long-lived Population value for every front cell.
+
+### 13.2 No duplicated attack power
+
+One operation's finite committed Population cannot be counted in full against every cell/opponent simultaneously.
+
+If an operation affects several active front cells, its pressure must be distributed deterministically across those cells according to its legal spatial intent/weighting.
+
+Splitting one strategic attack into many tiny operation objects must not manufacture additional combat power.
+
+### 13.3 Actionability and no teleporting land pressure
+
+Land offensive pressure can only affect cells currently actionable through ordinary territorial/adjacency rules.
+
+A controller may select a remote strategic objective, but selecting it does not create land combat pressure there.
+
+Remote hostile coast becomes actionable through explicit amphibious transport/landing mechanics.
+
+### 13.4 Neutral expansion
+
+Neutral expansion uses ordinary Population through an expansion/offensive commitment rather than a separate colonist resource.
+
+Neutral settlement does not cause arbitrary automatic Population deaths in V1.
+
+Terrain may explicitly modify expansion/capture efficiency.
+
+---
+
+## 14. Automatic defense and counter-responses
+
+### 14.1 Shared automatic defensive pool
+
+Available Population automatically defends the faction.
+
+When several independent attacks hit the same defender simultaneously, the same Available Population **must not be duplicated** across those attacks.
+
+The accepted baseline rule is:
+
+> Available Population is automatically divided into derived defensive pressure among simultaneous incoming hostile operations in proportion to their current incoming effective pressure, before local terrain/structure defensive modifiers are applied.
+
+Example:
+
+```text
+Available defenders: 100,000
+Incoming Fufu pressure: 75,000
+Incoming Ski pressure: 25,000
+```
+
+The baseline automatic defensive split is approximately:
+
+```text
+75,000 defensive pressure against Fufu
+25,000 defensive pressure against Ski
+```
+
+This split is derived for simulation purposes and is **not persistent defensive allocation state**.
+
+If one attack disappears, the Available defensive pool automatically responds to the remaining threats on subsequent simulation steps.
+
+The derivation must be resistant to attack-fragmentation exploits: dividing one attack into several equivalent operations must not force the defender to duplicate or inefficiently partition the same defensive Population.
+
+### 14.2 Active counter-response
+
+Controllers may deliberately commit Available Population to an **active counter-response** against a specific incoming hostile operation.
+
+A counter-response is an explicit strategic commitment intended primarily to reduce/destroy the attacking commitment faster than passive defense alone.
+
+Population committed to a counter-response is no longer part of the generic Available defensive pool while committed.
+
+Therefore counter-response creates real risk/reward:
+
+- committing more Population may break a dangerous attack faster;
+- the same Population is unavailable for automatic defense elsewhere;
+- Deployment Rate limits how quickly the commitment can be established or withdrawn.
+
+Exact counter-response casualty/pressure coefficients are balance work.
+
+---
+
+## 15. Combat, casualties, and capture
+
+Combat remains deterministic and cell-resolved even though passive defensive Population is not stored per cell.
+
+The engine derives local effective attack/defense pressure from:
+
+- operation committed Population;
+- automatic shared defensive pressure;
+- active counter-response pressure where relevant;
+- operation spatial weighting/front geometry;
 - terrain;
 - structures;
 - items;
-- future factions/classes;
-- other clearly surfaced mechanics.
+- future explicit faction/class modifiers.
 
-The engine should avoid hidden strategic bonuses unrelated to explicit mechanics.
+### 15.1 Territorial movement and casualties are separate outcomes
 
-### 12.3 Territorial advantage
-
-Accepted V1 mathematical direction for a simple attacker/defender contest:
+The accepted territorial-advantage direction remains:
 
 ```text
 advantage = (A - D) / (A + D)
 ```
 
-where `A` and `D` are effective local attacking and defending pressures.
+where `A` and `D` are local effective attack and defense pressure after legal explicit modifiers.
 
-This bounded relative advantage provides diminishing returns to overwhelming superiority while preserving meaningful concentration advantage.
+Capture/advance speed is based on positive advantage multiplied by explicit capture/movement rules.
 
-If both are zero, there is no combat advantage calculation/capture from combat pressure.
-
-Territorial capture/advance speed should be driven by positive advantage multiplied by a base advance rate and explicit movement/capture modifiers.
-
-Exact rate coefficients are balance data.
-
-### 12.4 Casualties
-
-Casualties and territorial movement are separate outcomes.
-
-Accepted two-party casualty direction uses bilateral engagement intensity, approximately:
+Casualty-generation direction remains approximately:
 
 ```text
-engagement ~= 2AD / (A + D)
+engagement ≈ 2AD / (A + D)
 ```
 
-with casualty shares influenced by opposing effective pressure so stronger effective forces tend to trade favorably without becoming immune to losses.
+with casualty shares influenced by opposing pressure so stronger forces trade better but are not immune.
 
-Desired qualitative behavior:
+Qualitatively:
 
 ```text
-equal forces
- -> high casualties, little movement
-
-small superiority
- -> slow progress, modestly favorable casualty exchange
-
-large superiority
- -> faster progress, strongly favorable casualty exchange
-
-undefended area
- -> rapid capture with essentially no combat casualties
+equal forces      → high casualties, little movement
+small superiority → slow movement, modest favorable trade
+large superiority → faster movement, strongly favorable trade
+undefended        → rapid capture, essentially no combat casualties
 ```
 
-Exact casualty coefficients are tuning data.
+Exact coefficients are balance data.
 
-### 12.5 Multiple hostile factions: all-vs-all local combat
+### 15.2 Multi-faction combat
 
-A contested cell in FFA is a genuine **all-vs-all** engagement. Co-attacking factions do not receive a temporary alliance, free gang-up, or immunity from one another merely because they currently share an owner as a target.
+FFA remains genuinely all-vs-all.
 
-Every hostile faction present at the local contest is hostile to every other hostile faction present.
+If several hostile factions exert pressure in the same operational cells, each faction is hostile to every other non-team faction present.
 
-The accepted starting resolution direction is **pressure-proportional all-vs-all engagement**:
+A faction's finite pressure is not duplicated once per opponent. Multi-party engagement should distribute finite outgoing combat pressure proportionally among relevant opponents according to their local effective pressure.
 
-- each faction has one finite local effective combat-pressure budget;
-- that budget is distributed across all other hostile factions in the cell in proportion to those opponents' effective local pressures;
-- pairwise casualty effects are then resolved simultaneously;
-- a faction's full pressure is therefore **not duplicated once per opponent**;
-- no attackers are pooled into one allied super-force.
+If the current owner loses a cell under multi-party pressure, the strongest successful claimant receives the cell deterministically. Other hostilities remain active.
 
-Example with effective local pressures:
+Attackers on completely separate fronts do not magically fight one another merely because they share an enemy.
 
-```text
-Tanya = 40
-Fufu  = 30
-Ski   = 30
-```
+### 15.3 Casualty accounting
 
-Tanya faces two equally strong opponents, so her outgoing engagement pressure splits approximately:
+Casualties reduce both the relevant committed/available pool and Total Population.
 
-```text
-20 -> Fufu
-20 -> Ski
-```
+If casualties occur within an offensive operation, that operation loses Population and Total Population falls by the same amount.
 
-Fufu distributes its 30 according to opponent pressure `40:30`:
+If casualties occur through passive defense, Available Population and Total Population fall together.
 
-```text
-~17.1 -> Tanya
-~12.9 -> Ski
-```
-
-Ski behaves symmetrically.
-
-This is not a hard-coded `40/30/30` casualty rule; it is the natural result of the actual local effective pressures. Different pressure values produce different shares.
-
-All multi-party local effects should be computed from the same pre-resolution state and committed simultaneously so iteration order cannot determine the winner.
-
-The current owner retains political ownership until the capture/control rules cause it to lose the cell. If ownership is lost while multiple hostile claimants remain, the strongest successful surviving claimant receives the cell according to deterministic local control/capture rules; the other factions remain hostile and may immediately continue contesting it.
-
-Exact multi-party casualty/capture coefficients remain ruleset tuning and may be adjusted after simulation testing, but the **all-vs-all, no-free-coalition** rule is a design invariant.
-
-### 12.6 Neutral expansion
-
-Neutral expansion uses the same ordinary Population-allocation philosophy rather than a separate expansion resource.
-
-The controller assigns Population to actionable neutral-border cells through the same cell-weight system.
-
-V1 does not impose automatic Population deaths simply for settling neutral land.
-
-The principal cost is opportunity cost: Population exerting neutral expansion pressure is not simultaneously exerting pressure elsewhere.
-
-Terrain and explicit modifiers may alter expansion efficiency.
-
-### 12.7 Strategic doctrines remain emergent
-
-Blitzkrieg-like concentration, broad pushes, compact defense, reserve-heavy behavior, opportunistic attacks, and other doctrines should emerge from player-written allocation/targeting logic and the common simulation rules.
-
-There is no privileged named combat mechanic required for those doctrines.
-
-### 12.8 Deliberate retreat and territory relinquishment
-
-Controllers must have a mechanical primitive that allows them to **deliberately relinquish owned territory** rather than relying on the enemy to capture undefended cells incidentally.
-
-This allows player code to express controlled retreat, salient abandonment, defensive contraction, and similar strategy directly.
-
-Relinquishment changes political control according to the final legal retreat rule; it must not create hidden combat bonuses or teleport Population. Existing Population commitment still obeys the ordinary desired/actual allocation and Redeployment Rate rules.
-
-The exact relinquishment speed, neutralization behavior, structure consequences, and other inherited interactions are ruleset/audit details to settle against the current OpenFront mechanics.
+The exact casualty mapping for strategic weapons and special effects that do not correspond to an ordinary land engagement remains mechanic-specific and must be explicit.
 
 ---
 
-## 13. Naval and amphibious operations
+## 16. Retreat and deliberate territorial abandonment
 
-Amphibious operations use the faction's ordinary Population rather than a separate manpower resource.
+Controllers must have an explicit primitive to deliberately relinquish owned territory rather than relying on withdrawal side effects.
 
-Conceptually:
+The exact inherited consequences for structures, units, and cleanup are implementation/integration rules, but intentional abandonment is a real legal controller capability.
 
-```text
-Population committed to amphibious operation
- -> loaded into transport capacity
- -> transported by naval unit
- -> remote coastal objective
- -> landing makes target locally actionable
- -> landed Population becomes ordinary local commitment
-```
-
-Population aboard transports is not simultaneously exerting ordinary land pressure elsewhere.
-
-Transport destruction may kill carried Population according to the final inherited/transformed naval rules.
-
-A controller may select a distant known coastline as an objective without knowing detailed defenses there.
-
-Exact transport capacities, timing, naval combat, and inherited unit behavior are audit/tuning matters.
+Offensive operation withdrawal and counter-response withdrawal are governed by Deployment Rate rather than instant Population teleportation.
 
 ---
 
-## 14. Economy and FFY
+## 17. Naval and amphibious Population
 
-### 14.1 FFY
+Transport ships carry explicitly committed Population.
 
-**FFY (Fufu Yen)** is the single primary in-match economic currency.
+While aboard a transport, carried Population:
 
-Do not introduce conventional piles of RTS resources such as wood/stone/iron/food unless later gameplay demonstrates a concrete need.
+- is not Available for automatic land defense;
+- does not exert ordinary land pressure;
+- may be lost if the transport is destroyed;
+- becomes eligible to participate locally when a legal amphibious landing reaches its target.
 
-The broad distinction is:
+A landing makes the coastal target operationally actionable; carried Population then becomes part of the local offensive engagement rather than teleporting land pressure to a remote coast.
 
-```text
-warfare primarily consumes Population
-infrastructure primarily consumes FFY
-```
-
-### 14.2 FFY is event-driven
-
-FFY is generated by explicit world/economic events rather than a generic passive `Population -> FFY/sec` tax.
-
-Examples include:
-
-- successful trade completion;
-- train/station economic events;
-- capture of valuable assets/objectives;
-- piracy/capture events;
-- inherited economic events that remain compatible;
-- future deliberate economic events.
-
-Economic strategy therefore optimizes event:
-
-- frequency;
-- value;
-- risk;
-- placement;
-- protection.
-
-Population being committed to warfare does **not** inherently reduce FFY generation through a hidden civilian-labor/mobilization penalty. War changes FFY through the actual economic events, structures, trade penalties, destruction, captures, and risks it causes.
-
-Terrain-based FFY effects should preferably alter relevant events/structures rather than cause generic land tiles to emit passive currency without an explicit mechanic.
-
-Warfare may produce some FFY-generating events, but pure aggression should not automatically be the optimal economy.
-
-### 14.3 Frequency-versus-value economic strategy
-
-Economic infrastructure should support genuine strategic tradeoffs between:
-
-- many lower-value events/routes with diversified risk; and
-- fewer higher-value events/routes with more concentrated value/risk.
-
-The exact inherited structures and upgrade economics must be audited, but the target design should avoid collapsing every economic build into one universally correct event pattern.
-
-For example, several cheaper trade routes may diversify wartime losses while fewer upgraded routes may dominate raw efficiency in safe conditions. The example is illustrative; the design goal is the tradeoff among event frequency, event value, and risk exposure.
+Warships, ports, trade ships, trains, strategic weapons, and inherited unit/structure mechanics are retained or adapted where compatible as described in the integration plan.
 
 ---
 
-## 15. Teams, FFA, war state, and trade
+## 18. Terrain and structures
 
-### 15.1 Teams
+Terrain is strategically meaningful rather than cosmetic.
 
-Teams are selected before the match and remain fixed.
+Terrain may explicitly affect systems such as:
 
-There are no conventional in-match alliance changes.
+- attack/capture efficiency;
+- defensive pressure;
+- movement/pathing;
+- naval behavior;
+- future expansion rules.
 
-A human team match requires **multiple human players** on the human team; an AI ally cannot substitute for the second human merely to create a solo team-progression configuration.
+Any meaningful modifier must be surfaced.
 
-### 15.2 FFA
+Structures are spatial game objects with explicit effects. Initial design direction includes:
 
-In FFA, every non-team faction is legally attackable at all times.
+- **Cities:** Population growth contribution, not Population Capacity;
+- **Defense Posts:** local defensive modifier;
+- **Ports:** naval and trade functionality;
+- **Factories / train infrastructure:** economic/rail identity where retained;
+- **Missile Silos / SAM:** strategic weapon and interception systems where retained.
 
-There are no formal alliances.
-
-Controllers may still create emergent ceasefires/coalition-like behavior by independently choosing not to attack particular factions or by focusing a runaway leader.
-
-Such strategic restraint does not change the local combat rule: if mutually hostile factions commit Population to the same contested cell, local combat remains all-vs-all.
-
-### 15.3 Derived `atWar`
-
-For non-team factions, `atWar` is a symmetric derived state describing current/recent hostilities, not permission to attack.
-
-Hostile actions such as land attack, amphibious attack, destructive naval attack, territorial capture, or direct destructive weapons set `atWar = true` for the pair.
-
-If neither side performs relevant hostile actions for a rules-defined inactivity period, it returns to false.
-
-Exact timeout is balance data.
-
-### 15.4 Trade during war
-
-Trade with enemies remains legal.
-
-Accepted V1 starting penalty while `atWar` is true: **50% wartime trade penalty**.
-
-Explicit factions/items/structures/future mechanics may modify the penalty.
-
-Actual wartime profitability may fall further through real in-world disruption such as warship interdiction.
+Structures must not recreate a hidden global Military Power stat.
 
 ---
 
-## 16. Victory, defeat, resignation, and team results
+## 19. Visibility and information model
 
-### 16.1 FFA victory
+The central distinction is:
 
-A faction wins when either:
+> knowing geography and political ownership is not the same as knowing local operational military state.
 
-- it controls 100% of conquerable territory; or
+### 19.1 Globally visible
+
+At minimum:
+
+- static terrain/geography;
+- coast/ocean/impassables;
+- current territorial ownership;
+- Segment definitions;
+- broad faction shape;
+- faction Total Population;
+- Territory %;
+- FFY.
+
+### 19.2 Operational/local information
+
+Detailed local information may depend on OperationalContact/visibility, including:
+
+- active enemy offensive operations/pressure where observable;
+- active counter-response information where observable;
+- mobile units;
+- defenses/structures where the visibility rules allow;
+- local tactical modifiers/details.
+
+### 19.3 Private
+
+At minimum:
+
+- controller memory;
+- controller intentions/plans;
+- unpublished controller source;
+- unobservable strategic targeting/decision state.
+
+The authoritative server must enforce information boundaries. The browser hiding information cosmetically is not sufficient.
+
+---
+
+## 20. FFY economy and trade
+
+FFY is the primary in-match currency.
+
+FFY is **not** passive `Population → money per second` income.
+
+It is generated through explicit world/economic events such as:
+
+- trade ship success/capture;
+- trains/station economics;
+- territorial/objective captures where configured;
+- piracy/capture;
+- future deliberate economy events.
+
+The strategy should support tradeoffs among event frequency, event value, risk, and infrastructure investment.
+
+Population committed to warfare does not secretly reduce FFY through an unstated labor penalty.
+
+### 20.1 Wartime trade
+
+Trade with enemies remains possible.
+
+Default wartime economic penalty direction is **50%**, subject to explicit future modifiers.
+
+Interdiction/warships may create in-world economic losses.
+
+---
+
+## 21. Teams, hostility, `atWar`, victory, and elimination
+
+### 21.1 Teams and alliances
+
+Team relationships are fixed pre-match.
+
+FFA has no formal mutable alliances. Non-team factions remain legally attackable regardless of `atWar` state.
+
+Emergent ceasefires or coalitions may arise purely from controller behavior rather than a mutable diplomacy system.
+
+### 21.2 `atWar`
+
+`atWar` is a symmetric derived recent-hostility state, not an attack-permission gate.
+
+Hostile actions that may establish/refresh it include land attacks, amphibious attacks, destructive naval combat, territorial capture, and destructive strategic weapons.
+
+It may affect controller/UI logic, trade penalties, statistics, or future explicit rules.
+
+Exact timeout is tuning data.
+
+### 21.3 Victory
+
+FFA victory occurs when a faction:
+
+- controls 100% of conquerable territory; or
 - all other factions have resigned/capitulated/been defeated.
 
-A human may manually resign from a match. This is a match-lifecycle escape hatch rather than normal moment-to-moment strategic intervention.
+Team victory occurs when:
 
-Official AI may capitulate when its own controller/strategy determines that capitulation is appropriate; capitulation is not a hidden global difficulty shortcut.
-
-### 16.2 Team victory
-
-A team wins when either:
-
-- all non-team opposition has been defeated/capitulated; or
+- all non-team opposition is defeated/capitulated; or
 - the team collectively controls all conquerable territory.
 
-An individual human faction may be eliminated before the end of the match. If that player's human team later wins, the eliminated human still receives the team victory and applicable team PvE progression reward.
+If a human faction is eliminated before the end but their human team ultimately wins, that human still receives the team win and applicable team-PvE progression reward.
 
-Exact inherited behavior for what happens to a defeated/capitulated faction's remaining territory/structures should be settled by the OpenFront compatibility audit rather than guessed here.
+Team PvE is available only with multiple **human** players. A solo human cannot add AI teammates merely to farm team-PvE rewards.
+
+Humans may resign. Official AI may capitulate according to its controller logic.
+
+Exact defeated-faction territory/structure cleanup is integration-dependent and must not silently inherit incompatible OpenFront behavior.
 
 ---
 
-## 17. Inherited structures, units, and mechanics
+## 22. Official PvE AI
 
-Open Fufu should **not aggressively delete inherited OpenFront game concepts merely to simplify the fork**.
+Official PvE AI presets are authored by the game creator, not uploaded by ordinary players.
 
-The intended first-playable approach is to preserve inherited gameplay concepts where they remain compatible, including concepts such as:
+All shipped maps/modes/AI presets intended for PvE progression are legitimate progression content by design; there is no user-created reward-AI approval marketplace.
 
-- Cities;
-- Defense Posts;
-- Ports;
-- Factories;
-- Missile Silos;
-- SAM Launchers;
-- Transport Ships;
-- Warships;
-- Trade Ships;
-- trains/railways;
-- Atom Bombs;
-- Hydrogen Bombs;
-- MIRVs and related strategic weapons.
+Official AI must obey the same gameplay rules as player controllers:
 
-However, their existing OpenFront semantics are not automatically canonical.
+- same visibility/information restrictions;
+- same Population/FFY;
+- same structure/unit rules;
+- same legal actions;
+- same combat equations;
+- no omniscience;
+- no hidden resource multipliers;
+- no teleportation or private simulation cheats.
 
-Structures should be allowed to have explicit **spatial/local effects** where appropriate; for example, defensive structures may modify nearby local pressure while economic/Population infrastructure may affect its defined region or event system. Exact areas of influence are audit/tuning work.
+Official AI may use trusted runtime code operationally, but difficulty should come from program/strategy quality rather than rule advantages.
 
-The later broad compatibility audit must classify inherited systems according to whether they are:
+Reusable internal strategy components are encouraged for maintainability, but they do not become privileged player-facing strategic policies.
+
+Reference personalities may include Tanya-style concentrated breakthrough, Reinhard-style economic/threat optimization, and Thorfinn-style retaliation/non-aggression, with exact implementations/versioning owned by the game creator.
+
+---
+
+## 23. Items, loadouts, rarity, and PvE progression
+
+### 23.1 Item catalogue
+
+The game may contain a very large deterministic/versioned item catalogue.
+
+Each item has deterministic identity tied to an item seed/identity and generator version.
+
+The catalogue should avoid intentionally duplicate complete mechanical signatures.
+
+Items may contain:
+
+- one or two modifiers;
+- positive effects;
+- drawbacks;
+- mixed positive/drawback combinations;
+- deterministic names/flavor/dialogue/visual identity where applicable;
+- a positive sampling weight.
+
+V1 item mechanics must **not** include Population Capacity / maximum-Population modifiers while Capacity remains exactly territory-derived.
+
+Allowed families may include explicit modifiers such as:
+
+- Population growth;
+- Deployment Rate;
+- offensive pressure;
+- defensive pressure;
+- FFY/trade;
+- structures;
+- naval/unit behavior;
+- terrain interactions;
+- other surfaced mechanics.
+
+Exact item family list is balance/content work.
+
+### 23.2 Modifier stacking
+
+The accepted stacking rule is:
 
 ```text
-A. retained essentially unchanged
-B. retained but translated into Open Fufu mechanics
-C. disabled/replaced because they are fundamentally incompatible
+final = (base + sum(flat)) × (1 + sum(percentage))
 ```
 
-Likely directions, not yet source-audited final mappings, include:
+Percentage modifiers in the same calculation are additive before multiplication unless a specific explicit mechanic says otherwise.
+
+### 23.3 Sampling weights and rarity
+
+Every normally droppable item has positive sampling weight.
+
+For an eligible normal table:
 
 ```text
-City
- -> Population Capacity / Growth contribution
-
-Defense Post
- -> explicit local defensive-pressure modifier
-
-Port
- -> naval access + trade FFY events
-
-Trade Ship
- -> FFY-producing trade completion event
-
-Train / station
- -> FFY economic events
- -> possible explicit future redeployment interaction
-
-Transport Ship
- -> carries committed Population
-
-Warship
- -> naval combat / trade interdiction
-
-Factory
- -> preserve/translate its inherited production/economic role where compatible
-
-Missiles / strategic weapons
- -> explicit Population / structure / cell effects
-```
-
-The compatibility audit must be broader than structures/units and inspect the full inherited game and architecture.
-
----
-
-## 18. Official PvE AI
-
-### 18.1 AI presets, not global difficulty
-
-PvE has no global Easy/Normal/Hard scalar.
-
-Difficulty comes from the concrete official AI faction/controller presets placed in the lobby.
-
-The game creator authors the official AI presets; players do **not** create new PvE AI presets.
-
-There is therefore no user-authored PvE-AI approval marketplace or promotion pipeline to design.
-
-The lobby's chosen official AI composition is itself the primary PvE challenge/risk configuration.
-
-### 18.2 Same game rules as players
-
-Official PvE AI must obey the same gameplay rules available to player controllers:
-
-- same Population rules;
-- same FFY rules;
-- same visibility/fog-of-war restrictions;
-- same action legality;
-- same combat/capture equations;
-- same structures/units;
-- no hidden teleports;
-- no secret income multipliers;
-- no omniscient enemy deployment information.
-
-Official AI may be trusted executable code operationally and therefore does not necessarily require the same security sandbox as untrusted player code.
-
-Its difficulty should come from strategy, not simulation cheats.
-
-### 18.3 Creator-shipped PvE content is progression-valid
-
-PvE maps, modes/configurations, and AI presets deliberately shipped by the game creator as normal progression content are legitimate progression sources by definition.
-
-There is no separate approval status that player-authored AI presets can acquire, because players do not create PvE AI presets.
-
-Player-controller testing, custom non-progression experiments, and PvP do not become PvE reward sources merely because they use the same simulation engine.
-
-### 18.4 Reusable AI strategy components
-
-Official AI presets should be able to reuse and compose internal strategic behaviors rather than requiring every named AI to be a completely unrelated monolith.
-
-Possible internal components include economy-first behavior, opportunistic aggression, concentrated breakthrough, compact defense, retaliation-only behavior, threat/target selection, reserve-heavy play, coastal/naval preference, and other reusable policies.
-
-These internal AI strategy components do **not** imply a privileged player-facing strategy library; player controllers still receive the ordinary public primitives and write their own strategic policies.
-
-Illustrative personality directions include:
-
-- **Tanya-like**: narrow concentration, aggressive breakthrough, high risk/reward;
-- **Reinhard-like**: economy optimization, threat assessment, few decisive targets;
-- **Thorfinn-like**: avoids initiating hostility, retaliates when attacked, may stop focusing enemies when continued war is unnecessary.
-
-These names are design references rather than final shipped content policy.
-
----
-
-## 19. PvE progression and item loadouts
-
-Persistent collection/meta progression is earned through creator-shipped PvE progression content.
-
-The standard PvE loadout contains **7 equipped item slots**.
-
-Only equipped items affect the match; the player's entire collection does not stack permanently onto the account.
-
-There is no player-to-player item trading.
-
-PvP progression rules are separate. A likely broad split is:
-
-```text
-PvE
-    progression/loadouts enabled
-
-PvP casual
-    configurable rules
-
-PvP serious/ranked
-    progression bonuses disabled or standardized
-```
-
-Exact PvP mode design remains deferred.
-
----
-
-## 20. Deterministic item catalogue and item design
-
-### 20.1 Large versioned catalogue
-
-Open Fufu does not require literal mathematical infinity.
-
-The target is a very large deterministic catalogue that feels practically inexhaustible in ordinary play, potentially tens or hundreds of thousands of items per generator version.
-
-Items are reproducible from stable identity/seed plus generator version.
-
-New generator versions may expand the catalogue without mutating existing items.
-
-### 20.2 Mechanical uniqueness
-
-Two different item identities should not intentionally represent the same complete mechanical signature.
-
-Catalogue generation should detect exact mechanical-signature collisions and reject/skip duplicates during generation.
-
-### 20.3 Constrained numeric representation
-
-Effect families have approved ranges, quantization, and hard balance caps.
-
-Deterministic fixed-point/exact quantized representations are preferred for mechanical identity over arbitrary floating-point identity semantics.
-
-### 20.4 Item shape
-
-Generated items may include one or two mechanical modifiers, including combinations such as:
-
-- one positive modifier;
-- two positive modifiers;
-- stronger positive modifier paired with a drawback/negative modifier;
-- other bounded generator-approved combinations.
-
-Exact effect-family distributions are balance/generator work.
-
-Items should primarily modify fundamental simulation/economy parameters that the controller still has to exploit intelligently rather than bypassing the programmable game.
-
-Useful initial/future effect families include things such as:
-
-- starting Population;
-- Population growth or Capacity;
-- attack/defense pressure;
-- Redeployment Rate;
-- expansion/movement efficiency where applicable;
-- starting FFY;
-- economic-event/trade effectiveness;
-- construction cost/efficiency;
-- other explicit rule-bearing stats.
-
-Supply/logistics-specific effects should wait until those mechanics actually exist.
-
-### 20.5 Item presentation and naming identity
-
-Each item should have deterministic collectible presentation metadata including approximately:
-
-- stable item identity/seed;
-- generator version;
-- mechanical modifiers;
-- name;
-- flavor/dialogue line or description;
-- lightweight deterministic visual identity such as SVG or equivalent;
-- rarity/drop-weight metadata.
-
-The deterministic naming/content space may draw from categories such as:
-
-- historical references;
-- military/strategic references;
-- literary references;
-- anime-inspired references/catchphrase transformations;
-- jokes and deliberate incongruity.
-
-Semantic tags may be used so presentation loosely fits an item's effect family rather than being fully random.
-
-Any public release should use a deliberate content/copyright policy rather than blindly storing large verbatim copyrighted dialogue libraries.
-
-The exact content/art-generation pipeline is implementation/content work.
-
-### 20.6 Stat stacking
-
-For a stat with flat and percentage modifiers:
-
-```text
-final = (base + sum(flat bonuses)) x (1 + sum(percentage bonuses))
-```
-
-Percentage bonuses add to one another rather than multiplying independently.
-
----
-
-## 21. Item rarity and reward sampling
-
-### 21.1 Explicit weights
-
-Every item has an explicit positive sampling weight in the normal PvE reward distribution.
-
-Conceptually:
-
-```text
-P(item) = itemWeight / sum(all eligible normal-table item weights)
+P(item) = itemWeight / sum(eligibleWeights)
 ```
 
 Lower weight means rarer.
 
-There are no required Common/Rare/Epic/Legendary tiers.
+Rarity need not be divided into conventional rarity tiers. Item power should influence rarity, but rarity may also contain deterministic collectible/flavor randomness so mechanical power is not the only source of rarity.
 
-Power should influence rarity, but rarity need not be a one-dimensional deterministic function of raw power. Stronger items should generally trend rarer while similarly powerful items may still have meaningfully different collectible rarity.
+Displayed inherent rarity is based on the item's normal global sampling probability/weight, not on a temporary store-filter probability.
 
-Weight may depend on:
+### 23.4 PvE win rolls
 
-- effect family;
-- modifier magnitude;
-- number of modifiers;
-- positive/negative combinations or drawbacks;
-- deterministic rarity/flavor factors;
-- other generator metadata.
+A won configured PvE match awards a number of independent item rolls determined by the configured opposing official AI presets. The player keeps the rarest result according to normal drop probability/weight.
 
-Player-facing UI may eventually expose an exact/approximate probability or a readable equivalent such as `1 in N`.
+AI roll contribution depends on the AI being present in the won match, not on which human personally eliminated it.
 
-### 21.2 Rarest-of-N PvE rewards
+### 23.5 Team PvE division rule
 
-For a won PvE match:
+For team PvE, each human receives an independently sampled number of rolls:
 
 ```text
-base victory rolls
-+ sum(all applicable official AI preset +X roll modifiers present)
-= solo-equivalent roll count
+perHumanRolls = max(1, ceil(soloEquivalentRolls / numberHumanPlayers))
 ```
 
-The AI only needs to have been present in the won creator-shipped PvE match. The player/team does not need personal elimination credit for that AI, even if another AI eliminated it.
-
-The game samples independently that many times and awards the **rarest sampled item** according to its inherent normal-table rarity/weight.
-
-There are no hidden high-quality rolls.
-
-Reward design should primarily care about successfully winning against the configured official PvE opposition rather than raw match duration or easily farmed incidental statistics.
-
-### 21.3 Team PvE reward division
-
-Team PvE requires multiple human teammates.
-
-For a human team victory:
+Examples:
 
 ```text
-rollsPerHuman
-= max(1, ceil(soloEquivalentRolls / participatingHumanCount))
+solo equivalent 9
+1 human → 9 rolls
+2 humans → 5 each
+3 humans → 3 each
 ```
 
-Each participating human performs that many independent rolls and receives the rarest result from their own roll set.
+Only actual multi-human team PvE uses the divided team rule.
 
-A human whose faction was eliminated earlier still receives the victory/reward if their human team wins.
+### 23.6 Duplicates and gambling currency
 
-Example for a lobby whose solo-equivalent reward is 9 rolls:
+Normal PvE drops may produce duplicates.
 
-```text
-solo PvE           -> 9 rolls
-2-human team PvE   -> 5 rolls each
-3-human team PvE   -> 3 rolls each
-```
+A duplicate is automatically converted into a persistent gambling-store currency.
 
-The division rule is accepted; later balance testing may still change the broader reward economy if needed.
+There are no multiple owned copies and no required manual sale flow.
 
----
-
-## 22. Duplicates and gambling store
-
-Normal PvE reward sampling does **not** filter out currently owned items.
-
-If the awarded item is already owned:
-
-- the duplicate is automatically converted into a separate persistent gambling-store currency;
-- the player does not keep multiple inventory copies;
-- the player does not choose whether to convert the duplicate.
-
-Players may **not manually sell owned items**.
-
-The duplicate system is bad-luck protection, not a general player-controlled item market.
-
-Every duplicate should be worth at least one immediate store gamble.
-
-Current conceptual small-number scale:
-
-```text
-store gamble:             ~10 currency
-low duplicate:            >=10
-ordinary duplicate:       ~11-13
-rare duplicate:           ~15-18
-extremely rare duplicate: ~20+
-```
-
-Exact values and currency name are balance/content details.
+Every duplicate should fund at least one gambling-store attempt.
 
 The gambling store:
 
-- excludes every currently owned item;
-- uses the same underlying rarity/weight philosophy and renormalizes eligible weights for the store roll;
-- does not change an item's displayed inherent normal-table rarity.
+- excludes already owned items from the eligible purchase/roll table;
+- renormalizes remaining eligible weights;
+- does not change the displayed inherent rarity of an item;
+- uses a persistent currency separate from in-match FFY.
 
-The persistent gambling currency is **not FFY**. FFY remains strictly the in-match economy currency.
+### 23.7 Loadouts
 
----
+Standard PvE loadout size is **7 items**.
 
-## 23. Explicitly deferred systems
-
-The following are deliberately **not** V1 design commitments unless the later compatibility audit reveals a minimal inherited form that must be preserved:
-
-- full supply/connectivity/logistics simulation;
-- distance-based ordinary land redeployment;
-- detailed in-transit land Population;
-- player-selectable factions/classes with unique rule exceptions;
-- alternate controller languages;
-- complex item crafting/upgrades/sockets/set bonuses;
-- player-to-player item trading;
-- final ranked PvP rules;
-- advanced water-terrain catalogue/modifiers;
-- major post-V1 terrain expansion.
-
-Supply/connectivity may eventually support emergent isolation, encirclement, vulnerable spearheads, rail/logistics, and similar strategy, but it should not be invented prematurely.
+PvP progression/loadout standardization remains deliberately deferred until PvP design is revisited.
 
 ---
 
-## 24. Provisional tuning values versus design rules
+## 24. Match observability
 
-The following are accepted **directions/current starting values** and should be versioned ruleset constants rather than treated as eternal product law:
+Observability is a first-class game feature because programming is the gameplay.
 
-- simulation cadence: currently 10 Hz;
-- controller cadence: currently 2 Hz;
-- controller memory limit: currently 128 KiB;
-- redeployment exponent: currently `2/3`;
-- redeployment `Pref`/`Rref`;
-- Population-growth exponent: currently approximately `0.75`;
-- Population utilization curve anchor percentages;
-- base capture/advance rate;
-- casualty-rate coefficient;
-- multi-party pressure/casualty coefficients;
-- terrain modifiers;
-- structure values;
-- Population Capacity values;
-- FFY event payouts;
-- `atWar` inactivity timeout;
-- transport capacities/timing;
-- official AI `+X rolls`;
-- duplicate-currency values/store price;
-- item catalogue size and weight-generation formulas;
-- segment target/min/max size and generation heuristics.
+The system should expose enough deterministic information to debug strategy, including:
 
-Balance testing/headless simulation should tune these without rewriting the fundamental game ontology.
+- replay;
+- controller decisions;
+- controller logs within explicit limits;
+- action failures/rejections;
+- CPU/runtime-budget information;
+- Population history;
+- FFY history;
+- territory history;
+- active-operation/counter-response history;
+- post-match summaries.
+
+Headless accelerated testing should use the same logical game rules as live matches.
 
 ---
 
-## 25. Open questions that remain after consolidation
+## 25. Deliberately deferred or implementation-level systems
 
-The foundational game design is settled enough for the OpenFront compatibility audit. Remaining questions fall into three categories.
-
-### 25.1 Balance/tuning questions
-
-These do not block the OpenFront compatibility audit:
-
-- exact combat casualty coefficient;
-- exact territorial advance/capture speed;
-- exact multi-party combat coefficient details;
-- exact Population growth curve values;
-- exact Redeployment Rate constants;
-- exact segment target sizes/heuristics;
-- exact terrain/structure modifiers;
-- exact FFY payouts;
-- exact AI reward values;
-- exact item weight-generation balance.
-
-### 25.2 API/implementation questions
-
-These belong to architecture/integration planning rather than game-design ontology:
+The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact TypeScript API names/types;
-- exact controller sandbox technology;
-- exact persistence/database design;
-- exact authentication/identity implementation;
-- exact process/container topology;
-- exact replay/archive storage representation;
+- exact sandbox technology;
+- exact persistence/database implementation;
+- exact wire protocol;
+- exact authentication mechanism;
 - exact deterministic memory codec;
-- exact server/client transport/wire protocol.
+- exact casualty/capture coefficients;
+- exact Deployment Rate reference values;
+- exact Population-growth coefficients/interpolation;
+- exact Segment size heuristics;
+- exact terrain values;
+- exact FFY payouts;
+- exact AI reward values;
+- exact inherited naval/rail/strategic-weapon translations where not specified;
+- exact defeated-faction cleanup;
+- detailed lobby/UI experience;
+- supply/logistics connectivity as a separate system.
 
-### 25.3 Audit-dependent inherited behavior
-
-These should be decided only after inspecting current OpenFront source rather than guessing:
-
-- exact mapping of every inherited structure/unit;
-- inherited naval/trade/rail mechanics;
-- strategic weapon behavior;
-- elimination/capitulation cleanup semantics;
-- exact retreat/relinquishment interactions with inherited structures and territory state;
-- current terrain/map representation compatibility;
-- inherited match/config/player-count behavior;
-- which current mechanics can remain unchanged versus require translation/replacement.
+Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
 
 ---
 
-## 26. Next step: broad OpenFront compatibility audit
+## 26. Canonical invariants summary
 
-The next major task is a **broad source-level OpenFront compatibility audit** using this document as the target contract.
+The following are intended as high-level invariants for future implementation/audit work:
 
-That audit must compare this target design against the current fork across more than structures.
-
-It should cover at least:
-
-- current server/client authority model;
-- game/tick/turn architecture;
-- map and cell representation;
-- terrain;
-- ownership/neutral expansion;
-- troops/Population/gold/resource model;
-- attack/combat/capture;
-- structures and units;
-- naval movement/combat/trade;
-- trains/railways;
-- strategic weapons;
-- teams/alliances/relations;
-- visibility/fog-of-war;
-- bots/AI;
-- victory/elimination/resignation;
-- intents/executions;
-- determinism/desync handling;
-- match configuration/timing;
-- replay/archive state;
-- browser rendering assumptions;
-- server orchestration;
-- persistence/auth integration boundaries.
-
-The audit should then produce **one separate integration/migration plan document** describing how to move the current fork toward this design while retaining useful inherited infrastructure and avoiding unnecessary rewrites.
-
-The desired documentation end state is therefore conceptually:
-
-```text
-OPEN_FUFU_DESIGN.md
-    What the game is supposed to be.
-
-OPENFRONT_INTEGRATION_PLAN.md
-    How the inherited fork will be transformed into it.
-```
-
-No additional competing Open Fufu mechanics document should be introduced; future accepted target-design changes belong in `OPEN_FUFU_DESIGN.md`.
+1. **The server owns the match.** Browsers are not simulation authorities.
+2. **The controller may fail; the match must continue deterministically.**
+3. **Controllers receive deterministic immutable observations and explicit persistent per-match memory.**
+4. **Cells are the physical territorial resolution; Segments are immutable strategic lenses.**
+5. **Every real map cell belongs to exactly one Segment.**
+6. **Population is one global quantized faction resource.**
+7. **Population Capacity equals owned population-bearing cells exactly.**
+8. **There is no persistent defensive cell Population allocation.**
+9. **Available Population automatically forms one globally shared defensive pool.**
+10. **Offensive Population is committed to sparse operations with spatial intent.**
+11. **The same defenders or attackers may never be duplicated merely because several fronts/operations exist.**
+12. **Controllers may actively counter an incoming operation by committing Population, at the cost of reducing Available defense elsewhere.**
+13. **Deployment Rate limits Population entering/leaving active commitments, but passive defense is automatic.**
+14. **Combat and ownership still resolve through cells.**
+15. **Terrain/structures/items affect combat only through explicit surfaced rules.**
+16. **FFY is event-driven, not passive Population taxation.**
+17. **FFA is truly hostile among non-team factions; fixed teams are the only formal alliance relationship.**
+18. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+19. **Historical matches bind exact rule-bearing versions.**
+20. **One canonical design document governs the target; one canonical integration plan governs the migration.**
