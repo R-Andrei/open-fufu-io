@@ -590,9 +590,68 @@ A controller may instantly commit Available Population to an **active counter-re
 
 Counter-response Population leaves the generic Available pool while committed. It does **not** reinforce passive cell defense and cannot raise a threatened cell above the one-defender automatic cap.
 
-Instead, a counter-response directly engages the incoming operation's committed Population as a targeted operation-vs-operation fight. It may inflict explicit Population losses on the hostile offensive commitment and may itself take losses according to the counter-response combat rule.
+Instead, counter-response Population directly engages the incoming operation's committed Population as a targeted operation-vs-operation fight. Counter-response combat may therefore reduce Population even when no cell changes owner.
 
-Ending/changing the counter-response is instantaneous on a valid controller decision. Exact counter-response exchange/rate coefficients, weighting, and API details are balance/API work, but counter-responses must remain finite and cannot manufacture Population or duplicate the same committed Population across targets.
+Let:
+
+```text
+A = Population currently committed to the incoming attack
+R = Population currently committed to the counter-response
+```
+
+If either side is zero, no counter-response exchange occurs and the zero-strength operation ends as appropriate. Otherwise, counter-response combat resolves simultaneously from the same pre-tick `A` and `R`.
+
+The shared **base exchange volume** is proportional to the smaller force:
+
+```text
+B = k × min(A, R)
+```
+
+where `k` is a ruleset/tuning rate. This prevents a huge force from receiving a huge linear casualty-output multiplier merely because it is huge; its major advantage is its larger Population pool plus the bounded efficiency advantage below.
+
+Force-size advantage is determined from **relative**, not absolute, imbalance:
+
+```text
+d = (R - A) / (R + A)
+```
+
+so `d` lies between `-1` and `+1` and behaves the same at early-game and late-game scales. The imbalance is then deliberately flattened near parity with a nonlinear shape:
+
+```text
+s = sign(d) × |d|^p
+```
+
+with `p > 1`; **`p = 2` is the provisional V1 starting value**.
+
+Let `M` be the maximum permitted casualty-efficiency ratio between the advantaged and disadvantaged side. **`M = 1.5` is the provisional V1 starting cap.** Define:
+
+```text
+h = (M - 1) / (M + 1)
+```
+
+The default mirrored V1 multipliers are:
+
+```text
+responseMultiplier = 1 + h × s
+attackMultiplier   = 1 - h × s
+```
+
+and the simultaneous casualties are conceptually:
+
+```text
+attackPopulationLost   = B × responseMultiplier
+responsePopulationLost = B × attackMultiplier
+```
+
+with deterministic fixed-point/residual handling and hard caps so neither side loses more Population than it actually has.
+
+This construction keeps modest force differences close to equal efficiency and only approaches the cap for extreme ratios. The relative casualty-efficiency gap is bounded by `M`: an overwhelmingly larger side never becomes more than the configured maximum amount more casualty-efficient merely because of force ratio. The larger force still has the strategic advantage of a larger pool and therefore greater endurance.
+
+The ruleset should expose **attack-side** and **response-side** counter-combat effectiveness curves/parameters as semantically separate hooks even when their default V1 behavior is the mirrored formula above. Future explicit faction/item/ruleset mechanics may favor overwhelming attack or overwhelming response differently. Such mechanics must remain surfaced and deterministic; the final relative-efficiency cap remains enforced unless an explicit rule also modifies that cap.
+
+Ending/changing a surviving counter-response is instantaneous on a valid controller decision and returns its surviving Population to Available. A counter-response is tied to one incoming operation and cannot duplicate the same committed Population across multiple targets.
+
+Exact `k`, final `M`, final `p`, and future explicit side-specific modifiers are balance data rather than architectural questions.
 
 ---
 
@@ -805,18 +864,25 @@ On defeat, remaining controller activity and military commitments terminate acco
 
 Humans may resign. Official AI may capitulate according to its controller logic.
 
-A resigned/capitulated faction remains a territorial owner rather than instantly neutralizing/gifting its land.
+A resigned/capitulated faction becomes a **passive territorial remnant** rather than instantly neutralizing/gifting its land.
 
 Upon resignation/capitulation:
 
 - Population growth becomes permanently **0**;
 - the controller becomes permanently inactive and issues no further decisions;
 - active land offensive/counter-response commitments cease and their surviving Population becomes Available;
-- remaining Available Population continues automatic passive defense;
-- owned territory and static structures remain in place and may subsequently be conquered normally;
-- the faction receives no new strategic actions.
+- all owned **mobile units are removed from the simulation immediately**, including warships, trade ships, trains, transport ships, and equivalent future independently mobile units;
+- Population carried by a removed transport returns to the faction's Available Population rather than being killed;
+- removed mobile units provide no FFY/resource refund;
+- in-flight offensive projectiles/strategic weapons owned by that faction are cancelled/removed and do not later detonate or resolve offensively;
+- owned territory and static structures remain in place;
+- static **passive** effects may continue where their mechanic explicitly permits it, such as a Defense Post modifying an actual automatic defender;
+- static **active** behaviors cease: the capitulated faction launches no missiles, performs no SAM firing, spawns no new trade ships/trains/units, and initiates no other autonomous strategic action;
+- remaining Available Population continues automatic passive defense under the normal one-defender-per-threatened-cell rules;
+- the territory may subsequently be conquered normally;
+- the faction receives no new strategic actions of any kind.
 
-Exact passive/inert handling of inherited mobile units after resignation/capitulation remains part of unit-system translation, but they must not become a source of new controller-driven activity.
+This state intentionally leaves geography and surviving Population to be consumed by normal conquest while removing zombie mobile forces and post-capitulation offensive behavior.
 
 ### 21.4 Victory
 
@@ -934,13 +1000,12 @@ The following remain intentionally outside the settled design contract unless ot
 - exact deterministic memory codec;
 - exact capture-progress coefficients;
 - exact Population-growth coefficients/interpolation;
-- exact counter-response casualty/rate coefficients;
+- exact counter-response tuning constants (`k`, final `M`, final `p`) and future explicit attack-side/response-side modifier values;
 - exact Segment size heuristics;
 - exact terrain/fallout values;
 - exact FFY payouts;
 - exact AI reward values;
 - exact inherited naval/rail/strategic-weapon numerical translations where not specified;
-- passive/inert mobile-unit behavior after capitulation/resignation;
 - detailed lobby/UI experience;
 - supply/logistics connectivity as a separate system.
 
@@ -962,23 +1027,25 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 10. **Available Population limits how many threatened cells may receive that one automatic defender; surplus Population does not stack passive defense.**
 11. **Controller defensive priorities choose which scarce threatened cells are defended, not raw defensive Population quantities.**
 12. **Counter-responses spend committed Population to fight an incoming operation's committed Population directly; they do not reinforce passive cell defense.**
-13. **Offensive Population is committed instantly to sparse operations with spatial intent.**
-14. **An operation's engaged frontage cannot exceed its committed Population.**
-15. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
-16. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
-17. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
-18. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
-19. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
-20. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
-21. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
-22. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
-23. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
-24. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
-25. **FFY is event-driven, not passive Population taxation.**
-26. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-27. **Zero population-bearing territory after tick resolution means immediate defeat.**
-28. **Capitulated/resigned factions stop growth and decision-making but retain territory and surviving passive Population defense until conquered.**
-29. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-30. **Ordinary users cannot live-spectate unrelated matches.**
-31. **Historical matches bind exact rule-bearing versions.**
-32. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+13. **Counter-response force advantage is scale-free and nonlinear, stays close to parity for modest force ratios, and is bounded by an explicit maximum relative casualty-efficiency ratio.**
+14. **Attack-side and response-side counter-combat effectiveness are separate surfaced rule hooks even when V1 uses mirrored defaults.**
+15. **Offensive Population is committed instantly to sparse operations with spatial intent.**
+16. **An operation's engaged frontage cannot exceed its committed Population.**
+17. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
+18. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
+19. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
+20. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
+21. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
+22. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
+23. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
+24. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
+25. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
+26. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
+27. **FFY is event-driven, not passive Population taxation.**
+28. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+29. **Zero population-bearing territory after tick resolution means immediate defeat.**
+30. **Capitulated/resigned factions stop growth and decision-making, lose all mobile/offensive activity, but retain territory, static passive geography, and surviving automatic Population defense until conquered.**
+31. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+32. **Ordinary users cannot live-spectate unrelated matches.**
+33. **Historical matches bind exact rule-bearing versions.**
+34. **One canonical design document governs the target; one canonical integration plan governs the migration.**
