@@ -63,21 +63,20 @@ These numbers and trait effects remain subject to future balance revision unless
 | P17 | **X** | `Structure upgrade FFY cost × 0.99 per owned structure` | 7 |
 | P18 | **X** | `+100% offensive pressure for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area` | 5 |
 | P19 | **X** | `+5% offensive pressure per distinct other faction with which you currently have at least one Territorial Contact` | 7 |
-| P20 | **X** | `Start the game with a Missile Silo` | 7 |
-| P21 | **X** | `First of each structure does not consume FFY`* | 7 |
+| P20 | **X** | `Start the game with a free Missile Silo` | 7 |
+| P21 | **X** | `First purchase of each structure consumes 0 FFY`* | 7 |
 | P22 | **X** | `+2 to maximum Warship rank` | 6 |
 | P23 | **X** | `Warships +20% range, +20% damage, +20% speed, but you may only own one` | 8 |
-| P24 | **X** | `FFY events located inside Fort areas yield +20% FFY`** | 7 |
+| P24 | **X** | `FFY events located inside Fort areas yield +20% FFY` | 7 |
 | P25 | **X** | `Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area +50% and FFY cost +50%` | 10 |
-| P26 | **X** | `MIRV consumes 0 FFY but may only be used once` | 8 |
+| P26 | **X** | `You may use MIRV at most once; that MIRV requires ordinary affordability but consumes 0 FFY` | 8 |
 | P27 | **X** | `SAM Launchers may attack ships` | 9 |
 | P28 | **X** | `Destroying Transport Ships steals their Population` | 9 |
+| P29 | **X** | `Warships may serve as Missile Silo launch platforms from their current cell` | 9 |
 
 ### Positive-trait notes
 
-* P21: the player must still reach the ordinary required amount of FFY to satisfy the affordability/legality gate; the successful first build does not consume that FFY. This prevents constructing everything at `0 FFY` while preserving the intended free-first-build identity.
-
-** P24: Fort-area membership is mechanically practical. Exact definition of which FFY events have a spatial location and whether self-only or fixed-teammate Forts count for this particular trait remains to be settled.
+* P21: the player must still hold at least the ordinary required amount of FFY to satisfy the purchase affordability/legality gate. The successful first **purchase** of each structure consumes `0 FFY`. Starting structures, captured structures, or otherwise granted structures do not consume the first-purchase entitlement because they were not purchased.
 
 ---
 
@@ -95,17 +94,15 @@ These numbers and trait effects remain subject to future balance revision unless
 | N08 | **X** | `Forts provide no defensive-pressure bonus` | -4 |
 | N09 | **X** | `Cannot build Factories` | -6 |
 | N10 | **X** | `25% reduced Fort coverage area` | -4 |
-| N11 | **X** | `FFY events located inside SAM Launcher area yield 0 FFY`** | -7 |
+| N11 | **X** | `FFY events located inside SAM Launcher area yield 0 FFY` | -7 |
 | N12 | **X** | `Cannot build Warships` | -6 |
 | N13 | **X** | `50% of Transport Ship Population dies when landing` | -7 |
-| N14 | **X** | `Lose (1% of)/X FFY when a Trade Ship gets captured`*** | -4 |
+| N14 | **X** | `Lose (1% of)/X FFY when a Trade Ship gets captured`* | -4 |
 | N15 | **X** | `Transport Ships cost 500 FFY` | -5 |
 
 ### Negative-trait notes
 
-** N11: SAM range geometry already exists upstream; exact definition of spatial FFY-event membership in a SAM area remains to be settled.
-
-*** N14: exact value/formula TBD.
+* N14: exact value/formula TBD.
 
 ---
 
@@ -165,6 +162,8 @@ P11's SAM entitlement is monotonic within the match:
 
 Population falling later does not remove an unlocked slot and does not destroy an existing SAM. Starting Population contributes immediately to the initial peak.
 
+P11 is deliberately **genuinely free** rather than purchase-discounted: if a SAM slot is unlocked and all non-FFY build legality conditions are satisfied, build/upgrade cost is `0 FFY` and the faction does not need to possess the ordinary SAM price first.
+
 Exact `25,000` value remains balanceable catalogue data.
 
 ### S9 — P04 fixes only response-side effectiveness
@@ -175,32 +174,56 @@ This intentionally removes both the normal response-side bonus when overmatching
 
 The attack-side effectiveness calculation remains ordinary unless another explicit rule changes it.
 
+### S10 — free/granted/purchase semantics
+
+The currently accepted catalogue semantics are intentionally different for the four relevant traits:
+
+- **P20 — starting Missile Silo:** the starting Silo is genuinely free. No ordinary affordability check applies. It is a granted starting structure, not a purchase, and therefore does **not** consume P21's first-Missile-Silo purchase entitlement.
+- **P21 — first purchase of each structure:** the faction must first be able to afford the structure under ordinary purchase rules; if the purchase is otherwise legal, the first purchased instance of that structure type consumes `0 FFY`. Only purchases consume the entitlement.
+- **P26 — one MIRV:** the faction must hold enough FFY to satisfy ordinary MIRV affordability/legality, but the one permitted MIRV consumes `0 FFY`. The faction may use MIRV at most once during the match under this trait.
+- **P11 — SAM Launchers:** genuinely `0 FFY` with no ordinary affordability requirement, because the separate peak-Population unlock track is the controlling limiter.
+
+These are intentional mechanical distinctions and should be surfaced plainly in the player-facing descriptions/tooltips rather than collapsed into one generic "free" modifier.
+
+### S11 — common spatial FFY-event model
+
+An FFY-generating event may carry an optional **location cell** when the event has a meaningful world-space origin/destination.
+
+Spatial Origin/Echo/ruleset modifiers inspect that event location. Events with no meaningful location simply do not receive terrain/area-based FFY modifiers.
+
+Current intended examples:
+
+- enemy-structure capture FFY uses the captured structure's cell;
+- train-arrival FFY uses the cell at which the rewarding arrival/stop occurs;
+- Trade Ship arrival FFY uses the receiving Port's cell;
+- other spatial event types define one explicit versioned location rule when introduced;
+- global/non-spatial rewards have no location.
+
+For one given trait/effect, overlapping multiple qualifying Fort or SAM areas do **not** multiply the modifier: the event either qualifies for that effect or it does not. Distinct independent modifiers may still combine through the ordinary published modifier-composition rules when the same event location qualifies for several of them—for example, an event on Desert that is also inside a qualifying Fort area.
+
+This is one shared economy/event concept, not bespoke spatial-economy code per trait.
+
+### S12 — P29 makes Warships nuclear launch platforms
+
+P29 makes each owned Warship a valid **nuclear launch platform** for strategic weapons the faction is otherwise legally allowed to purchase/use.
+
+A launch from a Warship:
+
+- originates from the Warship's **current cell**;
+- uses ordinary weapon cost/affordability rules unless another explicit trait changes them;
+- obeys ordinary weapon-family restrictions, so P29 never restores a weapon prohibited by another trait/ruleset;
+- uses the ordinary Missile-Silo-style per-launch cooldown/reload semantics independently for that Warship;
+- does not transform the Warship into a building for structure counts, structure limits, Fort effects, purchase entitlements, or other unrelated rules.
+
+P29 therefore enables mobile/surprise nuclear launch positioning without making nuclear weapons free.
+
+Provisional cost: `9`.
+
 ---
 
 ## Remaining mechanical review notes
 
-### R1 — "free" trait interactions should be explicit, not accidental
-
-P20/P21/P11/P26 can interact with starting structures and free-build entitlements. Examples:
-
-- Does starting with a Missile Silo consume the "first Silo" entitlement from P21?
-- P11 currently says SAM build/upgrade cost is genuinely `0 FFY`; unlike P21 it does **not** state that ordinary affordability must first be reached. Confirm this is intended before deployment.
-- Does P26 require ever possessing the normal MIRV cost, or is the one MIRV genuinely free?
-
-These are catalogue semantics and should be explicit before the trait set is considered deployable.
-
-### R2 — spatial FFY-event semantics
-
-P14/P24/N04/N11 assume that FFY-generating events may carry an optional world location. This is a clean intended direction but still needs one canonical definition covering:
-
-- which FFY event kinds have a location;
-- which cell represents a trade/train/structure event;
-- what happens to a global/non-spatial FFY event;
-- whether overlapping Fort/SAM areas stack or simply qualify the event once.
-
-Avoid creating separate bespoke spatial-economy code for each trait.
-
-### R3 — intentionally poor combinations remain legal
+### R1 — intentionally poor combinations remain legal
 
 Because the Origin system has no compatibility matrix, combinations such as:
 
@@ -208,12 +231,13 @@ Because the Origin system has no compatibility matrix, combinations such as:
 - `+25% trains spawned` + `Cannot build Factories`;
 - upgrade-cost scaling + `Cannot spend FFY to upgrade buildings`;
 - MIRV-only bonuses + an Origin trait that prohibits MIRVs;
+- Warships-as-Missile-Silos + `Cannot build Warships`;
 
 remain structurally legal unless the catalogue itself is redesigned.
 
 These combinations may be strategically foolish or partly inert; that is different from being engine-invalid. The exhaustive deployment test must prove they remain deterministic and mechanically safe rather than forbidding them in production.
 
-### R4 — custom/nonstandard lobby rules may invalidate balance, not legality
+### R2 — custom/nonstandard lobby rules may invalidate balance, not legality
 
 Some traits depend strongly on systems such as nukes, SAMs, naval play, or factories. A custom lobby that disables one of those mechanics can make a drawback irrelevant or a positive trait useless.
 
@@ -245,6 +269,14 @@ For P27, prefer extracting/reusing the relevant **naval target-selection + gunne
 
 The conceptual model may still be thought of as an immobile Warship-like anti-ship battery inside the SAM; the implementation should share the behavior rather than create a fake unit.
 
+### Warships as Missile Silos
+
+Current `NukeExecution` already accepts an explicit launch-source cell, and ordinary Missile Silo behavior is largely launch-source eligibility plus per-launch cooldown/reload state. Nuclear projectiles themselves are spawned separately and travel from their source to the target.
+
+P29 should therefore be implemented by making an eligible Warship an alternate launcher/source and sharing the silo-style cooldown semantics on that Warship. Do not create a hidden Missile Silo building attached to the ship; that would unnecessarily contaminate structure ownership/count/build semantics.
+
+The launch command/controller legality surface should identify the chosen eligible launcher when more than one Silo/Warship source exists, rather than relying on an opaque engine choice that would undermine the trait's positioning value.
+
 ### Transport Population theft
 
 Transport Ships already carry explicit troop/Population payload state and destruction knows both destroyer and payload. P28 therefore has a strong existing implementation seam: Open Fufu can translate destruction from "payload dies" to "eligible destroyer receives payload" without inventing transport payload accounting from scratch.
@@ -255,10 +287,9 @@ Transport Ships already carry explicit troop/Population payload state and destru
 
 Before creating Official Origins or anime-reference trait names:
 
-1. settle the remaining free-build interactions in R1;
-2. settle one common spatial FFY-event model for P14/P24/N04/N11;
-3. continue reviewing candidates for effects that still feel too Echo-like or redundant;
-4. polish wording as individual mechanics stabilize;
-5. then assign anime/JRPG reference names only after the effect is stable enough that the reference can match the mechanic;
-6. only after that build the first Official Origins from this same pool;
-7. before deployment, exhaustively enumerate every builder-legal combination under the final candidate catalogue and builder rules.
+1. continue reviewing candidates for effects that still feel too Echo-like, redundant, excessively map-dependent, or unintentionally dominant;
+2. resolve remaining unclear individual wording/value questions such as N14's Trade Ship-loss FFY penalty;
+3. polish wording as individual mechanics stabilize;
+4. then assign anime/JRPG reference names only after each effect is stable enough that the reference can match the mechanic;
+5. only after that build the first Official Origins from this same pool;
+6. before deployment, exhaustively enumerate every builder-legal combination under the final candidate catalogue and builder rules.
