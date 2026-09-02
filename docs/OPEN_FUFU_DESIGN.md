@@ -59,7 +59,7 @@ The engine should expose low-level strategy-neutral primitives while still allow
 
 Open Fufu should strongly prefer explicit, surfaced mechanics over hidden modifiers and corrective special cases.
 
-If a modifier materially affects Population growth, combat, trade, structure behavior, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an item, a ruleset value, or another explicit mechanic.
+If a modifier materially affects Population growth, combat, trade, structure behavior, spawning, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an item, a ruleset value, or another explicit mechanic.
 
 Do not quietly grant hidden reserve bonuses, hidden large/small-faction bonuses, invisible AI cheats, or similar behavior merely to steer outcomes.
 
@@ -152,9 +152,10 @@ A match must bind every rule-bearing input needed to define what that match mean
 - exact official PvE AI preset versions;
 - equipped item identities/seeds;
 - item-generator versions;
+- spawn-mode/configuration and spawn-resolution version where relevant;
 - any other versioned data that materially changes deterministic simulation.
 
-Changing a combat formula, controller API, AI preset, item generator, or map later must not silently change historical matches.
+Changing a combat formula, controller API, AI preset, item generator, spawn resolver, or map later must not silently change historical matches.
 
 Replay/debug tooling should eventually expose:
 
@@ -294,7 +295,7 @@ Persistent directives remain active when the controller does not mention them on
 
 Broken/incomplete drafts may be saved. Only controller versions that pass mandatory certification may be published/used in real matches.
 
-Certification should exercise startup, neutral expansion, hostile contact, multiple enemies, partial Segment ownership, Population/FFY changes, disappearing/capitulating opponents, naval/amphibious opportunities, construction success/failure, rapid territory changes, `atWar` transitions, very low Population, simultaneous attacks, invalid commitments, target races, and runtime resource limits.
+Certification should exercise startup, neutral expansion, hostile contact, multiple enemies, partial Segment ownership, Population/FFY changes, disappearing/capitulating opponents, naval/amphibious opportunities, construction success/failure, rapid territory changes, `atWar` transitions, very low Population, simultaneous attacks, invalid commitments, target races, spawn lifecycle fallbacks where applicable, and runtime resource limits.
 
 Certification rejects syntax/type/compile errors, runtime exceptions, timeout/memory violations, non-finite numeric output, invalid API arguments, malformed decisions, impossible commitments, and other controller-contract violations.
 
@@ -337,7 +338,7 @@ On failure:
 - the failure is logged;
 - later controller invocations are attempted again.
 
-If the **first-ever invocation** fails:
+If the **first-ever normal match invocation** fails:
 
 ```text
 all Population is Available
@@ -347,6 +348,8 @@ no new actions/orders/directives
 ```
 
 The faction still receives normal automatic defense. Persistent failures trigger a deterministic circuit breaker; sufficiently persistent failure marks the controller **FAULTED** for the remainder of the match. No replacement AI takes over.
+
+Pre-match spawn-hook failure is handled by deterministic spawn defaults and does not by itself fault an otherwise valid controller.
 
 ### 7.6 Diagnostics
 
@@ -410,9 +413,11 @@ For V1, population-bearing cells are ordinary conquerable land cells, including 
 1 owned population-bearing cell = 1 Population Capacity
 ```
 
-No structure, item, faction trait, terrain multiplier, or hidden modifier increases Population Capacity while this rule is in force.
+No structure, item, faction trait, terrain multiplier, or hidden modifier increases the Capacity value of an already owned cell while this rule is in force.
 
-Cities do **not** increase Capacity. Items must not provide `+Population Capacity`, `+Max Population`, or equivalent effects.
+Cities do **not** increase Capacity. Items must not provide `+Population Capacity`, `+Max Population`, or equivalent per-territory effects.
+
+A surfaced **Initial Territory** starting-state modifier is compatible with this invariant because it changes how many population-bearing cells the faction owns at match start. Those additional owned cells then contribute ordinary Capacity at exactly one Capacity each. The modifier changes starting ownership, not Capacity-per-cell.
 
 Territorial loss may leave current Population above Capacity. Capacity loss does not itself delete excess Population; ordinary positive growth is suppressed until sustainable again, except where the same event explicitly causes Population casualties under another rule.
 
@@ -939,7 +944,7 @@ The game may contain a very large deterministic/versioned item catalogue. Each i
 
 Items may contain one or two modifiers, positive effects, drawbacks, mixed combinations, deterministic names/flavor/visual identity, and a positive sampling weight.
 
-V1 items must **not** modify Population Capacity / maximum Population while Capacity remains exactly territory-derived.
+V1 items must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived.
 
 Allowed modifier families may include:
 
@@ -950,6 +955,7 @@ Allowed modifier families may include:
 - structures;
 - naval/unit behavior;
 - terrain interactions;
+- explicit starting-state modifiers such as **Initial Territory**, which change starting owned-cell count rather than Capacity-per-cell;
 - other explicit surfaced mechanics.
 
 ### 23.2 Modifier stacking
@@ -1229,11 +1235,88 @@ The official SDK may provide pure helpers/builders for selectors, priorities, de
 
 It should not ship privileged strategy functions such as `pickWeakestEnemy`, `turtle`, `blitz`, `bestNukeTarget`, or equivalent doctrine. Players may freely build those abstractions themselves.
 
-### 24A.20 Spawn lifecycle is deliberately not settled here
+### 24A.20 Three-phase strategic spawning
 
-Random spawning remains a supported game mode. The preferred ordinary Open Fufu experience is expected to use **non-random spawn selection more often than random spawning**, and players should normally receive some controlled information about where other participants have spawned.
+Ordinary Open Fufu games should generally use a **three-phase strategic spawn protocol**. Random and fixed spawn modes remain supported alternatives.
 
-The exact spawn-selection protocol, simultaneity/information timing, collision resolution, whether the controller chooses exact cells versus regions/preferences, and how much opponent spawn information is visible are **open design questions** and must be settled before defining any final controller spawn hook.
+The normal strategic protocol is:
+
+```text
+STATIC MAP / MATCH CONFIG
+        ↓
+PHASE 1 — initial broad influence choice
+        ↓
+all Phase-1 influence areas are revealed
+        ↓
+PHASE 2 — optional simultaneous reconsideration
+        ↓
+all final influence areas are revealed
+        ↓
+PHASE 3 — exact spawn-origin choice inside final influence area
+        ↓
+exact origins resolve simultaneously and are revealed
+        ↓
+initial territory footprints are generated
+        ↓
+MATCH STARTS
+```
+
+#### Phase 1 — initial broad influence choice
+
+Each participant receives the static map, Segments, ruleset/lobby constraints, legal spawn-space information, and other pre-match public facts. Each simultaneously chooses a broad **spawn influence area** or its anchor using a ruleset-defined shape/scale.
+
+Influence areas are **not exclusive claims or territory**. They are legal search spaces for the later exact spawn origin, and they are allowed—indeed expected—to overlap with other participants' influence areas.
+
+After every Phase-1 choice resolves, all participants see every participant's Phase-1 influence area.
+
+#### Phase 2 — optional reconsideration
+
+Each participant gets exactly one simultaneous chance to keep or change their broad influence choice using the newly revealed information about everyone else's Phase-1 intent.
+
+Participants do **not** see other Phase-2 revisions while choosing their own. After Phase 2 locks, all final influence areas are revealed together. There is no endless counter-picking loop.
+
+This second broad-choice round exists specifically so one unlucky or poorly informed initial preference does not feel like an irreversible pre-match mistake.
+
+#### Phase 3 — exact spawn origin
+
+Each participant simultaneously chooses an exact legal **spawn origin cell** inside their final influence area while knowing all final influence areas.
+
+Exact-origin conflicts/collisions are resolved deterministically from the simultaneous submissions. All final exact origins are then revealed before the first normal simulation decision, consistent with globally visible territorial ownership once the match begins.
+
+The controller chooses an origin, not an arbitrary hand-painted starting territory.
+
+### 24A.21 Initial Territory and starting footprint
+
+Each faction has a surfaced **Initial Territory** starting-state value equal to the target number of population-bearing cells it should own when the match begins.
+
+The ruleset provides the ordinary base value. Explicit items or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
+
+After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each origin using nearby legal population-bearing cells.
+
+Important rules:
+
+- broad spawn influence areas do not reserve cells and overlap between influence areas does not itself reduce anyone's Initial Territory;
+- competing starting footprints are resolved simultaneously rather than by player/controller execution order;
+- when the legal map topology can support it, footprint resolution continues outward as necessary so each faction receives its full Initial Territory count even when nearby footprints compete for cells;
+- the footprint algorithm must remain deterministic, versioned, and independent of controller execution timing;
+- the final number of owned population-bearing cells becomes the faction's ordinary starting Population Capacity under the existing `1 owned cell = 1 Capacity` rule;
+- an Initial Territory bonus does **not** change the Capacity value of individual cells;
+- starting **current Population** is a separate ruleset quantity and is not implicitly required to equal Initial Territory unless a later explicit rule chooses that relationship;
+- Initial Territory does not automatically enlarge the broad spawn-influence radius unless an explicit future modifier says so.
+
+Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, influence-area radius/shape, and numeric Initial Territory values are implementation/tuning details so long as the invariants above hold.
+
+### 24A.22 Spawn modes and controller lifecycle
+
+Open Fufu supports at least:
+
+- **Strategic Spawn** — the three-phase protocol above and the ordinary preferred mode;
+- **Random Spawn** — deterministic match-seeded legal placement that bypasses controller strategic spawn choices;
+- **Fixed Spawn** — exact configured starts for benchmarks, certification, debugging, tournaments/scenarios, and reproducible tests.
+
+Strategic-spawn controller hooks are specialized **pre-match lifecycle hooks**, separate from the normal `decide()` loop. Exact TypeScript names are implementation work, but the conceptual phases correspond to initial influence choice, optional reconsideration, and exact-origin choice.
+
+A controller is not required to implement spawn-specific logic. Missing, malformed, rejected, or failed spawn-hook output falls back to a deterministic legal default policy rather than faulting the controller for the match.
 
 ---
 
@@ -1241,8 +1324,8 @@ The exact spawn-selection protocol, simultaneity/information timing, collision r
 
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
-- exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing;
-- exact spawn-selection protocol and controller spawn hook;
+- exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
+- exact strategic-spawn influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
 - exact wire protocol/session encoding;
@@ -1276,33 +1359,36 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 9. **Every real map cell belongs to exactly one Segment.**
 10. **Population is one global whole-integer faction resource.**
 11. **Population Capacity equals owned population-bearing cells exactly.**
-12. **There is no persistent defensive cell Population allocation.**
-13. **Automatic defense is binary per threatened owned cell: 0 or 1 Population, never more than 1.**
-14. **Available Population limits how many threatened cells may receive that one automatic defender; surplus Population does not stack passive defense.**
-15. **Controller defensive priorities choose which scarce threatened cells are defended, not raw defensive Population quantities.**
-16. **Counter-responses spend committed Population to fight an incoming operation's committed Population directly; they do not reinforce passive cell defense.**
-17. **Offensive Population is committed instantly to sparse operations with spatial intent.**
-18. **An operation's engaged frontage cannot exceed its committed Population.**
-19. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
-20. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
-21. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
-22. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
-23. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
-24. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
-25. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
-26. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
-27. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
-28. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
-29. **Strategically relevant active mechanical modifiers are publicly surfaced.**
-30. **Derived controller helpers never leak information outside the controller's legal observation projection.**
-31. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
-32. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
-33. **FFY is event-driven, not passive Population taxation.**
-34. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-35. **Zero population-bearing territory after tick resolution means immediate defeat.**
-36. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-37. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-38. **Ordinary users cannot live-spectate unrelated matches.**
-39. **Historical matches bind exact rule-bearing versions.**
-40. **Random spawn remains supported, but the ordinary non-random spawn protocol remains an explicit unresolved design question.**
-41. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+12. **Initial Territory may change starting owned-cell count but never changes the one-Capacity-per-owned-cell rule.**
+13. **There is no persistent defensive cell Population allocation.**
+14. **Automatic defense is binary per threatened owned cell: 0 or 1 Population, never more than 1.**
+15. **Available Population limits how many threatened cells may receive that one automatic defender; surplus Population does not stack passive defense.**
+16. **Controller defensive priorities choose which scarce threatened cells are defended, not raw defensive Population quantities.**
+17. **Counter-responses spend committed Population to fight an incoming operation's committed Population directly; they do not reinforce passive cell defense.**
+18. **Offensive Population is committed instantly to sparse operations with spatial intent.**
+19. **An operation's engaged frontage cannot exceed its committed Population.**
+20. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
+21. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
+22. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
+23. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
+24. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
+25. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
+26. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
+27. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
+28. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
+29. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
+30. **Strategically relevant active mechanical modifiers are publicly surfaced.**
+31. **Derived controller helpers never leak information outside the controller's legal observation projection.**
+32. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
+33. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
+34. **FFY is event-driven, not passive Population taxation.**
+35. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+36. **Zero population-bearing territory after tick resolution means immediate defeat.**
+37. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
+38. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+39. **Ordinary users cannot live-spectate unrelated matches.**
+40. **Historical matches bind exact rule-bearing versions.**
+41. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
+42. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+43. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
+44. **One canonical design document governs the target; one canonical integration plan governs the migration.**
