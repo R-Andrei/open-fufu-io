@@ -19,7 +19,8 @@ Open Fufu is a browser-viewable territorial strategy game/autobattler in which t
 The player does not normally issue moment-to-moment commands during a match. Before the match the player selects:
 
 - an immutable version of their faction controller;
-- a PvE item loadout where applicable;
+- one immutable **Origin**, official or custom;
+- a PvE **Echo** loadout where applicable;
 - the lobby/game configuration.
 
 Once the match begins, the controller governs the faction.
@@ -59,11 +60,28 @@ The engine should expose low-level strategy-neutral primitives while still allow
 
 Open Fufu should strongly prefer explicit, surfaced mechanics over hidden modifiers and corrective special cases.
 
-If a modifier materially affects Population growth, combat, trade, structure behavior, spawning, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an item, a ruleset value, or another explicit mechanic.
+If a modifier materially affects Population growth, combat, trade, structure behavior, spawning, or another strategic quantity, it should normally come from a visible rule-bearing source such as terrain, a structure, an Origin trait, an Echo, a ruleset value, or another explicit mechanic.
 
 Do not quietly grant hidden reserve bonuses, hidden large/small-faction bonuses, invisible AI cheats, or similar behavior merely to steer outcomes.
 
-### 1.3 Match-duration target
+### 1.3 Three complementary power-expression axes
+
+Open Fufu intentionally separates three different ways a player expresses power and strategy:
+
+```text
+Controller
+= how the faction thinks and decides
+
+Origin
+= what kind of faction it fundamentally is
+
+Echoes
+= collectible dialogue-line modifiers used to specialize the build
+```
+
+Origins and Echoes must not become substitutes for controller quality. The controller remains the primary strategic/intelligence layer.
+
+### 1.4 Match-duration target
 
 A broad range of roughly **15 minutes to 2 hours** is acceptable, with ordinary games preferably finishing in under an hour. Exact pacing is balance work rather than a hard design constant.
 
@@ -92,12 +110,12 @@ Open Fufu service
    |- controller execution
    |- official PvE AI
    |- controller versions
-   |- progression / items
+   |- Origins / Echoes / progression
    |- matches / replays / logs
    `- browser viewer/editor/debugger
 ```
 
-Foof may own Discord-facing commands, identity handoff, lobby/match initiation, controller/loadout selection where useful, links into browser surfaces, and result/reward presentation.
+Foof may own Discord-facing commands, identity handoff, lobby/match initiation, controller/Origin/Echo-loadout selection where useful, links into browser surfaces, and result/reward presentation.
 
 Foof must not:
 
@@ -150,12 +168,14 @@ A match must bind every rule-bearing input needed to define what that match mean
 - controller runtime/API version;
 - exact immutable player-controller versions;
 - exact official PvE AI preset versions;
-- equipped item identities/seeds;
-- item-generator versions;
+- exact Origin definition/version for every faction;
+- Origin-trait catalogue/version where relevant;
+- equipped Echo identities/seeds;
+- Echo-generator/catalogue versions;
 - spawn-mode/configuration and spawn-resolution version where relevant;
 - any other versioned data that materially changes deterministic simulation.
 
-Changing a combat formula, controller API, AI preset, item generator, spawn resolver, or map later must not silently change historical matches.
+Changing a combat formula, controller API, AI preset, Origin trait, Echo generator, spawn resolver, or map later must not silently change historical matches.
 
 Replay/debug tooling should eventually expose:
 
@@ -413,9 +433,9 @@ For V1, population-bearing cells are ordinary conquerable land cells, including 
 1 owned population-bearing cell = 1 Population Capacity
 ```
 
-No structure, item, faction trait, terrain multiplier, or hidden modifier increases the Capacity value of an already owned cell while this rule is in force.
+No structure, Echo, Origin trait, faction trait, terrain multiplier, or hidden modifier increases the Capacity value of an already owned cell while this rule is in force.
 
-Cities do **not** increase Capacity. Items must not provide `+Population Capacity`, `+Max Population`, or equivalent per-territory effects.
+Cities do **not** increase Capacity. Echoes and Origins must not provide `+Population Capacity`, `+Max Population`, or equivalent per-territory effects.
 
 A surfaced **Initial Territory** starting-state modifier is compatible with this invariant because it changes how many population-bearing cells the faction owns at match start. Those additional owned cells then contribute ordinary Capacity at exactly one Capacity each. The modifier changes starting ownership, not Capacity-per-cell.
 
@@ -467,7 +487,7 @@ ActualGrowth
 
 The exact exponent is tuning data, with roughly `0.7–0.8` a reasonable test range.
 
-Cities and allowed Population-growth items contribute through explicit growth modifiers rather than Capacity.
+Cities and allowed Population-growth Origin traits/Echoes contribute through explicit growth modifiers or explicit Origin growth-profile rules rather than Capacity.
 
 Let:
 
@@ -593,7 +613,7 @@ If Available Population is lower than the threatened surface, the finite defense
 
 A merely adjacent but inactive border does not consume defense. The same Available Population must never be duplicated across cells, contacts, or attackers. If multiple hostile operations contest the same owned target cell, that cell still receives at most one automatic defender.
 
-Terrain, Defense Posts, items, and other explicit local modifiers may modify the effectiveness of that one defender; they do not increase the automatic Population count above one.
+Terrain, Defense Posts, Origins, Echoes, and other explicit local modifiers may modify the effectiveness of that one defender; they do not increase the automatic Population count above one.
 
 If Available Population is zero, baseline Population defense is zero.
 
@@ -668,7 +688,7 @@ responsePopulationLost = B × attackMultiplier
 
 with deterministic fixed-point/residual handling and hard caps so neither side loses more Population than it actually has.
 
-The ruleset exposes **attack-side** and **response-side** counter-combat effectiveness curves/parameters as semantically separate hooks even when their default V1 behavior is mirrored. Future explicit faction/item/ruleset mechanics may favor overwhelming attack or overwhelming response differently.
+The ruleset exposes **attack-side** and **response-side** counter-combat effectiveness curves/parameters as semantically separate hooks even when their default V1 behavior is mirrored. Future explicit Origin/Echo/ruleset mechanics may favor overwhelming attack or overwhelming response differently.
 
 Ending/changing a surviving counter-response is instantaneous on a valid controller decision and returns its surviving Population to Available. A counter-response is tied to one incoming operation and cannot duplicate the same committed Population across multiple targets.
 
@@ -680,7 +700,7 @@ Exact `k`, final `M`, final `p`, and future explicit side-specific modifiers are
 
 Combat is deterministic and cell-resolved.
 
-For each engaged target cell, local effective attack pressure is derived from finite attacker pressure and explicit modifiers. Local automatic defense is either zero or one Population before terrain/structure/item modifiers. Counter-response combat against the offensive operation is separate from passive cell defense.
+For each engaged target cell, local effective attack pressure is derived from finite attacker pressure and explicit modifiers. Local automatic defense is either zero or one Population before terrain/structure/Origin/Echo modifiers. Counter-response combat against the offensive operation is separate from passive cell defense.
 
 ### 14.1 Capture direction
 
@@ -834,9 +854,12 @@ At minimum:
 - faction Total Population;
 - Territory %;
 - FFY;
+- the faction's selected Origin and full mechanical Origin-trait sheet;
 - active public mechanical modifier sheets/rule-bearing faction effects.
 
-Mechanical modifiers should not need to be reverse-engineered from outcomes. Exact cosmetic item identity may be presented separately, but strategically relevant active modifiers are surfaced.
+Mechanical modifiers should not need to be reverse-engineered from outcomes. Exact Echo dialogue/cosmetic presentation may be presented separately, but strategically relevant active modifiers are surfaced.
+
+For Strategic Spawn, every participant's Origin, Initial Territory, starting-state effects, and other strategically relevant public spawn-affecting modifiers are visible before Phase 1.
 
 ### 19.2 Operational/local information
 
@@ -862,11 +885,26 @@ The authoritative server enforces these information boundaries; browser-only hid
 
 FFY is the primary in-match currency and is **not** passive `Population → money per second` income.
 
-It is generated through explicit world/economic events such as trade ship success/capture, trains/station economics, configured territorial/objective captures, piracy/capture, and future explicit economic events.
+It is generated through explicit world/economic events such as trade ship success/capture, trains/station economics, configured territorial/objective captures, piracy/capture, hostile structure capture, faction elimination, and future explicit economic events.
 
 Population committed to warfare does not secretly reduce FFY through an unstated labor penalty.
 
-Trade with enemies remains possible. Default wartime economic penalty direction is **50%**, subject to explicit modifiers. Interdiction/warships may create in-world economic losses.
+Trade with enemies remains possible. Default wartime economic penalty direction is **50%**, subject to explicit modifiers.
+
+### 20.1 Broad FFY modifier surfaces
+
+For modifier design, FFY should expose a **small set of broad economic source families** rather than turning every individual FFY event into a separate build-stat axis. Exact final naming belongs to implementation, but the intended shape is roughly:
+
+- generic/overall FFY;
+- military/conquest FFY;
+- naval/trade FFY;
+- industrial FFY.
+
+Individual events still retain their precise event identity internally for simulation, replay, and debugging. Origin/Echo modifiers normally target the broad economic family relevant to that event rather than a large catalogue of hyper-granular event-specific multipliers.
+
+Explicit identity-defining rule exceptions may still exist as curated Origin traits. For example, an Origin may explicitly alter or remove the ordinary wartime trade penalty. Such exceptions are authored mechanics, not arbitrary player formulas.
+
+The Origin and Echo catalogues should be curated so a narrow Echo does not trivially erase the defining drawback that makes an Origin strategically distinct. This is a catalogue-design responsibility, not a hidden Origin/Echo incompatibility rule.
 
 ---
 
@@ -928,7 +966,9 @@ Team PvE is available only with multiple **human** players; AI teammates cannot 
 
 Official PvE AI presets are creator-authored, not uploaded by ordinary players.
 
-Official AI obeys the same gameplay rules as player controllers: same visibility, Population/FFY, structures/units, legal actions, combat equations, and no hidden resource multipliers, omniscience, or teleportation.
+Official AI obeys the same gameplay rules as player controllers: same visibility, Population/FFY, Origins/Echoes, structures/units, legal actions, combat equations, and no hidden resource multipliers, omniscience, or teleportation.
+
+Official AI factions select/bind Origins under the same game rules. Official Origins do not receive privileged hidden bonuses merely because they are creator-authored.
 
 Trusted runtime execution is allowed operationally; difficulty comes from strategy quality. Reusable internal strategy components are encouraged but do not become privileged player-facing policies.
 
@@ -936,29 +976,143 @@ Reference personalities may include Tanya-style concentrated breakthrough, Reinh
 
 ---
 
-## 23. Items, loadouts, rarity, and PvE progression
+## 23. Origins, Echoes, loadouts, rarity, and PvE progression
 
-### 23.1 Item catalogue
+### 23.1 Origins
 
-The game may contain a very large deterministic/versioned item catalogue. Each item has stable identity tied to an item seed/identity and generator version, and intentionally duplicate complete mechanical signatures should be rejected.
+An **Origin** defines a faction's fundamental mechanical identity for the match. Exactly one Origin is selected for each faction before Strategic Spawn and remains immutable for that match.
 
-Items may contain one or two modifiers, positive effects, drawbacks, mixed combinations, deterministic names/flavor/visual identity, and a positive sampling weight.
+Open Fufu supports:
 
-V1 items must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived.
+- **Official Origins** authored/curated by the game creator; and
+- **Custom Origins** assembled by players through the Origin creator.
 
-Allowed modifier families may include:
+Official and Custom Origins use the **same public trait catalogue, the same point accounting, the same trait-count limit, and the same drawback-refund rule**. Official Origins receive no hidden points, secret traits, invisible modifiers, privileged formulas, or creator-only gameplay exceptions.
+
+An Official Origin is therefore a curated example of an interesting legal build from the same creator available to players, not a mechanically privileged faction class.
+
+A Custom Origin is declarative/versioned data, not executable code. It contains a chosen set of server-defined trait identities plus presentation metadata such as a user-facing name/visual identity where supported.
+
+Origins are fully mechanically public during the match and before Strategic Spawn.
+
+### 23.2 Origin trait catalogue and creator
+
+Origin traits come only from a **curated server-defined trait catalogue**. Players select traits supplied by the game; they do not supply formulas, scripts, callbacks, or arbitrary numeric parameters.
+
+Each trait is one authored mechanical package with one authored point cost or drawback refund. Trait prices are deliberately hand-designed and later playtested rather than derived from a claim that every percentage point has a universally calculable value.
+
+There are **no trait tiers**. If the catalogue contains a strong Initial Territory trait and a different milder trait, they are distinct authored traits rather than `Trait I / II / III` levels of one effect.
+
+There is **no Major/Minor trait taxonomy**, no required trait categories, no hidden incompatibility families, and no combination-specific exclusion matrix. Mechanically transformative traits and simpler scalar traits are all simply Origin traits; their effect and authored cost communicate their significance.
+
+Traits may modify explicit typed game-rule hooks, including structural profiles rather than only scalar percentages. Examples of legal design space include:
+
+- increased Initial Territory paired with another drawback;
+- a higher Starting Population percentage paired with weaker long-term growth;
+- replacing the ordinary Population-utilization growth profile with a wider optimal band and harsher penalties outside it;
+- stronger military/conquest FFY and weaker peaceful/general economy;
+- stronger trade/naval FFY;
+- an explicit Origin rule that changes/removes the normal wartime trade penalty;
+- stronger automatic defensive pressure with weaker offensive pressure, or the reverse;
+- other explicit surfaced rule transformations compatible with the canonical mechanics.
+
+The player chooses only the curated trait. The underlying trait may alter several typed rules/parameters, but the player never provides the formula itself.
+
+### 23.3 Simple public construction constraints
+
+Custom Origin construction intentionally remains simple. The creator exposes only a small set of universal constraints:
+
+1. a base **Origin Point** budget;
+2. a maximum number of selected traits;
+3. a maximum amount of additional spend that may be financed by negative-trait refunds.
+
+Exact numerical values are tuning data.
+
+Negative traits may finance stronger specialization, but their total refundable contribution is capped so a player cannot stack a large pile of irrelevant drawbacks to create an extreme positive budget. The small overall trait-count cap also keeps Origins readable and prevents giant modifier spreadsheets.
+
+An Origin is not required to spend every point or fill every trait slot.
+
+Balance is not required to make every trait mathematically identical by a universal metric. Small power differences are acceptable. The design goal is that every trait offers something meaningful, legal combinations remain sane, and different builds produce genuinely different controller problems/playstyles.
+
+### 23.4 Every public-legal trait combination is legal
+
+This is a hard design invariant:
+
+> **If a trait exists in the deployed Origin catalogue, every combination of deployed traits that satisfies the published point budget, trait-count limit, and drawback-refund limit is a legal Origin.**
+
+There are no hidden production compatibility checks and no runtime `trait A cannot be combined with trait B` escape hatch.
+
+Production validation may reject only ordinary structural invalidity such as:
+
+- an unknown/removed trait ID;
+- a mismatched catalogue/version identity;
+- exceeding the published Origin Point budget;
+- exceeding the published trait-count limit;
+- exceeding the published maximum drawback refund;
+- malformed Origin data.
+
+It must not reject an otherwise public-legal combination because development later discovered that two catalogue traits interact badly. If such an interaction exists, the catalogue is defective and must be fixed before deployment.
+
+### 23.5 Exhaustive pre-deployment Origin-catalogue testing
+
+Origin combination safety is a **development/deployment-gate responsibility**, not a gameplay restriction.
+
+Because the trait catalogue and creator constraints are deterministic and the trait-count cap keeps the state space bounded, automated tests should enumerate **every legal trait combination** in each candidate catalogue version before that catalogue can ship.
+
+The exhaustive suite should verify, at minimum:
+
+- every public-legal combination constructs successfully;
+- every combination serializes/hashes deterministically;
+- no combination produces non-finite, negative, structurally invalid, or engine-unsafe rule values;
+- Population growth profiles remain mathematically valid;
+- offense/defense/counter-response hooks remain within deliberate engine-safe domains;
+- FFY multipliers/rule exceptions remain valid;
+- Initial Territory/Starting Population effects remain compatible with spawn/map invariants;
+- Origin + ruleset composition preserves canonical invariants;
+- representative Origin + Echo composition does not violate engine invariants;
+- every Official Origin is itself an ordinary legal combination from the same catalogue.
+
+If any legal combination fails, the candidate catalogue/version **does not deploy**. The correct fix is to redesign/reprice/remove a trait or otherwise repair the catalogue/public budget, not add a secret combination restriction in production.
+
+Property/fuzz tests may supplement this exhaustive suite, but they do not replace exhaustive enumeration of legal Origin combinations.
+
+### 23.6 Origin versus Echo design space
+
+Origins and Echoes intentionally overlap in the mechanics they can influence but serve different design roles.
+
+Origins are few, defining, immutable-for-match faction traits and may change starting state, economic identity, growth profiles, combat tradeoffs, or other rule shapes.
+
+Echoes are collectible anime-dialogue-line modifiers equipped in a multi-slot loadout. They should generally be narrower and more build-oriented. The Echo catalogue should be curated so ordinary Echo combinations do not trivially erase the defining drawback that gives an Origin its identity.
+
+This separation is achieved by responsible catalogue design rather than hidden Origin/Echo incompatibility restrictions.
+
+### 23.7 Echo catalogue
+
+The collectible system formerly called **items** is canonically named **Echoes**.
+
+An Echo is an anime/JRPG/gacha-flavored collectible represented by a dialogue line or equivalent character-flavor text and carrying one or two deterministic mechanical modifiers.
+
+The game may contain a very large deterministic/versioned Echo catalogue. Each Echo has stable identity tied to an Echo seed/identity and generator/catalogue version, and intentionally duplicate complete mechanical signatures should be rejected.
+
+Echoes may contain one or two modifiers, positive effects, drawbacks, mixed combinations, deterministic dialogue/flavor/visual identity, and a positive sampling weight.
+
+Echoes must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived.
+
+Allowed Echo modifier families may include:
 
 - Population growth;
 - offensive pressure;
 - defensive pressure;
-- FFY/trade;
+- broad FFY/trade/economic multipliers;
 - structures;
 - naval/unit behavior;
 - terrain interactions;
 - explicit starting-state modifiers such as **Initial Territory**, which change starting owned-cell count rather than Capacity-per-cell;
-- other explicit surfaced mechanics.
+- other explicit surfaced mechanics that do not undermine the intended Origin/Echo separation.
 
-### 23.2 Modifier stacking
+### 23.8 Modifier stacking and rule composition
+
+For ordinary flat/percentage modifier calculations:
 
 ```text
 final = (base + sum(flat)) × (1 + sum(percentage))
@@ -966,21 +1120,35 @@ final = (base + sum(flat)) × (1 + sum(percentage))
 
 Percentage modifiers in the same calculation are additive before multiplication unless an explicit mechanic says otherwise.
 
-### 23.3 Sampling weights and rarity
-
-Every normally droppable item has positive sampling weight:
+Conceptually, effective rules compose from surfaced sources such as:
 
 ```text
-P(item) = itemWeight / sum(eligibleWeights)
+ruleset base
+→ Origin structural rules / modifiers
+→ Echo modifiers
+→ terrain / structures / situational effects
+→ effective mechanic
+```
+
+This is not intended as a universal literal implementation ordering for every mechanic; explicit typed rule hooks define exact semantics. Structural Origin traits such as replacing a Population-growth profile operate through those explicit rule hooks rather than pretending to be ordinary percentage modifiers.
+
+The public mechanical sheet should expose effective values and their relevant surfaced sources.
+
+### 23.9 Echo sampling weights and rarity
+
+Every normally droppable Echo has positive sampling weight:
+
+```text
+P(Echo) = EchoWeight / sum(eligibleWeights)
 ```
 
 Lower weight means rarer. Conventional rarity tiers are not required. Power should influence rarity, while deterministic collectible/flavor variation may also influence weight.
 
 Displayed inherent rarity is based on the normal global table, not a temporary filtered store table.
 
-### 23.4 PvE rewards
+### 23.10 PvE rewards
 
-A won configured PvE match awards independent item rolls determined by the configured opposing official AI presets. The player keeps the rarest result according to normal drop probability/weight.
+A won configured PvE match awards independent Echo rolls determined by the configured opposing official AI presets. The player keeps the rarest result according to normal drop probability/weight.
 
 AI contribution depends on being present in the won match, not personal kill credit.
 
@@ -998,15 +1166,17 @@ Example for solo-equivalent 9:
 3 humans → 3 each
 ```
 
-### 23.5 Duplicates and gambling currency
+### 23.11 Duplicate Echoes and gambling currency
 
-Normal PvE drops may produce duplicates. A duplicate automatically converts into persistent gambling-store currency; there are no multiple owned copies and no required manual sale flow.
+Normal PvE drops may produce duplicate Echoes. A duplicate automatically converts into persistent gambling-store currency; there are no multiple owned copies and no required manual sale flow.
 
-Every duplicate should fund at least one store attempt. The store excludes already owned items, renormalizes remaining eligible weights, preserves displayed inherent rarity, and uses currency separate from FFY.
+Every duplicate should fund at least one store attempt. The Echo store excludes already owned Echoes, renormalizes remaining eligible weights, preserves displayed inherent rarity, and uses currency separate from FFY.
 
-### 23.6 Loadouts
+The final thematic name of the duplicate/store currency remains presentation work.
 
-Standard PvE loadout size is **7 items**. PvP progression/loadout standardization remains deliberately deferred.
+### 23.12 Echo loadouts
+
+Standard PvE Echo loadout size is **7 Echoes**. PvP progression/loadout standardization remains deliberately deferred.
 
 ---
 
@@ -1068,6 +1238,8 @@ debug
 ```
 
 The API may use an official `defineController` helper or equivalent authoring wrapper, but that wrapper must not hide privileged strategy.
+
+Faction observations expose public Origin identity/traits and effective mechanical modifier sheets. Controllers should not need to infer an opponent's Origin mechanics from outcomes.
 
 ### 24A.2 Persistent directives versus one-shot commands
 
@@ -1174,12 +1346,12 @@ A controller counter-response identifies an incoming operation and commits Popul
 
 The API exposes the current match's actual rule-bearing constants/feature flags and **pure deterministic mechanical calculators** for published arithmetic/geometry, such as concepts equivalent to:
 
-- Population growth arithmetic;
+- Population growth arithmetic, including the faction's Origin-defined growth profile;
 - capture-advantage arithmetic;
 - counter-response exchange arithmetic;
 - structure/unit/weapon costs and legality;
 - weapon blast/range geometry;
-- explicit terrain/structure/item modifiers.
+- explicit terrain/structure/Origin/Echo modifiers.
 
 These calculators operate only on supplied/legal information and must not leak hidden canonical state.
 
@@ -1263,7 +1435,7 @@ MATCH STARTS
 
 #### Phase 1 — initial broad influence choice
 
-Each participant receives the static map, Segments, ruleset/lobby constraints, legal spawn-space information, **every participant's surfaced Initial Territory value and any other strategically relevant public spawn-affecting modifiers**, and other pre-match public facts. Each simultaneously chooses a broad **spawn influence area** or its anchor using a ruleset-defined shape/scale.
+Each participant receives the static map, Segments, ruleset/lobby constraints, legal spawn-space information, **every participant's surfaced Origin, Initial Territory value, Starting Population effects, and any other strategically relevant public spawn-affecting modifiers**, and other pre-match public facts. Each simultaneously chooses a broad **spawn influence area** or its anchor using a ruleset-defined shape/scale.
 
 Influence areas are **not exclusive claims or territory**. They are legal search spaces for the later exact spawn origin, and they are allowed—indeed expected—to overlap with other participants' influence areas.
 
@@ -1289,7 +1461,7 @@ The controller chooses an origin, not an arbitrary hand-painted starting territo
 
 Each faction has a surfaced **Initial Territory** starting-state value equal to the target number of population-bearing cells it should own when the match begins.
 
-The ruleset provides the ordinary base value. Explicit items or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
+The ruleset provides the ordinary base value. Explicit Origin traits, Echoes, or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
 
 After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each origin using nearby legal population-bearing cells.
 
@@ -1302,9 +1474,10 @@ Important rules:
 - the final number of owned population-bearing cells becomes the faction's ordinary starting Population Capacity under the existing `1 owned cell = 1 Capacity` rule;
 - an Initial Territory bonus does **not** change the Capacity value of individual cells;
 - starting **current Population** is a separate ruleset quantity and is not implicitly required to equal Initial Territory unless a later explicit rule chooses that relationship;
+- an Origin/Echo may explicitly modify starting Population as a percentage or other surfaced starting-state rule without changing Capacity-per-cell;
 - Initial Territory does not automatically enlarge the broad spawn-influence radius unless an explicit future modifier says so.
 
-Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, influence-area radius/shape, and numeric Initial Territory values are implementation/tuning details so long as the invariants above hold.
+Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, influence-area radius/shape, and numeric Initial Territory/Starting Population values are implementation/tuning details so long as the invariants above hold.
 
 ### 24A.22 Spawn modes and controller lifecycle
 
@@ -1325,6 +1498,8 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
+- exact Origin Point budget, trait-count cap, maximum drawback refund, and final Origin-trait catalogue content/costs;
+- exact first Official Origin names/builds;
 - exact strategic-spawn influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
@@ -1336,10 +1511,11 @@ The following remain intentionally outside the settled design contract unless ot
 - exact counter-response casualty/rate coefficients;
 - exact Segment size heuristics;
 - exact terrain/fallout values;
-- exact FFY payouts;
+- exact FFY payouts and final broad FFY-source naming;
 - exact AI reward values;
 - exact inherited naval/rail/strategic-weapon numerical translations where not specified;
 - detailed lobby/UI experience;
+- final thematic name of Echo duplicate/store currency;
 - supply/logistics connectivity as a separate system.
 
 Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
@@ -1376,20 +1552,27 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 26. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
 27. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
 28. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
-29. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
-30. **Strategically relevant active mechanical modifiers are publicly surfaced.**
-31. **Derived controller helpers never leak information outside the controller's legal observation projection.**
-32. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
-33. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
-34. **FFY is event-driven, not passive Population taxation.**
-35. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-36. **Zero population-bearing territory after tick resolution means immediate defeat.**
-37. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-38. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-39. **Ordinary users cannot live-spectate unrelated matches.**
-40. **Historical matches bind exact rule-bearing versions.**
-41. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
-42. **Every participant's Initial Territory value and other strategically relevant public spawn modifiers are visible before Phase 1.**
-43. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
-44. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
-45. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+29. **Terrain/structures/Origins/Echoes affect mechanics only through explicit surfaced rules.**
+30. **Every faction binds exactly one immutable Origin for a match.**
+31. **Official Origins and Custom Origins obey the same public Origin-builder rules and use the same deployed trait catalogue.**
+32. **Origin traits are curated server-defined packages with authored costs; players never supply Origin formulas or arbitrary trait code.**
+33. **Origins have no tiers, Major/Minor taxonomy, category maze, or hidden pairwise incompatibility system.**
+34. **Every deployed trait combination satisfying the public budget, trait-count, and drawback-refund limits is legal.**
+35. **Every candidate Origin catalogue is exhaustively tested across all public-legal trait combinations before deployment; a failing combination blocks/fixes the catalogue rather than becoming a production exclusion.**
+36. **Echoes are the canonical collectible dialogue-line modifier system; standard PvE loadouts contain 7 Echoes.**
+37. **Origins define faction identity while Echoes provide narrower collectible specialization; catalogue curation, not hidden compatibility rules, preserves meaningful tradeoffs.**
+38. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
+39. **Derived controller helpers never leak information outside the controller's legal observation projection.**
+40. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
+41. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
+42. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
+43. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+44. **Zero population-bearing territory after tick resolution means immediate defeat.**
+45. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
+46. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+47. **Ordinary users cannot live-spectate unrelated matches.**
+48. **Historical matches bind exact rule-bearing versions.**
+49. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
+50. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+51. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
+52. **One canonical design document governs the target; one canonical integration plan governs the migration.**
