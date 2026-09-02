@@ -22,7 +22,7 @@ The current fork is a strong basis for Open Fufu and should **not** be rewritten
 
 The migration strategy is:
 
-> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals.
+> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol and Initial Territory footprint generation.
 
 A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
 
@@ -39,7 +39,7 @@ human input
 Target conceptual path:
 
 ```text
-controller observation
+controller observation / pre-match spawn hooks
 → transactional controller decision
 → validated persistent directives + one-shot commands
 → deterministic simulation work
@@ -58,6 +58,8 @@ controller observation
 | Generic unit/build lifecycle | **Keep / Adapt internally** |
 | Renderer, camera, map visualization foundations | **Keep heavily** |
 | Lobby/roster/socket/routing/telemetry infrastructure | **Keep / Adapt** |
+| Current spawn-selection phase | **Replace / Adapt into three-phase strategic spawning plus Random/Fixed modes** |
+| Initial territory footprint generation | **New / Adapt ownership/spawn plumbing** |
 | Client-authoritative simulation | **Replace** |
 | Turn relay as simulation authority | **Replace** |
 | Client hash/winner/live-stat consensus as authority | **Remove** |
@@ -119,13 +121,13 @@ Existing imports from `src/client` into shared simulation code should be removed
 
 ### Acceptance condition
 
-A Node/headless process can load a map, run a complete match, determine its result, produce a replay record, and replay that match without importing DOM/browser presentation code.
+A Node/headless process can load a map, resolve a configured spawn phase, run a complete match, determine its result, produce a replay record, and replay that match without importing DOM/browser presentation code.
 
 ---
 
 ## 4. Server authority and process topology — Accepted
 
-Each live match has exactly **one canonical authoritative server simulation**. Browsers never determine simulation progress, canonical hashes, winner state, or authoritative statistics.
+Each live match has exactly **one canonical authoritative server simulation**. Browsers never determine simulation progress, canonical hashes, winner state, authoritative statistics, or spawn resolution.
 
 ### 4.1 V1 process model
 
@@ -160,7 +162,7 @@ Planning assumptions:
 
 ### 4.3 Benchmark before capacity claims
 
-Benchmark the real authoritative Open Fufu simulation on Fufubox for at least 1, 3, and 5 simultaneous matches, controller runtime overhead, observer delta construction, and accelerated certification/batch mode.
+Benchmark the real authoritative Open Fufu simulation on Fufubox for at least 1, 3, and 5 simultaneous matches, controller runtime overhead, observer delta construction, spawn-resolution overhead, and accelerated certification/batch mode.
 
 Record mean/p50/p95/p99/max tick time, missed 100 ms tick budgets at provisional 10 Hz, CPU, RSS/PSS/heap, GC, active operation/frontage counts, observer bandwidth, and controller runtime cost.
 
@@ -198,7 +200,7 @@ Do **not** assume one permanent OS process per controller. A reusable worker poo
 
 ### Deterministic parallel execution
 
-Controllers at the same decision tick may execute concurrently against immutable snapshots of the same canonical tick. Completion order must not create gameplay advantage; results are collected and committed deterministically.
+Controllers at the same decision tick or the same simultaneous spawn phase may execute concurrently against immutable snapshots of the same canonical pre-state. Completion order must not create gameplay advantage; results are collected and committed/resolved deterministically.
 
 ---
 
@@ -206,9 +208,9 @@ Controllers at the same decision tick may execute concurrently against immutable
 
 Retain the deterministic Execution pattern rather than replacing it wholesale.
 
-Open Fufu distinguishes lifecycle/admin commands, controller strategic decisions, and simulation state transitions.
+Open Fufu distinguishes lifecycle/admin commands, pre-match spawn lifecycle decisions, controller strategic decisions, and simulation state transitions.
 
-A controller invocation operates transactionally against one immutable legal observation. On success, memory/directive/action changes commit together. On failure, temporary output is discarded.
+A normal controller invocation operates transactionally against one immutable legal observation. On success, memory/directive/action changes commit together. On failure, temporary output is discarded.
 
 Population commitment changes take effect immediately on successful decision commit; no land Deployment/Redeployment queue exists.
 
@@ -331,7 +333,7 @@ Counter-response commands/directives identify one incoming operation and Populat
 
 ### 6A.6 Rules and pure mechanics calculators
 
-Expose current ruleset/feature flags and exact public mechanical values. Expose pure deterministic calculators for published arithmetic/geometry such as growth, capture advantage, counter-response exchange, structure/unit costs and legality, range/blast geometry, and explicit terrain/item/structure modifiers.
+Expose current ruleset/feature flags and exact public mechanical values. Expose pure deterministic calculators for published arithmetic/geometry such as growth, capture advantage, counter-response exchange, structure/unit costs and legality, range/blast geometry, spawn legality, and explicit terrain/item/structure modifiers.
 
 Calculators may use only supplied/legal information. They must not become hidden-state oracles or future-state simulators.
 
@@ -385,11 +387,74 @@ Allow multi-file local TypeScript controller projects that are compile/typecheck
 
 The official SDK may provide neutral helpers/builders for selectors, priorities, deterministic math and ordinary collection ergonomics. It must not ship privileged doctrine such as weakest-enemy selection or best-target strategy.
 
-### 6A.15 Spawn API remains intentionally unresolved
+### 6A.15 Three-phase Strategic Spawn — Accepted
 
-Do **not** finalize a `chooseSpawn` hook yet.
+Replace the final Open Fufu ordinary spawn flow with three deterministic pre-match phases:
 
-Random spawning remains supported, but ordinary Open Fufu games are expected to prefer non-random spawning with some controlled participant knowledge of other starting locations. Exact selection, information timing, collision/conflict handling, exact-cell versus region/preference selection, and controller lifecycle semantics require a dedicated design decision first.
+```text
+static map/config
+→ Phase 1 broad influence choice
+→ reveal all Phase-1 influence areas
+→ Phase 2 optional broad re-pick
+→ reveal all final influence areas
+→ Phase 3 exact origin inside final influence area
+→ simultaneous origin resolution + reveal
+→ deterministic Initial Territory footprint generation
+→ match start
+```
+
+#### Phase 1
+
+Every participant gets the same public static map/ruleset/spawn-legality view and simultaneously submits a broad spawn influence area/anchor using the ruleset-defined shape/scale.
+
+These areas are **non-exclusive search spaces**, not ownership reservations. Overlap is legal and expected.
+
+After all Phase-1 choices resolve, reveal every Phase-1 influence area to every participant.
+
+#### Phase 2
+
+Every participant receives exactly one simultaneous opportunity to keep or revise their broad influence choice using the revealed Phase-1 intent of everyone else.
+
+Do not stream Phase-2 revisions live. All participants choose against the same Phase-1 reveal; then reveal all final influence areas together. This prevents draft-order advantage and endless reactive counter-picking.
+
+#### Phase 3
+
+Every participant simultaneously chooses an exact legal spawn-origin cell inside their final influence area while knowing every final influence area.
+
+Resolve duplicate/conflicting exact-origin submissions deterministically from the same pre-state, reveal final origins, generate starting footprints, then begin normal simulation/controller decisions.
+
+The public API should therefore expose specialized pre-match lifecycle hooks corresponding conceptually to initial influence choice, optional reconsideration, and exact-origin choice. Exact TypeScript names/types are implementation work.
+
+Spawn-hook failure/missing output must use a deterministic legal fallback rather than faulting the controller for the match.
+
+### 6A.16 Random and Fixed spawn modes — Accepted
+
+Retain explicit alternatives:
+
+- **Random Spawn:** match-seeded deterministic legal spawn selection that bypasses strategic controller choices;
+- **Fixed Spawn:** exact configured starts for benchmarks, certification, debugging, scenarios/tournaments, and reproducible tests.
+
+All exact final starts are revealed before the first normal match decision because ownership is globally visible once play begins.
+
+### 6A.17 Initial Territory footprint — Accepted
+
+Add a surfaced **Initial Territory** starting-state quantity representing the target number of population-bearing cells each faction should own at match start.
+
+The base comes from the ruleset. Explicit allowed item/start-state modifiers may change this quantity without changing Capacity-per-cell.
+
+After exact origins resolve, deterministically grow compact connected roughly circular footprints outward from all origins **simultaneously** across legal population-bearing cells.
+
+Required invariants:
+
+- influence-area overlap does not consume or reserve Initial Territory;
+- competing footprints are resolved independently of controller/process execution order;
+- when topology permits, continue outward so every faction receives its full Initial Territory quota despite nearby competing footprints;
+- final owned cells produce ordinary starting Capacity at one Capacity per cell;
+- Initial Territory does not itself determine starting current Population;
+- a larger Initial Territory value does not automatically enlarge the broad influence area unless an explicit separate rule says so;
+- footprint generation and collision/tie-breaking are deterministic/versioned.
+
+Exact growth geometry, collision/fallback algorithm, influence-area radius, minimum separation rules, base Initial Territory and starting Population values remain implementation/tuning details.
 
 ---
 
@@ -412,6 +477,8 @@ Procedural/random map generation is new and must deterministically produce terra
 ## 8. Ownership and neutral expansion — Accepted
 
 Retain/adapt low-level cell ownership and incremental territory/border bookkeeping. Existing `conquer()`/`relinquish()`-style primitives remain useful internally.
+
+Initial Territory footprint assignment is a pre-match ownership initialization path, distinct from neutral expansion and combat conquest.
 
 Neutral expansion becomes an operation using ordinary Population and spatial intent. Neutral cells have no automatic Population defense and settlement does not inherit arbitrary old troop deaths. Neutral fallout remains conquerable land but applies its explicit capture-resistance rule.
 
@@ -453,7 +520,11 @@ Capacity = owned population-bearing cells
 
 For V1, one ordinary conquerable land cell, including conquerable fallout land, contributes exactly one Capacity while owned. Existing incremental territory counts should make this a cheap derived/read value.
 
-Remove/avoid City Capacity bonuses, item max-Population/Capacity bonuses, terrain Capacity multipliers, and hidden faction Capacity multipliers. Cities move to growth effects.
+Remove/avoid City Capacity bonuses, item max-Population/Capacity-per-cell bonuses, terrain Capacity multipliers, and hidden faction Capacity multipliers. Cities move to growth effects.
+
+A surfaced Initial Territory modifier is allowed because it changes **starting ownership count**. If a faction starts with 40 extra population-bearing cells, those 40 cells naturally supply 40 extra Capacity under the same invariant; no individual cell is worth more than one Capacity.
+
+Starting current Population remains a separate configured quantity unless an explicit future rule ties it to Initial Territory.
 
 ### 9.3 Representation
 
@@ -815,7 +886,7 @@ Do not preserve:
 - Easy/Medium/Hard simulation modifiers or difficulty-dependent resource cheats;
 - hidden reaction-speed, income, growth, omniscience, or legality advantages.
 
-Official PvE AI should consume the same legal gameplay observation/action contract as player controllers. It may execute as trusted code and therefore need not use the hostile-code sandbox, but trusted execution must not create gameplay-information or rules privileges.
+Official PvE AI should consume the same legal gameplay observation/action contract as player controllers, including the same spawn protocol in modes that use strategic spawning. It may execute as trusted code and therefore need not use the hostile-code sandbox, but trusted execution must not create gameplay-information or rules privileges.
 
 Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs.
 
@@ -841,6 +912,8 @@ Public projection includes strategically relevant active mechanical modifier she
 
 All derived query/calculator APIs operate strictly over legal projected information and must not create side-channel visibility leaks.
 
+During Strategic Spawn, the pre-match information projection is explicitly phase-dependent: Phase 1 choices are hidden until all are committed, the full Phase-1 influence set is then public for Phase 2, Phase-2 revisions are hidden until all are committed, final influence areas are then public for Phase 3, and exact origins are revealed after simultaneous resolution before normal play begins.
+
 There is **no ordinary third-party live spectator mode**. Users may view only matches they are actually participating in, including their own PvE matches, from their legal participant perspective.
 
 Internal benchmark/certification/development tooling may use trusted omniscient observation where needed.
@@ -861,7 +934,7 @@ controller editor
 debugger / private controller-overlay viewer
 replay viewer
 loadout UI
-lobby UI
+lobby / strategic-spawn UI
 ```
 
 Live connection/reconnect uses:
@@ -876,6 +949,8 @@ Do not require a reconnecting browser to replay the entire historical turn strea
 
 Controller debug annotations are private participant/developer data, not public match state. They should be recorded/streamed through bounded dedicated diagnostics channels rather than mixed into authoritative gameplay state.
 
+Strategic spawn selections/reveals should be represented as explicit pre-match state/protocol messages rather than pretending they are ordinary simulation ticks.
+
 Observer publishing must be optional in headless certification/batch simulations.
 
 ---
@@ -885,6 +960,8 @@ Observer publishing must be optional in headless certification/batch simulations
 Preserve deterministic archive/replay philosophy but make the server the source of canonical state/hashes.
 
 Archive exact committed controller decisions/operation changes so ordinary replay does **not** need to re-execute historical untrusted controller code. A stronger verification/debug mode may separately re-run archived controller/runtime versions and compare outputs.
+
+Record enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprints without relying on later code defaults.
 
 Retain enough bounded controller debug annotation/log history to support the programming debugger/replay experience without making debug output simulation-authoritative.
 
@@ -952,6 +1029,7 @@ Persistent concepts include:
 - duplicate/gambling currency;
 - official AI versions;
 - matches/results;
+- spawn configuration/resolution metadata required for replay;
 - replay metadata;
 - progression/rewards.
 
@@ -998,7 +1076,7 @@ The authoritative match runtime must have deterministic access to the exact map 
 
 - package or otherwise make those authoritative map resources available to match processes;
 - version/hash them as part of match identity;
-- ensure live, headless, certification, and replay execution load the same rule-bearing map data;
+- ensure Strategic/Random/Fixed spawn resolution, live, headless, certification, and replay execution load the same rule-bearing map data;
 - avoid blindly copying unrelated browser-only assets into the match runtime when they are not needed.
 
 Do not preserve a Docker/build optimization whose premise is “the server never loads maps.”
@@ -1020,6 +1098,15 @@ Performance and simulation tests should cover:
 - deterministic normal and keyed randomness;
 - debug annotation bounds and no simulation effect;
 - team shared observation and delayed signal ordering;
+- Strategic Spawn Phase-1 simultaneous choice/reveal;
+- Phase-2 single reconsideration round with no live reaction to Phase-2 submissions;
+- Phase-3 simultaneous exact-origin resolution;
+- overlapping broad influence areas without territorial reservation;
+- deterministic spawn-hook fallback behavior;
+- Random and Fixed spawn modes;
+- Initial Territory item/ruleset modifiers changing starting ownership rather than Capacity-per-cell;
+- simultaneous compact footprint generation and full-quota preservation where topology permits;
+- spawn collision/tie resolution independent of controller execution order;
 - whole-integer Population accounting;
 - 800-Population / 1,000-cell offensive frontage cap;
 - one-to-one source/target engagement-lane resolution;
@@ -1046,6 +1133,8 @@ Performance and simulation tests should cover:
 Simulation work must scale primarily with **active strategic work and engaged frontier geometry**, not full `factions × cells` products.
 
 No persistent defensive occupancy, dense Population matrices, land Deployment queues, or arbitrary user callbacks inside the 10 Hz map-resolution loop should exist.
+
+Spawn footprint generation is a bounded pre-match operation and should not force persistent per-tick spatial Population state.
 
 ---
 
@@ -1109,22 +1198,22 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
 5. OFFENSIVE OPERATIONS + ENGAGED FRONTAGE + BINARY AUTOMATIC DEFENSE
        ↓
 6. CONTROLLER API CONTRACT IMPLEMENTATION
-   (queries/selectors/directives/defense/counters/events/debug/team)
+   (queries/selectors/directives/defense/counters/events/debug/team/spawn hooks)
        ↓
 7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
        ↓
-8. OFFICIAL PVE AI PRESETS + STRUCTURE / NAVAL / RAIL / WEAPON TRANSLATION
+8. STRATEGIC/RANDOM/FIXED SPAWN RESOLVER + INITIAL TERRITORY FOOTPRINTS
        ↓
-9. MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
+9. OFFICIAL PVE AI PRESETS + STRUCTURE / NAVAL / RAIL / WEAPON TRANSLATION
        ↓
-10. SQLITE / DISCORD AUTH / PROGRESSION / FOOF API
+10. MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
        ↓
-11. BROWSER EDITOR / DEBUG / FINAL LOBBY UX
+11. SQLITE / DISCORD AUTH / PROGRESSION / FOOF API
+       ↓
+12. BROWSER EDITOR / DEBUG / FINAL LOBBY UX
 ```
 
-The spawn protocol must be settled before finalizing any spawn-related controller lifecycle API; it does not need to block the early headless/authority work.
-
-Some workstreams may overlap, but downstream systems must not force premature contracts onto unresolved upstream mechanics.
+Some workstreams may overlap, and the spawn resolver may be prototyped earlier to pressure-test controller lifecycle hooks, but downstream systems must not force premature contracts onto unresolved implementation details.
 
 ---
 
@@ -1149,7 +1238,7 @@ This table is a traceability check against the source-level OpenFront compatibil
 | 13. Teams / alliances / diplomacy / `atWar` | §§6A, 16 |
 | 14. Visibility / fog of war | §§6A, 17 |
 | 15. Bots / official PvE AI / player-controller boundary | §§5, 6A, 16A, 17 |
-| 16. Match lifecycle / lobby / spawn / defeat / resignation / victory | §§4, 6A.15, 16, 18 |
+| 16. Match lifecycle / lobby / spawn / defeat / resignation / victory | §§4, 6A.15–17, 16, 18 |
 | 17. Replay / serialization / determinism / observability | §§3, 6, 6A, 19, 23 |
 | 18. Browser rendering / interaction assumptions | §§17–18 |
 | 19. Persistence / identity / authentication / Foof boundary | §§20–21 |
@@ -1161,20 +1250,20 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority, Population/frontage, combat, capitulation, and controller-contract decisions, the legitimately open questions are now narrower:
+After the authority, Population/frontage, combat, capitulation, controller-contract, and strategic-spawn decisions, the legitimately open questions are now narrower:
 
-1. **Spawn selection/information protocol** — ordinary games should generally support non-random spawning and some controlled information about other players' starts, while random spawn remains supported. Exact simultaneity, visibility timing, legal choice representation, collision/conflict resolution, exact-cell versus region/preference selection, and controller lifecycle need dedicated design.
-2. **Exact final TypeScript names/types and ergonomic naming** after prototype pressure-testing of the accepted controller-contract shape.
-3. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
-4. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
-5. **Exact SQLite schema/index/backup/retention details.**
-6. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
-7. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
-8. **Detailed lobby/UI/UX redesign.**
-9. **Replacement asset creation and final proprietary-directory removal.**
-10. **Normal gameplay tuning** — capture progress/speed, counter-response casualty/rate coefficients, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
-11. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
+1. **Exact final TypeScript names/types and ergonomic naming** after prototype pressure-testing of the accepted controller-contract shape, including the three pre-match spawn lifecycle hooks.
+2. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
+3. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
+4. **Exact SQLite schema/index/backup/retention details.**
+5. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
+6. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
+7. **Detailed lobby/UI/UX redesign.**
+8. **Replacement asset creation and final proprietary-directory removal.**
+9. **Normal gameplay tuning** — capture progress/speed, counter-response casualty/rate coefficients, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, Strategic-Spawn influence radius/shape, base Initial Territory/starting Population, and related balance constants.
+10. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
+11. **Exact deterministic spawn-resolution implementation details** — exact-origin collision fallback, compact-footprint growth/tie-breaking details, and map-legality safeguards that ensure Initial Territory quotas whenever topology permits. The three-phase protocol, information timing, overlapping non-exclusive influence areas, and Initial Territory semantics themselves are settled.
 
-The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, and private debug overlays are now settled design direction. Spawn remains intentionally excluded from that settled surface until its gameplay protocol is designed.
+The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, private debug overlays, and three-phase Strategic Spawn are now settled design direction.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
