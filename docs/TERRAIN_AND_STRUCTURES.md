@@ -2,9 +2,9 @@
 
 ## Status and authority
 
-This file is the **canonical data registry for Open Fufu terrain, persistent structures, and the baseline Factory-produced Tank unit**.
+This file is the **canonical detailed data registry for Open Fufu terrain, persistent structures, and baseline mobile-unit content covered here**.
 
-It is a detailed data appendix to [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), especially §18, and does not replace that document as the overall game-design authority. If this registry and the canonical design contract ever conflict, the design contract wins and this registry must be corrected.
+[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains the overarching game-design contract. **Within this registry's domain, this file is authoritative for the concrete terrain/structure/mobile-unit roster, numeric baselines, construction times, level tables, and detailed mechanical data.** A shorter or older summary in the high-level design/integration documents does not override this registry's more specific data; those summaries must instead be synchronized to this registry when touched.
 
 Concrete Origin trait IDs/costs remain in [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
 
