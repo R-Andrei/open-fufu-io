@@ -22,7 +22,7 @@ The current fork is a strong basis for Open Fufu and should **not** be rewritten
 
 The migration strategy is:
 
-> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field.
+> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals.
 
 A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
 
@@ -41,7 +41,7 @@ Target conceptual path:
 ```text
 controller observation
 → transactional controller decision
-→ validated operation/action changes
+→ validated persistent directives + one-shot commands
 → deterministic simulation work
 → canonical Game mutation
 ```
@@ -55,7 +55,7 @@ controller observation
 | Dense cell/map representation | **Keep / Adapt** |
 | Deterministic tick and Execution machinery | **Keep / Adapt** |
 | Pathfinding, water connectivity, rail graph | **Keep** |
-| Generic unit/build lifecycle | **Keep / Adapt** |
+| Generic unit/build lifecycle | **Keep / Adapt internally** |
 | Renderer, camera, map visualization foundations | **Keep heavily** |
 | Lobby/roster/socket/routing/telemetry infrastructure | **Keep / Adapt** |
 | Client-authoritative simulation | **Replace** |
@@ -64,6 +64,12 @@ controller observation
 | Scalar `troops` storage concept | **Adapt into global whole-integer Population** |
 | Current `Attack` object/lifecycle shape | **Reuse selectively** |
 | Current `AttackExecution` combat semantics | **Replace substantially** |
+| Inherited mutable `Game`/`Player`/`Unit` as player API | **Do not expose** |
+| Public controller observation/directive contract | **New** |
+| Serializable geographic selector/query layer | **New / adapt existing map algorithms** |
+| Generic pathfinding/connected-components/legality helpers | **Reuse behind safe public QoL APIs** |
+| Private controller visual debug annotations | **New** |
+| Bounded deterministic team signal channel | **New** |
 | Passive worker gold | **Remove** |
 | Current troop growth/capacity formulas | **Replace** |
 | Global Easy/Medium/Hard gameplay difficulty scalar | **Remove** |
@@ -104,9 +110,9 @@ authoritative match runtime
     ↑
 validated controller decisions
 
-core-derived observer protocol
+core-derived legal observations
     ↓
-browser participants
+controller runtime / participant protocol
 ```
 
 Existing imports from `src/client` into shared simulation code should be removed or moved behind neutral formatting/event interfaces.
@@ -182,7 +188,7 @@ validation
 canonical commit/reject
 ```
 
-The accepted **first implementation to try** is `isolated-vm` inside separate dedicated controller-runtime worker processes, with explicit isolate memory/time/output/action limits and ordinary Linux process hardening. The match processes themselves do not host user isolates.
+The accepted **first implementation to try** is `isolated-vm` inside separate dedicated controller-runtime worker processes, with explicit isolate memory/time/output/action/query limits and ordinary Linux process hardening. The match processes themselves do not host user isolates.
 
 Do not grant untrusted code Node capabilities such as `require`, `process`, filesystem/network access, arbitrary host references, environment variables, or system time.
 
@@ -202,9 +208,11 @@ Retain the deterministic Execution pattern rather than replacing it wholesale.
 
 Open Fufu distinguishes lifecycle/admin commands, controller strategic decisions, and simulation state transitions.
 
-A controller invocation operates transactionally against one immutable legal observation. On success, memory/operation/action changes commit together. On failure, temporary output is discarded.
+A controller invocation operates transactionally against one immutable legal observation. On success, memory/directive/action changes commit together. On failure, temporary output is discarded.
 
 Population commitment changes take effect immediately on successful decision commit; no land Deployment/Redeployment queue exists.
+
+A controller decision is interpreted as a **proposed final decision set**, not a source-order sequence of direct canonical mutations. Reducing one commitment and increasing another in the same decision validates against the resulting final state. One-shot commands do not normally create objects that may then be consumed by another command in that same decision.
 
 Provisional cadence remains:
 
@@ -214,6 +222,174 @@ controller decisions: 2 Hz
 ```
 
 Accelerated simulations execute the same logical ticks without real-time waiting.
+
+---
+
+## 6A. Public controller API contract — Accepted direction
+
+The public controller API is a deliberate game-facing contract and must **not** be the inherited `Game`, `Player`, `GameMap`, `Unit`, or `Execution` API.
+
+The design principle is:
+
+> Expose legal facts, legality, geometry, generic algorithms, actual rules, and pure mechanical calculations generously; do not expose strategic judgments, hidden canonical state, or future-state optimization oracles.
+
+### 6A.1 Conceptual context surface
+
+Exact final TypeScript names/types remain prototype work, but the public context should cover concepts equivalent to:
+
+```text
+game
+me
+factions
+cells
+segments
+contacts
+operations
+structures
+units
+navigation
+economy
+rules
+mechanics
+events
+lastDecision
+random
+limits
+memory
+directives
+commands
+debug
+```
+
+Own/private data and enemy/operational data are projected through the canonical visibility model before entering this contract.
+
+### 6A.2 Persistent directives and one-shot commands
+
+Model ongoing strategic intent as persistent directives and discrete actions as one-shot commands.
+
+Persistent examples:
+
+- attack/neutral-expansion operations;
+- defense-priority policy;
+- counter-responses;
+- unit movement/patrol/targeting.
+
+One-shot examples:
+
+- build/upgrade;
+- strategic-weapon launch;
+- deliberate relinquishment;
+- team signal;
+- capitulation.
+
+Persistent directives remain active if omitted from later decisions. Controllers may use bounded stable string keys for their own directives while the engine retains immutable internal IDs for replay/incoming-operation identity.
+
+Setting an operation to `N` Population changes its current commitment immediately if valid; later casualties do not cause automatic refill back to `N`.
+
+### 6A.3 Geographic selector/query layer
+
+Reuse/adapt the efficient existing map substrate and graph algorithms behind a safe public layer.
+
+Provide serializable bounded selectors/regions composable from mechanical predicates such as cell IDs, owner, Segment, terrain/fallout, coast/shoreline, population-bearing/conquerable state, simple geometry, and set union/intersection/difference.
+
+Persistent 10 Hz simulation work consumes compiled selector data rather than invoking arbitrary controller callbacks over the map.
+
+Provide bounded deterministic QoL queries such as:
+
+- neighbors/adjacency;
+- boundary extraction;
+- connected components/flood fill;
+- distance;
+- generic land/naval/rail pathfinding and reachability;
+- nearest/reachable queries;
+- owner/terrain/Segment summaries and histograms;
+- legal structure sites;
+- legal coast/transport destinations.
+
+These are factual/mechanical services, not strategy. Do not add `weakestPoint`, `bestTarget`, `bestNukeTarget`, `optimalCounterSize`, `safestTradeRoute`, or equivalent strategic scoring.
+
+Permit bounded batch/materialized cell access for advanced controllers without encouraging whole-map object allocation every decision.
+
+### 6A.4 Segments and Contacts
+
+Expose Segments as first-class strategic query objects with factual summaries/selectors and adjacency. Expose Territorial Contacts as factual boundary/contact geometry with components, size, involved Segments and terrain summaries.
+
+Do not create an engine-level strategic `Front` object or score contacts for strategic value.
+
+### 6A.5 Offensive and defensive policy surfaces
+
+Land attack directives should distinguish:
+
+- **engagement priority** for selecting legal frontage when Population cannot cover every candidate lane; and
+- **pressure weighting** for distributing finite committed Population across engaged geometry.
+
+Both have deterministic defaults; advanced policy is expressed through bounded selector/weight rules rather than huge per-cell maps.
+
+Defense exposes only priorities deciding which cells receive scarce one-Population automatic defenders. It cannot set passive defensive quantities.
+
+Counter-response commands/directives identify one incoming operation and Population commitment; the engine owns the nonlinear exchange formula.
+
+### 6A.6 Rules and pure mechanics calculators
+
+Expose current ruleset/feature flags and exact public mechanical values. Expose pure deterministic calculators for published arithmetic/geometry such as growth, capture advantage, counter-response exchange, structure/unit costs and legality, range/blast geometry, and explicit terrain/item/structure modifiers.
+
+Calculators may use only supplied/legal information. They must not become hidden-state oracles or future-state simulators.
+
+### 6A.7 Public game concepts, not inherited implementation classes
+
+Even if OpenFront internally represents structures, ships, trains, missiles, etc. through shared `UnitImpl` machinery, the public API should expose game-level **structures**, **mobile units**, and **weapons** as coherent public concepts.
+
+Movement APIs are intent-oriented: the controller selects destination/patrol/target while the engine handles mechanical pathfinding/motion.
+
+Major actions should have corresponding factual legality/cost/range helpers so users are not forced to submit blind actions merely to learn rules.
+
+### 6A.8 Events and decision receipts
+
+Build a bounded typed event stream for legally observable meaningful changes since the previous controller invocation. This avoids forcing every controller to diff complete snapshots to notice captures, losses, completed structures, operation lifecycle changes, FFY changes, hostility, defeat/capitulation, or strategic-weapon events.
+
+Expose structured `lastDecision`/receipt information for transaction acceptance/rejection and per-command failures.
+
+Persistent directives expose lifecycle/status and obvious dead directives are automatically terminated/cleaned by the engine with deterministic events/reasons.
+
+### 6A.9 Deterministic randomness
+
+Sandbox randomness is deterministic and match-bound. Support ordinary ergonomic deterministic `Math.random()` behavior and a keyed deterministic random facility so unrelated random calls need not perturb stable decisions.
+
+Never expose uncontrolled entropy or system time.
+
+### 6A.10 Controller limits and performance guardrails
+
+Expose deterministic structural limits for operations, commands, selector/policy rules, materialized/query results, persistent memory and debug/log output.
+
+Do not make remaining wall-clock CPU time a gameplay-readable variable.
+
+### 6A.11 Debugging surface
+
+Implement private bounded debug output as first-class authoring infrastructure, not only text logs. Support concepts equivalent to named metrics, cell/region/Segment highlights, and operation/unit/structure annotations for the controller owner in live/replay debugging.
+
+Debug output never affects simulation and never becomes public gameplay information.
+
+### 6A.12 Team coordination and information
+
+Fixed teammates receive the union of legally observable team operational information. Provide a small bounded deterministic JSON-like team signal channel delivered on a later deterministic decision boundary to avoid same-tick ordering races.
+
+Do not provide unrestricted shared mutable controller memory.
+
+### 6A.13 Public mechanical modifiers
+
+Project strategically relevant active mechanical modifier sheets publicly, consistent with the canonical transparent-mechanics rule. Controllers should not need to reverse-engineer hidden item/faction modifiers from combat outcomes.
+
+### 6A.14 SDK and multi-file authoring
+
+Allow multi-file local TypeScript controller projects that are compile/typechecked/bundled/certified into an immutable artifact.
+
+The official SDK may provide neutral helpers/builders for selectors, priorities, deterministic math and ordinary collection ergonomics. It must not ship privileged doctrine such as weakest-enemy selection or best-target strategy.
+
+### 6A.15 Spawn API remains intentionally unresolved
+
+Do **not** finalize a `chooseSpawn` hook yet.
+
+Random spawning remains supported, but ordinary Open Fufu games are expected to prefer non-random spawning with some controlled participant knowledge of other starting locations. Exact selection, information timing, collision/conflict handling, exact-cell versus region/preference selection, and controller lifecycle semantics require a dedicated design decision first.
 
 ---
 
@@ -235,7 +411,7 @@ Procedural/random map generation is new and must deterministically produce terra
 
 ## 8. Ownership and neutral expansion — Accepted
 
-Retain/adapt low-level cell ownership and incremental territory/border bookkeeping. Existing `conquer()`/`relinquish()`-style primitives remain useful.
+Retain/adapt low-level cell ownership and incremental territory/border bookkeeping. Existing `conquer()`/`relinquish()`-style primitives remain useful internally.
 
 Neutral expansion becomes an operation using ordinary Population and spatial intent. Neutral cells have no automatic Population defense and settlement does not inherit arbitrary old troop deaths. Neutral fallout remains conquerable land but applies its explicit capture-resistance rule.
 
@@ -411,9 +587,7 @@ responsePopulationLost = B × attackMultiplier
 
 Use deterministic fixed-point/residual handling and cap casualties at the Population actually present.
 
-This gives a shallow advantage near parity, uses ratios rather than absolute Population differences, and asymptotically caps the force-ratio efficiency advantage rather than allowing 2×, 3×, or larger linear kill-rate scaling. The larger force still benefits from its larger Population pool/endurance.
-
-Implement **attack-side** and **response-side** effectiveness curves/parameters as distinct ruleset hooks even though their V1 defaults mirror one another. This leaves room for explicit future faction/item/ruleset mechanics that favor overwhelming attack or overwhelming response differently without changing the basic combat architecture. The final relative-efficiency cap remains enforced unless an explicit rule also modifies that cap.
+Implement **attack-side** and **response-side** effectiveness curves/parameters as distinct ruleset hooks even though their V1 defaults mirror one another.
 
 A counter-response is tied to one incoming hostile operation; its committed Population cannot be duplicated across targets. Ending/changing it is immediate on a successful controller decision and returns surviving Population to Available.
 
@@ -511,7 +685,7 @@ No structure recreates hidden global Military Power.
 
 ## 14. Generic units, naval, amphibious, trade, and rail — Accepted
 
-Retain/adapt the generic unit framework: stable IDs, ownership, movement, target state, health, deletion, transfer, construction, upgrades, and type-specific runtime state.
+Retain/adapt the generic unit framework internally: stable IDs, ownership, movement, target state, health, deletion, construction, upgrades, and type-specific runtime state. Do not expose this shared inherited implementation abstraction directly as the player-controller contract.
 
 ### Transport ships
 
@@ -593,27 +767,28 @@ Retain fixed pre-match teams. Remove mutable alliance/relation diplomacy. FFA op
 
 Trade with enemies remains possible with the canonical explicit wartime penalty rather than ordinary embargo prohibition. Do not inherit troop/gold donations automatically.
 
+Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals through the public controller contract.
+
 ### Defeat
 
 After all same-tick ownership changes resolve, **zero owned population-bearing territory means immediate defeat**, regardless of remaining Population, operations, fleets, or transports. No comeback/dispossessed state exists.
 
 ### Resignation/capitulation
 
-A resigned/capitulated faction becomes a passive territorial remnant. It keeps its territory, static structures, and surviving Population, but all active/mobile gameplay ends.
+A resigned/capitulated faction becomes a passive territorial remnant and keeps its owned territory, static structures, and surviving Population.
 
 On resignation/capitulation:
 
 - growth becomes permanently zero;
 - controller decisions permanently stop;
 - active land offensive/counter-response operations cease and surviving Population returns to Available;
-- **all mobile units are removed immediately**, including warships, trade ships, trains, transport ships, and equivalent future mobile objects;
-- Population carried aboard a removed transport returns to Available instead of dying;
-- removed units provide no FFY/resource refund;
-- in-flight offensive projectiles/strategic weapons owned by the capitulated faction are removed/cancelled before later offensive resolution;
-- static structures remain owned and physically present;
-- explicitly passive static effects may continue, such as a Defense Post modifying an actual automatic defender;
-- active static behavior stops: no missile launches, SAM firing, new trade ships/trains/units, or other autonomous strategic activity;
-- remaining Available Population continues binary automatic passive defense;
+- all mobile units are removed immediately;
+- Population aboard removed transports returns to Available rather than dying;
+- removed mobile units provide no FFY/resource refund;
+- in-flight offensive projectiles/strategic weapons are cancelled/removed;
+- static passive effects may continue where explicitly legal;
+- static active behaviors stop, including missile launches, SAM firing, trade/train/unit spawning, and other autonomous strategic actions;
+- remaining Available Population continues ordinary passive defense;
 - territory remains capturable normally;
 - no new strategic actions occur.
 
@@ -660,7 +835,11 @@ canonical match state
     └─ official-AI legal observation
 ```
 
-Use the same underlying projection rules for player controllers, official AI, and browser participant views.
+Use the same underlying projection rules for player controllers, official AI, and browser participant views. Fixed teammates receive the legal union of their team's observable operational state.
+
+Public projection includes strategically relevant active mechanical modifier sheets so hidden arithmetic does not need to be reverse-engineered from outcomes.
+
+All derived query/calculator APIs operate strictly over legal projected information and must not create side-channel visibility leaks.
 
 There is **no ordinary third-party live spectator mode**. Users may view only matches they are actually participating in, including their own PvE matches, from their legal participant perspective.
 
@@ -679,7 +858,7 @@ The browser becomes primarily:
 ```text
 participant match viewer
 controller editor
-debugger
+debugger / private controller-overlay viewer
 replay viewer
 loadout UI
 lobby UI
@@ -695,6 +874,8 @@ authoritative legal snapshot
 
 Do not require a reconnecting browser to replay the entire historical turn stream.
 
+Controller debug annotations are private participant/developer data, not public match state. They should be recorded/streamed through bounded dedicated diagnostics channels rather than mixed into authoritative gameplay state.
+
 Observer publishing must be optional in headless certification/batch simulations.
 
 ---
@@ -704,6 +885,8 @@ Observer publishing must be optional in headless certification/batch simulations
 Preserve deterministic archive/replay philosophy but make the server the source of canonical state/hashes.
 
 Archive exact committed controller decisions/operation changes so ordinary replay does **not** need to re-execute historical untrusted controller code. A stronger verification/debug mode may separately re-run archived controller/runtime versions and compare outputs.
+
+Retain enough bounded controller debug annotation/log history to support the programming debugger/replay experience without making debug output simulation-authoritative.
 
 V1 may treat an authoritative match-process crash as:
 
@@ -759,8 +942,8 @@ Persistent concepts include:
 
 - internal users/linked identities;
 - sessions/auth metadata;
-- controller drafts;
-- immutable published controller versions;
+- controller drafts/source packages;
+- immutable published controller bundles/versions;
 - certification status;
 - active presets;
 - item catalogue version;
@@ -772,7 +955,7 @@ Persistent concepts include:
 - replay metadata;
 - progression/rewards.
 
-Large replay/log artifacts may be stored as compressed files with path/hash/version metadata in SQLite rather than bloating the database unnecessarily.
+Large replay/log/debug artifacts may be stored as compressed files with path/hash/version metadata in SQLite rather than bloating the database unnecessarily.
 
 Exact schema, indexes, backup/retention policy, and replay-file layout remain implementation work.
 
@@ -803,7 +986,7 @@ Historical replay/version identity remains necessary even though live deployment
 
 Retain useful TypeScript/build/test infrastructure where compatible but expect substantial changes.
 
-Useful inherited foundations include TypeScript checking, Vite/browser build, Node server tooling, Vitest, server/lobby tests, full-game performance tooling, GC/heap profiling, replay harnesses, and the Go map generator.
+Useful inherited foundations include TypeScript checking, Vite/browser build, Node server tooling, Vitest, server/lobby tests, full-game performance tooling, GC/heap profiling, replay harnesses, map/pathfinding algorithms, and the Go map generator.
 
 Remove tests that assert intentionally removed OpenFront behavior and replace them with Open Fufu invariants.
 
@@ -827,6 +1010,16 @@ Performance and simulation tests should cover:
 - process-per-match overhead;
 - 1/3/5 simultaneous authoritative matches;
 - `isolated-vm` controller worker-pool overhead;
+- controller observation construction and serialization;
+- selector/query/materialization budgets;
+- generic geographic helper determinism;
+- visibility-safe derived queries with no hidden-information oracle leakage;
+- transaction/final-set semantics independent of directive call ordering;
+- persistent directive lifecycle and controller-owned keys;
+- event-stream correctness;
+- deterministic normal and keyed randomness;
+- debug annotation bounds and no simulation effect;
+- team shared observation and delayed signal ordering;
 - whole-integer Population accounting;
 - 800-Population / 1,000-cell offensive frontage cap;
 - one-to-one source/target engagement-lane resolution;
@@ -836,19 +1029,14 @@ Performance and simulation tests should cover:
 - deterministic Even Spread and controller defensive-priority ordering;
 - multi-operation overlap without duplicate automatic defenders on one cell;
 - zero-Available-Population defense;
-- direct counter-response Population accounting and simultaneous casualties;
-- counter-response scale invariance at equal ratios across different absolute Population sizes;
-- shallow near-parity counter-response efficiency differences;
-- configured counter-response maximum relative efficiency cap at extreme ratios;
-- distinct attack-side and response-side counter-combat rule hooks;
+- direct counter-response Population accounting/casualties and capped nonlinear ratio scaling;
 - same-faction offensive operation aggregation;
 - no same-tick chain conquest;
 - capture-coupled casualties;
 - third-party same-cell claimant casualty-free behavior;
 - normal neutral fallout reconquest and fallout capture resistance;
 - optional water-nuke conversion and victory-denominator updates;
-- capitulation cleanup of mobile units, transport payload return, projectile cancellation, and passive-only static remnants;
-- controller execution;
+- capitulation removal of mobile units/projectiles with transport Population return;
 - participant projection/deltas;
 - accelerated/headless runs;
 - long-match memory/GC.
@@ -857,7 +1045,7 @@ Performance and simulation tests should cover:
 
 Simulation work must scale primarily with **active strategic work and engaged frontier geometry**, not full `factions × cells` products.
 
-No persistent defensive occupancy, dense Population matrices, or land Deployment queues should exist.
+No persistent defensive occupancy, dense Population matrices, land Deployment queues, or arbitrary user callbacks inside the 10 Hz map-resolution loop should exist.
 
 ---
 
@@ -920,7 +1108,8 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
        ↓
 5. OFFENSIVE OPERATIONS + ENGAGED FRONTAGE + BINARY AUTOMATIC DEFENSE
        ↓
-6. CONTROLLER DECISION CONTRACT + DEFENSIVE PRIORITIES + COUNTER-RESPONSES
+6. CONTROLLER API CONTRACT IMPLEMENTATION
+   (queries/selectors/directives/defense/counters/events/debug/team)
        ↓
 7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
        ↓
@@ -932,6 +1121,8 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
        ↓
 11. BROWSER EDITOR / DEBUG / FINAL LOBBY UX
 ```
+
+The spawn protocol must be settled before finalizing any spawn-related controller lifecycle API; it does not need to block the early headless/authority work.
 
 Some workstreams may overlap, but downstream systems must not force premature contracts onto unresolved upstream mechanics.
 
@@ -946,20 +1137,20 @@ This table is a traceability check against the source-level OpenFront compatibil
 | 1. Repository / architectural map | §§1–3, 23–25 |
 | 2. Simulation authority / client-server model | §4 |
 | 3. Tick loop / intents / Executions / deterministic transitions | §§3, 6, 19 |
-| 4. Map / cells / coordinates / terrain / topology | §§7, 23.1 |
-| 5. Ownership / neutral expansion | §8 |
+| 4. Map / cells / coordinates / terrain / topology | §§6A, 7, 23.1 |
+| 5. Ownership / neutral expansion | §§6A, 8 |
 | 6. Troops / gold / resources / player state | §§9, 12, 20–21 |
-| 7. Land combat / casualties / territorial capture | §11 |
+| 7. Land combat / casualties / territorial capture | §§6A, 11 |
 | 8. Spatial Population / Redeployment | §§9–11; superseded dense model explicitly rejected |
-| 9. Structures / spatial modifiers | §13 |
-| 10. Generic unit / mobile-object framework | §14 |
-| 11. Naval / amphibious / trade / rail | §14 |
-| 12. Strategic weapons / interception | §15 |
-| 13. Teams / alliances / diplomacy / `atWar` | §16 |
-| 14. Visibility / fog of war | §17 |
-| 15. Bots / official PvE AI / player-controller boundary | §§5, 16A, 17 |
-| 16. Match lifecycle / lobby / defeat / resignation / victory | §§4, 16, 18 |
-| 17. Replay / serialization / determinism / observability | §§3, 6, 19, 23 |
+| 9. Structures / spatial modifiers | §§6A, 13 |
+| 10. Generic unit / mobile-object framework | §§6A, 14 |
+| 11. Naval / amphibious / trade / rail | §§6A, 14 |
+| 12. Strategic weapons / interception | §§6A, 15 |
+| 13. Teams / alliances / diplomacy / `atWar` | §§6A, 16 |
+| 14. Visibility / fog of war | §§6A, 17 |
+| 15. Bots / official PvE AI / player-controller boundary | §§5, 6A, 16A, 17 |
+| 16. Match lifecycle / lobby / spawn / defeat / resignation / victory | §§4, 6A.15, 16, 18 |
+| 17. Replay / serialization / determinism / observability | §§3, 6, 6A, 19, 23 |
 | 18. Browser rendering / interaction assumptions | §§17–18 |
 | 19. Persistence / identity / authentication / Foof boundary | §§20–21 |
 | 20. Build / deployment / tests / performance / licensing | §§22–25 |
@@ -970,18 +1161,20 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority, Population/frontage, counter-response, capitulation, and post-audit combat clarifications, the legitimately open questions are now narrower:
+After the authority, Population/frontage, combat, capitulation, and controller-contract decisions, the legitimately open questions are now narrower:
 
-1. **Exact TypeScript controller API names/types and ergonomics**, including the final defensive-priority and counter-response surfaces.
-2. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
-3. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
-4. **Exact SQLite schema/index/backup/retention details.**
-5. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
-6. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
-7. **Detailed lobby/UI/UX redesign.**
-8. **Replacement asset creation and final proprietary-directory removal.**
-9. **Normal gameplay tuning** — capture progress/speed, counter-response `k`/cap/exponent and future explicit side-specific modifiers, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
+1. **Spawn selection/information protocol** — ordinary games should generally support non-random spawning and some controlled information about other players' starts, while random spawn remains supported. Exact simultaneity, visibility timing, legal choice representation, collision/conflict resolution, exact-cell versus region/preference selection, and controller lifecycle need dedicated design.
+2. **Exact final TypeScript names/types and ergonomic naming** after prototype pressure-testing of the accepted controller-contract shape.
+3. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
+4. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
+5. **Exact SQLite schema/index/backup/retention details.**
+6. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
+7. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
+8. **Detailed lobby/UI/UX redesign.**
+9. **Replacement asset creation and final proprietary-directory removal.**
+10. **Normal gameplay tuning** — capture progress/speed, counter-response casualty/rate coefficients, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
+11. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
 
-The counter-response algorithmic shape and capitulated/resigned mobile-unit behavior are now settled in the canonical design contract rather than remaining open architecture questions.
+The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, and private debug overlays are now settled design direction. Spawn remains intentionally excluded from that settled surface until its gameplay protocol is designed.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
