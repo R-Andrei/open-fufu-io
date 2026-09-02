@@ -77,8 +77,9 @@ controller observation
 | Available/Committed Population accounting | **New / Adapt scalar troop plumbing** |
 | Sparse offensive operations with spatial intent | **New / Adapt attack plumbing** |
 | One-to-one engaged frontage lanes | **New / Adapt border plumbing** |
-| Automatic contact-surface defense | **New** |
-| Active counter-responses | **New** |
+| Binary automatic cell defense (0/1 per threatened cell) | **New** |
+| Controller defensive priorities/weights | **New** |
+| Active direct counter-responses against hostile operations | **New** |
 | Capture-coupled ordinary land casualties | **New** |
 | Immutable strategic Segments | **New** |
 | Runtime-derived Contacts | **New** |
@@ -224,7 +225,7 @@ Retain/adapt the current dense integer `TileRef`/typed-array map substrate, comp
 
 Add compact immutable Segment identity for every real map cell, including water and impassable terrain, plus immutable Segment metadata/adjacency. Segments remain query/strategy indexes rather than physical simulation buckets.
 
-Dynamic terrain changes such as nuke-created waste/water do not regenerate Segment identity.
+Dynamic terrain changes such as nuke-created fallout/water do not regenerate Segment identity.
 
 ### 7.2 Future procedural maps
 
@@ -236,7 +237,7 @@ Procedural/random map generation is new and must deterministically produce terra
 
 Retain/adapt low-level cell ownership and incremental territory/border bookkeeping. Existing `conquer()`/`relinquish()`-style primitives remain useful.
 
-Neutral expansion becomes an operation using ordinary Population and spatial intent. Neutral cells have no automatic Population defense and settlement does not inherit arbitrary old troop deaths.
+Neutral expansion becomes an operation using ordinary Population and spatial intent. Neutral cells have no automatic Population defense and settlement does not inherit arbitrary old troop deaths. Neutral fallout remains conquerable land but applies its explicit capture-resistance rule.
 
 ---
 
@@ -274,7 +275,7 @@ No separate Reserve pool exists.
 Capacity = owned population-bearing cells
 ```
 
-For V1, one ordinary conquerable land cell contributes exactly one Capacity. Existing incremental territory counts should make this a cheap derived/read value.
+For V1, one ordinary conquerable land cell, including conquerable fallout land, contributes exactly one Capacity while owned. Existing incremental territory counts should make this a cheap derived/read value.
 
 Remove/avoid City Capacity bonuses, item max-Population/Capacity bonuses, terrain Capacity multipliers, and hidden faction Capacity multipliers. Cities move to growth effects.
 
@@ -288,15 +289,17 @@ Authoritative Population values should normally use `uint32`-compatible non-nega
 
 Do not implement persistent defensive Population on cells, Segments, Contacts, or fronts.
 
-Available Population is one finite automatic defensive pool. Capacity creates no free defense: if current defensive Population is zero, baseline Population defense is zero even if territory remains.
+Available Population is one finite automatic defensive pool. Automatic assignment is ephemeral per tick and **binary per threatened owned cell**: zero or one Population, never more than one. One Available Population unit may participate in automatic defense on at most one threatened cell in that tick.
 
-Simulation should iterate primarily over active operations, their engaged frontier lanes/cells, active counter-responses, units, structures, and economic events rather than `factions × map cells`.
+If Available Population exceeds the number of threatened cells, every threatened cell may receive one defender and the surplus remains Available; it does not stack into higher passive pressure. Capacity therefore creates no free or unbounded defense. If Available Population is zero, baseline Population defense is zero even if territory remains.
+
+Simulation should iterate primarily over active operations, their engaged frontier lanes/cells, ephemeral threatened-cell defense assignment, active counter-responses, units, structures, and economic events rather than `factions × map cells`.
 
 No dense Population matrix should exist.
 
 ---
 
-## 11. Offensive operations, frontage, and land combat — Accepted
+## 11. Offensive operations, frontage, automatic defense, and land combat — Accepted
 
 The OpenFront `Attack` concept is structurally closer to the target now, but its existing combat semantics are not authoritative.
 
@@ -340,47 +343,73 @@ If 800 Population is committed against a selected 1,000-cell legal frontier, at 
 
 Operation pressure is distributed over engaged lanes according to controller weighting.
 
-### 11.4 Contact-surface automatic defense
+### 11.4 Binary contact-surface automatic defense and defensive priorities
 
-For a defender, count all currently incoming engaged hostile lanes. Spread finite Available Population across that engaged contact surface before applying terrain/structure/item modifiers.
+For a defender, derive the distinct owned target cells currently pressed by incoming engaged hostile lanes.
+
+Automatic passive defense is binary:
 
 ```text
-baseDefensePerIncomingLane
-= AvailablePopulation / totalIncomingEngagedLanes
+0 or 1 Population per threatened owned cell
 ```
 
-Therefore 300 Fufu lanes plus 100 Ski lanes naturally split Tanya's base defensive pool 3:1.
+and therefore:
 
-Inactive geometric border cells consume no defense.
+```text
+automaticallyDefendedCells
+= min(AvailablePopulation, threatenedOwnedCells)
+```
 
-A targeted counter-response removes Population from Available and adds finite targeted defensive pressure against one incoming operation.
+If Tanya has 100,000 Available Population and 1,000 threatened cells, at most 1,000 Population participates in automatic cell defense that tick. The remaining 99,000 remains Available and creates no extra passive cell pressure.
 
-### 11.5 Capture throughput
+When Available Population is lower than the threatened surface, defense slots are apportioned across incoming contacts/operations approximately in proportion to engaged lane counts. A 300-lane Fufu attack plus a 100-lane Ski attack therefore receives a 3:1 share of Tanya's scarce defense slots before selecting the actual defended cells.
+
+The controller may provide defensive priorities/weights over legal cells/Segments/terrain/objectives. Those priorities choose **which cells receive scarce one-Population defenders**; they do not choose raw defensive Population quantities.
+
+The default policy is deterministic **Even Spread**. Equal-priority cells use seeded deterministic tie-breaking, with deterministic rotation allowed so the same arbitrary holes need not remain undefended forever.
+
+A cell contested by multiple hostile operations still consumes at most one automatic defense slot. The same Available Population may not be duplicated across cells or opponents.
+
+Terrain, Defense Posts, items, and other explicit modifiers change the effectiveness of the one defender, not its Population count.
+
+### 11.5 Direct active counter-responses
+
+A targeted counter-response removes Population from Available and commits it against one incoming hostile operation.
+
+It does **not** add extra passive defenders to cells and cannot raise a threatened cell above the one-defender automatic cap.
+
+Instead, counter-response Population directly engages the hostile operation's committed Population and may inflict direct Population losses on that operation while taking its own losses under an explicit operation-vs-operation combat rule.
+
+Exact counter-response casualty/rate coefficients and API weighting remain tuning/API work. The implementation must preserve finite accounting and prevent one committed counter-response Population pool from being duplicated across multiple hostile operations.
+
+### 11.6 Capture throughput
 
 Freeze engagement geometry at tick start. A target cell changes owner at most once per tick and one lane yields at most one capture that tick.
 
 Therefore an operation with 300 engaged lanes cannot capture more than 300 cells in one tick. Actual capture count is usually lower according to pressure advantage, terrain, structures, and tuning.
 
-### 11.6 Capture-coupled ordinary land casualties
+### 11.7 Capture-coupled ordinary land casualties
 
-Delete the previous continuous casualty direction such as `2AD/(A+D)`.
+Delete the previous continuous ordinary cell-capture casualty direction such as `2AD/(A+D)`.
 
-For each **defended population-bearing cell** that changes owner:
+For each **automatically defended population-bearing cell** that changes owner:
 
-- previous owner loses 1 current Population from Population participating in that defense;
+- previous owner loses the 1 current Population defending that cell;
 - winning attacker loses 1 current Population from the capturing offensive commitment;
 - previous owner Capacity -1;
 - winner Capacity +1.
 
-An undefended capture causes no ordinary land-combat Population casualty. Stalled/failed ordinary land pressure does not independently create Population attrition.
+The consumed defender is removed from Available Population. The attacker's casualty is removed from that offensive operation.
 
-Other explicit mechanics such as nukes and transport destruction may reduce Population without a cell ownership change.
+An undefended capture causes no ordinary cell-capture Population casualty. Stalled/failed ordinary cell pressure does not independently create Population attrition.
 
-### 11.7 Multi-faction handling
+Other explicit mechanics such as counter-response combat, nukes, and transport destruction may reduce Population without a cell ownership change.
+
+### 11.8 Multi-faction handling
 
 Aggregate same-faction local pressure before resolution. Resolve all claimants from the same pre-state; strongest successful claimant wins a contested cell deterministically. The cell still flips only once.
 
-The ordinary defended-capture casualty pair applies between previous owner and winning claimant. Other unsuccessful claimants gain no territory from that cell.
+For a defended capture, the ordinary one-for-one casualty pair applies only between the previous owner and the winning claimant. **Unsuccessful third-party claimants lose no Population merely because they also contested that cell.**
 
 ### Acceptance conditions
 
@@ -388,7 +417,12 @@ The ordinary defended-capture casualty pair applies between previous owner and w
 - 800 committed Population cannot produce more than 800 simultaneous engagement lanes;
 - same-faction operation fragmentation cannot manufacture pressure;
 - newly captured cells cannot chain-capture within one tick;
-- zero current defense means zero baseline Population defense.
+- one threatened cell receives at most one automatic defensive Population;
+- one Available Population unit automatically defends at most one threatened cell per tick;
+- surplus Available Population does not stack passive defense above one per cell;
+- defensive priorities affect cell selection, not automatic defensive quantity;
+- counter-responses attack incoming committed Population directly rather than stacking passive defense;
+- zero Available Population means zero baseline Population defense.
 
 ---
 
@@ -425,7 +459,7 @@ Initial semantic direction:
 | Structure | Migration direction |
 | --- | --- |
 | City | **Growth**, not Capacity |
-| Defense Post | Explicit local defense modifier |
+| Defense Post | Explicit local modifier to the effectiveness of a one-Population automatic defender; does not add passive Population |
 | Port | Keep naval role; adapt trade/FFY |
 | Factory | Preserve rail/economic identity initially |
 | Missile Silo | Preserve weapon infrastructure |
@@ -468,21 +502,49 @@ Retain/adapt patrol, combat, transport interception, piracy, retreat/repair, hea
 
 ---
 
-## 15. Strategic weapons and SAM — Accepted core rule
+## 15. Strategic weapons and SAM — Accepted
 
 Retain deterministic launch/trajectory/interception infrastructure: silos, missile flight, warning/visibility where allowed, SAM interception, detonation geometry, and structure/unit/terrain effects.
 
 Replace old scalar-troop/attack-stack casualty handling and mutable-alliance side effects.
 
-For nuclear-style terrain destruction:
+### 15.1 Standard nuclear fallout
 
-> Each owned population-bearing cell turned into non-population-bearing nuclear waste/destroyed terrain removes **1 Capacity and 1 current Total Population** from that faction, capped at zero.
+The current OpenFront source already provides a useful political/terrain pattern to retain and translate:
+
+```text
+owned affected land
+→ owner relinquishes cell
+→ cell becomes neutral
+→ ordinary mode marks land as fallout
+→ fallout remains conquerable
+```
+
+Open Fufu standard nuclear semantics are therefore:
+
+- each affected owned population-bearing land cell is relinquished and becomes neutral;
+- the former owner loses 1 current Total Population per such affected owned cell, capped at zero;
+- the former owner's Capacity falls by 1 because ownership of that population-bearing cell was lost;
+- fallout remains land, remains population-bearing when owned, remains conquerable, and remains in the conquerable-territory denominator;
+- fallout applies explicit capture resistance/capture-speed effects instead of phantom defensive Population.
+
+A faction later reconquering fallout gains the ordinary +1 Capacity from ownership but no free current Population.
+
+Do **not** blindly inherit OpenFront's exact current fallout coefficient; translate it into Open Fufu's explicit terrain/capture model and tune it separately.
+
+### 15.2 Optional water-nuke mode
+
+Retain OpenFront's `waterNukes` concept as an optional ruleset mode.
+
+When enabled, affected land may be converted to water rather than ordinary fallout. Converted water is non-population-bearing and no longer ordinary conquerable territory, so the current victory denominator shrinks accordingly. Segment identity remains unchanged.
+
+The owned-cell Population casualty and Capacity-loss event still applies to destroyed owned population-bearing land before/through conversion.
 
 Cities do not add extra Population casualties; they affect growth, not Capacity.
 
-Physical units, fleets, transports, structures, or offensive forces directly hit by the weapon may take their own explicit local damage in addition to this terrain-linked rule.
+Physical units, fleets, transports, structures, or offensive forces directly hit by the weapon may take their own explicit local damage in addition to the terrain-linked rule.
 
-Exact radii, interception, physical-unit lethality, and terrain-destruction values remain tuning/translation work.
+Exact radii, interception, physical-unit lethality, fallout resistance, and water-conversion geometry remain tuning/translation work.
 
 ---
 
@@ -722,14 +784,21 @@ Performance and simulation tests should cover:
 - 1/3/5 simultaneous authoritative matches;
 - `isolated-vm` controller worker-pool overhead;
 - whole-integer Population accounting;
-- 800-Population / 1,000-cell frontier frontage cap;
+- 800-Population / 1,000-cell offensive frontage cap;
 - one-to-one source/target engagement-lane resolution;
-- contact-surface defense such as 300:100 fronts;
-- zero-Population defense;
-- same-faction operation aggregation;
+- low-Population binary defense, e.g. 800 Available across 1,000 threatened cells gives exactly 800 one-Population defenders and 200 undefended cells;
+- surplus-Population defense cap, e.g. 100,000 Available across 1,000 threatened cells still gives exactly 1,000 one-Population defenders, not 100 per cell;
+- 300:100 contact-surface apportionment when defense slots are scarce;
+- deterministic Even Spread and controller defensive-priority ordering;
+- multi-operation overlap without duplicate automatic defenders on one cell;
+- zero-Available-Population defense;
+- direct counter-response Population accounting and casualties;
+- same-faction offensive operation aggregation;
 - no same-tick chain conquest;
 - capture-coupled casualties;
-- counter-responses;
+- third-party same-cell claimant casualty-free behavior;
+- normal neutral fallout reconquest and fallout capture resistance;
+- optional water-nuke conversion and victory-denominator updates;
 - controller execution;
 - participant projection/deltas;
 - accelerated/headless runs;
@@ -800,9 +869,9 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
        ↓
 4. SEGMENTS + CONTACT/OBSERVATION MODEL
        ↓
-5. OFFENSIVE OPERATIONS + ENGAGED FRONTAGE + AUTOMATIC DEFENSE
+5. OFFENSIVE OPERATIONS + ENGAGED FRONTAGE + BINARY AUTOMATIC DEFENSE
        ↓
-6. CONTROLLER DECISION CONTRACT
+6. CONTROLLER DECISION CONTRACT + DEFENSIVE PRIORITIES + COUNTER-RESPONSES
        ↓
 7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
        ↓
@@ -852,22 +921,19 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority and Population/frontage simplifications, the legitimately open questions are narrower:
+After the authority and Population/frontage simplifications and the post-audit combat clarifications, the legitimately open questions are now narrower:
 
-1. **Exact TypeScript controller API names/types and ergonomics.**
+1. **Exact TypeScript controller API names/types and ergonomics**, including the final defensive-priority and counter-response surfaces.
 2. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
 3. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
 4. **Exact SQLite schema/index/backup/retention details.**
 5. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
 6. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
 7. **Passive/inert mobile-unit behavior after resignation/capitulation.**
-8. **Low-Population automatic-defense discretization** — when Available Population is lower than incoming engaged frontage, define how whole Population maps onto defended versus effectively undefended lanes so fractional spreading cannot create more capture-coupled casualty pairs than the defender has Population available to lose.
-9. **Multi-faction same-cell casualty semantics under the capture-coupled model** — confirm whether unsuccessful third-party claimants remain casualty-free when another attacker wins the cell, or whether same-cell all-vs-all pressure should create an additional explicit casualty rule.
-10. **Nuclear-waste territory semantics** — define whether cells made non-population-bearing by strategic weapons remain owned/conquerable territory, become non-conquerable waste, and how they affect the denominator for 100%-territory victory.
-11. **Detailed lobby/UI/UX redesign.**
-12. **Replacement asset creation and final proprietary-directory removal.**
-13. **Normal gameplay tuning** — capture progress/speed, terrain/structure multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, and related balance constants.
+8. **Detailed lobby/UI/UX redesign.**
+9. **Replacement asset creation and final proprietary-directory removal.**
+10. **Normal gameplay tuning** — capture progress/speed, counter-response casualty/rate coefficients, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
 
-Items 8–10 are mechanics clarifications discovered during the post-audit consistency review. Once settled, their target rules belong in `OPEN_FUFU_DESIGN.md` and their implementation consequences belong here.
+The previous low-Population defense discretization, multi-faction same-cell casualty semantics, and standard nuclear-fallout political semantics are now settled in the canonical design contract and are no longer open questions.
 
-These should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
+These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
