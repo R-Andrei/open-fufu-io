@@ -45,39 +45,39 @@ These numbers and trait effects remain subject to future balance revision unless
 | ID | Name | Effect | Cost |
 | --- | --- | --- | ---: |
 | P01 | **X** | `+15% Initial Territory` | 7 |
-| P02 | **X** | Replaces the ordinary utilization-growth curve with the 30–70% profile | 9 |
+| P02 | **X** | Replaces the ordinary Population-utilization growth curve with the 30–70% profile | 9 |
 | P03 | **X** | `Ignores enemy Fort defensive-pressure bonuses` | 7 |
-| P04 | **X** | `+15% counter-response effectiveness when responding` | 4 |
-| P05 | **X** | `Captured enemy structures produce FFY events` | 8 |
+| P04 | **X** | `Response-side counter-response effectiveness is fixed at 100% (1.0), ignoring the normal force-imbalance bonus/penalty curve` | 3 |
+| P05 | **X** | `Capturing enemy structures generates military/conquest FFY events` | 8 |
 | P06 | **X** | `+25% Trade Ship speed` | 5 |
 | P07 | **X** | `+25% amount of trains spawned` | 4 |
 | P08 | **X** | Ordinary wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
-| P09 | **X** | `+10% Fort area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
+| P09 | **X** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **X** | `+100% warhead projectile speed` | 4 |
-| P11 | **X** | `SAM Launcher free to build/upgrade, but you may only build 1 per 25k Population` | 8 |
+| P11 | **X** | `SAM Launchers cost 0 FFY to build/upgrade; each 25,000 peak Total Population reached unlocks one SAM Launcher slot` | 8 |
 | P12 | **X** | `Transport Ships are 25% faster` | 6 |
 | P13 | **X** | `Mountains offer 33% increased defensive pressure` | 4 |
-| P14 | **X** | `Desert offers 33% increased FFY events` | 4 |
+| P14 | **X** | `FFY events located on Desert yield +33% FFY` | 4 |
 | P15 | **X** | `33% increased offensive pressure on Highlands` | 4 |
-| P16 | **X** | `Ignores nuclear-waste defensive pressure` | 4 |
-| P17 | **X** | `-1% upgrade costs per owned structure` | 7 |
-| P18 | **X** | `+100% offensive pressure inside allied Fort area` | 5 |
-| P19 | **X** | `+5% offensive pressure per Contact with another faction` | 7 |
+| P16 | **X** | `Ignores ordinary Fallout capture resistance` | 4 |
+| P17 | **X** | `Structure upgrade FFY cost × 0.99 per owned structure` | 7 |
+| P18 | **X** | `+100% offensive pressure for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area` | 5 |
+| P19 | **X** | `+5% offensive pressure per distinct other faction with which you currently have at least one Territorial Contact` | 7 |
 | P20 | **X** | `Start the game with a Missile Silo` | 7 |
 | P21 | **X** | `First of each structure does not consume FFY`* | 7 |
 | P22 | **X** | `+2 to maximum Warship rank` | 6 |
 | P23 | **X** | `Warships +20% range, +20% damage, +20% speed, but you may only own one` | 8 |
-| P24 | **X** | `+20% to FFY events inside Fort areas`** | 7 |
-| P25 | **X** | `Cannot use Atom Bomb or MIRV; +50% area and cost of Hydrogen Bomb` | 10 |
+| P24 | **X** | `FFY events located inside Fort areas yield +20% FFY`** | 7 |
+| P25 | **X** | `Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area +50% and FFY cost +50%` | 10 |
 | P26 | **X** | `MIRV consumes 0 FFY but may only be used once` | 8 |
-| P27 | **X** | `SAM Battery may attack ships` | 9 |
+| P27 | **X** | `SAM Launchers may attack ships` | 9 |
 | P28 | **X** | `Destroying Transport Ships steals their Population` | 9 |
 
 ### Positive-trait notes
 
 * P21: the player must still reach the ordinary required amount of FFY to satisfy the affordability/legality gate; the successful first build does not consume that FFY. This prevents constructing everything at `0 FFY` while preserving the intended free-first-build identity.
 
-** P24: retained provisionally because Fort-area membership appears mechanically practical; exact definition of which FFY events have a spatial location and whether allied/team Forts count remains to be settled.
+** P24: Fort-area membership is mechanically practical. Exact definition of which FFY events have a spatial location and whether self-only or fixed-teammate Forts count for this particular trait remains to be settled.
 
 ---
 
@@ -85,17 +85,17 @@ These numbers and trait effects remain subject to future balance revision unless
 
 | ID | Name | Effect | Refund |
 | --- | --- | --- | ---: |
-| N01 | **X** | `Cities offer -20% Population Growth` | -4 |
+| N01 | **X** | `Cities contribute 20% less Population Growth` | -4 |
 | N02 | **X** | `25% reduced Plains offensive pressure` | -4 |
 | N03 | **X** | `33% reduced Desert defensive pressure` | -4 |
-| N04 | **X** | `50% reduced effect of FFY events on Mountain` | -4 |
-| N05 | **X** | `Cannot capture nuclear-waste terrain` | -5 |
+| N04 | **X** | `FFY events located on Mountain yield 50% less FFY` | -4 |
+| N05 | **X** | `Cannot capture Fallout terrain` | -5 |
 | N06 | **X** | `Cannot spend FFY to upgrade buildings` | -5 |
 | N07 | **X** | `Cannot own more than 1 of each building` | -10 |
 | N08 | **X** | `Forts provide no defensive-pressure bonus` | -4 |
 | N09 | **X** | `Cannot build Factories` | -6 |
-| N10 | **X** | `25% reduced Fort area` | -4 |
-| N11 | **X** | `0 FFY gained from events inside SAM Launcher area`** | -7 |
+| N10 | **X** | `25% reduced Fort coverage area` | -4 |
+| N11 | **X** | `FFY events located inside SAM Launcher area yield 0 FFY`** | -7 |
 | N12 | **X** | `Cannot build Warships` | -6 |
 | N13 | **X** | `50% of Transport Ship Population dies when landing` | -7 |
 | N14 | **X** | `Lose (1% of)/X FFY when a Trade Ship gets captured`*** | -4 |
@@ -103,92 +103,104 @@ These numbers and trait effects remain subject to future balance revision unless
 
 ### Negative-trait notes
 
-** N11: retained provisionally because SAM range geometry already exists upstream; exact definition of spatial FFY-event membership in a SAM area remains to be settled.
+** N11: SAM range geometry already exists upstream; exact definition of spatial FFY-event membership in a SAM area remains to be settled.
 
 *** N14: exact value/formula TBD.
 
 ---
 
-## Mechanical review notes / unresolved wording
+## Settled semantic decisions from catalogue review
 
-These are review notes, not silent changes to the candidate effects above.
+### S1 — Fallout terminology
 
-### R1 — Fallout / "nuclear waste" wording
+Open Fufu's nuclear model does **not** treat Fallout as phantom defensive Population/pressure. Fallout remains conquerable population-bearing land with explicit capture resistance/speed effects.
 
-Open Fufu's settled nuclear model does **not** treat fallout as phantom defensive Population/pressure. Fallout is neutral/conquerable population-bearing land with explicit capture resistance/speed effects.
+Therefore P16 is defined in terms of ignoring ordinary **Fallout capture resistance**, and N05 is defined as a hard inability to capture Fallout terrain.
 
-Therefore P16 should eventually be rewritten mechanically as something like:
+### S2 — Desert is a V1 terrain
 
-> `Ignores ordinary Fallout capture resistance`
+Open Fufu V1 will include **Desert** as a real terrain type/map input. The inherited OpenFront enum does not contain it yet, so P14/N03 are implementation-blocked until the V1 terrain pipeline is extended, but they are not speculative future-only traits.
 
-rather than `Ignores nuclear-waste defensive pressure`.
+Exact baseline Desert mechanics/values remain separate tuning work.
 
-N05 remains mechanically coherent as a hard inability to capture Fallout terrain.
+### S3 — enemy-structure capture FFY baseline
 
-### R2 — Desert does not exist in the inherited terrain enum yet
+Ordinary enemy-structure capture does **not** inherently award FFY merely because the structure changed hands.
 
-Current inherited OpenFront terrain concepts are Plains, Highland, Mountain, Ocean, and Impassable. Desert-dependent P14/N03 therefore require Open Fufu to deliberately introduce Desert as a real terrain type/map input before those traits can ship.
+P05 creates the alternate Origin rule: capturing an enemy structure generates a military/conquest FFY event. Exact payout remains tuning data.
 
-Keep them in the candidate catalogue, but mark them blocked on the terrain decision rather than pretending Desert already exists.
+### S4 — P17 uses safe multiplicative compounding
 
-### R3 — Structure-capture FFY baseline must be clarified
+P17 does not subtract one additive percentage point forever. If `S` is the number of currently owned structures, the applicable structure-upgrade cost multiplier is:
 
-P05 only creates a distinct Origin identity if capturing enemy structures is **not already a universal baseline FFY payout** of the same kind.
+```text
+0.99^S
+```
 
-The canonical FFY section currently lists hostile structure capture among possible explicit FFY events. Before P05 ships, decide whether:
+Equivalently, each owned structure multiplies the current upgrade FFY cost by `0.99`.
 
-- baseline structure capture gives no FFY and P05 enables it; or
-- baseline capture gives one reward and P05 adds a distinct additional reward.
+This naturally diminishes without ever requiring a hidden zero/negative-cost clamp.
 
-Do not leave this ambiguous.
+### S5 — P18 is source-cell Fort support
 
-### R4 — P17 must not become an unbounded negative cost
+P18 applies to an engagement lane when its **attacking source cell** lies inside at least one Fort area belonging to the faction or a fixed teammate.
 
-A literal additive `-1 percentage point per owned structure` eventually reaches zero/negative upgrade cost with enough structures.
+Overlapping qualifying Forts do not multiply the P18 bonus; Fort coverage is an eligibility condition for the lane.
 
-Prefer a mathematically safe explicit formulation such as multiplicative compounding (`upgrade cost × 0.99` per owned structure) or another published bounded formula. Do not rely on a hidden runtime clamp.
+### S6 — P19 counts distinct factions
 
-### R5 — P18 needs a precise lane-side definition
+P19 counts distinct other factions with which the faction currently has at least one Territorial Contact. Multiple disconnected Contact components with the same faction count only once.
 
-For `+100% offensive pressure inside allied Fort area`, define whether Fort coverage is checked on the attacking source cell or target cell.
+Unless later revised, "other faction" is literal and may include a fixed teammate as well as an opponent.
 
-Current recommendation for later discussion: apply the bonus to an engagement lane when its **attacking source cell** lies inside a Fort area belonging to the faction or fixed teammate. This reads naturally as a supported sortie and avoids projecting the effect deep into enemy land merely because a Fort radius overlaps the target.
+### S7 — P25 modifies literal blast area
 
-### R6 — P19 must count distinct factions, not Contact components
+P25's `+50%` refers to **affected Hydrogen Bomb blast area**, not `radius × 1.5`. The implementation derives the appropriate versioned blast geometry/radius needed to produce the intended area increase.
 
-If `+5% offensive pressure per Contact` counts disconnected TerritorialContact components, a player could potentially manufacture fragmented borders to stack the trait.
+### S8 — P11 uses peak Total Population as a permanent unlock track
 
-Safer intended interpretation:
+P11's SAM entitlement is monotonic within the match:
 
-> `+5% offensive pressure per distinct other faction with which the faction currently has at least one Territorial Contact.`
+> Each full `25,000` of **peak Total Population reached during the match** unlocks one SAM Launcher ownership/build slot.
 
-Exact inclusion of fixed teammates versus only hostile/non-team factions remains to be decided.
+Population falling later does not remove an unlocked slot and does not destroy an existing SAM. Starting Population contributes immediately to the initial peak.
 
-### R7 — P25 "area" should mean area, not radius
+Exact `25,000` value remains balanceable catalogue data.
 
-If Hydrogen Bomb blast **radius** is increased by 50%, affected geometric area rises by roughly 125% before map/topology effects.
+### S9 — P04 fixes only response-side effectiveness
 
-If the intended effect is literally `+50% blast area`, the implementation should derive the corresponding radius/geometry rather than blindly multiplying radius by `1.5`.
+The ordinary counter-response system may increase or reduce response-side effectiveness according to force imbalance. Under P04, the **response-side effectiveness multiplier is always exactly `1.0`** instead.
 
-### R8 — P11 SAM cap semantics need one explicit rule
+This intentionally removes both the normal response-side bonus when overmatching and the normal response-side penalty when understrength. It is therefore partly a boon and partly a drawback, which is why its provisional cost is only `3`.
 
-`1 SAM per 25k Population` needs a definition for Population changing after construction.
+The attack-side effectiveness calculation remains ordinary unless another explicit rule changes it.
 
-Recommended later direction: cap new construction from current rule-bearing Population at build time; already-existing legal SAMs are not automatically destroyed when Population subsequently falls, but no additional SAM can be built while over the current cap.
+---
 
-Exact use of current Total Population versus Capacity remains open.
+## Remaining mechanical review notes
 
-### R9 — "free" trait interactions should be explicit, not accidental
+### R1 — "free" trait interactions should be explicit, not accidental
 
 P20/P21/P11/P26 can interact with starting structures and free-build entitlements. Examples:
 
 - Does starting with a Missile Silo consume the "first Silo" entitlement from P21?
-- Does P11's free SAM construction still require ordinary affordability before consuming zero FFY, or is it truly zero-cost at any FFY balance?
+- P11 currently says SAM build/upgrade cost is genuinely `0 FFY`; unlike P21 it does **not** state that ordinary affordability must first be reached. Confirm this is intended before deployment.
 - Does P26 require ever possessing the normal MIRV cost, or is the one MIRV genuinely free?
 
 These are catalogue semantics and should be explicit before the trait set is considered deployable.
 
-### R10 — intentionally poor combinations remain legal
+### R2 — spatial FFY-event semantics
+
+P14/P24/N04/N11 assume that FFY-generating events may carry an optional world location. This is a clean intended direction but still needs one canonical definition covering:
+
+- which FFY event kinds have a location;
+- which cell represents a trade/train/structure event;
+- what happens to a global/non-spatial FFY event;
+- whether overlapping Fort/SAM areas stack or simply qualify the event once.
+
+Avoid creating separate bespoke spatial-economy code for each trait.
+
+### R3 — intentionally poor combinations remain legal
 
 Because the Origin system has no compatibility matrix, combinations such as:
 
@@ -201,7 +213,7 @@ remain structurally legal unless the catalogue itself is redesigned.
 
 These combinations may be strategically foolish or partly inert; that is different from being engine-invalid. The exhaustive deployment test must prove they remain deterministic and mechanically safe rather than forbidding them in production.
 
-### R11 — custom/nonstandard lobby rules may invalidate balance, not legality
+### R4 — custom/nonstandard lobby rules may invalidate balance, not legality
 
 Some traits depend strongly on systems such as nukes, SAMs, naval play, or factories. A custom lobby that disables one of those mechanics can make a drawback irrelevant or a positive trait useless.
 
@@ -227,7 +239,11 @@ Spatial checks such as "event occurs inside a SAM area" are therefore feasible b
 
 ### SAM attacks against ships
 
-Current `SAMMissileExecution` explicitly whitelists nuclear targets and flies toward a precomputed interception tile. Letting SAMs attack moving ships is therefore **not** a one-line whitelist change: targeting/lead/interception behavior for moving naval units must be designed. The underlying missile/unit/pathing infrastructure is reusable, but P27 should be treated as a real translated mechanic rather than assumed-free implementation.
+Warship naval targeting already searches nearby Transport Ships, Warships, and Trade Ships by range/priority and fires `ShellExecution` at eligible targets. The useful target-selection/gunnery behavior is currently embedded inside `WarshipExecution` alongside unrelated movement, patrol, healing, retreat, veterancy, and port logic.
+
+For P27, prefer extracting/reusing the relevant **naval target-selection + gunnery behavior** and invoking it from the fixed SAM Launcher tile when the trait is active. Do **not** literally spawn a hidden Warship unit: doing so would unnecessarily entangle Warship ownership limits, stats, veterancy, rendering/visibility, targeting, destruction, and other Unit semantics.
+
+The conceptual model may still be thought of as an immobile Warship-like anti-ship battery inside the SAM; the implementation should share the behavior rather than create a fake unit.
 
 ### Transport Population theft
 
@@ -239,10 +255,10 @@ Transport Ships already carry explicit troop/Population payload state and destru
 
 Before creating Official Origins or anime-reference trait names:
 
-1. review the candidate traits for desired semantics and remove/rewrite any that do not feel Origin-worthy;
-2. settle the R1–R9 wording/mechanical ambiguities above;
-3. decide whether Desert becomes an Open Fufu terrain type;
-4. decide the baseline structure-capture FFY behavior needed by P05;
-5. then assign final reference names only after the effects are stable enough that the reference can match the mechanic;
+1. settle the remaining free-build interactions in R1;
+2. settle one common spatial FFY-event model for P14/P24/N04/N11;
+3. continue reviewing candidates for effects that still feel too Echo-like or redundant;
+4. polish wording as individual mechanics stabilize;
+5. then assign anime/JRPG reference names only after the effect is stable enough that the reference can match the mechanic;
 6. only after that build the first Official Origins from this same pool;
 7. before deployment, exhaustively enumerate every builder-legal combination under the final candidate catalogue and builder rules.
