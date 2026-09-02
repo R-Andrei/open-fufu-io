@@ -189,16 +189,19 @@ The conceptual read surface includes areas such as:
 
 ```text
 game
+me
 factions
 cells
 segments
 contacts
+operations
 structures
 units
+navigation
 economy
-population
-operations
-runtime / lastDecision
+rules / mechanics
+events / lastDecision
+random / limits
 ```
 
 The conceptual write/action surface includes low-level legal operations such as:
@@ -215,19 +218,26 @@ The conceptual write/action surface includes low-level legal operations such as:
 - unit movement/targeting;
 - naval/amphibious operations;
 - strategic weapon use;
+- bounded team signals where applicable;
 - surrender/capitulation where applicable.
 
 There is **no controller primitive for manually allocating passive defensive Population quantities across owned cells**. Passive defense quantity is automatic; the controller may only influence which threatened cells receive scarce automatic defenders through strategy-neutral priorities/weights.
 
-Exact names and TypeScript types are API-design work.
+The public controller contract must not expose mutable canonical `Game`, `Player`, `Unit`, `GameMap`, raw tile-state buffers, `Execution` objects, or equivalent engine internals. The controller receives legal observations and submits declarative directives/commands.
 
 ### 5.4 Starter controller
 
 Every player begins with one **minimal complete working controller**. It should demonstrate lawful/basic mechanics while remaining strategically weak. It may expand monotonously, launch simple opportunistic attacks with simple weighting, use an even-spread defensive priority policy, use a basic counter-response rule, build/upgrade evenly, and avoid sophisticated doctrine, prediction, or threat analysis.
 
+A minimal controller must be viable without scanning every cell, implementing graph algorithms, manually allocating defenders, reproducing formulas, or manually tracking engine operation identities.
+
 ### 5.5 Browser authoring surface
 
-The browser should be the primary rich authoring/debugging surface. It should support capabilities equivalent to editing controller source, saving incomplete drafts, inspecting API documentation/types, certification/benchmarking, diagnostics/replays, publishing immutable certified versions, and selecting controller presets/versions.
+The browser should be the primary rich authoring/debugging surface. It should support capabilities equivalent to editing controller source, saving incomplete drafts, inspecting API documentation/types, certification/benchmarking, diagnostics/replays, publishing immutable certified versions, selecting controller presets/versions, and visualizing controller debug overlays.
+
+### 5.6 Multi-file source packages
+
+Controller projects may contain multiple local TypeScript modules. Publication compiles/typechecks/bundles the source package plus the official controller SDK into one immutable certified artifact. Runtime filesystem/import access is not required.
 
 ---
 
@@ -267,6 +277,14 @@ plain structured objects
 Controllers must not rely on mutable module/global runtime state surviving between invocations. Only explicit controller memory is guaranteed writable persistence.
 
 Current provisional memory limit: **128 KiB serialized per faction per match**.
+
+### 6.4 Decision-as-set semantics
+
+A controller invocation proposes one **transactional desired decision set**, not an order-sensitive imperative script over canonical state.
+
+If one decision reduces one Population commitment and increases another, validation considers the proposed final commitment state rather than making source-code call order a hidden gameplay mechanic. One-shot commands are validated against the same observation snapshot and may not depend on a structure/unit created earlier in that same decision unless a future command explicitly documents otherwise.
+
+Persistent directives remain active when the controller does not mention them on the next invocation. One-shot commands execute only once.
 
 ---
 
@@ -332,7 +350,7 @@ The faction still receives normal automatic defense. Persistent failures trigger
 
 ### 7.6 Diagnostics
 
-`game.lastDecision` should expose deterministic previous-decision status/rejection metadata useful for programmatic recovery. Human-facing diagnostics should show relevant codes, exception/stack information for real program errors, transaction rollback status, active prior directives, and retry/faulted status.
+`lastDecision` exposes deterministic previous-decision status/rejection metadata useful for programmatic recovery. Human-facing diagnostics should show relevant codes, exception/stack information for real program errors, transaction rollback status, active prior directives, and retry/faulted status.
 
 ---
 
@@ -342,7 +360,7 @@ Player controller code must be treated as hostile even though the intended user 
 
 It must not receive unrestricted access to filesystem, network, subprocesses, environment variables, system clock, arbitrary native modules, host process objects, or unrestricted CPU/memory.
 
-The runtime must provide deterministic game RNG rather than uncontrolled randomness. CPU, memory, output/logging, persistent-memory, and action budgets must be explicit.
+The runtime must provide deterministic game RNG rather than uncontrolled randomness. CPU, memory, output/logging, persistent-memory, query/materialization, directive, and action budgets must be explicit.
 
 Raw `eval` and Node `vm` alone are not sufficient security boundaries. The initial implementation choice is described in the integration plan.
 
@@ -607,7 +625,7 @@ The shared **base exchange volume** is proportional to the smaller force:
 B = k × min(A, R)
 ```
 
-where `k` is a ruleset/tuning rate. This prevents a huge force from receiving a huge linear casualty-output multiplier merely because it is huge; its major advantage is its larger Population pool plus the bounded efficiency advantage below.
+where `k` is a ruleset/tuning rate.
 
 Force-size advantage is determined from **relative**, not absolute, imbalance:
 
@@ -645,9 +663,7 @@ responsePopulationLost = B × attackMultiplier
 
 with deterministic fixed-point/residual handling and hard caps so neither side loses more Population than it actually has.
 
-This construction keeps modest force differences close to equal efficiency and only approaches the cap for extreme ratios. The relative casualty-efficiency gap is bounded by `M`: an overwhelmingly larger side never becomes more than the configured maximum amount more casualty-efficient merely because of force ratio. The larger force still has the strategic advantage of a larger pool and therefore greater endurance.
-
-The ruleset should expose **attack-side** and **response-side** counter-combat effectiveness curves/parameters as semantically separate hooks even when their default V1 behavior is the mirrored formula above. Future explicit faction/item/ruleset mechanics may favor overwhelming attack or overwhelming response differently. Such mechanics must remain surfaced and deterministic; the final relative-efficiency cap remains enforced unless an explicit rule also modifies that cap.
+The ruleset exposes **attack-side** and **response-side** counter-combat effectiveness curves/parameters as semantically separate hooks even when their default V1 behavior is mirrored. Future explicit faction/item/ruleset mechanics may favor overwhelming attack or overwhelming response differently.
 
 Ending/changing a surviving counter-response is instantaneous on a valid controller decision and returns its surviving Population to Available. A counter-response is tied to one incoming operation and cannot duplicate the same committed Population across multiple targets.
 
@@ -812,11 +828,16 @@ At minimum:
 - broad faction shape;
 - faction Total Population;
 - Territory %;
-- FFY.
+- FFY;
+- active public mechanical modifier sheets/rule-bearing faction effects.
+
+Mechanical modifiers should not need to be reverse-engineered from outcomes. Exact cosmetic item identity may be presented separately, but strategically relevant active modifiers are surfaced.
 
 ### 19.2 Operational/local information
 
 Detailed local information may depend on OperationalContact/visibility, including active enemy operations/pressure, counter-responses, mobile units, structures/defenses, and tactical modifiers where allowed.
+
+Fixed teammates share the union of legally observable operational information. This prevents autonomous teammate controllers from being artificially less able to coordinate than humans who could simply relay legally observed information outside the game.
 
 ### 19.3 Private
 
@@ -828,7 +849,7 @@ Ordinary users do **not** spectate unrelated third-party matches.
 
 A player may view a match they are actually participating in, including their own PvE match, from the legal perspective available to that participant. Internal benchmark/certification/development tooling may use trusted omniscient observation where required.
 
-The authoritative server enforces these information boundaries; browser-only hiding is insufficient.
+The authoritative server enforces these information boundaries; browser-only hiding is insufficient. Derived queries/calculators must never leak hidden information that raw legal observations would withhold.
 
 ---
 
@@ -851,6 +872,8 @@ Trade with enemies remains possible. Default wartime economic penalty direction 
 Team relationships are fixed pre-match. FFA has no formal mutable alliances and non-team factions remain legally attackable regardless of `atWar`.
 
 `atWar` is a symmetric derived recent-hostility state, not a permission gate. Hostile land/amphibious/naval/territorial/strategic-weapon actions may establish or refresh it. Exact timeout is tuning data.
+
+Fixed human-controller teams may use a small deterministic bounded **team signal channel** for controller-to-controller coordination. Signals contain bounded JSON-like data, become visible to teammates on a later deterministic decision boundary rather than creating same-tick ordering races, and do not grant additional hidden information.
 
 ### 21.2 Defeat at zero territory
 
@@ -987,20 +1010,247 @@ Because programming is the gameplay, observability is first-class. The system sh
 
 Headless accelerated testing uses the same logical game rules as live matches.
 
+### 24.1 Controller debug annotations
+
+Controller debugging is core V1 authoring infrastructure. A controller may emit bounded **private debug annotations** that do not affect simulation state, including concepts equivalent to:
+
+- named scalar/string metrics;
+- log messages;
+- cell/region highlights;
+- Segment highlights;
+- operation/unit/structure annotations;
+- labels or markers for controller-derived concepts.
+
+These annotations are visible only to the controller owner through the browser/replay debugger and must obey explicit output/size/count limits. They must not create public gameplay information or become a simulation input.
+
+---
+
+## 24A. Controller API contract — Accepted V1 direction
+
+The controller API is the primary gameplay language. Its design objective is:
+
+> **Expose facts, legality, geometry, generic algorithms, deterministic rules, and mechanical arithmetic generously; expose strategic judgments and future-state oracles sparingly or not at all.**
+
+Players should win through better strategy and abstractions, not because they reimplemented flood-fill, A*, legality checks, blast geometry, or published combat equations.
+
+### 24A.1 One deterministic entry point and explicit memory
+
+The normal runtime model is one controller `decide(context)`-style entry point operating on an immutable observation and explicit persistent `memory`. Exact TypeScript names remain API implementation work, but the conceptual context is equivalent to:
+
+```text
+game
+me
+factions
+cells
+segments
+contacts
+operations
+structures
+units
+navigation
+economy
+rules
+mechanics
+events
+lastDecision
+random
+limits
+memory
+directives
+commands
+debug
+```
+
+The API may use an official `defineController` helper or equivalent authoring wrapper, but that wrapper must not hide privileged strategy.
+
+### 24A.2 Persistent directives versus one-shot commands
+
+The contract distinguishes:
+
+- **persistent directives**, which remain active until changed, completed, invalidated, or explicitly ended; and
+- **one-shot commands**, which are attempted once in the current transaction.
+
+Persistent examples include offensive operations, neutral expansion, counter-responses, defense-priority policy, and ongoing unit movement/patrol/targeting.
+
+One-shot examples include building/upgrading a structure, launching a strategic weapon, deliberate territorial relinquishment, team signaling, and capitulation.
+
+Omitting an existing persistent directive from a later controller invocation does **not** implicitly cancel it.
+
+### 24A.3 Controller-owned directive keys
+
+Controllers may assign bounded stable string keys to their own persistent directives so ordinary code can update an operation without maintaining a fragile engine-generated ID solely for ownership bookkeeping.
+
+The engine still maintains immutable internal operation IDs for observation, replay, incoming enemy-operation references, and deterministic identity.
+
+### 24A.4 Population updates are explicit set-now changes
+
+When a controller changes an operation to `N` committed Population, that decision sets the operation's current commitment to `N` immediately if valid. Combat casualties may later reduce it below `N`; the engine does **not** automatically refill the operation back to a desired target.
+
+Replenishment requires a later explicit controller decision. This preserves instant commitment without reintroducing desired/actual Deployment machinery.
+
+### 24A.5 Geographic data and selectors
+
+The API should make raw strategic geography available without requiring computational-geometry boilerplate.
+
+At minimum, legal cell facts include concepts equivalent to:
+
+- stable cell ID and coordinates;
+- terrain;
+- Segment identity;
+- ownership;
+- fallout;
+- population-bearing/conquerable/impassable/coast/shoreline facts;
+- legally visible structures or tactical state where permitted.
+
+The API should provide **serializable declarative selectors/regions** that can be composed from strategy-neutral mechanical predicates such as:
+
+- explicit IDs;
+- owner;
+- Segment;
+- terrain/fallout;
+- coast/shoreline;
+- conquerable/population-bearing state;
+- simple geometric areas;
+- unions/intersections/differences;
+- legally visible structure/unit sets where appropriate.
+
+Persistent simulation directives consume compiled/bounded selector data, not arbitrary user JavaScript callbacks executed by the 10 Hz simulation loop.
+
+### 24A.6 Generic geographic queries are quality-of-life, not strategy
+
+The engine/SDK should provide bounded deterministic factual operations equivalent to:
+
+- neighbor/adjacency queries;
+- boundary extraction;
+- connected components/flood-fill;
+- ordinary distance queries;
+- generic land/naval/rail reachability and pathfinding;
+- nearest/reachable queries;
+- Segment/owner/terrain histograms and summaries;
+- legal structure sites;
+- legal transport/coast destinations;
+- other generic geometry/legality calculations.
+
+These do **not** include strategic judgments such as `weakestPoint`, `bestTarget`, `bestNukeTarget`, `optimalAttackPopulation`, `safestTradeRoute`, or `biggestThreat`.
+
+Advanced controllers may request bounded batch/materialized cell data for custom analysis, but materialization/output limits are explicit and deterministic. The API should not encourage object-per-cell scans of the entire map every decision.
+
+### 24A.7 Segments and Contacts are first-class
+
+Segments must be convenient enough that a competent controller can remain mostly Segment-level. Segment observations should expose factual summaries such as cell/terrain counts, ownership shares, adjacency, coast/fallout counts, and selectors for their cells.
+
+Territorial Contacts are also first-class factual adjacency geometry. The API may expose contact size, disconnected components, involved Segments, terrain composition, and boundary selectors.
+
+It must not expose a canonical strategic `Front`, `weakest contact`, `best breakthrough`, or similar policy judgment.
+
+### 24A.8 Offensive spatial control has selection and weighting
+
+Land operations conceptually expose two distinct strategy-neutral spatial controls:
+
+1. **engagement priority** — which legal candidate lanes/cells are selected when committed Population cannot engage the whole candidate frontage; and
+2. **pressure weighting** — how finite committed Population is distributed across the engaged geometry.
+
+Both receive deterministic defaults so simple attacks need specify neither. Advanced controllers may express bounded rules over selectors/regions rather than enormous per-cell maps.
+
+### 24A.9 Defense exposes priorities, not quantities
+
+The defense API exposes only priorities/weights deciding **which threatened cells receive scarce one-Population automatic defenders**.
+
+It cannot directly choose defensive Population quantities, stack multiple passive defenders on one cell, or arbitrarily divert the automatic contact-surface apportionment toward a chosen enemy.
+
+Explicit counter-responses are the mechanism for deliberately spending extra Population against an incoming operation.
+
+### 24A.10 Counter-response API remains simple
+
+A controller counter-response identifies an incoming operation and commits Population to it. The nonlinear exchange math remains an engine rule; controllers are not required to reproduce it merely to use the mechanic.
+
+### 24A.11 Public rules and pure mechanics calculators
+
+The API exposes the current match's actual rule-bearing constants/feature flags and **pure deterministic mechanical calculators** for published arithmetic/geometry, such as concepts equivalent to:
+
+- Population growth arithmetic;
+- capture-advantage arithmetic;
+- counter-response exchange arithmetic;
+- structure/unit/weapon costs and legality;
+- weapon blast/range geometry;
+- explicit terrain/structure/item modifiers.
+
+These calculators operate only on supplied/legal information and must not leak hidden canonical state.
+
+Do **not** provide future-state strategic simulators/search oracles such as `simulateNextMinute`, `expectedWinner`, `bestAttack`, or `optimalCounterSize`.
+
+### 24A.12 Public structures, units, and weapons follow game concepts
+
+The public API should expose distinct game-level structure/unit/weapon concepts even if inherited engine internals share one implementation class.
+
+Own objects expose the state needed to control them; enemy objects expose only legally observable state.
+
+Movement and routing APIs are intent-oriented: controllers choose destination/patrol/target and the engine performs ordinary pathfinding/mechanical movement.
+
+### 24A.13 Corresponding legality queries
+
+Major player actions should have factual legality/cost helpers where useful. A player should be able to ask whether/where a structure can be built, whether a weapon is in range, whether a coast is reachable, or what an upgrade costs without attempting actions blindly.
+
+These helpers answer **what is legal**, not **what is strategically best**.
+
+### 24A.14 Events since the previous decision
+
+Controllers receive a bounded typed event stream covering legally observable meaningful changes since the previous controller invocation, such as territory changes, Population losses, operation lifecycle events, structure completion/destruction, unit changes, FFY events, hostility changes, faction defeat/capitulation, and strategic-weapon events.
+
+This is quality-of-life so every controller does not need to diff the entire world snapshot manually. Persistent long-term interpretation remains controller strategy/memory.
+
+### 24A.15 Decision receipts and directive lifecycle
+
+`lastDecision` or equivalent exposes structured transaction status and per-command/rejection metadata. Ordinary gameplay failures are data rather than exceptions.
+
+Persistent directives expose deterministic lifecycle/status such as active, blocked/no-actionable-geometry, completed, target-defeated, or otherwise invalidated. Obviously dead directives are garbage-collected by the engine and surviving committed Population returns according to ordinary rules; controllers are not required to manually collect stale engine records.
+
+### 24A.16 Deterministic randomness
+
+Randomized controller strategy is allowed through deterministic match-bound randomness. `Math.random()` may be replaced/seeded deterministically inside the sandbox, and the API should also provide **keyed deterministic randomness** so unrelated random calls do not perturb every later strategic choice.
+
+No uncontrolled entropy or real system clock is exposed.
+
+### 24A.17 Runtime/controller limits are public
+
+Deterministic structural limits such as operation count, command count, selector/policy-rule count, materialized-cell/query limits, memory and debug/log budgets are visible to the controller/API documentation.
+
+Controllers must not branch on nondeterministic wall-clock CPU time remaining. Human diagnostics may report CPU/runtime usage separately.
+
+### 24A.18 Team coordination
+
+Fixed teammates share legal operational observations as defined above and may exchange small bounded deterministic JSON-like team signals. Team signals are delayed to a deterministic later decision boundary so same-tick execution order does not matter.
+
+There is no unrestricted shared mutable controller memory.
+
+### 24A.19 SDK convenience versus strategy
+
+The official SDK may provide pure helpers/builders for selectors, priorities, deterministic math, common collection manipulation, percentages/ratios, and other neutral ergonomics.
+
+It should not ship privileged strategy functions such as `pickWeakestEnemy`, `turtle`, `blitz`, `bestNukeTarget`, or equivalent doctrine. Players may freely build those abstractions themselves.
+
+### 24A.20 Spawn lifecycle is deliberately not settled here
+
+Random spawning remains a supported game mode. The preferred ordinary Open Fufu experience is expected to use **non-random spawn selection more often than random spawning**, and players should normally receive some controlled information about where other participants have spawned.
+
+The exact spawn-selection protocol, simultaneity/information timing, collision resolution, whether the controller chooses exact cells versus regions/preferences, and how much opponent spawn information is visible are **open design questions** and must be settled before defining any final controller spawn hook.
+
 ---
 
 ## 25. Deliberately deferred or implementation-level systems
 
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
-- exact TypeScript API names/types;
+- exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing;
+- exact spawn-selection protocol and controller spawn hook;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
 - exact wire protocol/session encoding;
 - exact deterministic memory codec;
+- exact controller query/materialization/debug-output limits;
 - exact capture-progress coefficients;
 - exact Population-growth coefficients/interpolation;
-- exact counter-response tuning constants (`k`, final `M`, final `p`) and future explicit attack-side/response-side modifier values;
+- exact counter-response casualty/rate coefficients;
 - exact Segment size heuristics;
 - exact terrain/fallout values;
 - exact FFY payouts;
@@ -1018,34 +1268,41 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 1. **The server owns the match.** Browsers are not simulation authorities.
 2. **The controller may fail; the match must continue deterministically.**
 3. **Controllers receive deterministic immutable observations and explicit persistent per-match memory.**
-4. **Cells are the physical territorial resolution; Segments are immutable strategic lenses.**
-5. **Every real map cell belongs to exactly one Segment.**
-6. **Population is one global whole-integer faction resource.**
-7. **Population Capacity equals owned population-bearing cells exactly.**
-8. **There is no persistent defensive cell Population allocation.**
-9. **Automatic defense is binary per threatened owned cell: 0 or 1 Population, never more than 1.**
-10. **Available Population limits how many threatened cells may receive that one automatic defender; surplus Population does not stack passive defense.**
-11. **Controller defensive priorities choose which scarce threatened cells are defended, not raw defensive Population quantities.**
-12. **Counter-responses spend committed Population to fight an incoming operation's committed Population directly; they do not reinforce passive cell defense.**
-13. **Counter-response force advantage is scale-free and nonlinear, stays close to parity for modest force ratios, and is bounded by an explicit maximum relative casualty-efficiency ratio.**
-14. **Attack-side and response-side counter-combat effectiveness are separate surfaced rule hooks even when V1 uses mirrored defaults.**
-15. **Offensive Population is committed instantly to sparse operations with spatial intent.**
-16. **An operation's engaged frontage cannot exceed its committed Population.**
-17. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
-18. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
-19. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
-20. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
-21. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
-22. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
-23. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
-24. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
-25. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
-26. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
-27. **FFY is event-driven, not passive Population taxation.**
-28. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-29. **Zero population-bearing territory after tick resolution means immediate defeat.**
-30. **Capitulated/resigned factions stop growth and decision-making, lose all mobile/offensive activity, but retain territory, static passive geography, and surviving automatic Population defense until conquered.**
-31. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-32. **Ordinary users cannot live-spectate unrelated matches.**
-33. **Historical matches bind exact rule-bearing versions.**
-34. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+4. **The public controller API exposes legal observations and declarative directives/commands, not mutable engine internals.**
+5. **Generic geometry, pathfinding, connected-components, legality, and published formula calculation are quality-of-life primitives; strategic recommendations/oracles are not.**
+6. **Persistent directives survive omitted future decisions; one-shot commands do not.**
+7. **Controller decisions validate as a transaction/final desired set rather than source-order simulation mutations.**
+8. **Cells are the physical territorial resolution; Segments are immutable strategic lenses.**
+9. **Every real map cell belongs to exactly one Segment.**
+10. **Population is one global whole-integer faction resource.**
+11. **Population Capacity equals owned population-bearing cells exactly.**
+12. **There is no persistent defensive cell Population allocation.**
+13. **Automatic defense is binary per threatened owned cell: 0 or 1 Population, never more than 1.**
+14. **Available Population limits how many threatened cells may receive that one automatic defender; surplus Population does not stack passive defense.**
+15. **Controller defensive priorities choose which scarce threatened cells are defended, not raw defensive Population quantities.**
+16. **Counter-responses spend committed Population to fight an incoming operation's committed Population directly; they do not reinforce passive cell defense.**
+17. **Offensive Population is committed instantly to sparse operations with spatial intent.**
+18. **An operation's engaged frontage cannot exceed its committed Population.**
+19. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
+20. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
+21. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
+22. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
+23. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
+24. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
+25. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
+26. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
+27. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
+28. **Terrain/structures/items affect mechanics only through explicit surfaced rules.**
+29. **Strategically relevant active mechanical modifiers are publicly surfaced.**
+30. **Derived controller helpers never leak information outside the controller's legal observation projection.**
+31. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
+32. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
+33. **FFY is event-driven, not passive Population taxation.**
+34. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+35. **Zero population-bearing territory after tick resolution means immediate defeat.**
+36. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
+37. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+38. **Ordinary users cannot live-spectate unrelated matches.**
+39. **Historical matches bind exact rule-bearing versions.**
+40. **Random spawn remains supported, but the ordinary non-random spawn protocol remains an explicit unresolved design question.**
+41. **One canonical design document governs the target; one canonical integration plan governs the migration.**
