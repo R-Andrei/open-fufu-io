@@ -374,13 +374,50 @@ Terrain, Defense Posts, items, and other explicit modifiers change the effective
 
 ### 11.5 Direct active counter-responses
 
-A targeted counter-response removes Population from Available and commits it against one incoming hostile operation.
+A targeted counter-response removes Population from Available and commits it against one incoming hostile operation. It does **not** add extra passive defenders to cells and cannot raise a threatened cell above the one-defender automatic cap.
 
-It does **not** add extra passive defenders to cells and cannot raise a threatened cell above the one-defender automatic cap.
+Counter-response combat is a separate direct operation-vs-operation Population exchange and may cause casualties without any cell changing owner.
 
-Instead, counter-response Population directly engages the hostile operation's committed Population and may inflict direct Population losses on that operation while taking its own losses under an explicit operation-vs-operation combat rule.
+For incoming attack Population `A` and counter-response Population `R`, use a shared exchange volume based on the smaller force:
 
-Exact counter-response casualty/rate coefficients and API weighting remain tuning/API work. The implementation must preserve finite accounting and prevent one committed counter-response Population pool from being duplicated across multiple hostile operations.
+```text
+B = k × min(A, R)
+```
+
+Then derive scale-free relative imbalance:
+
+```text
+d = (R - A) / (R + A)
+s = sign(d) × |d|^p
+```
+
+with `p > 1`; provisional V1 starts at `p = 2`.
+
+Let `M` be the maximum relative casualty-efficiency ratio between the advantaged and disadvantaged side; provisional V1 starts at `M = 1.5`. Define:
+
+```text
+h = (M - 1) / (M + 1)
+
+responseMultiplier = 1 + h × s
+attackMultiplier   = 1 - h × s
+```
+
+and resolve both casualty directions simultaneously from the same pre-tick state:
+
+```text
+attackPopulationLost   = B × responseMultiplier
+responsePopulationLost = B × attackMultiplier
+```
+
+Use deterministic fixed-point/residual handling and cap casualties at the Population actually present.
+
+This gives a shallow advantage near parity, uses ratios rather than absolute Population differences, and asymptotically caps the force-ratio efficiency advantage rather than allowing 2×, 3×, or larger linear kill-rate scaling. The larger force still benefits from its larger Population pool/endurance.
+
+Implement **attack-side** and **response-side** effectiveness curves/parameters as distinct ruleset hooks even though their V1 defaults mirror one another. This leaves room for explicit future faction/item/ruleset mechanics that favor overwhelming attack or overwhelming response differently without changing the basic combat architecture. The final relative-efficiency cap remains enforced unless an explicit rule also modifies that cap.
+
+A counter-response is tied to one incoming hostile operation; its committed Population cannot be duplicated across targets. Ending/changing it is immediate on a successful controller decision and returns surviving Population to Available.
+
+Exact `k`, final `M`, final `p`, and explicit side-specific modifier values are tuning data.
 
 ### 11.6 Capture throughput
 
@@ -422,6 +459,8 @@ For a defended capture, the ordinary one-for-one casualty pair applies only betw
 - surplus Available Population does not stack passive defense above one per cell;
 - defensive priorities affect cell selection, not automatic defensive quantity;
 - counter-responses attack incoming committed Population directly rather than stacking passive defense;
+- counter-response force advantage is scale-free, nonlinear, shallow near parity, and bounded by an explicit maximum relative casualty-efficiency ratio;
+- attack-side and response-side counter-combat curves remain separately addressable rule hooks;
 - zero Available Population means zero baseline Population defense.
 
 ---
@@ -560,18 +599,23 @@ After all same-tick ownership changes resolve, **zero owned population-bearing t
 
 ### Resignation/capitulation
 
-A resigned/capitulated faction keeps its owned territory, static structures, and surviving Population.
+A resigned/capitulated faction becomes a passive territorial remnant. It keeps its territory, static structures, and surviving Population, but all active/mobile gameplay ends.
 
 On resignation/capitulation:
 
 - growth becomes permanently zero;
 - controller decisions permanently stop;
 - active land offensive/counter-response operations cease and surviving Population returns to Available;
-- remaining Available Population continues automatic passive defense;
+- **all mobile units are removed immediately**, including warships, trade ships, trains, transport ships, and equivalent future mobile objects;
+- Population carried aboard a removed transport returns to Available instead of dying;
+- removed units provide no FFY/resource refund;
+- in-flight offensive projectiles/strategic weapons owned by the capitulated faction are removed/cancelled before later offensive resolution;
+- static structures remain owned and physically present;
+- explicitly passive static effects may continue, such as a Defense Post modifying an actual automatic defender;
+- active static behavior stops: no missile launches, SAM firing, new trade ships/trains/units, or other autonomous strategic activity;
+- remaining Available Population continues binary automatic passive defense;
 - territory remains capturable normally;
 - no new strategic actions occur.
-
-Exact inert/passive handling of inherited mobile units is deferred to unit translation, but they must not become new controller-driven activity.
 
 Replace old partial-territory/overtime/doomsday victory rules with the canonical 100%-territory/opposition-defeated rules.
 
@@ -792,13 +836,18 @@ Performance and simulation tests should cover:
 - deterministic Even Spread and controller defensive-priority ordering;
 - multi-operation overlap without duplicate automatic defenders on one cell;
 - zero-Available-Population defense;
-- direct counter-response Population accounting and casualties;
+- direct counter-response Population accounting and simultaneous casualties;
+- counter-response scale invariance at equal ratios across different absolute Population sizes;
+- shallow near-parity counter-response efficiency differences;
+- configured counter-response maximum relative efficiency cap at extreme ratios;
+- distinct attack-side and response-side counter-combat rule hooks;
 - same-faction offensive operation aggregation;
 - no same-tick chain conquest;
 - capture-coupled casualties;
 - third-party same-cell claimant casualty-free behavior;
 - normal neutral fallout reconquest and fallout capture resistance;
 - optional water-nuke conversion and victory-denominator updates;
+- capitulation cleanup of mobile units, transport payload return, projectile cancellation, and passive-only static remnants;
 - controller execution;
 - participant projection/deltas;
 - accelerated/headless runs;
@@ -921,7 +970,7 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority and Population/frontage simplifications and the post-audit combat clarifications, the legitimately open questions are now narrower:
+After the authority, Population/frontage, counter-response, capitulation, and post-audit combat clarifications, the legitimately open questions are now narrower:
 
 1. **Exact TypeScript controller API names/types and ergonomics**, including the final defensive-priority and counter-response surfaces.
 2. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
@@ -929,11 +978,10 @@ After the authority and Population/frontage simplifications and the post-audit c
 4. **Exact SQLite schema/index/backup/retention details.**
 5. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
 6. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
-7. **Passive/inert mobile-unit behavior after resignation/capitulation.**
-8. **Detailed lobby/UI/UX redesign.**
-9. **Replacement asset creation and final proprietary-directory removal.**
-10. **Normal gameplay tuning** — capture progress/speed, counter-response casualty/rate coefficients, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
+7. **Detailed lobby/UI/UX redesign.**
+8. **Replacement asset creation and final proprietary-directory removal.**
+9. **Normal gameplay tuning** — capture progress/speed, counter-response `k`/cap/exponent and future explicit side-specific modifiers, terrain/structure/fallout multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, water-nuke conversion values, and related balance constants.
 
-The previous low-Population defense discretization, multi-faction same-cell casualty semantics, and standard nuclear-fallout political semantics are now settled in the canonical design contract and are no longer open questions.
+The counter-response algorithmic shape and capitulated/resigned mobile-unit behavior are now settled in the canonical design contract rather than remaining open architecture questions.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
