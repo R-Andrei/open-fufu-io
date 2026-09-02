@@ -405,7 +405,7 @@ static map/config
 
 #### Phase 1
 
-Every participant gets the same public static map/ruleset/spawn-legality view and simultaneously submits a broad spawn influence area/anchor using the ruleset-defined shape/scale.
+Every participant gets the same public static map/ruleset/spawn-legality view, **every participant's surfaced Initial Territory value and other strategically relevant public spawn-affecting modifiers**, and simultaneously submits a broad spawn influence area/anchor using the ruleset-defined shape/scale.
 
 These areas are **non-exclusive search spaces**, not ownership reservations. Overlap is legal and expected.
 
@@ -912,7 +912,7 @@ Public projection includes strategically relevant active mechanical modifier she
 
 All derived query/calculator APIs operate strictly over legal projected information and must not create side-channel visibility leaks.
 
-During Strategic Spawn, the pre-match information projection is explicitly phase-dependent: Phase 1 choices are hidden until all are committed, the full Phase-1 influence set is then public for Phase 2, Phase-2 revisions are hidden until all are committed, final influence areas are then public for Phase 3, and exact origins are revealed after simultaneous resolution before normal play begins.
+During Strategic Spawn, the pre-match information projection is explicitly phase-dependent: all participants' surfaced Initial Territory values and other strategically relevant public spawn modifiers are visible before Phase 1; Phase 1 choices are hidden until all are committed; the full Phase-1 influence set is then public for Phase 2; Phase-2 revisions are hidden until all are committed; final influence areas are then public for Phase 3; and exact origins are revealed after simultaneous resolution before normal play begins.
 
 There is **no ordinary third-party live spectator mode**. Users may view only matches they are actually participating in, including their own PvE matches, from their legal participant perspective.
 
@@ -1098,6 +1098,7 @@ Performance and simulation tests should cover:
 - deterministic normal and keyed randomness;
 - debug annotation bounds and no simulation effect;
 - team shared observation and delayed signal ordering;
+- Strategic Spawn Phase-1 projection includes all participants' public Initial Territory values and relevant spawn modifiers;
 - Strategic Spawn Phase-1 simultaneous choice/reveal;
 - Phase-2 single reconsideration round with no live reaction to Phase-2 submissions;
 - Phase-3 simultaneous exact-origin resolution;
