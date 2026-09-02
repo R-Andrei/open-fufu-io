@@ -67,7 +67,8 @@ controller observation
 | Passive worker gold | **Remove** |
 | Current troop growth/capacity formulas | **Replace** |
 | Global Easy/Medium/Hard gameplay difficulty scalar | **Remove** |
-| Official-AI simulation cheats | **Remove** |
+| Existing Nation-AI behavior-composition pattern | **Keep selectively as reference/internal strategy components** |
+| Official-AI simulation cheats / privileged information | **Remove** |
 | Mutable alliances/relations diplomacy | **Remove** |
 | Current partial-territory/overtime/doomsday victory rules | **Replace / Remove** |
 | Dense defensive Population allocation field | **Do not build** |
@@ -516,6 +517,29 @@ Detailed lobby UI/UX remains later product work.
 
 ---
 
+## 16A. Official PvE AI migration — Accepted
+
+The existing OpenFront Nation-AI code is useful as **behavioral reference and as an example of composing reusable strategy components**, not as the target gameplay contract.
+
+Retain/reuse selectively:
+
+- the general pattern of composing aggression, economy, construction, naval, retaliation, target-selection, and strategic-weapon behaviors;
+- useful strategy-neutral helper logic that can be moved behind the Open Fufu observation/action contract;
+- creator-authored preset/version concepts where they remain compatible.
+
+Do not preserve:
+
+- direct unrestricted access to canonical `Game` state when that exposes information a player controller cannot legally observe;
+- global troop/Population reads that bypass the canonical visibility contract;
+- Easy/Medium/Hard simulation modifiers or difficulty-dependent resource cheats;
+- hidden reaction-speed, income, growth, omniscience, or legality advantages.
+
+Official PvE AI should consume the same legal gameplay observation/action contract as player controllers. It may execute as trusted code and therefore need not use the hostile-code sandbox, but trusted execution must not create gameplay-information or rules privileges.
+
+Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs.
+
+---
+
 ## 17. Visibility and participant viewing — Accepted
 
 OpenFront's client-replicated full simulation cannot securely enforce hidden operational information.
@@ -677,7 +701,20 @@ Useful inherited foundations include TypeScript checking, Vite/browser build, No
 
 Remove tests that assert intentionally removed OpenFront behavior and replace them with Open Fufu invariants.
 
-### Required performance/logic coverage
+### 23.1 Authoritative map packaging
+
+Current OpenFront production packaging assumes the server does not simulate and may therefore omit server-side map binaries/resources. That assumption is incompatible with Open Fufu authority.
+
+The authoritative match runtime must have deterministic access to the exact map binary/data, Segment metadata, and other rule-bearing static map inputs bound to the match. Build/deployment work must therefore:
+
+- package or otherwise make those authoritative map resources available to match processes;
+- version/hash them as part of match identity;
+- ensure live, headless, certification, and replay execution load the same rule-bearing map data;
+- avoid blindly copying unrelated browser-only assets into the match runtime when they are not needed.
+
+Do not preserve a Docker/build optimization whose premise is “the server never loads maps.”
+
+### 23.2 Required performance/logic coverage
 
 Performance and simulation tests should cover:
 
@@ -769,7 +806,7 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
        ↓
 7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
        ↓
-8. STRUCTURE / NAVAL / RAIL / WEAPON TRANSLATION
+8. OFFICIAL PVE AI PRESETS + STRUCTURE / NAVAL / RAIL / WEAPON TRANSLATION
        ↓
 9. MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
        ↓
@@ -782,7 +819,38 @@ Some workstreams may overlap, but downstream systems must not force premature co
 
 ---
 
-## 27. Remaining open integration questions
+## 27. OpenFront audit coverage cross-check — Accepted
+
+This table is a traceability check against the source-level OpenFront compatibility audit. It exists so later edits do not accidentally drop an inherited subsystem from the migration record.
+
+| Original audit area | Canonical integration coverage |
+| --- | --- |
+| 1. Repository / architectural map | §§1–3, 23–25 |
+| 2. Simulation authority / client-server model | §4 |
+| 3. Tick loop / intents / Executions / deterministic transitions | §§3, 6, 19 |
+| 4. Map / cells / coordinates / terrain / topology | §§7, 23.1 |
+| 5. Ownership / neutral expansion | §8 |
+| 6. Troops / gold / resources / player state | §§9, 12, 20–21 |
+| 7. Land combat / casualties / territorial capture | §11 |
+| 8. Spatial Population / Redeployment | §§9–11; superseded dense model explicitly rejected |
+| 9. Structures / spatial modifiers | §13 |
+| 10. Generic unit / mobile-object framework | §14 |
+| 11. Naval / amphibious / trade / rail | §14 |
+| 12. Strategic weapons / interception | §15 |
+| 13. Teams / alliances / diplomacy / `atWar` | §16 |
+| 14. Visibility / fog of war | §17 |
+| 15. Bots / official PvE AI / player-controller boundary | §§5, 16A, 17 |
+| 16. Match lifecycle / lobby / defeat / resignation / victory | §§4, 16, 18 |
+| 17. Replay / serialization / determinism / observability | §§3, 6, 19, 23 |
+| 18. Browser rendering / interaction assumptions | §§17–18 |
+| 19. Persistence / identity / authentication / Foof boundary | §§20–21 |
+| 20. Build / deployment / tests / performance / licensing | §§22–25 |
+
+If a future audit finding does not map to this plan, update this same document rather than creating a third Open Fufu migration source.
+
+---
+
+## 28. Remaining open integration/design questions
 
 After the authority and Population/frontage simplifications, the legitimately open questions are narrower:
 
@@ -793,8 +861,13 @@ After the authority and Population/frontage simplifications, the legitimately op
 5. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
 6. **Exact structure/naval/rail/weapon values and remaining translation details** where the canonical design deliberately leaves tuning open.
 7. **Passive/inert mobile-unit behavior after resignation/capitulation.**
-8. **Detailed lobby/UI/UX redesign.**
-9. **Replacement asset creation and final proprietary-directory removal.**
-10. **Normal gameplay tuning** — capture progress/speed, terrain/structure multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, and related balance constants.
+8. **Low-Population automatic-defense discretization** — when Available Population is lower than incoming engaged frontage, define how whole Population maps onto defended versus effectively undefended lanes so fractional spreading cannot create more capture-coupled casualty pairs than the defender has Population available to lose.
+9. **Multi-faction same-cell casualty semantics under the capture-coupled model** — confirm whether unsuccessful third-party claimants remain casualty-free when another attacker wins the cell, or whether same-cell all-vs-all pressure should create an additional explicit casualty rule.
+10. **Nuclear-waste territory semantics** — define whether cells made non-population-bearing by strategic weapons remain owned/conquerable territory, become non-conquerable waste, and how they affect the denominator for 100%-territory victory.
+11. **Detailed lobby/UI/UX redesign.**
+12. **Replacement asset creation and final proprietary-directory removal.**
+13. **Normal gameplay tuning** — capture progress/speed, terrain/structure multipliers, growth reference values/interpolation, FFY payouts, AI reward values, Segment scale, weapon radii/effects, and related balance constants.
 
-These should be resolved by updating this same canonical integration plan rather than creating additional migration-plan documents.
+Items 8–10 are mechanics clarifications discovered during the post-audit consistency review. Once settled, their target rules belong in `OPEN_FUFU_DESIGN.md` and their implementation consequences belong here.
+
+These should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
