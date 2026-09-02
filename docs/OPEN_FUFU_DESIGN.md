@@ -463,9 +463,13 @@ Automatic defense is an ephemeral per-tick use of Available Population. One unit
 
 Capacity is a ceiling, not free defensive strength. A faction with territory but **0 Available Population has 0 baseline Population defense**. Terrain/structure percentage modifiers do not create Population out of nothing; only an explicit future mechanic that supplies independent flat defense could do so.
 
-### 10.5 Quantized Population
+### 10.5 Quantized Population and deterministic fractional costs
 
-Authoritative Population quantities are non-negative whole integers and should normally use a `uint32`-compatible representation. Deterministic fixed-point/residual accumulators may be used internally where formulas need sub-unit precision.
+Authoritative Population quantities exposed to controllers and used for allocations/commitments are non-negative whole integers and should normally use a `uint32`-compatible representation.
+
+Deterministic fixed-point/residual accumulators may be used internally where formulas or explicit mechanics need sub-unit precision. A mechanic such as **0.5 Population settlement cost per neutral cell** therefore does not make public Population fractional: two half-cost settlement events consume one whole Population through deterministic residual accounting.
+
+A residual associated with a faction-level recurring cost must not be erased by ending/recreating an operation. In particular, any fractional neutral-settlement residual is **faction-level persistent match state**, preventing operation churn from avoiding payment.
 
 ---
 
@@ -582,7 +586,15 @@ Land pressure only affects cells actionable through current territorial adjacenc
 
 ### 12.6 Neutral expansion
 
-Neutral expansion uses ordinary Population through an offensive/expansion operation. Neutral cells have no automatic Population defense and V1 settlement does not impose arbitrary colonization casualties.
+Neutral expansion uses ordinary Population through an offensive/expansion operation.
+
+Neutral cells have **no automatic Population defender**, but neutral settlement is neither free nor instantaneous. A neutral population-bearing cell must still receive sufficient legal settlement/capture progress, and **each successfully acquired neutral population-bearing cell costs 1 Population from the expansion commitment** under the baseline ruleset.
+
+The settlement casualty is a colonization/occupation cost, not a phantom neutral defender: there is no neutral defending Population to kill and no defender-side Population accounting.
+
+Explicit surfaced mechanics may modify neutral-settlement Population cost. A fractional cost such as `0.5 Population per cell` is handled through the faction-level deterministic residual mechanism in §10.5 while controller-visible Population and commitments remain whole integers.
+
+Neutral fallout remains neutral/conquerable population-bearing land and additionally applies its explicit fallout capture-resistance/progress rule.
 
 ---
 
@@ -613,7 +625,7 @@ If Available Population is lower than the threatened surface, the finite defense
 
 A merely adjacent but inactive border does not consume defense. The same Available Population must never be duplicated across cells, contacts, or attackers. If multiple hostile operations contest the same owned target cell, that cell still receives at most one automatic defender.
 
-Terrain, Defense Posts, Origins, Echoes, and other explicit local modifiers may modify the effectiveness of that one defender; they do not increase the automatic Population count above one.
+Terrain, Forts, Origins, Echoes, and other explicit local modifiers may modify the effectiveness of that one defender; they do not increase the automatic Population count above one.
 
 If Available Population is zero, baseline Population defense is zero.
 
@@ -621,7 +633,7 @@ If Available Population is zero, baseline Population defense is zero.
 
 Controllers may provide strategy-neutral defensive priorities/weights that determine **which threatened cells receive scarce automatic defenders**. They do not choose how many Population units automatic defense receives and cannot assign more than one automatic defender to a cell.
 
-A controller may, for example, prioritize mountains, Defense Posts, Cities, chokepoints, selected Segments, objectives, or arbitrary legal cell sets. The controller can construct any higher-level defensive doctrine from these primitives.
+A controller may, for example, prioritize mountains, Forts, Cities, chokepoints, selected Segments, objectives, or arbitrary legal cell sets. The controller can construct any higher-level defensive doctrine from these primitives.
 
 The default policy is an **Even Spread** policy. Equal-priority cells use deterministic seeded tie-breaking derived from rule-bearing match state rather than uncontrolled randomness. The deterministic tie-break may rotate over time so the default does not permanently leave the same arbitrary cells undefended.
 
@@ -722,24 +734,22 @@ Because engagement geometry is frozen at tick start, one active engagement lane 
 
 Therefore an operation with 300 engaged lanes cannot capture more than 300 cells in that tick. Actual captures may be much lower according to pressure advantage, terrain, structures, and capture-rate tuning.
 
-### 14.3 Ordinary land casualties are capture-coupled
+### 14.3 Ordinary hostile land casualties are capture-coupled
 
-V1 does **not** use a separate continuous land attrition formula such as `2AD/(A+D)` for ordinary cell capture.
+V1 does **not** use a separate continuous land attrition formula such as `2AD/(A+D)` for ordinary hostile cell capture.
 
-Ordinary land-combat Population casualties occur when a **defended population-bearing cell actually changes owner**.
-
-For each such successfully captured defended cell:
+For each successfully captured **automatically defended population-bearing hostile cell** under the baseline rule:
 
 - the previous owner loses the **1 current Population** that was automatically defending that cell;
 - the winning attacker loses **1 current Population** from the capturing offensive commitment;
 - the previous owner's Population Capacity falls by 1 because the cell was lost;
 - the new owner's Population Capacity rises by 1 because the cell was gained.
 
-The consumed defender is removed from Available Population. The attacker's casualty is removed from that offensive operation's committed Population.
+The consumed defender is normally removed from Available Population. An explicit Origin trait may instead cause that automatic defender to **survive the territorial loss and remain/return Available**; that exception does not cancel the attacker's ordinary 1-Population capture casualty, the ownership change, or the Capacity transfer.
 
-If the cell had zero automatic Population defense, its capture causes **no ordinary cell-capture Population casualty** for either side. It is an undefended territorial capture.
+If a hostile-owned cell had zero automatic Population defense, its capture causes **no ordinary hostile cell-capture Population casualty** for either side. This zero-casualty rule does **not** make neutral expansion free: neutral settlement follows the separate explicit settlement-cost rule in §12.6.
 
-Ordinary stalled/failed land pressure does not by itself create Population attrition. Population can still change without a cell changing owner through other explicit mechanics such as counter-response combat, nuclear strikes, transport destruction, or other specifically defined effects.
+Ordinary stalled/failed land pressure does not by itself create Population attrition. Population can still change without a cell changing owner through other explicit mechanics such as counter-response combat, nuclear strikes, neutral settlement, transport destruction, or other specifically defined effects.
 
 Casualties are capped by the finite Population actually available/committed to the relevant combat; Population never becomes negative.
 
@@ -749,7 +759,7 @@ FFA remains genuinely competitive among all non-team factions in the same local 
 
 Finite same-faction pressure is aggregated before resolution and is never duplicated once per opponent. If several hostile factions are valid claimants for one cell, local pressures are resolved from the same pre-state and the strongest successful claimant wins deterministically.
 
-A cell still changes owner at most once that tick. For a defended capture, the ordinary one-for-one capture casualty pair applies only between the previous owner and the winning claimant. Unsuccessful third-party claimants lose **no Population merely for contesting that same cell** and gain no territory from it.
+A cell still changes owner at most once that tick. For a defended capture, the ordinary one-for-one capture casualty pair applies only between the previous owner and the winning claimant, subject to any explicit defender-survival modifier above. Unsuccessful third-party claimants lose **no Population merely for contesting that same cell** and gain no territory from it.
 
 Attackers on completely separate fronts do not magically fight one another merely because they share an enemy.
 
@@ -778,6 +788,26 @@ While aboard a transport, carried Population:
 
 A landing makes the coastal target operationally actionable; carried Population then joins the local offensive engagement rather than teleporting land pressure to a remote coast.
 
+### 16.1 Transport embarkation FFY costs
+
+The baseline Transport embarkation FFY cost is **0 FFY**. Explicit Origin/Echo/ruleset effects that add Transport cost compose as **additive embarkation-cost modifiers**, rather than competing absolute replacement prices.
+
+For example, the accepted fortified-landing Origin trait adds `+250 FFY` and the existing Transport-cost drawback adds `+500 FFY`; if both are present, the Transport embarkation cost is `750 FFY`.
+
+This additive model is the canonical combination-safe rule for those traits.
+
+### 16.2 Fortified amphibious landing trait
+
+An accepted Origin trait changes amphibious doctrine as follows:
+
+- Transport embarkation costs **+250 FFY**;
+- a Transport that successfully establishes its amphibious landing grants a **permanent level-1 Fort** at the landing location;
+- a Transport destroyed/aborted before successfully establishing land ownership grants no Fort;
+- the Fort is an ordinary spatial Fort after creation and may later be upgraded under the standard structure rules;
+- because it is a granted structure rather than a purchase, it does not consume an unrelated `first Fort purchase is free` entitlement.
+
+The coastal position naturally limits the value of the granted Fort because part of its normal coverage may lie over unusable water. No temporary pseudo-terrain or separate controller-only beachhead command is required.
+
 ---
 
 ## 17. Strategic weapons
@@ -786,7 +816,44 @@ Strategic weapons may target strategically meaningful geography, infrastructure,
 
 They may also reduce Population without requiring defensive cell occupancy.
 
-### 17.1 Standard nuclear fallout
+### 17.1 Missile Silo level gates
+
+Missile Silos use the canonical five-level structure model in §18.
+
+Weapon access is gated by the firing Silo's current level:
+
+```text
+Missile Silo level 1+ → Atom Bomb
+Missile Silo level 3+ → Hydrogen Bomb
+Missile Silo level 5  → MIRV
+```
+
+Higher Silo levels also increase launch-charge capacity under the normal Silo rules. A freshly built level-1 Silo therefore cannot immediately launch the strongest strategic weapon.
+
+An Origin/Echo effect that grants a weapon for free does not bypass launcher legality. In particular, an effect granting one free MIRV still requires an otherwise legal **level-5** launcher and any ordinary non-price legality requirements. If that effect is defined as a purchase-cost waiver, the player must satisfy any authored affordability/precondition check but the successful granted launch/purchase consumes `0 FFY` as specified by the trait.
+
+A starting Silo granted by an Origin begins at **level 1** unless the granting trait explicitly says otherwise.
+
+### 17.2 MIRV power target
+
+MIRVs remain intentionally frightening late-game strategic weapons, but they must not remain an almost deterministic `delete the current leader` button merely because a much smaller faction obtained one.
+
+Open Fufu therefore uses **both** access and power controls:
+
+- MIRV access requires a level-5 Missile Silo (or an explicitly equivalent legal launcher);
+- inherited MIRV devastation is moderately reduced during balance translation.
+
+The exact reduction is tuning work. The inherited implementation's very high warhead count should be retuned; a rough **250–300 warhead** test range is a reasonable provisional starting point rather than a canonical final number.
+
+### 17.3 Warships that count as Missile Silos
+
+Where an Origin trait grants Warships Missile-Silo capability, a Warship's **effective Missile Silo level equals its Warship rank/veterancy, with a minimum effective level of 1**.
+
+This means an ordinary maximum-rank-3 nuclear Warship may reach Hydrogen-Bomb legality but not MIRV legality. If another legal trait raises maximum Warship rank by +2, a sufficiently veteran rank-5 Warship may become MIRV-capable.
+
+Weapon price, range, charge/cooldown, and other ordinary legality still apply unless another explicit trait says otherwise.
+
+### 17.4 Standard nuclear fallout
 
 The standard nuclear terrain rule follows the useful inherited OpenFront political behavior while translating its Population semantics:
 
@@ -802,15 +869,13 @@ Fallout therefore does not permanently reduce the denominator for 100%-of-conque
 
 Exact fallout capture-resistance values and any other fallout side effects are tuning/translation work.
 
-### 17.2 Optional water-nuke mode
+### 17.5 Optional water-nuke mode
 
 Open Fufu retains the inherited **water-nukes** concept as an optional ruleset mode.
 
 When enabled, affected land that would ordinarily become neutral fallout may instead be permanently converted to water according to the weapon/ruleset. Converted water is non-population-bearing and no longer ordinary conquerable land, so it is excluded from the current conquerable-territory denominator after conversion.
 
 The same owned-cell Population casualty/Capacity-loss event still applies when the strike destroys the owner's population-bearing land. Segment identity remains immutable even when terrain is converted to water.
-
-Exact conversion geometry and balance values remain tuning/translation work.
 
 A City does not create extra Population casualties merely because it is a City; Cities modify growth, not Capacity/current-Population-per-cell semantics.
 
@@ -826,15 +891,73 @@ Terrain is strategically meaningful rather than cosmetic and may explicitly affe
 
 Fallout is an explicit conquerable land state whose capture resistance applies even when the cell is neutral; it must not be implemented as phantom defensive Population.
 
-Structures are spatial objects with explicit effects. Initial direction includes:
+### 18.1 Canonical persistent structures and five-level cap
 
-- **Cities:** Population growth contribution, not Capacity;
-- **Defense Posts:** local modifier to the effectiveness of an automatic defender, not additional passive Population;
-- **Ports:** naval and trade functionality;
-- **Factories / train infrastructure:** economic/rail identity where retained;
-- **Missile Silos / SAM:** strategic weapon and interception systems where retained.
+Open Fufu's canonical V1 persistent structure concepts are:
 
-Structures must not recreate hidden global Military Power.
+- **City**;
+- **Fort** — the public Open Fufu defensive structure concept adapted from inherited Defense Post infrastructure;
+- **Port**;
+- **Factory**;
+- **Missile Silo**;
+- **SAM Launcher**.
+
+All six are upgradeable persistent structures with exactly **five legal levels, 1 through 5**. Level 5 is a hard maximum. Structures are built at level 1 unless an explicit surfaced rule says otherwise.
+
+The inherited effectively unbounded generic-upgrade behavior is not authoritative for Open Fufu.
+
+Each level must have deliberate mechanical meaning rather than existing only as an uncapped cost sink:
+
+| Structure | Canonical level progression direction |
+| --- | --- |
+| **City** | higher level increases explicit Population Growth contribution; never Capacity |
+| **Fort** | higher level increases both defensive-pressure effectiveness and Fort coverage area, with exact values tuned moderately |
+| **Factory** | higher level increases Factory-driven industrial/train FFY event value |
+| **Port** | higher level increases passive naval repair radius and passive repair rate; close/docked fast repair remains useful at all levels |
+| **SAM Launcher** | higher level increases interception range and ordinary interception-charge capacity |
+| **Missile Silo** | higher level increases launch-charge capacity and unlocks weapon tiers as specified in §17.1 |
+
+Whether Port level additionally keeps/inherits a Trade-Ship frequency effect is deliberately left for naval/economy translation; the repair progression above is the canonical level identity.
+
+No structure recreates hidden global Military Power.
+
+### 18.2 Forts
+
+Forts modify the effectiveness of actual one-Population automatic defenders inside their coverage; they do not create passive Population by themselves.
+
+Upgrading a Fort increases **both** its coverage and defensive-pressure bonus. Exact level-by-level radii/pressure values are balance data. A level-5 Fort should be materially more important than a level-1 Fort without covering an absurd fraction of the map.
+
+Origin/Echo modifiers may explicitly alter Fort coverage or defensive pressure and compose through surfaced rules.
+
+### 18.3 SAM charges, range, and transformed shield behavior
+
+Under ordinary rules, SAM level increases both interception range and charge capacity. The intended simple capacity direction is one available interception charge per level, subject to final cooldown/range tuning.
+
+SAM target selection/interception remains an automatic structure behavior governed by ordinary legal targeting rules; controllers decide whether/where/how far to upgrade SAMs, not whether to execute a bespoke Origin-only `sacrifice shield now` action for every incoming weapon.
+
+An accepted Origin trait transforms SAMs into a **giant single-charge shield**:
+
+- interception range is increased substantially; **+50% is the provisional starting value**;
+- the SAM has **exactly one interception charge regardless of level**;
+- recharge cooldown is **2× ordinary** as the provisional starting value;
+- upgrading still increases the underlying/rule-composed interception range but never adds charges.
+
+Thus the transformed SAM trades throughput for a much larger defensive umbrella. The automatic targeting system remains responsible for choosing among legally interceptable weapons, so baiting a shield remains possible counterplay without permanently deleting the SAM.
+
+### 18.4 Fully developed City purchase trait
+
+An accepted Origin trait changes **purchased Cities only**:
+
+- a City cannot be purchased at levels 1–4;
+- each purchased City is created directly at **level 5**;
+- its purchase price is **95% of the ordinary cumulative level-1 build price plus the ordinary level-2-through-level-5 upgrade prices**;
+- the faction must satisfy the full discounted purchase-price requirement before construction may begin.
+
+This is one direct City purchase, not four separate upgrade actions. Therefore a drawback that forbids spending FFY on upgrades does not by itself forbid this purchase.
+
+A captured City below level 5 remains at its captured level and may be upgraded normally unless another rule prevents upgrades; the trait does not magically promote captured Cities.
+
+If another effect makes the first City purchase free, the faction must still satisfy the authored full-price/precondition check if that effect is defined that way, but the successful purchase consumes `0 FFY`. This preserves the high early access threshold while allowing the free-purchase interaction.
 
 ---
 
@@ -942,7 +1065,7 @@ Upon resignation/capitulation:
 - removed mobile units provide no FFY/resource refund;
 - in-flight offensive projectiles/strategic weapons owned by that faction are cancelled/removed and do not later detonate or resolve offensively;
 - owned territory and static structures remain in place;
-- static **passive** effects may continue where their mechanic explicitly permits it, such as a Defense Post modifying an actual automatic defender;
+- static **passive** effects may continue where their mechanic explicitly permits it, such as a Fort modifying an actual automatic defender;
 - static **active** behaviors cease: the capitulated faction launches no missiles, performs no SAM firing, spawns no new trade ships/trains/units, and initiates no other autonomous strategic action;
 - remaining Available Population continues automatic passive defense under the normal one-defender-per-threatened-cell rules;
 - the territory may subsequently be conquered normally;
@@ -1068,6 +1191,7 @@ The exhaustive suite should verify, at minimum:
 - offense/defense/counter-response hooks remain within deliberate engine-safe domains;
 - FFY multipliers/rule exceptions remain valid;
 - Initial Territory/Starting Population effects remain compatible with spawn/map invariants;
+- structure-level transformations, launcher-equivalence rules, transport-cost stacking, and fractional settlement residuals remain valid under every legal combination;
 - Origin + ruleset composition preserves canonical invariants;
 - representative Origin + Echo composition does not violate engine invariants;
 - every Official Origin is itself an ordinary legal combination from the same catalogue.
@@ -1177,6 +1301,59 @@ The final thematic name of the duplicate/store currency remains presentation wor
 ### 23.12 Echo loadouts
 
 Standard PvE Echo loadout size is **7 Echoes**. PvP progression/loadout standardization remains deliberately deferred.
+
+### 23.13 Accepted first-catalogue mechanics from the current design pass
+
+The following Origin mechanics are now accepted catalogue content. Final player-facing names/IDs and the global builder budget remain catalogue work; point values marked provisional remain subject to playtesting without reopening the mechanic itself.
+
+#### Neutral settlement efficiency — provisional 5 points
+
+Neutral settlement costs **0.5 Population per successfully acquired population-bearing neutral cell instead of 1**. Payment uses the faction-level persistent fractional residual from §10.5; ending/recreating expansion operations cannot erase the unpaid half.
+
+#### Fortified amphibious landings — provisional 7 points
+
+Transport embarkation receives a **+250 FFY** cost modifier and each successful amphibious landing grants a permanent level-1 Fort as defined in §16.2.
+
+This modifier stacks additively with the existing `+500 FFY Transport embarkation cost` drawback, producing `750 FFY` when both are selected.
+
+#### Elastic automatic defense — 10 points
+
+When one of the faction's automatically defended population-bearing cells is captured, its one automatic defender **survives and remains/returns Available** instead of being killed.
+
+The attacker still pays the ordinary 1-Population defended-capture casualty, ownership still transfers, and Capacity still transfers normally. The trait therefore lets the faction trade geography for enemy Population without receiving free territory or free defensive pressure.
+
+#### Split strategic origin — 10 points
+
+The faction uses **two spawn influence areas**, each with **50% of the normal influence area**, and chooses one exact origin inside each final area.
+
+If the ordinary influence shape is circular, half the area corresponds to approximately `70.71%` of the ordinary radius; the trait halves **area**, not radius.
+
+The faction's final Initial Territory quota is split approximately equally between two compact starting footprints around the two origins. Its total Starting Population remains **one unchanged global Population pool**; there are no local Population stores tied to the two blobs.
+
+The two influence areas/origins may be far apart or close together. If footprints grow into one another they may merge normally. The split creates strategic risk through two borders/geographic problems rather than through an artificial Population penalty.
+
+For deterministic placement of singular granted start-state structures/effects, the two origins are ordered as **primary** and **secondary** unless the granting effect defines another rule.
+
+#### Giant single-charge SAM shield — provisional 6 points
+
+SAM Launchers use the transformed shield behavior from §18.3: provisionally +50% range, exactly one charge at every level, and 2× ordinary recharge cooldown. Upgrades continue to improve range but never add charges. No bespoke controller interception command is introduced.
+
+#### Fully developed City purchases — provisional 6 points
+
+Purchased Cities follow §18.4: they can only be bought directly at level 5 for 95% of the ordinary cumulative level-1-through-level-5 cost. Captured lower-level Cities are not auto-promoted.
+
+### 23.14 Accepted cross-trait interaction rules
+
+Combination legality remains universal; these interactions are therefore part of the public rules rather than compatibility exceptions:
+
+- Transport FFY-cost traits stack **additively** from the baseline 0-FFY embarkation cost.
+- A granted fortified-landing Fort does not consume a separate `first Fort purchase free` entitlement.
+- A free starting Missile Silo begins at **level 1** unless its granting trait explicitly changes level.
+- A free-MIRV effect does **not** bypass the level-5 launcher requirement.
+- A Warship granted Missile-Silo capability uses **Warship rank as effective Silo level, minimum 1**; a legal +2 maximum-rank modifier can therefore allow rank-5/MIRV-capable Warships.
+- A direct level-5 City purchase is a **purchase**, not a sequence of upgrade expenditures, for interactions with traits that prohibit FFY spending on upgrades.
+- A first-City-purchase-free effect may waive the final FFY consumption while retaining the fully developed City's authored purchase/precondition threshold where specified.
+- Initial Territory bonuses apply to the faction's **final** Initial Territory total before the split-origin trait divides that total between its two footprints; they do not duplicate the bonus once per blob.
 
 ---
 
@@ -1347,9 +1524,10 @@ A controller counter-response identifies an incoming operation and commits Popul
 The API exposes the current match's actual rule-bearing constants/feature flags and **pure deterministic mechanical calculators** for published arithmetic/geometry, such as concepts equivalent to:
 
 - Population growth arithmetic, including the faction's Origin-defined growth profile;
+- neutral-settlement progress and effective Population cost, including fractional residual semantics;
 - capture-advantage arithmetic;
 - counter-response exchange arithmetic;
-- structure/unit/weapon costs and legality;
+- structure/unit/weapon costs, level gates, and legality;
 - weapon blast/range geometry;
 - explicit terrain/structure/Origin/Echo modifiers.
 
@@ -1365,15 +1543,17 @@ Own objects expose the state needed to control them; enemy objects expose only l
 
 Movement and routing APIs are intent-oriented: controllers choose destination/patrol/target and the engine performs ordinary pathfinding/mechanical movement.
 
+Structure observations/legality expose the canonical level range `1..5`, effective level-dependent mechanics, and any surfaced Origin transformations such as single-charge SAMs or direct level-5 City purchases.
+
 ### 24A.13 Corresponding legality queries
 
-Major player actions should have factual legality/cost helpers where useful. A player should be able to ask whether/where a structure can be built, whether a weapon is in range, whether a coast is reachable, or what an upgrade costs without attempting actions blindly.
+Major player actions should have factual legality/cost helpers where useful. A player should be able to ask whether/where a structure can be built, whether a weapon is in range, whether a coast is reachable, what an upgrade costs, what Transport embarkation costs after modifiers, or which launcher level a weapon requires without attempting actions blindly.
 
 These helpers answer **what is legal**, not **what is strategically best**.
 
 ### 24A.14 Events since the previous decision
 
-Controllers receive a bounded typed event stream covering legally observable meaningful changes since the previous controller invocation, such as territory changes, Population losses, operation lifecycle events, structure completion/destruction, unit changes, FFY events, hostility changes, faction defeat/capitulation, and strategic-weapon events.
+Controllers receive a bounded typed event stream covering legally observable meaningful changes since the previous controller invocation, such as territory changes, Population losses, neutral-settlement costs, operation lifecycle events, structure completion/destruction/level changes, unit changes, FFY events, hostility changes, faction defeat/capitulation, amphibious Fort creation, and strategic-weapon events.
 
 This is quality-of-life so every controller does not need to diff the entire world snapshot manually. Persistent long-term interpretation remains controller strategy/memory.
 
@@ -1441,6 +1621,8 @@ Influence areas are **not exclusive claims or territory**. They are legal search
 
 After every Phase-1 choice resolves, all participants see every participant's Phase-1 influence area.
 
+The accepted **split strategic origin** trait changes this participant-specific profile from one ordinary influence area to **two influence areas, each 50% of ordinary area**. Both Phase-1 areas are submitted simultaneously and both are revealed with the rest of the Phase-1 set. If the shape is circular, each split area's radius is approximately 70.71% of ordinary radius.
+
 #### Phase 2 — optional reconsideration
 
 Each participant gets exactly one simultaneous chance to keep or change their broad influence choice using the newly revealed information about everyone else's Phase-1 intent.
@@ -1449,13 +1631,17 @@ Participants do **not** see other Phase-2 revisions while choosing their own. Af
 
 This second broad-choice round exists specifically so one unlucky or poorly informed initial preference does not feel like an irreversible pre-match mistake.
 
+A split-origin faction likewise keeps/revises its **pair** of influence areas simultaneously; it does not receive extra sequential reaction rounds.
+
 #### Phase 3 — exact spawn origin
 
-Each participant simultaneously chooses an exact legal **spawn origin cell** inside their final influence area while knowing all final influence areas.
+Each ordinary participant simultaneously chooses an exact legal **spawn origin cell** inside their final influence area while knowing all final influence areas.
+
+A split-origin faction instead chooses **one exact legal origin in each of its two final influence areas**, submitted simultaneously. The two origins may be near each other or far apart and are not forced into different map regions merely to make the trait dramatic.
 
 Exact-origin conflicts/collisions are resolved deterministically from the simultaneous submissions. All final exact origins are then revealed before the first normal simulation decision, consistent with globally visible territorial ownership once the match begins.
 
-The controller chooses an origin, not an arbitrary hand-painted starting territory.
+The controller chooses origin cells, not arbitrary hand-painted starting territory.
 
 ### 24A.21 Initial Territory and starting footprint
 
@@ -1463,7 +1649,9 @@ Each faction has a surfaced **Initial Territory** starting-state value equal to 
 
 The ruleset provides the ordinary base value. Explicit Origin traits, Echoes, or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
 
-After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each origin using nearby legal population-bearing cells.
+After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each ordinary origin using nearby legal population-bearing cells.
+
+For a split-origin faction, compute its **final Initial Territory value after all ordinary modifiers**, then divide that quota approximately equally between the two origins and grow two compact footprints simultaneously with every other faction's footprint. A one-cell remainder uses a deterministic primary/secondary rule. The two footprints may later meet/merge.
 
 Important rules:
 
@@ -1472,10 +1660,13 @@ Important rules:
 - when the legal map topology can support it, footprint resolution continues outward as necessary so each faction receives its full Initial Territory count even when nearby footprints compete for cells;
 - the footprint algorithm must remain deterministic, versioned, and independent of controller execution timing;
 - the final number of owned population-bearing cells becomes the faction's ordinary starting Population Capacity under the existing `1 owned cell = 1 Capacity` rule;
-- an Initial Territory bonus does **not** change the Capacity value of individual cells;
+- an Initial Territory bonus does **not** change the Capacity value of individual cells and is not duplicated once per split-origin footprint;
 - starting **current Population** is a separate ruleset quantity and is not implicitly required to equal Initial Territory unless a later explicit rule chooses that relationship;
+- a split-origin faction still has the **same one global Starting Population pool** it would otherwise have; Starting Population is not divided into local stores;
 - an Origin/Echo may explicitly modify starting Population as a percentage or other surfaced starting-state rule without changing Capacity-per-cell;
 - Initial Territory does not automatically enlarge the broad spawn-influence radius unless an explicit future modifier says so.
+
+For deterministic singular start-state grants on a split-origin faction, origins are ordered primary/secondary and the grant uses the primary origin unless the grant defines a different public rule.
 
 Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, influence-area radius/shape, and numeric Initial Territory/Starting Population values are implementation/tuning details so long as the invariants above hold.
 
@@ -1489,7 +1680,9 @@ Open Fufu supports at least:
 
 Strategic-spawn controller hooks are specialized **pre-match lifecycle hooks**, separate from the normal `decide()` loop. Exact TypeScript names are implementation work, but the conceptual phases correspond to initial influence choice, optional reconsideration, and exact-origin choice.
 
-A controller is not required to implement spawn-specific logic. Missing, malformed, rejected, or failed spawn-hook output falls back to a deterministic legal default policy rather than faulting the controller for the match.
+The spawn API must represent the faction's effective public **spawn profile**: ordinary factions submit one area/origin while a split-origin faction submits the required pair through the same phase semantics. This must not require a second controller program or an out-of-band manual action.
+
+A controller is not required to implement spawn-specific logic. Missing, malformed, rejected, or failed spawn-hook output falls back to a deterministic legal default policy appropriate to that faction's spawn profile rather than faulting the controller for the match.
 
 ---
 
@@ -1498,9 +1691,9 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
-- exact Origin Point budget, trait-count cap, maximum drawback refund, and final Origin-trait catalogue content/costs;
+- exact Origin Point budget, trait-count cap, maximum drawback refund, final player-facing names/IDs, and final balancing of provisional Origin-trait point costs;
 - exact first Official Origin names/builds;
-- exact strategic-spawn influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values;
+- exact strategic-spawn ordinary influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values, including low-level implementation details for the accepted split-origin profile;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
 - exact wire protocol/session encoding;
@@ -1513,6 +1706,8 @@ The following remain intentionally outside the settled design contract unless ot
 - exact terrain/fallout values;
 - exact FFY payouts and final broad FFY-source naming;
 - exact AI reward values;
+- exact level-by-level structure costs/radii/multipliers/cooldowns beyond the settled five-level semantics;
+- exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
 - exact inherited naval/rail/strategic-weapon numerical translations where not specified;
 - detailed lobby/UI experience;
 - final thematic name of Echo duplicate/store currency;
@@ -1533,7 +1728,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 7. **Controller decisions validate as a transaction/final desired set rather than source-order simulation mutations.**
 8. **Cells are the physical territorial resolution; Segments are immutable strategic lenses.**
 9. **Every real map cell belongs to exactly one Segment.**
-10. **Population is one global whole-integer faction resource.**
+10. **Population is one global whole-integer faction resource; explicit fractional mechanic costs use deterministic hidden residuals rather than fractional public allocations.**
 11. **Population Capacity equals owned population-bearing cells exactly.**
 12. **Initial Territory may change starting owned-cell count but never changes the one-Capacity-per-owned-cell rule.**
 13. **There is no persistent defensive cell Population allocation.**
@@ -1545,34 +1740,48 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 19. **An operation's engaged frontage cannot exceed its committed Population.**
 20. **One faction's source cell attacks at most one adjacent target cell per tick, and same-faction pressure is never duplicated.**
 21. **A cell changes political owner at most once per tick; new captures do not chain within that same tick.**
-22. **Ordinary cell-capture casualties are capture-coupled: a defended captured cell costs one Population to the previous owner and one to the winning attacker.**
-23. **Undefended territorial capture causes no ordinary cell-capture Population casualty.**
-24. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
-25. **Other explicit mechanics such as counter-responses, nukes, and transport destruction may reduce Population without a territorial ownership change.**
-26. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
-27. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
-28. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
-29. **Terrain/structures/Origins/Echoes affect mechanics only through explicit surfaced rules.**
-30. **Every faction binds exactly one immutable Origin for a match.**
-31. **Official Origins and Custom Origins obey the same public Origin-builder rules and use the same deployed trait catalogue.**
-32. **Origin traits are curated server-defined packages with authored costs; players never supply Origin formulas or arbitrary trait code.**
-33. **Origins have no tiers, Major/Minor taxonomy, category maze, or hidden pairwise incompatibility system.**
-34. **Every deployed trait combination satisfying the public budget, trait-count, and drawback-refund limits is legal.**
-35. **Every candidate Origin catalogue is exhaustively tested across all public-legal trait combinations before deployment; a failing combination blocks/fixes the catalogue rather than becoming a production exclusion.**
-36. **Echoes are the canonical collectible dialogue-line modifier system; standard PvE loadouts contain 7 Echoes.**
-37. **Origins define faction identity while Echoes provide narrower collectible specialization; catalogue curation, not hidden compatibility rules, preserves meaningful tradeoffs.**
-38. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
-39. **Derived controller helpers never leak information outside the controller's legal observation projection.**
-40. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
-41. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
-42. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
-43. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-44. **Zero population-bearing territory after tick resolution means immediate defeat.**
-45. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-46. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-47. **Ordinary users cannot live-spectate unrelated matches.**
-48. **Historical matches bind exact rule-bearing versions.**
-49. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
-50. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
-51. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
-52. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+22. **Baseline neutral settlement takes capture progress/time and costs one Population from the expansion commitment per successfully acquired population-bearing neutral cell.**
+23. **Neutral territory has no phantom automatic Population defender; fractional settlement modifiers use faction-level persistent residual accounting.**
+24. **Ordinary hostile defended-cell capture costs one Population to the previous owner and one to the winning attacker, unless an explicit defender-survival trait preserves the automatic defender; the attacker's casualty remains.**
+25. **Hostile undefended territorial capture causes no ordinary capture-coupled Population casualty; this does not waive neutral-settlement cost.**
+26. **An unsuccessful third-party claimant on the same contested cell takes no capture-coupled casualty merely for contesting it.**
+27. **Other explicit mechanics such as counter-responses, nukes, neutral settlement, and transport destruction may reduce Population without ordinary hostile defended-cell capture.**
+28. **Standard nuclear strikes neutralize affected owned land, cause one current-Population loss per affected owned population-bearing cell, and leave conquerable population-bearing fallout terrain.**
+29. **Fallout changes capture resistance, not automatic defensive Population, and remains in the conquerable-territory denominator.**
+30. **Optional water-nuke rules may convert land to non-population-bearing water and thereby remove it from the conquerable-territory denominator.**
+31. **Terrain/structures/Origins/Echoes affect mechanics only through explicit surfaced rules.**
+32. **The six canonical V1 persistent structures—City, Fort, Port, Factory, Missile Silo, SAM Launcher—are upgradeable from level 1 through a hard maximum of level 5.**
+33. **City levels increase Growth, Fort levels increase defense/coverage, Factory levels increase industrial FFY events, Port levels increase repair capability, SAM levels increase normal range/charges, and Silo levels increase charges/weapon access.**
+34. **Missile Silo level 1 unlocks Atom Bomb, level 3 unlocks Hydrogen Bomb, and level 5 unlocks MIRV. Free/granted weapons do not bypass launcher legality.**
+35. **MIRVs remain powerful but receive a moderate inherited-power reduction in addition to the level-5 access gate.**
+36. **Where a Warship is granted Missile-Silo capability, its effective Silo level equals Warship rank with a minimum of 1.**
+37. **Transport embarkation begins at 0 FFY and explicit Transport-cost trait modifiers stack additively.**
+38. **The accepted fortified-landing trait adds +250 FFY and grants a permanent level-1 Fort only after a successful landing.**
+39. **Every faction binds exactly one immutable Origin for a match.**
+40. **Official Origins and Custom Origins obey the same public Origin-builder rules and use the same deployed trait catalogue.**
+41. **Origin traits are curated server-defined packages with authored costs; players never supply Origin formulas or arbitrary trait code.**
+42. **Origins have no tiers, Major/Minor taxonomy, category maze, or hidden pairwise incompatibility system.**
+43. **Every deployed trait combination satisfying the public budget, trait-count, and drawback-refund limits is legal.**
+44. **Every candidate Origin catalogue is exhaustively tested across all public-legal trait combinations before deployment; a failing combination blocks/fixes the catalogue rather than becoming a production exclusion.**
+45. **The accepted split-origin trait uses two half-area influence regions and two exact origins, splits final Initial Territory between two footprints, and still uses one unchanged global Starting Population pool.**
+46. **The accepted elastic-defense trait preserves the automatic defender when a defended cell is captured while retaining the attacker's ordinary casualty and all ownership/Capacity effects.**
+47. **The accepted giant-SAM trait transforms SAM throughput/range without adding a bespoke controller interception action.**
+48. **The accepted fully-developed-City trait makes purchased Cities direct level-5 purchases at 95% cumulative ordinary level-1-through-level-5 cost.**
+49. **Echoes are the canonical collectible dialogue-line modifier system; standard PvE loadouts contain 7 Echoes.**
+50. **Origins define faction identity while Echoes provide narrower collectible specialization; catalogue curation, not hidden compatibility rules, preserves meaningful tradeoffs.**
+51. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
+52. **Derived controller helpers never leak information outside the controller's legal observation projection.**
+53. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
+54. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
+55. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
+56. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+57. **Zero population-bearing territory after tick resolution means immediate defeat.**
+58. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
+59. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+60. **Ordinary users cannot live-spectate unrelated matches.**
+61. **Historical matches bind exact rule-bearing versions.**
+62. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
+63. **A public spawn-profile modifier may change one ordinary area/origin into the accepted two-half-area/two-origin profile without changing the phase/reveal fairness model.**
+64. **Initial territory is generated deterministically as compact footprint(s) around the exact spawn origin(s) and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+65. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
+66. **One canonical design document governs the target; one canonical integration plan governs the migration.**
