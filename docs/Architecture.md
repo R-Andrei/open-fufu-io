@@ -1,5 +1,7 @@
 # Game Architecture
 
+> **Open Fufu status:** This is inherited/current-state OpenFront reference documentation, **not** normative Open Fufu architecture. It is retained as implementation evidence for migration work. The target design is [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), and the canonical migration architecture is [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). If this document conflicts with either canonical Open Fufu document, the canonical documents win.
+
 The game is split into four components:
 
 1. **client** - Handles rendering and UI for the user
