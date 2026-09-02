@@ -1,5 +1,7 @@
 # Authentication & Authorization Flow
 
+> **Open Fufu status:** This documents the inherited/current OpenFront authentication flow only. It is **not** the target Open Fufu auth design. Open Fufu's accepted V1 direction is Discord OAuth2 → internal Open Fufu user → Open Fufu session, as recorded in [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The target game contract is [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). If this file conflicts with the canonical Open Fufu documents, the canonical documents win.
+
 ## Token Management
 
 1. **Long-lived refresh token**: Stored as an HTTP-only cookie with a 30-day TTL
