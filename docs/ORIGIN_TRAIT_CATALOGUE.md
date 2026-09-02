@@ -4,7 +4,7 @@
 
 This file is the **provisional working catalogue for Origin traits**, not a competing game-design contract.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md).
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md).
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -80,8 +80,10 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P40 | **X** | SAMs become giant single-charge shields: provisionally `+50% range`, exactly one charge at every level, `2×` recharge cooldown | 6 |
 | P41 | **X** | Purchased Cities are created directly at level 5 for `95%` of cumulative ordinary level-1 build + level-2–5 upgrade cost | 6 |
 | P42 | **X** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
+| P43 | **X** | **Heavy Artillery:** all Tanks are transformed into Heavy Artillery: `1.5×` purchase cost, `0.5×` movement, `1.5×` weapon range, `1,000` anti-armor damage / `12s`, `1,000` Population damage / `12s`, Train raiding disabled; same Tank terrain barriers; projectiles may cross terrain the unit cannot traverse | 8 |
+| P44 | **X** | **Radioactive Munitions:** successful Tank/Heavy-Artillery Population attacks neutralize eligible enemy population-bearing cells and apply Fallout; baseline Tank affects target cell only, Heavy Artillery affects Manhattan radius 1 (up to 5 cells) | 10 |
 
-P33's Population amount remains TBD. P30–P42 numerical costs are especially balance-sensitive, though several underlying mechanics are already accepted in the canonical design.
+P33's Population amount remains TBD. P30–P44 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
 
 ---
 
@@ -113,11 +115,13 @@ P33's Population amount remains TBD. P30–P42 numerical costs are especially ba
 
 ### S1 — Fallout
 
-Fallout is conquerable population-bearing land with explicit capture resistance/speed effects, not phantom defensive Population. P16 ignores that ordinary resistance; N05 prevents capture of Fallout entirely.
+Fallout is a persistent overlay/state on legal conquerable terrain, not phantom defensive Population and not a replacement base terrain. Population-bearing/Capacity classification follows the underlying terrain. Ordinary Fallout applies the canonical acquisition-resistance/speed effect. P16 ignores that ordinary resistance; N05 prevents capture of Fallout entirely.
+
+A mechanic may explicitly neutralize owned land and apply Fallout. In that case Capacity is lost because the cell becomes neutral, not because the Fallout overlay itself removes Capacity.
 
 ### S2 — Desert
 
-Desert is a real V1 terrain/map input even though inherited OpenFront does not yet contain it. Exact baseline Desert values remain tuning work.
+Desert is a real V1 terrain/map input. Its accepted provisional baseline is recorded in `TERRAIN_AND_STRUCTURES.md`: 90% capture/settlement speed and faction-wide `+6% × Desert share` all-FFY event yield, before explicit modifiers such as P14.
 
 ### S3 — structure-capture FFY
 
@@ -236,7 +240,7 @@ SAM targeting remains automatic. P40 provisionally gives +50% interception range
 
 ### S26 — P41 fully developed City purchases
 
-Purchased Cities can only be bought directly at level 5 for 95% of cumulative ordinary L1 build + L2–L5 upgrade cost. This is one purchase transaction, not four upgrade spends. Captured lower-level Cities remain at their captured level and may be upgraded normally unless another rule forbids it.
+Purchased Cities can only be bought directly at level 5 for 95% of cumulative ordinary L1 build + L2–L5 upgrade cost. Under the current canonical City prices this is `0.95 × 2.10m = 1.995m FFY`. This is one purchase transaction, not four upgrade spends. Captured lower-level Cities remain at their captured level and may be upgraded normally unless another rule forbids it.
 
 ### S27 — P42 Population-funded short-range Warships
 
@@ -249,11 +253,46 @@ P42 changes only the Warship purchase resource and attack range:
 - affected Warships have `-33% attack range`;
 - health, damage, speed, veterancy, and all other Warship mechanics remain ordinary unless other explicit modifiers apply.
 
-The range penalty is intentionally severe because inherited-style Warship combat strongly rewards first fire and range control. The expected identity is quantity over quality: many short-ranged ships that should lose ordinary equal-number fights but may overwhelm through numbers.
-
 P29 remains legal with P42. Cheap hull creation does not itself create high-rank nuclear vessels; P29 weapon access still depends on Warship rank/effective Silo level.
 
-Echoes may modify Warship range like any other allowed Echo stat. Origin structural/stat modifiers establish the underlying faction profile and Echo percentages specialize that profile; a range-focused Echo loadout may partially mitigate P42 without making the Origin/Echo combination illegal.
+Echoes may modify Warship range like any other allowed Echo stat. Origin structural/stat modifiers establish the underlying faction profile and Echo percentages specialize that profile.
+
+### S28 — P43 Heavy Artillery transformation
+
+P43 transforms the faction's sole baseline land military unit rather than creating a separate unit type.
+
+Starting from the canonical Tank baseline in `TERRAIN_AND_STRUCTURES.md`:
+
+- purchase FFY cost `×1.50` after the ordinary Tank active-count price is calculated;
+- final movement speed `×0.50` after terrain movement modifiers;
+- weapon/Population-attack range `30 → 45` (`×1.50`);
+- max health remains `1,000`;
+- anti-armor attack becomes `1,000 damage` with `12s` cooldown;
+- Population attack becomes `1,000 Population` with `12s` cooldown;
+- Train interception/raiding is disabled;
+- Tank terrain traversal barriers remain unchanged;
+- projectiles may cross terrain the unit cannot traverse, including Mountain and Shallow Water, provided range/visibility/target legality succeeds.
+
+The intended unmodified open-terrain benchmark is emergent rather than hard-coded: one prepared Heavy Artillery is favored against one Tank, one Heavy Artillery loses to two Tanks after its opening shot, and two Heavy Artillery are intended to lose to three Tanks because the surviving Tank can destroy both during their long reload.
+
+P43 adds no hidden outnumbered modifier and no extra health.
+
+### S29 — P44 Radioactive Munitions
+
+P44 applies only to **successful Population attacks**, never Tank/Artillery combat or Train interception.
+
+After ordinary Population damage resolves, eligible enemy-owned population-bearing cells in the footprint are neutralized and receive Fallout. Capacity disappears immediately because those cells lose ownership.
+
+Footprint:
+
+- baseline Tank: target cell only, up to `1` cell;
+- P43 Heavy Artillery: Manhattan radius `1`, target plus four cardinal neighbors, up to `5` cells.
+
+Non-population-bearing cells are skipped. Structure-occupied cells are skipped in V1; P44 does not gain implicit structure destruction. Ineligible cells do not cause the footprint to expand outward.
+
+P44 does not add a second Population-damage multiplier: direct damage remains `250` per baseline Tank Population shot or `1,000` per Heavy-Artillery Population shot.
+
+P43 and P44 are independent and explicitly legal together, yielding nuclear Heavy Artillery.
 
 ---
 
@@ -267,9 +306,9 @@ Simple Starting Population modification is intentionally kept out of the Origin 
 
 P36 provides an Origin-worthy neutral-expansion mechanic by changing Population efficiency rather than adding generic expansion pressure.
 
-### Recon / visibility remains deferred
+### Recon / visibility
 
-Do not add information/fog-of-war Origin traits until the Open Fufu visibility model exists and is playable enough to evaluate.
+Observation Posts now establish a baseline structure-driven tactical observation mechanic. Generic numerical observation/range tuning is better suited to Echoes; any future Origin visibility trait should be structural enough to justify Origin status.
 
 ---
 
@@ -280,10 +319,11 @@ No compatibility matrix is allowed. Deliberately foolish, partially inert, or di
 Examples:
 
 - Warship boons + N12 (`Cannot build Warships`);
-- P07/P34 + N09 (`Cannot build Factories`);
+- P07/P34/P43/P44 + N09 (`Cannot build Factories`) — Tank traits may still matter if a Factory is later acquired through a legal non-build path;
 - P17 + N06 (`Cannot spend FFY to upgrade buildings`);
 - P26 + P25 (MIRV boon plus MIRV prohibition);
 - P35 + N05 (creates Fallout the faction itself cannot capture);
+- P44 + N05 (radioactive Tank/Artillery attacks create neutral Fallout the faction itself cannot later capture);
 - N17 + P05/P34 (destroys the structure before capture-dependent rewards can apply);
 - P37 + N15 (Transport cost becomes 750 FFY);
 - P41 + N06 (direct L5 City purchase remains one purchase rather than upgrade spending);
@@ -300,7 +340,9 @@ Potentially strong but valid combinations include:
 - P33 + P07 for increased train traffic feeding City Population;
 - P34 + N09 for conquest-only industrialization;
 - P35 + P16 for creating and later efficiently reclaiming a Fallout perimeter;
-- P38 + P35 for an expensive elastic/scorched defensive doctrine.
+- P38 + P35 for an expensive elastic/scorched defensive doctrine;
+- **P43 + P44 for nuclear Heavy Artillery**;
+- P44 + P16 for a doctrine that can later reclaim its own radioactive territorial damage efficiently if the front advances.
 
 The exhaustive deployment gate must prove every builder-legal combination deterministic and engine-safe; these notes never become hidden incompatibilities.
 
@@ -324,4 +366,4 @@ Their current mechanical builds are the accepted first Official roster; display 
 
 ## Next Origin work
 
-The Origin system now has a sufficiently broad first catalogue and seven provisional Official builds. Further Origin work should be driven by playtesting, final anime/JRPG naming, balance/repricing, and exhaustive legal-combination validation rather than continued trait proliferation for its own sake.
+The Origin system now has a broad first catalogue including the Tank doctrine transformations. Further work should prioritize traits made newly possible by the expanded terrain/structure library, Echo coverage, final anime/JRPG naming, balance/repricing, and exhaustive legal-combination validation rather than trait proliferation for its own sake.
