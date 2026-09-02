@@ -6,11 +6,11 @@ This file is the **canonical data registry for Open Fufu terrain, persistent str
 
 It is a detailed data appendix to [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), especially §18, and does not replace that document as the overall game-design authority. If this registry and the canonical design contract ever conflict, the design contract wins and this registry must be corrected.
 
-The purpose of this file is to keep concrete terrain/structure/unit tables, values, capabilities, and later balance revisions in one place rather than scattering numeric content across multiple design documents.
+Concrete Origin trait IDs/costs remain in [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
 
 Nothing in this file authorizes gameplay implementation.
 
-The rules and values below are the **accepted provisional V1 baseline**. Numeric values may change through development, simulation, balance testing, or playtesting without reopening the underlying terrain, structure, or Tank identities.
+The rules and values below are the **accepted provisional V1 baseline**. Numeric values may change through development, simulation, balance testing, or playtesting without reopening the underlying identities.
 
 ---
 
@@ -26,16 +26,14 @@ Each base terrain may define:
 - whether naval units may traverse it;
 - whether persistent structures may be built on it;
 - whether it may be used for Initial Territory / exact spawn-origin placement;
-- a **capture / settlement speed multiplier** for acquisition of a target cell;
-- a **source offensive-pressure modifier** for attacks whose source cell is that terrain;
-- a **target defensive-pressure modifier** for an automatic defender standing on that terrain;
-- an optional faction-wide effect based on the faction's owned terrain composition.
+- a **capture / settlement speed multiplier**;
+- a **source offensive-pressure modifier**;
+- a **target defensive-pressure modifier**;
+- an optional faction-wide effect based on owned terrain composition.
 
 ### Capture / settlement speed
 
-`Capture / settlement speed` is not a resource. It multiplies the rate at which a legally contested/acquired target cell accumulates ownership-change progress after local attack/defense pressure has been resolved.
-
-Conceptually:
+`Capture / settlement speed` multiplies the rate at which a legally contested/acquired target cell accumulates ownership-change progress after local attack/defense pressure has been resolved.
 
 ```text
 finalCaptureOrSettlementProgress
@@ -44,17 +42,15 @@ finalCaptureOrSettlementProgress
 × other explicit progress modifiers
 ```
 
-It applies to both hostile territorial capture and neutral settlement/expansion. It does **not** by itself change Population casualties or neutral-settlement Population cost.
+It applies to hostile capture and neutral settlement. It does not itself change Population casualties or settlement Population cost.
 
 ### Source offense / target defense
 
 Terrain offensive pressure is determined by the **attacking source cell's base terrain**. Terrain defensive pressure is determined by the **target/defended cell's base terrain**.
 
-Terrain never creates an automatic Population defender. If the target receives no automatic defender, a percentage defensive-pressure modifier alone creates no Population or phantom defense.
+Terrain never creates an automatic Population defender.
 
 ### Terrain-share effects
-
-For faction-wide terrain-composition effects:
 
 ```text
 terrainShare(T)
@@ -62,9 +58,7 @@ terrainShare(T)
   / all owned population-bearing cells
 ```
 
-If the faction owns no population-bearing cells, terrain-share bonuses are zero. Conquerable but non-population-bearing cells such as Tundra and Shallow Water do not enter this denominator and do not dilute Plains/Desert share.
-
----
+If the faction owns no population-bearing cells, terrain-share bonuses are zero. Tundra and Shallow Water do not enter this denominator.
 
 ## 1.2 Canonical base-terrain table
 
@@ -81,34 +75,28 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 | **Deep Water** | No | No | `0` | No | **Yes** | No | No | — | — | — | — |
 | **Impassable** | No | No | `0` | No | No | No | No | — | — | — | — |
 
----
-
 ## 1.3 Terrain identities
 
 | Terrain | Mechanical identity |
 | --- | --- |
-| **Plains** | Fertile/common land: faster territorial acquisition plus a small faction Population-Growth benefit. |
-| **Highland** | Offensive terrain: attacks sourced from Highland fight more effectively. |
-| **Mountain** | Defensive/slow terrain: harder to acquire and stronger for an actual automatic defender. |
-| **Desert** | Economic terrain: somewhat slower to acquire, but a large Desert share improves FFY-event yield. |
+| **Plains** | Fertile/common land: fast acquisition plus a small Population-Growth benefit. |
+| **Highland** | Offensive terrain. |
+| **Mountain** | Defensive and slow to acquire. |
+| **Desert** | Economic terrain with slower acquisition. |
 | **Forest** | Defender-favored attritional terrain. |
-| **Tundra** | Cursed/low-value land without an active ownership penalty: conquerable, but **0 Capacity and unbuildable**. |
-| **Marsh** | Universally awkward fighting terrain: very slow acquisition and poor attack/defense performance. |
-| **Shallow Water** | Conquerable river/ford/coastal terrain traversable by ordinary territorial operations and naval units, but **0 Capacity and unbuildable**. |
-| **Deep Water** | Naval-only, unconquerable water. |
-| **Impassable** | Hard map topology: neither conquerable nor traversable. |
-
----
+| **Tundra** | Low-value/cursed land without an active ownership penalty: conquerable, **0 Capacity, unbuildable**. |
+| **Marsh** | Very slow acquisition with poor attack and defense performance. |
+| **Shallow Water** | Conquerable river/ford/coastal terrain; ordinary land operations and naval units may traverse it, but it has **0 Capacity and is unbuildable**. |
+| **Deep Water** | Naval-only unconquerable water. |
+| **Impassable** | Hard map topology. |
 
 ## 1.4 Conquerable non-population-bearing terrain
 
-Tundra and Shallow Water are conquerable territory but contribute `0` Population Capacity.
+Tundra and Shallow Water are conquerable but contribute `0` Population Capacity.
 
-They may matter for borders, routes, victory territory, Segments, and controller strategy, but owning them never reduces existing Population or Growth merely because the land was acquired.
+The baseline `1 Population per successfully settled neutral cell` cost applies only to population-bearing neutral cells. Neutral Tundra/Shallow Water therefore cost `0 Population` to acquire while still requiring ordinary acquisition progress/time.
 
-The baseline `1 Population per successfully settled neutral cell` cost applies only to population-bearing neutral cells. Neutral Tundra and Shallow Water therefore cost `0 Population` to acquire while still requiring ordinary settlement/capture progress and time.
-
-A hostile automatically defended Tundra/Shallow-Water cell still produces the ordinary successful-capture casualties:
+A hostile automatically defended Tundra/Shallow-Water cell still produces ordinary successful-capture casualties:
 
 ```text
 defender Population casualty = 1
@@ -116,8 +104,6 @@ attacker Population casualty = 1
 ```
 
 but transfers `0` Capacity.
-
----
 
 ## 1.5 Tundra-specific rules
 
@@ -132,68 +118,39 @@ but transfers `0` Capacity.
 | Source offense | 100% |
 | Target defense | **+5%** |
 
----
+## 1.6 Shallow Water / Deep Water
 
-## 1.6 Shallow Water and Deep Water
+| Property | Shallow Water | Deep Water |
+| --- | ---: | ---: |
+| Ownable | **Yes** | No |
+| Capacity | `0` | `0` |
+| Ordinary land operation traversal | **Yes** | No |
+| Naval traversal | **Yes** | Yes |
+| Structures | No | No |
+| Initial Territory / exact spawn | No | No |
+| Capture / settlement speed | **70%** | — |
+| Source offense | **-15%** | — |
+| Target defense | **-15%** | — |
 
-### Shallow Water
+Heavy land units have their own traversal table and are not automatically allowed to cross Shallow Water merely because Population-based territorial operations may do so.
 
-| Property | Shallow Water rule |
-| --- | --- |
-| Conquerable / ownable | **Yes** |
-| Counts toward conquerable-territory / victory geography | **Yes** |
-| Population-bearing / Capacity | **No / 0** |
-| Ordinary land operation may enter/cross | **Yes** |
-| Transport required merely to cross | **No** |
-| Naval traversal | **Yes** |
-| Structure construction | **Forbidden** |
-| Initial Territory / exact spawn | Forbidden |
-| Capture / settlement speed | **70%** |
-| Source offense | **-15%** |
-| Target defense | **-15%** |
+Optional water-nuke terrain conversion creates **Deep Water**.
 
-Shallow Water political ownership allows rivers to become real controllable fronts. Heavy land units such as Tanks have their own traversal rules and are **not** automatically permitted merely because ordinary territorial operations may cross.
+## 1.7 Fallout overlay
 
-### Deep Water
-
-`Deep Water` is the canonical mechanical name for the inherited generic Ocean role.
-
-| Property | Deep Water rule |
-| --- | --- |
-| Conquerable / ownable | No |
-| Population-bearing / Capacity | No / 0 |
-| Ordinary land traversal | No |
-| Naval traversal | Yes |
-| Structure construction | Forbidden |
-| Initial Territory / exact spawn | Forbidden |
-
-Optional water-nuke terrain conversion creates **Deep Water**, not Shallow Water.
-
----
-
-## 1.7 Fallout is an overlay, not a replacement base terrain
-
-Fallout is a persistent overlay/state on legal conquerable land, not a mutually exclusive base terrain replacing Plains/Mountain/etc. The underlying terrain retains its Capacity status, traversal rules, structure-buildability rule, source-offense modifier, target-defense modifier, and terrain-share identity.
-
-The provisional ordinary Fallout acquisition modifier is:
+Fallout is an overlay on legal conquerable terrain, not a replacement base terrain.
 
 ```text
-capture / settlement speed × 0.50
+ordinary Fallout capture / settlement speed × 0.50
 ```
 
-The accepted Origin effect that ignores ordinary Fallout capture resistance removes/bypasses this `×0.50` penalty while retaining the underlying terrain modifiers.
+The underlying terrain retains its Capacity classification, traversal, structure-buildability, source offense, target defense, and terrain-share identity.
 
 Fallout never creates phantom Population defenders.
 
-A rule may explicitly **neutralize an owned cell and apply Fallout**. In that case Capacity is lost because ownership is removed, not because the Fallout overlay itself changes the underlying terrain's Capacity classification.
+A rule may explicitly **neutralize an owned cell and apply Fallout**. Capacity is then lost because ownership was removed; the Fallout overlay itself does not redefine the base terrain's Capacity.
 
----
-
-## 1.8 Terrain modifier composition
-
-Unless an explicit typed rule states otherwise, terrain percentages compose through the canonical modifier system rather than hidden special cases.
-
-Terrain data and effective modifiers must be available through the legal controller observation/rules/mechanics API so a controller is never required to reverse-engineer these values from outcomes.
+P16 ignores the ordinary Fallout acquisition penalty while preserving the underlying terrain modifiers.
 
 ---
 
@@ -210,23 +167,21 @@ Open Fufu V1 has **eight canonical persistent structures**:
 7. Observation Post
 8. Command Post
 
-All persistent structures have levels `1–5`. A normal purchase creates L1. Level 5 is a hard maximum.
+All persistent structures have levels `1–5`; normal purchases create L1 and L5 is the hard maximum. The inherited OpenFront `Defense Post` is implementation ancestry for the public **Fort**, not another structure.
 
-The inherited OpenFront `Defense Post` is implementation ancestry for the public Open Fufu **Fort**, not an additional structure.
+## 2.1 Construction / upgrade rules
 
-## 2.1 Construction and upgrade rules
+- Every structure has a fixed FFY cost by **structure type + target level**.
+- Costs do not scale with the number of structures/levels already owned unless an explicit Origin modifies them.
+- Port and Factory do **not** share OpenFront's inherited price counter.
+- Building L1 takes the listed time.
+- Every L2–L5 upgrade takes **the same time as that structure's L1 build**.
+- A new structure is inactive until construction completes.
+- During an upgrade the structure remains operational at its previous completed level; the new level activates atomically when construction finishes.
+- Ordinary placement requires owned buildable terrain; Port additionally requires a legal coast/water interface.
+- Same-type area effects do not stack; the strongest applicable same-type effect wins.
 
-- Every structure has a fixed FFY price for each target level shown below.
-- Prices depend on **structure type + target level**, not on how many other structures or constructed levels the faction owns.
-- Port and Factory therefore do **not** share the inherited OpenFront price counter.
-- Building L1 takes the structure's listed build time.
-- Every L2–L5 upgrade takes **the same build time as that structure's L1 construction**.
-- A newly built structure is inactive until construction completes.
-- During an upgrade, the structure remains operational at its previous completed level; the new level and effects activate atomically when the upgrade completes.
-- Ordinary structure placement requires an owned cell whose base terrain allows structures. Port additionally requires a legal coast/water interface.
-- Same-type area effects never add together on one cell; the strongest applicable same-type effect wins.
-
-## 2.2 Structure costs and build/upgrade times
+## 2.2 Costs and times
 
 | Structure | Time per build/upgrade | L1 | L2 | L3 | L4 | L5 | L1→L5 total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -237,7 +192,7 @@ The inherited OpenFront `Defense Post` is implementation ancestry for the public
 | **Missile Silo** | **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m | **15.00m** |
 | **SAM Launcher** | **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m | **15.00m** |
 | **Observation Post** | **5s** | 50k | 100k | 200k | 300k | 400k | **1.05m** |
-| **Command Post** | **5s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
+| **Command Post** | **10s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
 
 These are ordinary FFY costs before explicit Origin/Echo modifiers.
 
@@ -251,35 +206,37 @@ These are ordinary FFY costs before explicit Origin/Echo modifiers.
 | **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
 | **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
 | **Factory — industrial/train FFY event value** | 100% | 110% | 120% | 130% | **140%** |
-| **Factory — simultaneous Tank repair capacity** | 1 | 2 | 3 | 4 | **5** |
+| **Factory — simultaneous Tank/Heavy-Artillery repair capacity** | 1 | 2 | 3 | 4 | **5** |
 | **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — interception range** | 70 | 80 | 90 | 100 | **105** |
 | **Observation Post — observation radius** | 40 | 55 | 70 | 85 | **100** |
-| **Command Post — source offensive pressure** | +5% | +10% | +15% | +20% | **+25%** |
-| **Command Post — coverage radius** | 20 | 25 | 30 | 35 | **40** |
+| **Command Post — source offensive pressure** | **+3%** | **+6%** | **+9%** | **+12%** | **+15%** |
+| **Command Post — coverage radius** | **30** | **35** | **40** | **45** | **50** |
 
 ## 2.4 Structure-specific rules
 
 ### City
 
-Each completed City contributes its listed percentage additively to the faction's explicit City-derived Population Growth modifier. Cities never increase Population Capacity. Cities remain valid train trade stations in the rail economy.
+Each completed City contributes its listed percentage additively to the faction's explicit City-derived Population Growth modifier. Cities never increase Population Capacity. Cities remain valid train trade stations.
 
 ### Fort
 
-A Fort never creates Population defenders. Its defensive-pressure effect applies only to a real automatic defender on a covered cell. Overlapping friendly Forts use the strongest applicable Fort effect rather than adding percentages.
+A Fort never creates Population defenders. Its defensive-pressure effect applies only to a real automatic defender on a covered cell.
 
 ### Port
 
-Ports remain Trade-Ship origins/destinations and the naval repair infrastructure for Warships. Port level's canonical V1 progression is repair radius/rate; inherited OpenFront trade-spawn scaling by Port level is not part of the canonical Open Fufu progression unless later added explicitly.
+Ports remain Trade-Ship origins/destinations and naval repair infrastructure. Port level's canonical progression is repair radius/rate; inherited OpenFront Port-level Trade-Ship-spawn scaling is not part of canonical Open Fufu unless later added explicitly.
+
+Ports also construct Warships. A baseline Warship purchase has a **5-second construction time** before the Warship becomes active; it no longer appears instantly. Origin effects that alter Warship purchase resource/cost do not bypass this time unless explicitly stated.
 
 ### Factory
 
-Factories remain the industrial/rail source that generates trains and Factory-driven FFY events. Factory level multiplies the FFY value/effectiveness of those events; it does not inherently increase train count. Factories also construct and repair the baseline Tank unit defined in §3.
+Factories generate trains and Factory-driven industrial/train FFY events. Factory level multiplies those FFY events but does not inherently increase train count.
+
+Factories also construct and repair Tanks/Heavy Artillery.
 
 ### Missile Silo
-
-Ordinary strategic-weapon access by completed Silo level:
 
 | Completed level | Weapon access |
 | ---: | --- |
@@ -287,33 +244,33 @@ Ordinary strategic-weapon access by completed Silo level:
 | L3–L4 | Atom Bomb + Hydrogen Bomb |
 | L5 | Atom Bomb + Hydrogen Bomb + MIRV |
 
-Charge capacity equals completed level. Baseline recharge cooldown is **9 seconds per expended charge**.
+Charge capacity equals completed level. Baseline recharge cooldown is **9s per expended charge**.
 
 ### SAM Launcher
 
-SAM targeting/interception is automatic. Charge capacity equals completed level. Baseline recharge cooldown is **9 seconds per expended charge**. Completed-level range is exactly `70 / 80 / 90 / 100 / 105`.
+Targeting/interception is automatic. Charge capacity equals completed level. Baseline recharge cooldown is **9s per expended charge**. Range is exactly `70 / 80 / 90 / 100 / 105`.
 
 ### Observation Post
 
-An Observation Post reveals legally revealable operational state inside its completed-level radius, including hostile mobile units, persistent structures, and active visible operations needed for tactical targeting/decision-making.
+Reveals legally revealable operational state inside its completed-level radius, including hostile mobile units, persistent structures, and manifested operations needed for tactical targeting/decisions.
 
-It never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation from multiple Posts does not stack; coverage is boolean.
+It never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts do not stack.
 
 ### Command Post
 
-A completed Command Post gives its listed offensive-pressure modifier to an ordinary land engagement lane when that lane's **attacking source cell** lies inside friendly Command-Post coverage.
+A completed Command Post gives its listed offensive-pressure modifier to an ordinary Population-based land engagement lane when the lane's **attacking source cell** lies inside friendly Command-Post coverage.
 
-It modifies ordinary Population-based land offensive pressure only. It does **not** modify Tank/Heavy-Artillery weapon damage, Warship damage, strategic weapons, or unrelated FFY effects unless another explicit rule says so.
+It does not modify Tank/Heavy-Artillery weapon damage, Warship damage, strategic weapons, or unrelated FFY effects.
 
-Overlapping friendly Command Posts use only the strongest applicable Command-Post modifier.
+Its **10-second construction/upgrade time is intentional strategic telegraphing**: offensive infrastructure is meant to be planned and gives opponents time to observe/react rather than appearing immediately before an attack.
 
 ---
 
 # 3. Factory mobile land unit — Tank
 
-The **Tank** is the sole baseline persistent land military unit. One map Tank represents an abstract armored formation rather than one literal vehicle.
+The **Tank** is the sole baseline persistent land military unit. One map Tank represents an abstract armored formation, not one literal vehicle.
 
-Its strategic identity is the land analogue of a Warship: an expensive, persistent autonomous raider/interdictor that fights enemy armor, raids economic traffic, and inflicts direct Population casualties without capturing territory.
+Its role is the land analogue of a Warship: autonomous raiding/interdiction, fighting enemy armor, attacking economic traffic, and causing direct Population casualties without capturing territory.
 
 ## 3.1 Production and persistence
 
@@ -321,11 +278,11 @@ Its strategic identity is the land analogue of a Warship: an expensive, persiste
 | --- | --- |
 | Produced by | Active owned **Factory** |
 | Factory level required | L1+ |
-| Build time | **10s** |
+| Build time | **5s** |
 | Concurrent Tank builds per Factory | **1** |
 | Purchase resource | FFY |
 | Max owned Tanks | No hard cap |
-| Counts transformed Heavy Artillery as Tanks | **Yes** |
+| Heavy Artillery counts as Tanks for ownership/cost curve | **Yes** |
 | Captures territory | **No** |
 | Carries Population | **No** |
 | Generic structure damage | **No** |
@@ -333,33 +290,31 @@ Its strategic identity is the land analogue of a Warship: an expensive, persiste
 | Automatic repair-retreat threshold | **50% health** |
 | Repair structure | Factory |
 | Factory repair radius | **5 cells** |
-| Repair rate | **100 HP/s per repairing Tank** |
-| Simultaneous repairs per Factory | Factory completed level (`1–5`) |
+| Repair rate | **100 HP/s per repairing unit** |
+| Simultaneous repairs per Factory | completed Factory level (`1–5`) |
 
-Tank construction does not pause the Factory's ordinary train-generation logic in V1.
+Tank construction does not pause ordinary train-generation logic.
 
 ### Purchase-cost curve
-
-The next Tank's ordinary cost depends on the faction's currently active Tank/Heavy-Artillery count:
 
 ```text
 TankCost = min(1,000,000 FFY, 250,000 FFY × (activeTanks + 1))
 ```
 
-| Active Tanks before purchase | Next Tank cost |
+| Active Tanks/Heavy Artillery before purchase | Next baseline Tank cost |
 | ---: | ---: |
 | 0 | **250k** |
 | 1 | **500k** |
 | 2 | **750k** |
 | 3+ | **1.00m** |
 
-Destroyed Tanks stop counting, so replacement cost may fall.
+Destroyed units stop counting.
 
 ## 3.2 Movement and terrain
 
-Baseline Plains movement speed is **5 cells/second**. Terrain multiplies that speed as follows:
+Baseline Plains movement speed is **5 cells/s**.
 
-| Terrain | Tank traversal | Speed multiplier | Derived speed |
+| Terrain | Traversal | Speed multiplier | Derived Tank speed |
 | --- | ---: | ---: | ---: |
 | **Plains** | Yes | 100% | **5.00 cells/s** |
 | **Highland** | Yes | 80% | **4.00 cells/s** |
@@ -372,58 +327,55 @@ Baseline Plains movement speed is **5 cells/second**. Terrain multiplies that sp
 | **Deep Water** | Blocked | — | — |
 | **Impassable** | Blocked | — | — |
 
-Tanks may path through friendly-owned traversable terrain and through traversable territory belonging to a faction they are legally hostile to. Neutral/Terra-Nullius land does not serve as a Tank path; ordinary territorial control must establish a corridor first.
+Tanks may path through friendly traversable territory and traversable territory belonging to a faction they are legally hostile to. Neutral/Terra-Nullius cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
-Mountains and Shallow Water therefore form genuine armored barriers even though ordinary Population-based territorial warfare may cross Shallow Water.
+Mountain and Shallow Water are genuine armored barriers.
 
 ## 3.3 Strategic control
 
-Tank control is strategic, not RTS micro.
+Tank control is strategic rather than RTS micro.
 
-The controller assigns a Tank a patrol/raid anchor or legal area/target. Baseline patrol/raid leash is **100 cells** from its assigned anchor. Pathing, local pursuit, target selection, firing, and repair retreat are autonomous.
+The controller assigns a Tank a patrol/raid anchor or legal area/target. Baseline leash is **100 cells** from the assigned anchor. Pathing, local pursuit, target choice, firing, and repair retreat are autonomous.
 
-No V1 controller action exists for turret rotation, per-shot firing, frame-by-frame kiting, or other micro-control.
+No V1 controller action exists for per-shot firing, turret control, frame-by-frame kiting, or equivalent micro.
 
-Tank attacks require the target to be legally observed under the surfaced visibility model.
+Tank attacks require legal observation under the surfaced visibility model.
 
 ## 3.4 Combat and raiding
 
 | Attack mode | Range | Damage / result | Cooldown |
 | --- | ---: | ---: | ---: |
-| **vs enemy Tank/Heavy Artillery** | **30 cells** | **250 HP** | **1s** |
-| **vs enemy Train** | **30 cells** | Train intercepted/destroyed in one successful attack | **1s weapon cadence** |
-| **vs enemy Population** | **30 cells** | **250 Population casualties** | **3s** |
+| **vs enemy Tank/Heavy Artillery** | **30** | **250 HP** | **1s** |
+| **vs enemy Train** | **30** | Train intercepted/destroyed | **1s weapon cadence** |
+| **vs enemy Population** | **30** | **250 Population casualties** | **3s** |
 
-Population attacks never capture the target cell and do not inherently alter Capacity or terrain.
-
-Tank-vs-Tank target selection and Train pursuit are autonomous inside the assigned legal operational area. Exact tie-breaking is deterministic.
+Population attacks never capture territory by themselves.
 
 ### Train interception / land piracy
 
-A Train carries a deterministic snapshotted **current cargo FFY value** for its next eligible paying stop/event. If a hostile Tank intercepts the Train before that payout:
+A Train carries a deterministic snapshotted **current cargo FFY value** for its next eligible paying stop/event. If intercepted before that payout:
 
 - the Train is removed;
 - its pending ordinary payout is canceled;
 - the Tank owner receives **100% of that snapshotted current cargo value** as a raiding FFY event;
-- already-earned prior Train FFY is never clawed back.
-
-This is the terrestrial economic-raiding analogue of Warship piracy against Trade Ships.
+- previously earned Train FFY is not clawed back.
 
 ---
 
 # 4. Tank Origin transformations
 
-The Origin catalogue defines the authoritative trait IDs/costs. This section records the Tank-side mechanical data those traits use.
+The Origin catalogue defines trait IDs/costs. This section defines the unit-side mechanical contract.
 
 ## 4.1 Heavy Artillery transformation
 
-A Heavy-Artillery Origin does not create a second baseline unit. It **transforms every Tank owned/built by the faction into Heavy Artillery**.
+Heavy Artillery is **not a second baseline unit**. P43 transforms every Tank owned/built by the faction.
 
 | Stat / capability | Baseline Tank | Heavy Artillery |
 | --- | ---: | ---: |
+| Build time | **5s** | **10s** |
 | Purchase cost | 1.00× Tank curve | **1.50×** |
 | Max health | 1,000 | **1,000** |
-| Movement | terrain table | **0.50× final Tank movement speed** |
+| Movement | terrain table | **0.50× final Tank movement** |
 | Anti-armor range | 30 | **45** |
 | Anti-armor damage | 250 | **1,000** |
 | Anti-armor cooldown | 1s | **12s** |
@@ -432,66 +384,74 @@ A Heavy-Artillery Origin does not create a second baseline unit. It **transforms
 | Population cooldown | 3s | **12s** |
 | Train interception / raiding | Yes | **Disabled** |
 | Territory capture | No | No |
-| Terrain traversal barriers | Tank rules | **Same Tank barriers** |
-| Projectile blocked by Mountain/Shallow Water | — | **No** |
+| Traversal barriers | Tank rules | **Same Tank barriers** |
+| Projectiles blocked by Mountain/Shallow Water | — | **No** |
 
-Heavy Artillery projectiles may cross terrain the unit itself cannot traverse, including Mountain and Shallow Water. Range is measured normally and the target must still be legally observed.
+Heavy-Artillery projectiles may cross terrain the unit cannot traverse, including Mountain and Shallow Water, provided range, observation, and target legality succeed.
 
-The transformation intentionally adds no health. Range/alpha are its protection; exposed artillery is meant to die quickly to Tanks.
+No extra health is granted; range and alpha are the unit's protection.
 
-### Baseline matchup benchmark
+### Matchup benchmark
 
 With unmodified baseline stats and a prepared first shot:
 
 | Engagement | Intended result |
 | --- | --- |
-| **1 Heavy Artillery vs 1 Tank** | Heavy Artillery favored; its 1,000-damage opening shot kills a baseline Tank |
-| **1 Heavy Artillery vs 2 Tanks** | Tanks strongly favored after the first Tank is killed; the survivor can close and destroy the Artillery before its 12s reload |
-| **2 Heavy Artillery vs 3 Tanks** | Tanks favored: two Tanks may die to the opening volley, but the survivor's 250 damage/s can destroy both 1,000-HP Artillery pieces before the 12s reload |
-| **Artillery caught exposed / during reload** | Tank-favored |
-| **Prepared Artillery firing across open approach** | Dangerous/expensive for Tanks |
-| **Artillery attempting to retreat from pursuing Tanks** | Usually unfavorable because Artillery movement is halved |
+| **1 Heavy Artillery vs 1 Tank** | Heavy Artillery favored; opening shot kills the Tank |
+| **1 Heavy Artillery vs 2 Tanks** | Tanks strongly favored after one dies |
+| **2 Heavy Artillery vs 3 Tanks** | Tanks favored after the opening volley |
+| **Artillery caught exposed / reloading** | Tank-favored |
+| **Prepared Artillery across open approach** | Dangerous for Tanks |
+| **Artillery retreating from Tanks** | Usually unfavorable |
 
-This matchup is an emergent consequence of health, damage, range, reload, and movement rather than a hidden outnumbered/combat-ratio modifier.
+These outcomes are emergent from range, alpha, reload, movement, and health; there is no hidden outnumbered modifier.
 
 ## 4.2 Radioactive Munitions
 
-Radioactive Munitions modifies **successful Population attacks only**.
+P44 applies only to **successful Population attacks**, never anti-armor combat or Train interception.
 
-It does not affect Tank-vs-Tank/Artillery attacks or Train interception.
+After ordinary Population damage resolves, the attack neutralizes enemy-owned population-bearing cells and applies Fallout. Capacity is removed because those cells become neutral.
 
-On a successful affected Population attack:
+### Deterministic Fallout/Capacity footprint
 
-1. ordinary Population damage is resolved;
-2. eligible enemy-owned population-bearing cells in the attack footprint are neutralized;
-3. those neutralized cells receive the Fallout overlay;
-4. the former owner immediately loses the Capacity those cells contributed because ownership was removed.
+| Unit form | Candidate footprint | Maximum cells neutralized per successful Population shot |
+| --- | --- | ---: |
+| **Tank + Radioactive Munitions** | target-centered **Manhattan radius 2** | **10 cells / 10 Capacity** |
+| **Heavy Artillery + Radioactive Munitions** | target-centered **Manhattan radius 5** | **50 cells / 50 Capacity** |
 
-The Fallout overlay itself is not what removes Capacity; **neutralization is**.
+Resolution:
 
-### Fallout footprint
+1. collect enemy-owned population-bearing candidate cells inside the listed radius;
+2. exclude structure-occupied cells and all non-population-bearing terrain;
+3. order candidates deterministically by Manhattan distance from the target, then stable cell/tile ID;
+4. neutralize/apply Fallout to the first `10` or `50` candidates respectively.
 
-| Unit form | Fallout footprint per successful Population attack |
-| --- | --- |
-| **Baseline Tank + Radioactive Munitions** | **Target cell only: up to 1 cell** |
-| **Heavy Artillery + Radioactive Munitions** | **Manhattan radius 1: target + four cardinal neighbors, up to 5 cells** |
+If fewer eligible cells exist inside the footprint, only those cells are affected; the search does not expand beyond the listed radius.
 
-Only enemy-owned **population-bearing** cells are eligible. Non-population terrain such as Tundra/Shallow Water is skipped. Structure-occupied cells are skipped by this trait in V1; Radioactive Munitions does not gain implicit structure-destruction capability.
+Direct Population damage remains ordinary: `250` for Tank and `1,000` for Heavy Artillery. P44 adds no second Population-damage multiplier.
 
-If part of the footprint is ineligible, fewer cells are neutralized; the footprint does not expand outward to compensate.
-
-Direct Population damage remains the unit's ordinary Population-attack damage (`250` Tank / `1,000` Heavy Artillery). Radioactive Munitions does not add a second Population-damage multiplier.
-
-Heavy Artillery and Radioactive Munitions are independent Origin traits and may be legally combined, producing **nuclear Heavy Artillery** with the Heavy-Artillery combat profile and the five-cell Fallout footprint.
+P43 and P44 are independent and explicitly legal together, producing **radioactive Heavy Artillery**.
 
 ---
 
-# 5. Next design work
+# 5. Mobile-unit production timings
+
+| Unit | Production source | Baseline construction time |
+| --- | --- | ---: |
+| **Warship** | Port | **5s** |
+| **Tank** | Factory | **5s** |
+| **Heavy Artillery (P43 Tank transformation)** | Factory | **10s** |
+
+Construction time is a real delay before the purchased unit becomes active. Purchase-resource/cost transformations do not bypass it unless explicitly stated.
+
+---
+
+# 6. Next design work
 
 Before recomputing the exhaustive Echo catalogue:
 
-1. add appropriate Origin traits for the expanded terrain/structure library without proliferating redundant numerical traits better suited to Echoes;
-2. expand the Echo stat/scope pool to cover Forest, Tundra, Marsh, Shallow Water, Observation Post, Command Post, Tank, and any accepted Tank-related numerical axes;
-3. audit all builder-legal Origin combinations involving Heavy Artillery / Radioactive Munitions;
-4. recompute the exhaustive whole-percentage Echo mechanical catalogue after the final modifier-key pool is settled;
-5. tune structure/Tank numerical values through simulation/playtesting while preserving these accepted provisional identities.
+1. add appropriate Origin traits for the expanded terrain/structure library without duplicating simple Echo-style tuning;
+2. expand the Echo stat/scope pool for Forest, Tundra, Marsh, Shallow Water, Observation Post, Command Post, Tank, and accepted Tank-related axes;
+3. audit all builder-legal P43/P44 combinations;
+4. recompute the exhaustive whole-percentage Echo catalogue after the modifier-key pool is settled;
+5. tune values through simulation/playtesting while preserving the accepted identities.
