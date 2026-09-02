@@ -1,5 +1,7 @@
 # GameServer.ts — testing & refactor plan
 
+> **Open Fufu status:** This is an inherited/historical OpenFront refactor record. It is retained because its characterization tests, extracted modules, and current-state observations are useful migration evidence, but its preservation rules are **not** normative for Open Fufu. In particular, statements such as “client-visible wire behaviour must not change” apply to the historical refactor described here, not to the Open Fufu migration. The canonical target is [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) and the canonical migration plan is [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md).
+
 `src/server/GameServer.ts` is ~2,400 lines, changes in most feature PRs, and
 has 13 responsibilities in one class. This document is the plan for making it
 testable and then splitting it up. It is a living checklist: tick items off as
@@ -196,7 +198,7 @@ Status:
 - [x] `ListingState.ts` (2026-08-27): the listed / listedAt / label / accent /
       featured fields, the duplicate-toggle rule and the auto-start deadline.
       `GameServer` keeps thin public delegates (Worker, AdminBotRoutes and
-      WorkerLobbyService call them) and `maybeAutoStartListed`, which is
+      `WorkerLobbyService` call them) and `maybeAutoStartListed`, which is
       lifecycle. `ListingState.test.ts` covers the deadline rules and label
       sanitisation; `HostedLobbyListing.test.ts` is unchanged.
 - [x] `MatchTelemetryRecorder.ts` (2026-08-27): the event envelope and
