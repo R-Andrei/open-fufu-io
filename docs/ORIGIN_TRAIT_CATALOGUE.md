@@ -2,21 +2,17 @@
 
 ## Status
 
-This file is a **provisional working catalogue**, not a third canonical game-design contract.
+This file is the **provisional working catalogue for Origin traits**, not a competing game-design contract.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md).
-
-This file exists so Origin traits can be iterated aggressively without bloating the canonical design document with names, values, and content that are explicitly expected to change.
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md).
 
 Nothing in this file authorizes gameplay implementation.
 
-Trait names are intentionally left as `X` until the mechanics settle. Temporary IDs (`Pxx` and `Nxx`) exist only so individual candidates can be discussed unambiguously before final anime/JRPG reference names are chosen.
+Trait names are intentionally left as `X` until the final anime/JRPG-reference naming pass. Temporary IDs (`Pxx` and `Nxx`) exist only so candidates can be discussed unambiguously.
 
 ---
 
-## Settled creator direction for this working catalogue
-
-Current builder numbers:
+## Builder direction
 
 ```text
 Base Origin Points:       10
@@ -25,348 +21,307 @@ Maximum drawback refund:  10
 Maximum positive spend:   20
 ```
 
-The catalogue follows these accepted Origin-system invariants:
+Accepted catalogue invariants:
 
-- Official and Custom Origins use the same public trait catalogue and the same builder rules.
-- No trait tiers.
-- No Major/Minor taxonomy.
-- No hidden categories, incompatibility families, pairwise exclusions, or runtime combination vetoes.
-- Players select only creator-authored traits; they never supply formulas or arbitrary trait parameters.
-- Every combination that satisfies the public budget, trait-count, and drawback-refund rules must be legal in production.
-- Candidate catalogues must be exhaustively tested before deployment; broken legal combinations are a catalogue-design failure and must be fixed before shipping.
-- Origins should prefer playstyle-changing mechanics, tradeoffs, rule transformations, geography interactions, and hard constraints over ordinary generic `+X% to everything` stat bonuses better suited to Echoes.
+- Official and Custom Origins use the same public catalogue and builder rules.
+- No trait tiers, Major/Minor taxonomy, hidden categories, pairwise exclusions, incompatibility families, or runtime vetoes.
+- Players select creator-authored traits; they never provide formulas, scripts, or arbitrary numeric parameters.
+- Every combination satisfying the public budget, trait-count, and drawback-refund rules must be legal in production.
+- Candidate catalogue versions must be exhaustively tested before deployment; a broken legal combination is a catalogue-design failure, not justification for a hidden restriction.
+- Origins should prefer playstyle-changing rules, tradeoffs, geography, and structural constraints over generic stat tuning better suited to Echoes.
 
-All costs, refunds, names, and tuning values in this file remain provisional unless/until explicitly canonized.
+Unless explicitly marked otherwise in the canonical design, costs/refunds and exact tuning values here remain provisional balance data.
 
 ---
 
-## Positive / cost traits — provisional
+## Positive / cost traits
 
 | ID | Name | Effect | Cost |
 | --- | --- | --- | ---: |
 | P01 | **X** | `+15% Initial Territory` | 7 |
-| P02 | **X** | Replaces the ordinary Population-utilization growth curve with the 30–70% profile | 9 |
-| P03 | **X** | `Ignores enemy Fort defensive-pressure bonuses` | 7 |
-| P04 | **X** | `Response-side counter-response effectiveness is fixed at 100% (1.0), ignoring the normal force-imbalance bonus/penalty curve` | 3 |
-| P05 | **X** | `Capturing enemy structures generates military/conquest FFY events` | 8 |
+| P02 | **X** | Replace ordinary Population-utilization growth curve with the accepted 30–70% profile | 9 |
+| P03 | **X** | Ignore enemy Fort defensive-pressure bonuses | 7 |
+| P04 | **X** | Response-side counter-response effectiveness fixed at `1.0`, ignoring normal response-side imbalance bonus/penalty | 3 |
+| P05 | **X** | Capturing enemy structures generates military/conquest FFY events | 8 |
 | P06 | **X** | `+25% Trade Ship speed` | 5 |
-| P07 | **X** | `+25% amount of trains spawned` | 4 |
-| P08 | **X** | Ordinary wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
+| P07 | **X** | `+25% trains spawned` | 4 |
+| P08 | **X** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **X** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **X** | `+100% warhead projectile speed` | 4 |
-| P11 | **X** | `SAM Launchers cost 0 FFY to build/upgrade; each 25,000 peak Total Population reached unlocks one SAM Launcher slot` | 8 |
-| P12 | **X** | `Transport Ships are 25% faster` | 6 |
-| P13 | **X** | `Mountains offer 33% increased defensive pressure` | 4 |
-| P14 | **X** | `FFY events located on Desert yield +33% FFY` | 4 |
-| P15 | **X** | `33% increased offensive pressure on Highlands` | 4 |
-| P16 | **X** | `Ignores ordinary Fallout capture resistance` | 4 |
-| P17 | **X** | `Structure upgrade FFY cost × 0.99 per owned structure` | 7 |
-| P18 | **X** | `+100% offensive pressure for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area` | 5 |
-| P19 | **X** | `+5% offensive pressure per distinct other faction with which you currently have at least one Territorial Contact` | 7 |
-| P20 | **X** | `Start the game with a free Missile Silo` | 7 |
-| P21 | **X** | `First purchase of each structure consumes 0 FFY`* | 7 |
-| P22 | **X** | `+2 to maximum Warship rank` | 6 |
-| P23 | **X** | `Warships +20% range, +20% damage, +20% speed, but you may only own one` | 8 |
-| P24 | **X** | `FFY events located inside Fort areas yield +20% FFY` | 7 |
-| P25 | **X** | `Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area +50% and FFY cost +50%` | 10 |
-| P26 | **X** | `You may use MIRV at most once; that MIRV requires ordinary affordability but consumes 0 FFY` | 8 |
-| P27 | **X** | `SAM Launchers may attack ships` | 9 |
-| P28 | **X** | `Destroying Transport Ships steals their Population` | 9 |
-| P29 | **X** | `Warships may serve as Missile Silo launch platforms from their current cell` | 9 |
-| P30 | **X** | `Warships move +50% faster and piracy FFY is tripled, but Warships cannot fire on other ships; they may still pursue/capture Trade Ships` | 6 |
-| P31 | **X** | `Ports project an expanded repair zone; Warships inside receive strong active repair without docking and may remain operational` | 6 |
-| P32 | **X** | `Transport Ships may embark only from owned active Ports, but become armored/health-bearing instead of ordinary fragile Transports` | 6 |
-| P33 | **X** | `When a train stops at an owned City, that City owner gains X Available Population` | 6 |
-| P34 | **X** | `Factories acquired from another faction by conquest operate at 2× ordinary Factory effect while you own them` | 6 |
-| P35 | **X** | `Cells you deliberately relinquish become Fallout while neutral` | 6 |
+| P11 | **X** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
+| P12 | **X** | `+25% Transport Ship speed` | 6 |
+| P13 | **X** | Mountains provide `+33% defensive pressure` | 4 |
+| P14 | **X** | FFY events located on Desert yield `+33% FFY` | 4 |
+| P15 | **X** | `+33% offensive pressure on Highlands` | 4 |
+| P16 | **X** | Ignore ordinary Fallout capture resistance | 4 |
+| P17 | **X** | Structure upgrade cost multiplier is `0.99^S`, where `S` is currently owned structures | 7 |
+| P18 | **X** | `+100% offensive pressure` for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area | 5 |
+| P19 | **X** | `+5% offensive pressure` per distinct other faction with current Territorial Contact | 7 |
+| P20 | **X** | Start with a free Missile Silo | 7 |
+| P21 | **X** | First purchase of each structure consumes `0 FFY`, after ordinary affordability/legality succeeds | 7 |
+| P22 | **X** | `+2 maximum Warship rank` | 6 |
+| P23 | **X** | Warships `+20% range, +20% damage, +20% speed`, but may own only one | 8 |
+| P24 | **X** | FFY events located inside Fort areas yield `+20% FFY` | 7 |
+| P25 | **X** | Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area `+50%`, FFY cost `+50%` | 10 |
+| P26 | **X** | May use MIRV at most once; ordinary affordability/legality required, successful MIRV consumes `0 FFY` | 8 |
+| P27 | **X** | SAM Launchers may attack ships | 9 |
+| P28 | **X** | Destroying Transport Ships steals their carried Population | 9 |
+| P29 | **X** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
+| P30 | **X** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
+| P31 | **X** | Ports project expanded repair zones; Warships inside receive strong repair without docking and may remain operational | 6 |
+| P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing | 6 |
+| P33 | **X** | Train stops at an owned City generate `X` Available Population for that City owner, Capacity-capped | 6 |
+| P34 | **X** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
+| P35 | **X** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
+| P36 | **X** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
+| P37 | **X** | Transport embarkation costs `+250 FFY`; each successful amphibious landing grants a permanent level-1 Fort at the landing location | 7 |
+| P38 | **X** | When one of your automatically defended cells is captured, its automatic defender survives and remains/returns Available | 10 |
+| P39 | **X** | Strategic Spawn uses two influence areas at 50% ordinary area each and two exact origins; final Initial Territory is split between two footprints; Starting Population remains one global pool | 10 |
+| P40 | **X** | SAMs become giant single-charge shields: provisionally `+50% range`, exactly one charge at every level, `2×` recharge cooldown | 6 |
+| P41 | **X** | Purchased Cities are created directly at level 5 for `95%` of cumulative ordinary level-1 build + level-2–5 upgrade cost | 6 |
+| P42 | **X** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
 
-### Positive-trait notes
-
-* **P21:** the player must still hold at least the ordinary required amount of FFY to satisfy the purchase affordability/legality gate. The successful first **purchase** of each structure consumes `0 FFY`. Starting structures, captured structures, or otherwise granted structures do not consume the first-purchase entitlement because they were not purchased.
-
-P30–P35 costs are especially provisional and exist only to keep the catalogue testable while mechanics are reviewed.
+P33's Population amount remains TBD. P30–P42 numerical costs are especially balance-sensitive, though several underlying mechanics are already accepted in the canonical design.
 
 ---
 
-## Negative / refund traits — provisional
+## Negative / refund traits
 
 | ID | Name | Effect | Refund |
 | --- | --- | --- | ---: |
-| N01 | **X** | `Cities contribute 20% less Population Growth` | -4 |
+| N01 | **X** | Cities contribute `20% less Population Growth` | -4 |
 | N02 | **X** | `25% reduced Plains offensive pressure` | -4 |
 | N03 | **X** | `33% reduced Desert defensive pressure` | -4 |
-| N04 | **X** | `FFY events located on Mountain yield 50% less FFY` | -4 |
-| N05 | **X** | `Cannot capture Fallout terrain` | -5 |
-| N06 | **X** | `Cannot spend FFY to upgrade buildings` | -5 |
-| N07 | **X** | `Cannot own more than 1 of each building` | -10 |
-| N08 | **X** | `Forts provide no defensive-pressure bonus` | -4 |
-| N09 | **X** | `Cannot build Factories` | -6 |
+| N04 | **X** | FFY events located on Mountain yield `50% less FFY` | -4 |
+| N05 | **X** | Cannot capture Fallout terrain | -5 |
+| N06 | **X** | Cannot spend FFY to upgrade buildings | -5 |
+| N07 | **X** | Cannot own more than one of each building/structure type | -10 |
+| N08 | **X** | Forts provide no defensive-pressure bonus | -4 |
+| N09 | **X** | Cannot build Factories | -6 |
 | N10 | **X** | `25% reduced Fort coverage area` | -4 |
-| N11 | **X** | `FFY events located inside SAM Launcher area yield 0 FFY` | -7 |
-| N12 | **X** | `Cannot build Warships` | -6 |
-| N13 | **X** | `50% of Transport Ship Population dies when landing` | -7 |
-| N14 | **X** | `Lose (1% of)/X FFY when a Trade Ship gets captured`* | -4 |
-| N15 | **X** | `Transport Ships cost 500 FFY` | -5 |
-| N16 | **X** | `Your Trade Ships lose FFY on successful uncaptured voyages; if one is captured by another faction, you instead regain its snapshotted voyage value once` | -6 |
-| N17 | **X** | `Enemy structures you would normally capture are destroyed instead of transferred to you` | -4 |
-
-### Negative-trait notes
-
-* **N14:** exact value/formula TBD.
-
-N16/N17 refunds are provisional.
+| N11 | **X** | FFY events located inside SAM Launcher area yield `0` | -7 |
+| N12 | **X** | Cannot build Warships | -6 |
+| N13 | **X** | `50%` of Transport Population dies when landing | -7 |
+| N14 | **X** | Lose `(1% of)/X` FFY when a Trade Ship is captured; exact formula TBD | -4 |
+| N15 | **X** | `+500 FFY` Transport embarkation cost | -5 |
+| N16 | **X** | Successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value; hostile capture instead returns that value once | -6 |
+| N17 | **X** | Enemy structures you would ordinarily capture are destroyed instead of transferred to you | -4 |
 
 ---
 
-## Settled semantic decisions from catalogue review
+## Settled semantic decisions
 
-### S1 — Fallout terminology
+### S1 — Fallout
 
-Open Fufu's nuclear model does **not** treat Fallout as phantom defensive Population/pressure. Fallout remains conquerable population-bearing land with explicit capture resistance/speed effects.
+Fallout is conquerable population-bearing land with explicit capture resistance/speed effects, not phantom defensive Population. P16 ignores that ordinary resistance; N05 prevents capture of Fallout entirely.
 
-Therefore P16 ignores ordinary **Fallout capture resistance**, and N05 is a hard inability to capture Fallout terrain.
+### S2 — Desert
 
-### S2 — Desert is a V1 terrain
+Desert is a real V1 terrain/map input even though inherited OpenFront does not yet contain it. Exact baseline Desert values remain tuning work.
 
-Open Fufu V1 will include **Desert** as a real terrain type/map input. The inherited OpenFront enum does not contain it yet, so P14/N03 are implementation-blocked until the V1 terrain pipeline is extended, but they are not speculative future-only traits.
+### S3 — structure-capture FFY
 
-Exact baseline Desert mechanics/values remain separate tuning work.
+Ordinary structure capture does not inherently award FFY. P05 creates the alternate rule and uses the captured structure's cell as the located military/conquest FFY event.
 
-### S3 — enemy-structure capture FFY baseline
-
-Ordinary enemy-structure capture does **not** inherently award FFY merely because the structure changed hands.
-
-P05 creates the alternate Origin rule: capturing an enemy structure generates a military/conquest FFY event. Exact payout remains tuning data.
-
-### S4 — P17 uses safe multiplicative compounding
-
-If `S` is the number of currently owned structures, P17 uses:
+### S4 — P17 compounding
 
 ```text
 upgradeCostMultiplier = 0.99^S
 ```
 
-This naturally diminishes without requiring a hidden zero/negative-cost clamp.
+No additive negative-cost clamp is required.
 
-### S5 — P18 is source-cell Fort support
+### S5 — P18 Fort support
 
-P18 applies to an engagement lane when its **attacking source cell** lies inside at least one Fort area belonging to the faction or a fixed teammate. Overlapping qualifying Forts do not multiply the P18 bonus.
+P18 checks the attacking **source cell**. A lane qualifies if that source lies in at least one self/fixed-teammate Fort area. Multiple qualifying Forts do not multiply P18.
 
-### S6 — P19 counts distinct factions
+### S6 — P19 contact count
 
-P19 counts distinct other factions with which the faction currently has at least one Territorial Contact. Multiple disconnected Contact components with the same faction count only once.
+P19 counts distinct other factions, not disconnected Contact components. Unless later revised, `other faction` is literal and may include a fixed teammate.
 
-Unless later revised, "other faction" is literal and may include a fixed teammate as well as an opponent.
+### S7 — P25 blast area
 
-### S7 — P25 modifies literal blast area
+The `+50%` applies to affected Hydrogen Bomb **area**, not radius × 1.5.
 
-P25's `+50%` refers to **affected Hydrogen Bomb blast area**, not `radius × 1.5`. The implementation derives the versioned geometry/radius needed to produce the intended area increase.
+### S8 — P11 SAM unlocks
 
-### S8 — P11 uses peak Total Population as a permanent unlock track
+Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one SAM ownership/build slot. Starting Population contributes to initial peak; later Population loss does not revoke slots. P11 is genuinely free in FFY terms; normal affordability is irrelevant once a slot is unlocked and non-FFY legality is satisfied.
 
-Each full `25,000` of **peak Total Population reached during the match** unlocks one SAM Launcher ownership/build slot. Population falling later does not revoke slots or destroy existing SAMs. Starting Population contributes immediately to the initial peak.
+### S9 — P04 response-side curve
 
-P11 is genuinely free: if a slot is unlocked and non-FFY build legality is satisfied, build/upgrade cost is `0 FFY` and ordinary SAM affordability is irrelevant.
+P04 fixes only response-side counter-response effectiveness at `1.0`. Attack-side effectiveness remains ordinary unless another explicit mechanic changes it.
 
-### S9 — P04 fixes only response-side effectiveness
+### S10 — free/grant/purchase semantics
 
-Under P04, the **response-side effectiveness multiplier is always exactly `1.0`**. It loses both the normal response-side bonus when overmatching and the normal penalty when understrength. Attack-side effectiveness remains ordinary unless another rule changes it.
+- P20: free starting Silo is a grant, starts at level 1 under current canonical structure rules, and does not consume P21's first-Silo purchase entitlement.
+- P21: ordinary affordability/legality is required, but the first successful purchase of each structure type consumes `0 FFY`.
+- P26: ordinary MIRV affordability/legality, including a level-5-equivalent launcher, is required; the one permitted MIRV consumes `0 FFY`.
+- P11: SAM FFY cost is genuinely zero; Population unlock slots are the limiter.
+- P37: landing-created Fort is a grant, not a purchase, so it does not consume a first-Fort-purchase entitlement.
 
-### S10 — free/granted/purchase semantics
+### S11 — spatial FFY-event model
 
-- **P20:** the starting Missile Silo is genuinely free and does not consume P21's first-Silo purchase entitlement.
-- **P21:** ordinary affordability is required, but the first purchased instance of each structure type consumes `0 FFY`.
-- **P26:** ordinary MIRV affordability/legality is required, but the one permitted MIRV consumes `0 FFY`.
-- **P11:** SAMs are genuinely `0 FFY`; the peak-Population unlock track is the limiter.
+An FFY event may carry an optional location cell when it has a meaningful world-space location. Spatial modifiers inspect that location; genuinely global/non-spatial rewards do not receive spatial modifiers.
 
-### S11 — common spatial FFY-event model
+Examples include captured-structure cell, rewarding train-station cell, and receiving Trade Ship Port cell. One effect qualifies once even if overlapping multiple areas of the same type; distinct independent modifiers may combine normally.
 
-An FFY-generating event may carry an optional **location cell** when it has a meaningful world-space origin/destination. Spatial Origin/Echo/ruleset modifiers inspect that location. Non-spatial rewards have no location and receive no spatial modifier.
+### S12 — P29 nuclear Warships and launcher choice
 
-Examples:
+P29 adds owned Warships as valid strategic-weapon launch platforms from their current cells. Ordinary costs/restrictions remain unless another rule changes them.
 
-- structure-capture FFY uses the captured structure cell;
-- train-arrival/stop FFY uses the rewarding station cell;
-- Trade Ship arrival FFY uses the receiving Port cell.
+Baseline Open Fufu controller rule: when launch origin matters, the strategic-weapon command identifies the chosen legal launcher. The engine never silently chooses among multiple Silos/Warships.
 
-For one trait/effect, overlapping qualifying areas do not multiply the same modifier. Distinct independent spatial modifiers may still combine through the published modifier-composition rules.
+Under the canonical structure-level rules, a P29 Warship's effective Silo level equals `max(1, Warship rank)`. Ordinary rank-3 Warships may reach Hydrogen legality; P22 can make a rank-5 MIRV-capable Warship possible.
 
-### S12 — P29 makes Warships nuclear launch platforms
+### S13 — P30 pirate conversion
 
-P29 makes each owned Warship a valid nuclear launch platform from its **current cell**. Ordinary weapon costs/restrictions remain in force unless another explicit trait changes them. Each Warship has its own Missile-Silo-style launch cooldown/reload state. A P29 Warship is not a structure for unrelated rules.
+P30 is a role conversion: very fast piracy vessels with `3×` piracy payout, but no naval gunfire against ships. Trade Ship pursuit/capture remains. The intended tradeoff is economic raiding in exchange for conventional naval-combat and Transport-interception capability.
 
-**Baseline controller rule:** strategic-weapon commands must identify/select the legal launcher when launch origin matters. Ordinary Missile Silos are selectable launchers for every faction; P29 adds Warships to that launcher set. The engine must not arbitrarily choose among multiple Silos/Warships.
+### S14 — N16 trade inversion
 
-### S13 — P30 pirate-Warship conversion
+Snapshot a deterministic ordinary voyage value at launch.
 
-P30 is a role conversion rather than a generic naval buff:
+- successful uncaptured voyage: original owner loses that value instead of receiving ordinary owner-side Trade Ship reward;
+- first hostile capture: original owner gains that snapshotted value once;
+- captor may still receive ordinary piracy reward;
+- destination-side rewards for other factions are not automatically removed.
 
-- Warship movement speed is `+50%`;
-- piracy FFY is `+200%` versus baseline, i.e. `3×` the ordinary piracy payout;
-- Warships cannot use naval gunfire against Warships, Transport Ships, or other ship targets;
-- they may still pursue and capture Trade Ships through the ordinary piracy/capture mechanic.
+The drawback can be avoided by declining to invest in trade, which is why its refund is below an unavoidable economy penalty.
 
-The intended tradeoff is extreme piracy mobility/economy in exchange for giving up ordinary naval combat and Transport interception.
+### S15 — P31 Port repair
 
-### S14 — N16 inverts the owner's Trade Ship economy
+Owned active Ports project a substantially larger repair zone; Warships inside receive strong repair without docking and may continue normal operation. Overlapping Ports do not multiply the same repair effect in one tick.
 
-For each of the faction's Trade Ships, snapshot a deterministic **ordinary voyage value** at launch from its intended route/rules.
+### S16 — P32 armored Port-launched Transports
 
-- If the ship completes its voyage without hostile capture, its original owner loses that snapshotted FFY value instead of receiving the ordinary owner-side Trade Ship reward.
-- If the ship is first captured by another faction, the original owner gains that snapshotted value once.
-- The captor may still earn ordinary piracy reward under the normal captured-ship rules.
-- Other factions' ordinary destination-side rewards are not automatically removed merely because the originating faction has N16.
+The controller must select an owned active Port as the Transport source. Ordinary shoreline/non-Port embarkation is unavailable. The Transport is health-bearing/armored and may survive interception that would destroy a baseline fragile Transport. Exact health/repair interaction remains tuning work.
 
-This drawback can be strategically avoided by refusing to invest in Ports/trade, which is why its refund should remain below a truly unavoidable economy penalty.
+### S17 — P33 train-stop Population
 
-### S15 — P31 turns Port repair into a forward repair zone
+Any valid train stopping at a City owned by the trait-holder grants that City owner the trait-defined Available Population. Intermediate stops count. Gain is capped so Total Population cannot exceed current Capacity. Exact amount remains TBD.
 
-Baseline Warships already have modest passive repair near owned Ports and stronger docked repair. P31 intentionally changes the role of that area:
+### S18 — P34 conquered Factories
 
-- each owned active Port projects a substantially larger repair zone;
-- Warships inside it receive strong active repair without entering the docked state;
-- a Warship may continue normal movement/combat behavior while benefiting;
-- multiple overlapping Ports do not multiply the same Warship's repair rate in one tick.
+Only Factories acquired by conquest receive `2×` effect. Built/granted Factories are ordinary. P34 intentionally does not include N09; P34 + N09 is therefore the legal conquest-only industrial build.
 
-Exact repair radius/rate remain tuning data.
+### S19 — P35 scorched-earth Fallout
 
-### S16 — P32 creates armored Port-launched Transports
+Only **deliberate relinquishment** creates this Fallout; ordinary enemy capture does not. It creates no nuke casualty event. Trait-created Fallout remains while neutral and clears on the next successful capture. Ordinary Fallout resistance applies while neutral unless another rule changes it.
 
-P32 changes both Transport deployment and durability:
+### S20 — N17 conquest spoils destroyed
 
-- Transport Ships may embark only from an explicitly selected owned active Port with legal water access;
-- ordinary shoreline/non-Port embarkation is unavailable;
-- the Transport becomes health-bearing/armored and therefore can survive ordinary interception that would destroy a baseline fragile Transport;
-- exact health, armor/damage interaction, and repair behavior remain tuning/mechanics work.
+N17 destroys structures the trait-holder would have captured. It does not destroy the trait-holder's own structures when enemies conquer them. P05/P34 + N17 may be strategically poor but remain legal.
 
-The controller must be able to choose the source Port when several legal embarkation Ports exist.
+### S21 — P36 half-cost neutral settlement
 
-### S17 — P33 creates Population at City train stops
+Baseline neutral settlement costs one Population per successfully acquired population-bearing neutral cell. P36 changes the cost to `0.5` and uses faction-level deterministic residual accounting. Residual debt survives ending/recreating expansion operations and is match/replay state.
 
-When any valid train stops at a City owned by the trait-holder, that City owner gains a provisional `X` **Available Population**.
+### S22 — P37 fortified amphibious landings
 
-- Intermediate City stops count, not only final destinations.
-- The gain belongs to the City owner, regardless of who owns the train, unless later balance testing requires narrowing it.
-- Direct Population gain cannot raise Total Population above current Capacity.
-- Exact Population amount remains TBD.
+Baseline Transport embarkation cost is `0 FFY`. Transport-cost effects are additive. Therefore P37 `+250` plus N15 `+500` yields `750 FFY`.
 
-### S18 — P34 rewards conquered Factories without duplicating N09
+A Fort appears only after the Transport successfully establishes the landing. Destruction/abort beforehand grants nothing. The Fort is a normal permanent level-1 Fort afterward.
 
-A Factory **acquired by conquest from another faction** operates at `2×` the ordinary Factory effect while owned by the trait-holder. Factories the faction builds or receives without conquest operate normally.
+### S23 — P38 elastic defense
 
-P34 deliberately does **not** include `Cannot build Factories`, because N09 already supplies that drawback. Combining P34 + N09 is therefore the legal conquest-only industrial build: the player cannot build Factories, but any Factory successfully conquered is unusually valuable.
+On a successful capture of one of the trait-holder's automatically defended population-bearing cells, the one automatic defender survives and remains/returns Available. The winning attacker still loses its ordinary one Population, ownership changes, and Capacity transfers normally.
 
-The exact meaning of `2× Factory effect` follows the final Open Fufu Factory/rail translation and must be published explicitly before deployment.
+### S24 — P39 split Strategic Spawn
 
-### S19 — P35 creates a programmable scorched-earth Fallout perimeter
+The faction submits two influence areas, each 50% of ordinary **area** (about 70.71% ordinary radius for circles), then one exact origin in each. Final Initial Territory after modifiers is divided approximately equally between the two footprints. Starting Population remains one global pool; there are no local Population stores. Origins are ordered primary/secondary for deterministic singular start-state grants.
 
-When the trait-holder **deliberately relinquishes** an owned cell through the controller's relinquishment action, that cell becomes neutral Fallout rather than ordinary neutral terrain.
+### S25 — P40 giant SAM shield
 
-Provisional anti-abuse semantics:
+SAM targeting remains automatic. P40 provisionally gives +50% interception range, exactly one charge regardless of level, and 2× recharge cooldown. Upgrades still improve range but never add charges. No bespoke controller-only interception action exists.
 
-- this trait-generated Fallout applies only to deliberate relinquishment, never ordinary enemy capture;
-- the act itself does not create nuke casualties or pretend a nuclear strike occurred;
-- trait-generated Fallout remains while the cell is neutral and **clears on the next successful capture** of that cell;
-- ordinary Fallout capture resistance applies while neutral unless another rule such as P16 changes it.
+### S26 — P41 fully developed City purchases
 
-The clear-on-capture rule is provisional but prevents permanent map painting while preserving the intended high-skill 1–2-cell scorched perimeter strategy.
+Purchased Cities can only be bought directly at level 5 for 95% of cumulative ordinary L1 build + L2–L5 upgrade cost. This is one purchase transaction, not four upgrade spends. Captured lower-level Cities remain at their captured level and may be upgraded normally unless another rule forbids it.
 
-### S20 — N17 destroys conquest spoils
+### S27 — P42 Population-funded short-range Warships
 
-When the trait-holder captures enemy territory containing a structure that would ordinarily transfer ownership, that structure is destroyed instead.
+P42 changes only the Warship purchase resource and attack range:
 
-This is a drawback on **the trait-holder's ability to acquire enemy structures**, not a defensive benefit that destroys the trait-holder's structures when enemies capture them.
+- ordinary Warship FFY purchase cost becomes `0`;
+- each purchase permanently consumes exactly `2,000 Available Population` under the current provisional tuning;
+- the Population is removed from Total Population, not stored as a recoverable crew pool;
+- only Available Population may pay the cost; committed offensive/counter/Transport Population is not silently pulled out of active use;
+- affected Warships have `-33% attack range`;
+- health, damage, speed, veterancy, and all other Warship mechanics remain ordinary unless other explicit modifiers apply.
 
-It intentionally makes combinations such as N17 + P05/P34 strategically poor but still legal and mechanically safe.
+The range penalty is intentionally severe because inherited-style Warship combat strongly rewards first fire and range control. The expected identity is quantity over quality: many short-ranged ships that should lose ordinary equal-number fights but may overwhelm through numbers.
+
+P29 remains legal with P42. Cheap hull creation does not itself create high-rank nuclear vessels; P29 weapon access still depends on Warship rank/effective Silo level.
+
+Echoes may modify Warship range like any other allowed Echo stat. Origin structural/stat modifiers establish the underlying faction profile and Echo percentages specialize that profile; a range-focused Echo loadout may partially mitigate P42 without making the Origin/Echo combination illegal.
 
 ---
 
-## Catalogue coverage decisions / deliberately deferred areas
+## Catalogue coverage decisions
 
-### Starting Population belongs primarily to Echoes
+### Starting Population is Echo territory
 
-A simple increase to starting Population is intentionally **not** being added as an Origin trait at this stage. It is straightforward numerical power and is better suited to Echoes unless a future Origin changes opening Population through a more structural rule.
+Simple Starting Population modification is intentionally kept out of the Origin catalogue; it is numerical build tuning and belongs in the V1 Echo modifier pool unless a future Origin changes it structurally.
 
-### Neutral expansion still needs an Origin-worthy rule
+### Neutral expansion is now covered
 
-Neutral expansion is a real remaining catalogue gap, but do not fill it with a boring generic `+X% neutral expansion pressure` trait merely for symmetry. Keep it open until there is a worthwhile rule-changing mechanic.
+P36 provides an Origin-worthy neutral-expansion mechanic by changing Population efficiency rather than adding generic expansion pressure.
 
-### Recon / visibility is deferred until the Open Fufu visibility model is testable
+### Recon / visibility remains deferred
 
-OpenFront is broadly visible and Open Fufu's operational visibility/fog-of-war behavior is not yet implemented/tested enough to design good information-oriented Origin traits. Revisit after the visibility system can be played and inspected.
+Do not add information/fog-of-war Origin traits until the Open Fufu visibility model exists and is playable enough to evaluate.
 
 ---
 
 ## Combination-safety notes
 
-No compatibility matrix is allowed. Deliberately foolish or partially inert combinations remain legal if they satisfy the public builder rules.
+No compatibility matrix is allowed. Deliberately foolish, partially inert, or difficult combinations remain legal if they satisfy the public builder rules.
 
-Examples include:
+Examples:
 
-- P22/P23/P29/P30 + N12 (`Cannot build Warships`);
+- Warship boons + N12 (`Cannot build Warships`);
 - P07/P34 + N09 (`Cannot build Factories`);
 - P17 + N06 (`Cannot spend FFY to upgrade buildings`);
 - P26 + P25 (MIRV boon plus MIRV prohibition);
-- P35 + N05 (creating Fallout that the faction itself cannot capture);
-- P33 + N09 where fewer/no player-built Factories may make train traffic harder to establish;
-- N17 + P05/P34, where structures are destroyed before those capture-dependent boons can benefit.
+- P35 + N05 (creates Fallout the faction itself cannot capture);
+- N17 + P05/P34 (destroys the structure before capture-dependent rewards can apply);
+- P37 + N15 (Transport cost becomes 750 FFY);
+- P41 + N06 (direct L5 City purchase remains one purchase rather than upgrade spending);
+- P42 + N12 (Population-funded Warship trait becomes inert because Warships cannot be built).
 
-Important potentially strong but valid combinations include:
+Potentially strong but valid combinations include:
 
-- **P30 + P29:** fast pirate Warships that cannot contest ships with gunfire but can act as mobile nuclear launchers;
-- **P31 + P23:** one unusually powerful Warship supported by forward Port repair zones;
-- **P32 + P12:** fast armored Port-launched Transports;
-- **P33 + P07:** more train activity feeding City Population replenishment;
-- **P34 + N09:** conquest-only industrialization;
-- **P35 + P16:** a faction highly capable of creating and then later reclaiming a scorched Fallout perimeter.
+- P29 + P22 for eventual rank-5/MIRV-capable Warships;
+- P29 + P42 for numerous short-range low-rank nuclear-capable hulls;
+- P30 + P42 for Population-funded pirate swarms;
+- P23 + P42 for one powerful Warship whose purchase resource is Population but whose final stats combine both modifiers;
+- P31 + P23 for a single strong Warship supported by forward Port repair zones;
+- P32 + P12 for fast armored Port-launched Transports;
+- P33 + P07 for increased train traffic feeding City Population;
+- P34 + N09 for conquest-only industrialization;
+- P35 + P16 for creating and later efficiently reclaiming a Fallout perimeter;
+- P38 + P35 for an expensive elastic/scorched defensive doctrine.
 
-The exhaustive deployment test must prove all builder-legal combinations deterministic and engine-safe; it must not turn these observations into hidden incompatibility rules.
-
----
-
-## Upstream feasibility notes
-
-These notes are implementation evidence only and do not make inherited mechanics authoritative for Open Fufu.
-
-### Port repair zones
-
-Current `WarshipExecution` already checks whether a Warship lies within `warshipPassiveHealingRange()` of an owned Port and grants passive repair there; docked ships receive separate active repair. P31 therefore extends an existing Port-repair seam rather than inventing a new spatial system.
-
-### Transport embarkation / armor
-
-Current Transport execution resolves a source tile before constructing a real Transport unit carrying its Population payload. P32 can replace ordinary shoreline source resolution with explicit owned-Port legality and add health/armor to that real unit without changing the fundamental transport-accounting model.
-
-### Train stop Population
-
-Current train execution calls the station stop handler at each station reached, including intermediate stops. City/Port stops already have typed economic handling at the station cell. P33 can attach Population gain to the same City-stop event.
-
-### Trade inversion / piracy
-
-Current Trade Ship execution already tracks original owner, capture state, route travel and piracy payout separately from normal arrival payout. N16 and P30 therefore have natural hooks, though Open Fufu should define a versioned route-value snapshot rather than depending accidentally on inherited late-route arithmetic.
-
-### Factory conquest bonus
-
-Current Factories create rail-station behavior and drive train spawning through Factory station execution. P34 has a natural rule hook, but `2× Factory effect` must be translated to whatever final Factory mechanics Open Fufu actually retains.
-
-### SAM attacks against ships
-
-For P27, extract/reuse Warship naval target-selection/gunnery behavior from the current Warship implementation rather than literally spawning a hidden Warship unit inside the SAM.
-
-### Warships as nuclear launchers
-
-Current nuke execution already supports an explicit source cell, so P29 can launch from the selected Warship's current cell while reusing ordinary strategic-weapon trajectory/interception behavior.
+The exhaustive deployment gate must prove every builder-legal combination deterministic and engine-safe; these notes never become hidden incompatibilities.
 
 ---
 
-## Next catalogue work
+## Current first Official Origin roster
 
-Before creating Official Origins or anime-reference trait names:
+The accepted first roster is maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md):
 
-1. continue the mechanic-coverage audit and look for any remaining important systems with no interesting Origin expression;
-2. invent an Origin-worthy neutral-expansion mechanic or consciously leave that family empty;
-3. revisit visibility/recon only after the fog-of-war model is playable;
-4. review all candidates for effects that are too Echo-like, redundant, disproportionately exploitable, or too dependent on rare map conditions;
-5. polish final player-facing wording as mechanics stabilize;
-6. then assign anime/JRPG reference names;
-7. only after that build the first Official Origins from this same catalogue;
-8. before deployment, exhaustively enumerate every builder-legal combination under the final catalogue and builder rules.
+1. O01 — **Last Bastion** (temporary name): extreme Fort/Mountain defense and defender preservation, weak power projection.
+2. O02 — **Golden City** (temporary name): concentrated one-of-each infrastructure and trade wealth.
+3. O03 — **Rail-Demographic Origin** (temporary name): Population utilization plus train/City circulation.
+4. O04 — **Spoils of Empire** (temporary name): conquest FFY and stolen industrial capacity.
+5. O05 — **Iron Tide** (temporary name): armored, fast, self-fortifying amphibious invasion without Warships.
+6. O06 — **Gemini** (temporary name): two strategic spawn origins/territorial blobs with one global resource pool.
+7. O07 — **Corsair State** (temporary name): piracy/trade economy whose Warships are raiders rather than battle-fleet ships.
+
+Their current mechanical builds are the accepted first Official roster; display names are expected to change later.
+
+---
+
+## Next Origin work
+
+The Origin system now has a sufficiently broad first catalogue and seven provisional Official builds. Further Origin work should be driven by playtesting, final anime/JRPG naming, balance/repricing, and exhaustive legal-combination validation rather than continued trait proliferation for its own sake.
