@@ -1263,7 +1263,7 @@ MATCH STARTS
 
 #### Phase 1 — initial broad influence choice
 
-Each participant receives the static map, Segments, ruleset/lobby constraints, legal spawn-space information, and other pre-match public facts. Each simultaneously chooses a broad **spawn influence area** or its anchor using a ruleset-defined shape/scale.
+Each participant receives the static map, Segments, ruleset/lobby constraints, legal spawn-space information, **every participant's surfaced Initial Territory value and any other strategically relevant public spawn-affecting modifiers**, and other pre-match public facts. Each simultaneously chooses a broad **spawn influence area** or its anchor using a ruleset-defined shape/scale.
 
 Influence areas are **not exclusive claims or territory**. They are legal search spaces for the later exact spawn origin, and they are allowed—indeed expected—to overlap with other participants' influence areas.
 
@@ -1389,6 +1389,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 39. **Ordinary users cannot live-spectate unrelated matches.**
 40. **Historical matches bind exact rule-bearing versions.**
 41. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
-42. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
-43. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
-44. **One canonical design document governs the target; one canonical integration plan governs the migration.**
+42. **Every participant's Initial Territory value and other strategically relevant public spawn modifiers are visible before Phase 1.**
+43. **Initial territory is generated deterministically as a compact footprint around the exact spawn origin and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+44. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
+45. **One canonical design document governs the target; one canonical integration plan governs the migration.**
