@@ -397,21 +397,33 @@ Raw `eval` and Node `vm` alone are not sufficient security boundaries. The initi
 
 Cells are the finest meaningful territorial simulation resolution. Ownership, terrain, capture, structures, and local combat geometry ultimately resolve through cells.
 
-### 9.2 Segments
+### 9.2 Fixed V1 map raster
+
+Ordinary Open Fufu V1 maps use **exactly 4,800,000 raster cells**. Map width, height, and aspect ratio may vary, but their final authored/compiled raster must contain exactly that many cells.
+
+The 4.8-million-cell count includes all real map cells: population-bearing terrain, conquerable non-population-bearing terrain, water, and impassable terrain. The number and share of **population-bearing** cells is deliberately map-dependent and is not normalized across maps.
+
+Therefore a water-heavy archipelago, a mixed continental map, and an almost-all-land **Endless Plains**-style map may support very different total Population Capacity while retaining the same physical simulation resolution. This is legitimate map identity rather than a balance error: some Origins/Echoes/strategies may naturally perform better or worse on different terrain compositions.
+
+V1 does **not** support multiple gameplay map-resolution scales. Fixed raster scale keeps cell-based ranges, movement, structure radii, blast geometry, spawn footprints, railway distances, and other cell-space mechanics comparable across authored maps and simplifies map generation/validation.
+
+Map validation must still prove that the authored terrain composition can support the configured participant count, required starting footprints, and other spawn constraints.
+
+### 9.3 Segments
 
 A Segment is an immutable deterministic strategic geographic region generated/compiled with the map. Every real map cell belongs to exactly one Segment, including ordinary land, water, and impassable terrain.
 
 Segments are a query/index/strategy lens, **not a simulation bucket**. Segment borders have no intrinsic combat, capture, movement, or physical effect.
 
-Segment count is derived from map scale/geography rather than fixed. Major boundaries such as coasts, rivers, ridges, mountains, chokepoints, islands, and impassables should influence generation.
+Segment count is derived from map geography rather than from alternate map-resolution tiers. Major boundaries such as coasts, rivers, ridges, mountains, chokepoints, islands, and impassables should influence generation.
 
-### 9.3 Contacts
+### 9.4 Contacts
 
 **TerritorialContact** is derived adjacency geometry between differently owned cells.
 
 **OperationalContact** is broader runtime interaction/visibility state created by territorial contact, combat, naval encounters, amphibious arrival, or other operational interaction.
 
-### 9.4 Fronts
+### 9.5 Fronts
 
 There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility.
 
@@ -442,6 +454,42 @@ Cities do **not** increase Capacity. Echoes and Origins must not provide `+Popul
 A surfaced **Initial Territory** starting-state modifier is compatible with this invariant because it changes how many population-bearing cells the faction owns at match start. Those additional owned cells then contribute ordinary Capacity at exactly one Capacity each. The modifier changes starting ownership, not Capacity-per-cell.
 
 Territorial loss may leave current Population above Capacity. Capacity loss does not itself delete excess Population; ordinary positive growth is suppressed until sustainable again, except where the same event explicitly causes Population casualties under another rule.
+
+#### 10.2.1 V1 starting territory and Starting Population relationship
+
+The ordinary V1 base starting footprint is:
+
+```text
+Base Initial Territory = 1,000 population-bearing cells
+```
+
+The faction's **final Initial Territory** is calculated after explicit surfaced Initial-Territory modifiers such as P01. The resulting owned population-bearing cells become its starting Population Capacity under the ordinary `1 cell = 1 Capacity` rule.
+
+Ordinary V1 Starting Population is then derived from that **final modified Initial Territory**:
+
+```text
+baseline Starting Population
+= 50% × final Initial Territory
+```
+
+Thus an ordinary 1,000-cell start begins with 500 Population. If an Initial-Territory modifier changes the start to 1,150 population-bearing cells, the ordinary 50% baseline becomes 575 Population.
+
+Initial-Territory modifiers and Starting-Population modifiers are still **separate modifier axes**. An Initial-Territory effect changes the starting owned-cell/Capacity quantity first; a Starting-Population effect then modifies the starting Population amount/fraction derived from that final territory rather than granting more territory.
+
+Conceptually:
+
+```text
+base Initial Territory
+→ Initial-Territory modifiers
+→ final Initial Territory / starting Capacity
+→ ordinary 50% Starting-Population baseline
+→ explicit Starting-Population modifiers
+→ final Starting Population
+```
+
+Whole-integer Population representation and deterministic fixed-point/rounding rules apply to any non-integer intermediate result.
+
+A split-origin faction still receives **one global final Starting Population pool** calculated by this same rule. The pool is not divided into independent local Population stores merely because the territory is painted as two starting footprints.
 
 ### 10.3 Available and Committed Population
 
@@ -479,21 +527,14 @@ A residual associated with a faction-level recurring cost must not be erased by 
 
 Capacity says how much Population can be sustainably supported. Growth says how quickly Population recovers/grows toward that limit.
 
-The accepted conceptual model is:
+The accepted ordinary V1 base-growth equation is now exact:
 
 ```text
-BaseGrowth
-= Gref × PopulationCapacity^0.75
-
-ActualGrowth
-= BaseGrowth
-× utilizationMultiplier
-× explicitGrowthModifiers
+BaseGrowthPerSecond
+= 0.05 × PopulationCapacity^0.75
 ```
 
-The exact exponent is tuning data, with roughly `0.7–0.8` a reasonable test range.
-
-Cities and allowed Population-growth Origin traits/Echoes contribute through explicit growth modifiers or explicit Origin growth-profile rules rather than Capacity.
+`BaseGrowthPerSecond` is measured in **Population per real/simulation second**. The exponent is exactly `0.75` and the V1 reference coefficient is exactly `0.05` unless a future versioned balance change explicitly retunes the ruleset.
 
 Let:
 
@@ -501,26 +542,71 @@ Let:
 u = TotalPopulation / PopulationCapacity
 ```
 
-Useful provisional utilization anchors remain:
+The ordinary utilization multiplier `U(u)` uses the following exact anchors with **piecewise-linear interpolation** between adjacent anchors:
 
-| Utilization | Growth multiplier |
+| Utilization | `U(u)` |
 | ---: | ---: |
-| 10% | 45% |
-| 20% | 70% |
-| 30% | 88% |
-| 40% | 100% |
-| 50% | 100% |
-| 60% | 100% |
-| 70% | 85% |
-| 80% | 60% |
-| 90% | 35% |
-| 100% | 0% |
+| 0% | **20%** |
+| 10% | **45%** |
+| 20% | **70%** |
+| 30% | **88%** |
+| 40% | **100%** |
+| 50% | **100%** |
+| 60% | **100%** |
+| 70% | **85%** |
+| 80% | **60%** |
+| 90% | **35%** |
+| 100% | **0%** |
 
-Exact interpolation is balance work.
+For `u >= 1`, ordinary positive Population growth is zero. If `PopulationCapacity == 0`, ordinary Population growth is exactly zero and no division by zero is performed.
 
-If `PopulationCapacity == 0`, ordinary Population growth is exactly zero and no division by zero is performed.
+The nonzero 0%-utilization anchor means a faction that still owns population-bearing territory but has reached 0 current Population is gravely weakened rather than mathematically incapable of ever regrowing Population.
+
+Actual ordinary growth is conceptually:
+
+```text
+ActualGrowthPerSecond
+= BaseGrowthPerSecond
+× U(u)
+× explicitGrowthMultiplier
+```
+
+where City, Echo, terrain-share, Origin, and other ordinary same-axis growth percentages compose through the canonical surfaced modifier-stacking rules unless an explicit structural growth-profile rule says otherwise.
+
+Therefore **`1.0×` utilization means exactly 100% of `0.05 × Capacity^0.75`**, not 1% of Capacity and not a fixed Population-per-second quantity. For example, at 1,000,000 Capacity:
+
+```text
+BaseGrowthPerSecond
+= 0.05 × 1,000,000^0.75
+≈ 1,581 Population/s
+```
+
+At `U=1.0`, the utilization layer passes that full amount before explicit growth modifiers; at `U=0.60`, it passes approximately 949 Population/s before those modifiers.
+
+An ordinary 1,000-cell V1 start therefore begins at 500 Population / 50% utilization, inside the maximum-growth band. With no immediate Population expenditure, it has time to grow through the 50–60% band before utilization begins reducing growth efficiency.
 
 Newly grown Population enters **Available Population**.
+
+### 11.1 P02 widened 30–70 utilization profile
+
+P02 does not invent an unrelated second demographic equation. It replaces only the utilization-profile mapping so the faction has the same broad demographic shape but a much wider maximum-efficiency band.
+
+Let `Uordinary(x)` be the ordinary piecewise-linear curve above. P02 uses:
+
+```text
+if u < 0.30:
+    UP02(u) = Uordinary(u × 4/3)
+
+if 0.30 <= u <= 0.70:
+    UP02(u) = 1.0
+
+if u > 0.70:
+    UP02(u) = Uordinary(0.60 + (u - 0.70) × 4/3)
+```
+
+with ordinary zero-growth handling at/above full Capacity.
+
+This horizontally remaps the ordinary 40–60% maximum-efficiency band into **30–70%** while retaining the ordinary low-utilization and high-utilization curve shapes outside it.
 
 ---
 
@@ -1084,6 +1170,21 @@ Explicit identity-defining rule exceptions may still exist as curated Origin tra
 
 The Origin and Echo catalogues should be curated so a narrow Echo does not trivially erase the defining drawback that makes an Origin strategically distinct. This is a catalogue-design responsibility, not a hidden Origin/Echo incompatibility rule.
 
+### 20.2 Rail/Train design constraints from the V1 scale pass
+
+The inherited OpenFront Train implementation is technical ancestry, not authoritative Open Fufu behavior. The final Open Fufu Train system remains under design, but the following requirements are now accepted:
+
+- **Deep, coherent rail webs must have strategic/economic value.** The rules should not make isolated `Factory → nearest City` pairs separated by deliberate gaps the obviously optimal network merely because every Train is forced into a one-destination out-and-back shuttle.
+- A Train service must be able to make **multiple economically meaningful stops during one service run**. Exact stop count, stop-selection policy, termination/return behavior, and payout scaling remain to be defined.
+- Route/destination/stop selection must be deterministic from authoritative match state/RNG where randomness is intentionally used.
+- When choosing a path between already selected service points, the accepted direction is **shortest expected travel time** rather than inherited station-hop count. With uniform rail speed this reduces to shortest physical rail distance; future terrain/speed rules may naturally make it weighted.
+- Network geometry should matter enough that sane rail topology is rewarded, while pathological loops/dense micro-station layouts must not create unbounded economic or P33 Population throughput.
+- **25 rail cells/second** is the current provisional Train-speed target, intentionally only modestly above inherited OpenFront speed and subject to final Tank/Train pursuit-interception testing. Train-speed bonuses must not make ordinary Train hunting nonsensical.
+- Whether a Factory normally supports exactly one active Train, how/when another Train may dispatch, and whether a returned/destroyed Train creates a turnaround delay remain open until the multi-stop service model is finalized.
+- P07's exact `+25% trains spawned` realization and P33's Population-per-City-stop value remain open because both depend directly on the finalized service-cycle/stop cadence.
+
+The next rail-design pass must therefore solve **multi-stop routing, anti-cheese throughput, service-cycle termination, and FFY-per-route economics together**, rather than assigning P33 a number against inherited Train behavior.
+
 ---
 
 ## 21. Teams, hostility, defeat, capitulation, and victory
@@ -1301,7 +1402,9 @@ stable identity-level character possessive
 + roll-dependent magnitude descriptor(s)
 ```
 
-Shape-specific character pools provide a stable anime-character possessive for each identity. Concrete stat+scope keys map to deliberately authored memorable noun/noun-phrase tokens. The system should avoid awkward schema-label concatenation such as mechanically prefixing a scope solely to produce names like `Naval Guitar Solo`; concrete-key overrides are preferred when generic composition would sound bad.
+Shape-specific character pools provide a stable anime-character possessive for each identity. Concrete stat+scope keys map to deliberately authored memorable noun/noun-phrase tokens. The system avoids awkward schema-label concatenation such as mechanically prefixing a scope solely to produce names like `Naval Guitar Solo`; every concrete key receives one authored player-facing phrase.
+
+The accepted V1 10/10/10 shape-character pools and the complete 93-key stat-token mapping are maintained canonically in `ECHO_CATALOGUE.md`. High-level design does not duplicate all 93 assignments here.
 
 Magnitude descriptors are universal and use beneficial/harmful **polarity**, not naive arithmetic sign. The accepted naming vocabulary is:
 
@@ -1337,8 +1440,6 @@ with a side of <negative descriptor> <harmful stat token>
 ```
 
 Dual presentation order is deterministic. The character/stat components remain stable for one identity under a naming version, while magnitude adjectives may change when duplicate resolution changes the retained roll. Generated names should be computed from identity + retained magnitude(s) + naming version rather than stored as thousands of authored strings.
-
-Exact character pools and exact stat-token assignments are a later naming-content pass. Illustrative examples discussed during design, including `Guitar Solo`, do not bind that token to a specific stat unless deliberately added to the naming configuration.
 
 The public source repository may contain the reusable/versioned naming grammar, descriptor table, character pools, stat-token mapping, schemas/types, migrations, semantic identifiers, deterministic identity-generation/materialization logic, validation tooling, algorithms, UI/rendering code, and synthetic fixtures. Production account inventories, **Middle Fingers** balances, pity state, pending settlements, and other granular live progression records remain runtime/private data.
 
@@ -1505,7 +1606,7 @@ The faction uses **two spawn influence areas**, each with **50% of the normal in
 
 If the ordinary influence shape is circular, half the area corresponds to approximately `70.71%` of the ordinary radius; the trait halves **area**, not radius.
 
-The faction's final Initial Territory quota is split approximately equally between two compact starting footprints around the two origins. Its total Starting Population remains **one unchanged global Population pool**; there are no local Population stores tied to the two blobs.
+The faction's final Initial Territory quota is split approximately equally between two compact starting footprints around the two origins. Its total Starting Population remains **one unchanged global Population pool** calculated from its final modified Initial Territory and Starting-Population modifiers; there are no local Population stores tied to the two blobs.
 
 The two influence areas/origins may be far apart or close together. If footprints grow into one another they may merge normally. The split creates strategic risk through two borders/geographic problems rather than through an artificial Population penalty.
 
@@ -1540,6 +1641,7 @@ Combination legality remains universal; these interactions are therefore part of
 - A direct level-5 City purchase is a **purchase**, not a sequence of upgrade expenditures, for interactions with traits that prohibit FFY spending on upgrades.
 - A first-City-purchase-free effect may waive the final FFY consumption while retaining the fully developed City's authored purchase/precondition threshold where specified.
 - Initial Territory bonuses apply to the faction's **final** Initial Territory total before the split-origin trait divides that total between its two footprints; they do not duplicate the bonus once per blob.
+- Starting Population is calculated from that final modified Initial Territory using the ordinary 50% baseline before explicit Starting-Population modifiers; the split-origin trait does not duplicate or localize the resulting pool.
 - Heavy Artillery and Radioactive Munitions are independent legal traits and combine normally into radioactive Heavy Artillery; their current combined positive cost is 17.
 
 ---
@@ -1834,7 +1936,7 @@ The controller chooses origin cells, not arbitrary hand-painted starting territo
 
 Each faction has a surfaced **Initial Territory** starting-state value equal to the target number of population-bearing cells it should own when the match begins.
 
-The ruleset provides the ordinary base value. Explicit Origin traits or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
+The ordinary V1 base value is **1,000 population-bearing cells**. Explicit Origin traits or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
 
 After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each ordinary origin using nearby legal population-bearing cells.
 
@@ -1848,14 +1950,15 @@ Important rules:
 - the footprint algorithm must remain deterministic, versioned, and independent of controller execution timing;
 - the final number of owned population-bearing cells becomes the faction's ordinary starting Population Capacity under the existing `1 owned cell = 1 Capacity` rule;
 - an Initial Territory bonus does **not** change the Capacity value of individual cells and is not duplicated once per split-origin footprint;
-- starting **current Population** is a separate ruleset quantity and is not implicitly required to equal Initial Territory unless a later explicit rule chooses that relationship;
-- a split-origin faction still has the **same one global Starting Population pool** it would otherwise have; Starting Population is not divided into local stores;
-- an Origin/Echo may explicitly modify starting Population as a percentage or other surfaced starting-state rule without changing Capacity-per-cell;
+- ordinary V1 **Starting Population equals 50% of final modified Initial Territory** before explicit Starting-Population modifiers, so a vanilla 1,000-cell start begins at 500 Population;
+- Initial-Territory and Starting-Population modifiers are separate axes: Initial Territory changes starting owned cells/Capacity first, then Starting-Population modifiers specialize the Population amount derived from that final territory;
+- a split-origin faction has the **same one global Starting Population pool** calculated from its final total; Starting Population is not divided into local stores;
+- an Origin/Echo may explicitly modify Starting Population as a percentage or other surfaced starting-state rule without changing Capacity-per-cell;
 - Initial Territory does not automatically enlarge the broad spawn-influence radius unless an explicit future modifier says so.
 
 For deterministic singular start-state grants on a split-origin faction, origins are ordered primary/secondary and the grant uses the primary origin unless the grant defines a different public rule.
 
-Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, influence-area radius/shape, and numeric Initial Territory/Starting Population values are implementation/tuning details so long as the invariants above hold.
+Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, and influence-area radius/shape remain implementation/tuning details so long as the invariants above hold. The V1 base Initial Territory and Starting-Population relationship themselves are no longer TBD.
 
 ### 24A.22 Spawn modes and controller lifecycle
 
@@ -1880,26 +1983,25 @@ The following remain intentionally outside the settled design contract unless ot
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
 - exact Origin Point budget, trait-count cap, maximum drawback refund, final player-facing trait names/IDs, and final balancing of provisional Origin-trait point costs;
 - later wording/reference cleanup and balance iteration for the provisional Official Origin roster in `OFFICIAL_ORIGINS.md`;
-- exact strategic-spawn ordinary influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values, including low-level implementation details for the accepted split-origin profile;
+- exact strategic-spawn ordinary influence radius/shape, exact-origin collision resolver, and compact-footprint growth/tie-breaking algorithm, including low-level implementation details for the accepted split-origin profile;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
 - exact wire protocol/session encoding;
 - exact deterministic memory codec;
 - exact controller query/materialization/debug-output limits;
 - exact capture-progress coefficients beyond the accepted terrain-specific provisional multipliers;
-- exact Population-growth coefficients/interpolation;
 - exact counter-response casualty/rate coefficients;
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
 - exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
-- exact V1 Echo shape-character pools and concrete-stat naming-token dictionary; the naming grammar and magnitude descriptor vocabulary are settled, but the actual token assignments remain content authoring;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled stable identity components + roll-dependent naming/quality treatment;
 - playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
 - executable/property-test implementation for Echo distribution, scoring, generated naming, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
 - authored anime dialogue/catchphrase/reference curation for Origin traits and Official Origins; V1 Echoes deliberately do not depend on an anime quote/subtitle corpus;
 - playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
 - exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
-- exact inherited naval/rail/strategic-weapon numerical translations where not already specified;
+- exact Trade Ship numerical translation where not already specified;
+- **exact Train multi-stop route construction, stop-selection/termination rules, Factory active-Train/turnaround behavior, FFY-per-route/stop economics, P07 realization, P33 Population amount, and final Train/Tank pursuit balance**, subject to the accepted §20.2 rail-network constraints and current provisional 25-cell/s Train-speed target;
 - detailed lobby/UI implementation outside the settled Echo collection/reward-card concepts;
 - supply/logistics connectivity as a separate system.
 
@@ -1953,13 +2055,13 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 42. **Origins have no tiers, Major/Minor taxonomy, category maze, or hidden pairwise incompatibility system.**
 43. **Every deployed trait combination satisfying the public budget, trait-count, and drawback-refund limits is legal.**
 44. **Every candidate Origin catalogue is exhaustively tested across all public-legal trait combinations before deployment; a failing combination blocks/fixes the catalogue rather than becoming a production exclusion.**
-45. **The accepted split-origin trait uses two half-area influence regions and two exact origins, splits final Initial Territory between two footprints, and still uses one unchanged global Starting Population pool.**
+45. **The accepted split-origin trait uses two half-area influence regions and two exact origins, splits final Initial Territory between two footprints, and still uses one global Starting Population pool calculated from the faction's final starting-state rules.**
 46. **The accepted elastic-defense trait preserves the automatic defender when a defended cell is captured while retaining the attacker's ordinary casualty and all ownership/Capacity effects.**
 47. **The accepted giant-SAM trait transforms SAM throughput/range without adding a bespoke controller interception action.**
 48. **The accepted fully-developed-City trait makes purchased Cities direct level-5 purchases at 95% cumulative ordinary level-1-through-level-5 cost.**
 49. **Echoes use 12,927 fixed mechanical identities built from 93 concrete stat+scope keys; identity fixes shape/stat keys/polarity, magnitudes reroll on every acquisition, standard PvE equips 7 Echoes, and names are deterministically generated from stable character/stat components plus roll-dependent magnitude descriptors rather than authored dialogue assignments.**
 50. **Echo acquisition uses 50% mixed / 35% dual / 15% single shape selection, uniform identity selection within shape, EchoScore-weighted integer magnitude rolls, Trash→Cheater rolled-quality tiers, one retained roll per identity, tier-based Middle Fingers salvage, Pareto filtering with only incomparable survivors shown, pending batch settlement, all earned match rolls as drops even on defeat, fixed-human-team full-pool rewards, and a 10/100-Middle-Finger Gacha Store with paid-pull-only power-12 Lucky+ pity guaranteed by pull 50 and no Cheater guarantee.**
-51. **V1 Echoes carry no authored anime dialogue/voice-line corpus. Their generated naming uses versioned shape-specific character pools, concrete-stat tokens, the accepted Catastrophic→Absurd `-6..+6` polarity-aware descriptor table, and fixed Single/Dual/Mixed grammars; authored anime dialogue/reference effort is reserved for Origin traits and Official Origins.**
+51. **V1 Echoes carry no authored anime dialogue/voice-line corpus. Their generated naming uses the accepted versioned 10/10/10 shape-character pools, one authored token per 93 concrete stat keys, the Catastrophic→Absurd `-6..+6` polarity-aware descriptor table, and fixed Single/Dual/Mixed grammars; authored anime dialogue/reference effort is reserved for Origin traits and Official Origins.**
 52. **Saved seven-Echo configurations are provisionally named Echo Sets; replacing a retained roll automatically updates every Echo Set referencing that identity.**
 53. **An Echo's mechanical identity plus character/stat naming components remain stable under a naming version; retained magnitude changes may alter its generated adjective(s), while rolled quality separately changes the border/effects treatment from dull Questionable to extravagant Cheater.**
 54. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
@@ -1983,3 +2085,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 72. **P43 transforms every Tank into 10-second Heavy Artillery with higher cost, half movement, longer range, huge alpha/long reload, disabled Train raiding, the same movement barriers, and projectiles that may cross those barriers.**
 73. **P44 costs 9 Origin points and makes successful Population attacks neutralize/apply Fallout to up to 10 eligible cells for Tanks or 50 for Heavy Artillery; it is independent of and legally combinable with P43.**
 74. **Purchased Warships have a 5-second construction delay at a Port; purchase-resource/cost transformations do not bypass it unless explicitly stated.**
+75. **Ordinary V1 maps have exactly 4,800,000 raster cells; population-bearing-cell count is map-dependent and alternate gameplay resolution scales are not supported.**
+76. **Ordinary V1 Initial Territory is 1,000 population-bearing cells. Starting Population is 50% of final modified Initial Territory before explicit Starting-Population modifiers, so vanilla starts at 500/1,000.**
+77. **Ordinary Population base growth is exactly `0.05 × Capacity^0.75` Population/s, with piecewise-linear utilization anchors and a 40–60% maximum-efficiency band; P02 horizontally widens that band to 30–70%.**
+78. **The final Train system must reward coherent deep rail webs and support multiple economically meaningful stops per service run; exact throughput/routing/economics remain open under §20.2 rather than inheriting OpenFront's current spawning/station-hop behavior.**
