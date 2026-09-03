@@ -87,8 +87,10 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P47 | **X** | Whenever an enemy successfully captures one of this faction's **Marsh** cells, the capturing faction loses `+1 Population` after ordinary capture resolution | 4 |
 | P48 | **X** | Owned **Shallow Water** is population-bearing for this faction and contributes `+1 Population Capacity/cell`; all other Shallow-Water terrain/traversal/buildability rules remain unchanged | 4 |
 | P49 | **X** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
+| P50 | **X** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
+| P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 
-P33's Population amount remains TBD. P30–P49 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
+P33's Population amount remains TBD. P30–P51 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
 
 ---
 
@@ -358,6 +360,24 @@ P49 inverts the tactical role of the faction's Observation Posts without creatin
 - Direct hostile manifestations from inside the blackout reveal the minimum information necessary for the attacked faction to identify/respond to the manifestation, without revealing unrelated contents of the field.
 - Overlapping P49 Observation Posts do not create stronger concealment; they only extend the union of blackout coverage.
 
+### S35 — P50/P51 reciprocal support fields
+
+P50 and P51 reuse the existing Fort/Command Post pressure fields without creating any new controller commands, assignments, territorial-network rules, or special placement mechanics.
+
+- **P50:** each owned active Fort additionally projects **offensive pressure equal to that Fort's ordinary defensive-pressure magnitude** across the Fort's existing completed-level coverage area. The Fort keeps its ordinary defensive pressure unchanged.
+- **P51:** each owned active Command Post additionally projects **defensive pressure equal to that Command Post's ordinary offensive-pressure magnitude** across the Command Post's existing completed-level coverage area. The Command Post keeps its ordinary offensive pressure unchanged.
+- Same-type overlapping fields continue to use the strongest applicable same-type effect rather than stacking.
+- When a Fort field and a Command Post field both modify the same pressure direction on the same engagement, their distinct field bonuses combine with diminishing complement composition:
+
+```text
+combinedBonus = 1 - (1 - A) × (1 - B)
+```
+
+where `A` and `B` are decimal bonus magnitudes. Under the current L5 values, `30%` Fort support and `15%` Command support combine to **40.5%**, not 45% or 49.5%.
+- The same cross-type composition rule applies whether the relevant direction is offense, defense, or—when both P50 and P51 are selected—both.
+
+Taking both traits therefore turns both structures into general support fields while preserving their distinct baseline identities: Forts remain stronger/concentrated (`10/15/20/25/30%`, radius `30/35/40/45/50`) and Command Posts remain weaker/wider (`3/6/9/12/15%`, radius `30/35/40/45/50` under the current provisional table).
+
 ---
 
 ## Catalogue coverage decisions
@@ -374,9 +394,9 @@ P36 provides an Origin-worthy neutral-expansion mechanic by changing Population 
 
 Observation Posts establish the baseline structure-driven tactical observation mechanic. Generic numerical observation/range tuning remains Echo territory. P45 and P49 cover Origin-level information warfare through structural concealment/counterintelligence rules rather than simple range bonuses.
 
-### Command Posts remain open
+### Expanded terrain/structure coverage
 
-The expanded structure library still needs an Origin-level Command Post trait. It must change Command Post doctrine through generic existing game concepts and must **not** require a bespoke faction-specific controller command/API contract merely to operate the trait.
+The newly accepted terrain and support-structure library now has Origin-level coverage through P45–P51 without introducing bespoke controller APIs or one-off territorial/network systems. Deep Water remains covered indirectly through the broader naval Origin ecosystem, while Impassable remains deliberate hard map topology rather than an Origin-transformable terrain class.
 
 ---
 
@@ -410,7 +430,8 @@ Potentially strong but valid combinations include:
 - P35 + P16 for creating and later efficiently reclaiming a Fallout perimeter;
 - P38 + P35 for an expensive elastic/scorched defensive doctrine;
 - **P43 + P44 for radioactive Heavy Artillery**;
-- P44 + P16 for a doctrine that can later reclaim its own radioactive territorial damage efficiently if the front advances.
+- P44 + P16 for a doctrine that can later reclaim its own radioactive territorial damage efficiently if the front advances;
+- P50 + P51 for reciprocal general-support Fort/Command fields, with cross-type pressure bonuses using the explicit diminishing-composition rule rather than additive stacking.
 
 The exhaustive deployment gate must prove every builder-legal combination deterministic and engine-safe; these notes never become hidden incompatibilities.
 
@@ -434,4 +455,4 @@ Their current mechanical builds are the accepted first Official roster; display 
 
 ## Next Origin work
 
-Resolve the remaining Command Post Origin trait without introducing a trait-specific controller API. After that, expand Echo coverage for the newly accepted terrain/structure/Tank axes, then continue naming, balance/repricing, and exhaustive legal-combination validation rather than proliferating traits for its own sake.
+The expanded terrain/structure/Tank world-system pass now has provisional Origin coverage. Next priority is expanding Echo coverage for the newly accepted terrain/Observation/Command/Tank axes, followed by naming, balance/repricing, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
