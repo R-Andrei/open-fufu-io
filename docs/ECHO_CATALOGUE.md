@@ -955,6 +955,6 @@ Still to be tuned or finalized:
 10. whether pity guarantees one qualifying item within the triggering batch or transforms the triggering roll directly;
 11. exact special-AI reward bonuses;
 12. executable/property tests for reward accounting, duplicate Pareto resolution, Origin/Echo composition, and gacha pity;
-13. synchronization of `OPEN_FUFU_DESIGN.md`, `OPENFRONT_INTEGRATION_PLAN.md`, and every other repository document that still contains retired Echo/reward/store semantics.
+13. exact UI flow for choosing among incomparable duplicate Pareto-frontier rolls.
 
 These are tuning/integration tasks rather than reasons to reopen the accepted **12,927 stable identities + rerolled magnitudes + duplicate progression + all-earned-roll rewards + gacha** architecture.
