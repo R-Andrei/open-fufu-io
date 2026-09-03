@@ -27,6 +27,7 @@ Current invariants:
 - Strong clean rolls should feel exceptional.
 - Acquiring a duplicate Echo always produces duplicate/salvage currency even if the newly rolled copy replaces the currently retained copy.
 - Scalar EchoScore is allowed for roll sampling, presentation, sorting, pity qualification, and salvage bands, but **never overrides Pareto duplicate choice**.
+- Paid Gacha pity guarantees Lucky-or-better by the 50th consecutive non-Lucky+ pull using the accepted power-12 rescue curve; match drops neither advance nor reset that pity state, and Cheater rolls are never guaranteed.
 
 ---
 
@@ -1021,7 +1022,7 @@ There is **no Cheater pity**, no minimum Cheater frequency, and no mechanic that
 
 ### 15.4 One shared sequential pity counter
 
-Pity belongs to paid Gacha Store pulls.
+Pity belongs only to **paid Gacha Store pulls**.
 
 Singles and 10-pull batches use the same sequential pity state. A batch is processed pull by pull in deterministic order:
 
@@ -1033,25 +1034,25 @@ pull #10 sees the state left by pull #9
 
 If pull #4 in a batch is Lucky/Cheater, pity resets before pulls #5–#10.
 
-Match reward acquisitions do not advance Gacha pity.
+**Match reward acquisitions neither advance nor reset Gacha pity.** A Lucky/Cheater earned from ordinary match rewards therefore does not erase paid-pull bad-luck protection.
 
-### 15.5 Nonlinear soft pity
+### 15.5 Accepted power-12 soft pity
 
 Let:
 
 ```text
-H = configured hard-pity pull count
+H = 50
 n = consecutive non-Lucky+ paid pulls already suffered since the last reset
 P0 = natural Lucky+ probability under the ordinary acquisition generator
 ```
 
-Use a quartic rescue curve:
+Use the accepted **power-12 rescue curve**:
 
 ```text
-r(n) = (n / (H - 1))^4
+r(n) = (n / 49)^12
 ```
 
-for `0 <= n <= H-1`.
+for `0 <= n <= 49`.
 
 The effective probability that the next paid pull is Lucky+ is conceptually:
 
@@ -1068,35 +1069,39 @@ One clean implementation is:
 3. if rescue activates, sample from the ordinary acquisition distribution **conditioned on EchoScore >= 1.00**;
 4. reset pity after any natural or rescued Lucky+ result.
 
-This makes pity rescue positive/desirable quality rather than statistical weirdness and avoids manufacturing a special fixed pity item.
+This deliberately leaves ordinary early-pull luck almost untouched, begins helping during a real drought, rises sharply near the end of the streak, and avoids manufacturing a special fixed pity item.
 
-### 15.6 Hard-pity endpoint — only remaining Gacha-mechanics decision
+With the current natural `P0 ≈ 2.50%`, representative next-pull Lucky+ chances are approximately:
 
-The quartic curve and Lucky+ threshold are accepted, but the exact V1 hard endpoint is still intentionally unresolved between:
+| Consecutive misses before next pull | Lucky+ chance on next pull |
+| ---: | ---: |
+| 0 | **2.50%** |
+| 20 | **~2.50%** |
+| 30 | **~2.68%** |
+| 35 | **~3.72%** |
+| 40 | **~8.80%** |
+| 45 | **~29.30%** |
+| 47 | **~48.18%** |
+| 48 | **~61.63%** |
+| 49 | **100% on the 50th pull** |
+
+The percentages above are derived validation examples for the current natural generator rather than separately authored constants.
+
+### 15.6 Accepted 50-pull hard guarantee
+
+The V1 hard pity endpoint is:
 
 ```text
-H = 50 pulls
-or
-H = 100 pulls
+H = 50 paid Gacha pulls
 ```
 
-The previous 200-pull target is retired as unnecessarily remote given the natural Lucky+ rate.
+A player can never complete 50 consecutive paid Gacha pulls without receiving at least one Lucky-or-better result. The 50th pull after 49 consecutive non-Lucky+ paid pulls is therefore forced/conditioned to `EchoScore >= 1.00` if the ordinary roll does not already qualify.
 
-Current deterministic balance check using the accepted score-weighted generator:
+Any natural or rescued Lucky/Cheater result resets the paid-pull pity counter to zero.
 
-```text
-natural Lucky+ rate: ~2.50%  (~1 per 40 pulls)
+This is intentionally generous. Open Fufu is a friends-oriented game with a very large mechanical roll space, so V1 prefers visible protection against unfun droughts over maximizing progression scarcity. The value remains versioned balance data and may be retuned after real play without changing the Echo identity architecture.
 
-quartic H=50:
-long-run Lucky+ frequency ≈ 1 per 20.7 pulls
-
-quartic H=100:
-long-run Lucky+ frequency ≈ 1 per 28.5 pulls
-```
-
-This distinction is substantial. `H=50` is an intentionally generous pity system, not merely a tiny safety net. `H=100` still materially improves drought protection while remaining closer to the natural distribution.
-
-Whichever endpoint is selected, the final pull at the hard threshold is 100% Lucky-or-better, and Cheater remains unguaranteed.
+The guarantee is **Lucky-or-better only**. It does not guarantee Cheater, does not progressively increase Cheater probability, and does not alter the ordinary conditioned distribution beyond requiring `EchoScore >= 1.00` when pity rescue/guarantee fires.
 
 ---
 
@@ -1277,7 +1282,9 @@ Any other design/integration documentation must be updated so none of the follow
 - dialogue lines must be unique/permanently embedded one-per-Echo from day one;
 - duplicate salvage price, Gacha pull price, quality bands, or duplicate-choice UI remain wholly unspecified;
 - Gacha batches have a mechanical discount/bonus in V1;
-- pity protects Cheater-tier rolls.
+- pity protects Cheater-tier rolls;
+- Gacha hard pity is 100/200 pulls or remains undecided;
+- match-earned Lucky+ rolls advance or reset paid-pull pity.
 
 The canonical replacement concepts are:
 
@@ -1299,25 +1306,25 @@ The canonical replacement concepts are:
 + separate/versioned dialogue-line library and assignments
 + searchable/filterable Echoes collection and saved Echo Sets
 + Gacha Store at 10 currency single / 100 currency ten-pull
-+ quartic Lucky+ pity with no Cheater guarantee
++ paid-pull-only power-12 Lucky+ pity with a 50-pull hard guarantee
++ no Cheater guarantee
 ```
 
 ---
 
 ## 20. Remaining provisional questions
 
-The V1 Echo mechanical/progression model is now almost completely specified.
+The V1 Echo mechanical/progression model is now specified closely enough to be treated as **design-complete for V1**. Remaining work is naming, content, tuning, implementation detail, and validation rather than unresolved core Echo mechanics.
 
 Still to be tuned or finalized:
 
-1. **hard Lucky+ pity endpoint: 50 or 100 paid pulls**;
-2. final thematic name of duplicate/Gacha currency;
-3. final player-facing name for saved 7-Echo configurations (`Echo Sets` is the current working term);
-4. exact dialogue-line sourcing/licensing/provenance workflow and initial line-library content;
-5. exact visual recipe/rendering implementation and final card motion/effect polish;
-6. exact special-AI reward bonuses;
-7. executable/property tests for identity distribution, EchoScore-weighted magnitude sampling, quality tiers, salvage accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, and Gacha pity;
-8. detailed responsive/touch accessibility behavior for hover-style Echo cards and final collection/reward layout polish.
+1. final thematic name of duplicate/Gacha currency;
+2. final player-facing name for saved 7-Echo configurations (`Echo Sets` is the current working term);
+3. exact dialogue-line sourcing/licensing/provenance workflow and initial line-library content;
+4. exact visual recipe/rendering implementation and final card motion/effect polish;
+5. exact special-AI reward bonuses;
+6. executable/property tests for identity distribution, EchoScore-weighted magnitude sampling, quality tiers, salvage accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, and Gacha pity;
+7. detailed responsive/touch accessibility behavior for hover-style Echo cards and final collection/reward layout polish.
 
 The following are **no longer open design questions** for V1:
 
@@ -1329,7 +1336,9 @@ The following are **no longer open design questions** for V1:
 - batch discount/bonus — none;
 - duplicate salvage values — 1 / 2 / 3 / 4 / 6 / 8 by acquired roll tier;
 - pity qualification — Lucky or above (`EchoScore >= 1.00`);
-- pity shape — nonlinear quartic;
+- pity shape — power-12 nonlinear rescue curve;
+- hard pity — the 50th consecutive non-Lucky+ paid pull is guaranteed Lucky-or-better;
+- Gacha pity scope — paid pulls only; match rewards neither advance nor reset it;
 - Cheater pity — none;
 - batch pity behavior — sequential pulls sharing one counter;
 - incomparable duplicate UI — only surviving Pareto-frontier candidates are shown;
