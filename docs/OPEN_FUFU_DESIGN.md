@@ -78,7 +78,7 @@ Origin
 = what kind of faction it fundamentally is
 
 Echoes
-= collectible dialogue-line modifiers used to specialize the build
+= collectible generated-name modifiers used to specialize the build
 ```
 
 Origins and Echoes must not become substitutes for controller quality. The controller remains the primary strategic/intelligence layer.
@@ -173,7 +173,7 @@ A match must bind every rule-bearing input needed to define what that match mean
 - exact Origin definition/version for every faction;
 - Origin-trait catalogue/version where relevant;
 - equipped Echo identity IDs plus the exact retained magnitude configuration used by each faction;
-- Echo mechanical identity-catalogue version, Echo presentation/content-assignment version where replay presentation requires it, and acquisition/roll-rules version where relevant;
+- Echo mechanical identity-catalogue version, Echo naming/presentation version where historical wording/presentation requires it, and acquisition/roll-rules version where relevant;
 - spawn-mode/configuration and spawn-resolution version where relevant;
 - any other versioned data that materially changes deterministic simulation.
 
@@ -1035,7 +1035,7 @@ At minimum:
 - the faction's selected Origin and full mechanical Origin-trait sheet;
 - active public mechanical modifier sheets/rule-bearing faction effects.
 
-Mechanical modifiers should not need to be reverse-engineered from outcomes. Exact Echo dialogue/cosmetic presentation may be presented separately, but strategically relevant active modifiers are surfaced.
+Mechanical modifiers should not need to be reverse-engineered from outcomes. Echo generated names/quality visuals are presentation; strategically relevant active modifiers are surfaced directly.
 
 For Strategic Spawn, every participant's Origin, Initial Territory, starting-state effects, and other strategically relevant public spawn-affecting modifiers are visible before Phase 1.
 
@@ -1150,7 +1150,7 @@ Official AI factions select/bind Origins under the same game rules. Official Ori
 
 Trusted runtime execution is allowed operationally; difficulty comes from strategy quality. Reusable internal strategy components are encouraged but do not become privileged player-facing policies.
 
-Reference personalities may include Tanya-style concentrated breakthrough, Reinhard-style economic/threat optimization, and Thorfinn-style retaliation/non-aggression.
+The provisional V1 character roster, allowed shared Origin pools, and AI-Origin reveal timing are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Exact difficulty ratings and special-AI Echo reward bonuses remain assigned when the corresponding controllers are designed.
 
 ---
 
@@ -1197,6 +1197,8 @@ Traits may modify explicit typed game-rule hooks, including structural profiles 
 - other explicit surfaced rule transformations compatible with the canonical mechanics.
 
 The player chooses only the curated trait. The underlying trait may alter several typed rules/parameters, but the player never provides the formula itself.
+
+Anime dialogue/catchphrases/reference text may be used as authored presentation for Origin traits and Official Origins. This is intentionally the primary V1 home for authored anime-line content because the catalogue is small enough for deliberate curation; Echoes use deterministic generated names instead.
 
 ### 23.3 Simple public construction constraints
 
@@ -1263,11 +1265,11 @@ Origins and Echoes intentionally overlap in the mechanics they can influence but
 
 Origins are few, defining, immutable-for-match faction traits and may change starting state, economic identity, growth profiles, combat tradeoffs, or other rule shapes.
 
-Echoes are collectible anime-dialogue-line modifiers equipped in a multi-slot loadout. They should generally be narrower and more build-oriented. The Echo catalogue should be curated so ordinary Echo combinations do not trivially erase the defining drawback that gives an Origin its identity.
+Echoes are collectible **deterministically named numeric modifiers** equipped in a multi-slot loadout. They should generally be narrower and more build-oriented. The Echo catalogue should be curated so ordinary Echo combinations do not trivially erase the defining drawback that gives an Origin its identity.
 
 This separation is achieved by responsible catalogue design rather than hidden Origin/Echo incompatibility restrictions.
 
-### 23.7 Echo identity catalogue and data boundary
+### 23.7 Echo identity catalogue and generated naming
 
 The collectible system formerly called **items** is canonically named **Echoes**. The detailed working contract is [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
@@ -1287,15 +1289,58 @@ Each mechanical identity permanently fixes:
 - one or two concrete stat+scope keys;
 - polarity implied by its shape/slot.
 
-Dialogue/flavor and visual presentation are linked through **versioned content assignments**. Multiple mechanical Echo identities may share one dialogue line/content family, allowing the line library to grow independently without redefining owned mechanics.
-
 **Magnitude is not part of Echo identity.** Whenever an Echo identity is acquired, its legal integer magnitude or magnitudes are rolled for that acquisition. A later acquisition of the same Echo may therefore be weaker, stronger, or differently distributed while remaining the same collectible identity.
 
-The permanent item table must not materialize every magnitude permutation as a separate collectible definition. The old magnitude-specific mechanical-signature catalogue model is retired.
+The permanent item table must not materialize every magnitude permutation as a separate collectible definition. The production registry should be deterministically derivable/materializable from the versioned concrete-key catalogue and shape rules rather than maintained as 12,927 hand-authored source-code constants.
 
-The public source repository defines **how Echoes work**, not the live production Echo/content database. Public code may contain schemas/types, migrations, semantic identifiers, deterministic identity-generation/materialization logic, validation/import tooling, algorithms, UI/rendering code, and synthetic fixtures. Production mechanical rows/configuration, anime dialogue/content, Echo-to-line and visual assignments, account inventories, **Middle Fingers** balances, pity state, and other granular live records are versioned private/runtime data consumed through explicit data contracts rather than hard-coded gameplay source.
+V1 Echoes have **no authored anime dialogue/voice-line assignment system**. Instead their names are generated deterministically from a small versioned naming grammar:
 
-The initial private anime source catalogue is the public MyAnimeList list for user `Fufuway`, restricted to **Watching (`status=1`) and Completed (`status=2`)**. Completed titles may contribute from the full anime. Watching titles may contribute only from episodes at or below the recorded watched-episode progress; sources without reliable episode provenance must not automatically surface later-episode dialogue for a currently-watching title. Actual harvesting, source adapters, curation, and import are implementation/content work.
+```text
+stable identity-level character possessive
++ stable concrete-stat name token(s)
++ roll-dependent magnitude descriptor(s)
+```
+
+Shape-specific character pools provide a stable anime-character possessive for each identity. Concrete stat+scope keys map to deliberately authored memorable noun/noun-phrase tokens. The system should avoid awkward schema-label concatenation such as mechanically prefixing a scope solely to produce names like `Naval Guitar Solo`; concrete-key overrides are preferred when generic composition would sound bad.
+
+Magnitude descriptors are universal and use beneficial/harmful **polarity**, not naive arithmetic sign. The accepted naming vocabulary is:
+
+```text
+-6 Catastrophic
+-5 Cursed
+-4 Wretched
+-3 Dreadful
+-2 Shoddy
+-1 Questionable
++1 Decent
++2 Good
++3 Great
++4 Amazing
++5 Fantastic
++6 Absurd
+```
+
+For reverse-direction beneficial stats such as cost/cooldown reduction, a beneficial 4-point magnitude uses `Amazing` even though the displayed mechanical percentage may be negative.
+
+Accepted shape grammar:
+
+```text
+Single:
+<Character>'s <positive descriptor> <stat token>
+
+Dual positive:
+<Character>'s <descriptor1> <stat token1> of <descriptor2> <stat token2>
+
+Mixed:
+<Character>'s <positive descriptor> <positive stat token>
+with a side of <negative descriptor> <harmful stat token>
+```
+
+Dual presentation order is deterministic. The character/stat components remain stable for one identity under a naming version, while magnitude adjectives may change when duplicate resolution changes the retained roll. Generated names should be computed from identity + retained magnitude(s) + naming version rather than stored as thousands of authored strings.
+
+Exact character pools and exact stat-token assignments are a later naming-content pass. Illustrative examples discussed during design, including `Guitar Solo`, do not bind that token to a specific stat unless deliberately added to the naming configuration.
+
+The public source repository may contain the reusable/versioned naming grammar, descriptor table, character pools, stat-token mapping, schemas/types, migrations, semantic identifiers, deterministic identity-generation/materialization logic, validation tooling, algorithms, UI/rendering code, and synthetic fixtures. Production account inventories, **Middle Fingers** balances, pity state, pending settlements, and other granular live progression records remain runtime/private data.
 
 Echoes must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived. The authoritative 93-key allowed pool and its exclusions are maintained in `ECHO_CATALOGUE.md`; high-level examples here do not create additional Echo stat families.
 
@@ -1323,7 +1368,7 @@ This is not intended as a universal literal implementation ordering for every me
 
 The public mechanical sheet should expose effective values and their relevant surfaced sources.
 
-### 23.9 Echo acquisition, EchoScore, and rolled quality
+### 23.9 Echo acquisition, EchoScore, rolled naming, and quality
 
 The number of identities inside each shape does **not** determine how often that shape is acquired. Each ordinary acquisition first selects shape using the accepted provisional distribution:
 
@@ -1356,7 +1401,7 @@ Lucky         1.00 <= S < 1.25
 Cheater       S >= 1.25
 ```
 
-These are roll-quality/presentation tiers, not permanent identity rarity classes. The **base item/content identity remains the same across qualities**; rolled quality controls the border/effects treatment. Questionable is intentionally dull gray/white, largely blending into ordinary UI with no special aura/effects. Lucky receives a restrained animated blue glow. Cheater receives intentionally excessive bright pink/violet presentation and may emanate animated rainbow/radiant beams on hover/focus. The same identity may therefore look mundane as Questionable and spectacular as Cheater while remaining mechanically the same item.
+These are roll-quality/presentation tiers, not permanent identity rarity classes. The identity's character/stat-token components remain stable under the naming version, while its magnitude adjective(s) change with the retained roll. Separately, rolled quality controls the border/effects treatment. Questionable is intentionally dull gray/white, Lucky receives a restrained animated blue glow, and Cheater receives intentionally excessive bright pink/violet/rainbow/radiant presentation. The same identity can therefore change full generated wording and visual quality as its retained magnitudes improve while remaining the same mechanical collectible.
 
 ### 23.10 PvE reward roll pool and reward entities
 
@@ -1430,7 +1475,7 @@ Standard PvE equipped set size is **7 Echoes**. Players may maintain multiple na
 
 An Echo Set references Echo identity IDs rather than frozen historical rolls. When duplicate resolution changes the retained roll for an identity, every Echo Set using that identity automatically uses the newly retained roll.
 
-The player-facing collection surface is **Echoes**, not `Inventory`. It uses a card grid, supports search by identity/dialogue/content metadata where indexed, multi-select filtering by mechanical effect/stat key, favorites pinned/promoted ahead of ordinary results, and useful EchoScore/quality sorting. Unknown Echo silhouettes/Pokédex-style empty slots are not required.
+The player-facing collection surface is **Echoes**, not `Inventory`. It uses a card grid, supports search by generated name/character/stat-token text and mechanical effect/stat key, multi-select filtering by mechanical effect/stat key, favorites pinned/promoted ahead of ordinary results, and useful EchoScore/quality sorting. Unknown Echo silhouettes/Pokédex-style empty slots are not required.
 
 PvP progression/loadout standardization remains deliberately deferred.
 
@@ -1833,8 +1878,8 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
-- exact Origin Point budget, trait-count cap, maximum drawback refund, final player-facing names/IDs, and final balancing of provisional Origin-trait point costs;
-- exact first Official Origin names/builds;
+- exact Origin Point budget, trait-count cap, maximum drawback refund, final player-facing trait names/IDs, and final balancing of provisional Origin-trait point costs;
+- later wording/reference cleanup and balance iteration for the provisional Official Origin roster in `OFFICIAL_ORIGINS.md`;
 - exact strategic-spawn ordinary influence radius/shape, exact-origin collision resolver, compact-footprint growth/tie-breaking algorithm, and base Initial Territory/starting-Population values, including low-level implementation details for the accepted split-origin profile;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema and retention policy;
@@ -1847,12 +1892,12 @@ The following remain intentionally outside the settled design contract unless ot
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
 - exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
-- exact special-AI Echo reward bonuses, deferred until the relevant AI presets are designed;
-- implementation of the MAL/source-catalogue importer, quote/subtitle/source adapters, candidate normalization/deduplication/curation workflow, and actual private anime-line corpus population;
-- exact private authored-content backup/revision workflow and concrete Echo SQLite schema/index/migration details;
-- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled base-identity-versus-quality-treatment rule;
+- exact special-AI Echo reward bonuses, deferred until the relevant AI controllers/difficulty ratings are designed;
+- exact V1 Echo shape-character pools and concrete-stat naming-token dictionary; the naming grammar and magnitude descriptor vocabulary are settled, but the actual token assignments remain content authoring;
+- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled stable identity components + roll-dependent naming/quality treatment;
 - playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
-- executable/property-test implementation for Echo distribution, scoring, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
+- executable/property-test implementation for Echo distribution, scoring, generated naming, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
+- authored anime dialogue/catchphrase/reference curation for Origin traits and Official Origins; V1 Echoes deliberately do not depend on an anime quote/subtitle corpus;
 - playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
 - exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
 - exact inherited naval/rail/strategic-weapon numerical translations where not already specified;
@@ -1913,11 +1958,11 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 46. **The accepted elastic-defense trait preserves the automatic defender when a defended cell is captured while retaining the attacker's ordinary casualty and all ownership/Capacity effects.**
 47. **The accepted giant-SAM trait transforms SAM throughput/range without adding a bespoke controller interception action.**
 48. **The accepted fully-developed-City trait makes purchased Cities direct level-5 purchases at 95% cumulative ordinary level-1-through-level-5 cost.**
-49. **Echoes use 12,927 fixed mechanical identities built from 93 concrete stat+scope keys; identity fixes shape/stat keys/polarity, presentation is versioned separately, magnitudes reroll on every acquisition, standard PvE equips 7 Echoes, and production catalogue/content/account records are private/runtime data rather than public source constants.**
+49. **Echoes use 12,927 fixed mechanical identities built from 93 concrete stat+scope keys; identity fixes shape/stat keys/polarity, magnitudes reroll on every acquisition, standard PvE equips 7 Echoes, and names are deterministically generated from stable character/stat components plus roll-dependent magnitude descriptors rather than authored dialogue assignments.**
 50. **Echo acquisition uses 50% mixed / 35% dual / 15% single shape selection, uniform identity selection within shape, EchoScore-weighted integer magnitude rolls, Trash→Cheater rolled-quality tiers, one retained roll per identity, tier-based Middle Fingers salvage, Pareto filtering with only incomparable survivors shown, pending batch settlement, all earned match rolls as drops even on defeat, fixed-human-team full-pool rewards, and a 10/100-Middle-Finger Gacha Store with paid-pull-only power-12 Lucky+ pity guaranteed by pull 50 and no Cheater guarantee.**
-51. **Echo content initially draws from Fufuway's MAL Watching and Completed lists; currently-watching titles are limited to already-watched episodes, and actual harvesting/import remains implementation work.**
+51. **V1 Echoes carry no authored anime dialogue/voice-line corpus. Their generated naming uses versioned shape-specific character pools, concrete-stat tokens, the accepted Catastrophic→Absurd `-6..+6` polarity-aware descriptor table, and fixed Single/Dual/Mixed grammars; authored anime dialogue/reference effort is reserved for Origin traits and Official Origins.**
 52. **Saved seven-Echo configurations are provisionally named Echo Sets; replacing a retained roll automatically updates every Echo Set referencing that identity.**
-53. **An Echo's base item/content identity is stable across rolls; rolled quality changes the border/effects treatment, from deliberately dull Questionable presentation to extravagant Cheater presentation.**
+53. **An Echo's mechanical identity plus character/stat naming components remain stable under a naming version; retained magnitude changes may alter its generated adjective(s), while rolled quality separately changes the border/effects treatment from dull Questionable to extravagant Cheater.**
 54. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
 55. **Derived controller helpers never leak information outside the controller's legal observation projection.**
 56. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
@@ -1926,7 +1971,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 59. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
 60. **Zero population-bearing territory after tick resolution means immediate defeat.**
 61. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-62. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+62. **Official AI obeys the same gameplay information and mechanics as player controllers; the provisional character roster and shared Origin pools live in `OFFICIAL_AI_PRESETS.md`.**
 63. **Ordinary users cannot live-spectate unrelated matches.**
 64. **Historical matches bind exact rule-bearing versions.**
 65. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
