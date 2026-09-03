@@ -232,9 +232,39 @@ Ports also construct Warships. A baseline Warship purchase has a **5-second cons
 
 ### Factory
 
-Factories generate trains and Factory-driven industrial/train FFY events. Factory level multiplies those FFY events but does not inherently increase train count.
+Factories generate Trains and Factory-driven industrial/train FFY events. Factory level multiplies those FFY events but does not inherently increase Train count.
 
 Factories also construct and repair Tanks/Heavy Artillery.
+
+#### Canonical V1 Factory Train service
+
+The inherited OpenFront independent random-Train-spawn/station-hop behavior is not authoritative. Open Fufu uses a finite multi-stop service-tour model designed to reward coherent rail networks while permitting deliberate high-density optimization.
+
+Baseline rules:
+
+- **Train speed:** `25 rail cells/second`.
+- **Primary Train occupancy:** each Factory supports at most **one active primary Train** at a time.
+- A Factory may dispatch its next primary Train only after the prior primary Train has **returned to the originating Factory or been destroyed**, followed by a **5-second turnaround**.
+- Each normal primary dispatch selects a target set of **up to five distinct connected eligible City/Port stations**. Five is a route-construction target, **not an economic-event cap**. If fewer than five eligible stations are connected, the route uses the available set.
+- Target selection uses a deterministic rotating/shuffled service queue so a large connected network is not permanently reduced to the nearest few stations. The exact deterministic permutation seed/cursor representation is implementation/versioning detail, not controller choice.
+- Given the selected target stations, route ordering/path construction minimizes **expected travel time** for a finite closed tour that begins and ends at the originating Factory. With uniform Train speed this reduces to shortest physical rail distance between service points.
+- The route generator does not intentionally insert arbitrary loops merely to farm events; however, route retracing that naturally results from the physical network/topology is legal.
+
+**Physical-event rule:** whenever a Train physically reaches/passes through an eligible City or Port station along its finite service route, that station produces its ordinary Train FFY event. This is true whether or not the station was one of the route generator's selected target stations.
+
+- Every paying station event imposes a **1.5-second / 15-simulation-tick dwell** before the Train continues.
+- Reaching/passing through the same eligible station more than once during one finite tour triggers a new ordinary event and dwell each time.
+- There is **no hard per-tour economic-stop cap**. A well-designed circuit that physically routes a Train through substantially more than five Cities/Ports is intentionally allowed to earn substantially more events.
+- Dense/highly optimized rail layouts are not considered exploits merely for outperforming ordinary layouts. Balance intervention is reserved for demonstrated pathological/game-breaking throughput, not ordinary hyper-optimization.
+
+The exact ordinary **FFY amount** produced by each City/Port Train event remains part of the broader FFY-economy tuning pass alongside Trade Ship and other FFY events. Factory level continues to multiply the final configured industrial/train FFY event value by `100/110/120/130/140%` as listed above.
+
+P07 and P33 layer onto this baseline through the Origin catalogue:
+
+- **P07:** every fourth normal primary dispatch from each Factory simultaneously launches one additional bonus Train, giving exactly +25% Train count over the normal dispatch sequence; the bonus Train does not occupy/block the primary slot.
+- **P33:** each qualifying City Train event grants `20 × completed City level` Available Population (`20/40/60/80/100`), Capacity-capped. Incidental and repeated City passes count because P33 follows the same physical City-event rule.
+
+Before V1 release, accelerated benchmark simulations should compare optimized multi-Factory/dense-rail/P07/P33 strategies against strong ordinary Population-growth/economic strategies over representative map states. The purpose is to catch pathological scaling, not to force optimized rail to equal ordinary growth exactly.
 
 ### Missile Silo
 
@@ -293,7 +323,7 @@ Its role is the land analogue of a Warship: autonomous raiding/interdiction, fig
 | Repair rate | **100 HP/s per repairing unit** |
 | Simultaneous repairs per Factory | completed Factory level (`1–5`) |
 
-Tank construction does not pause ordinary train-generation logic.
+Tank construction does not pause ordinary Train-generation/service logic.
 
 ### Purchase-cost curve
 
@@ -353,12 +383,16 @@ Population attacks never capture territory by themselves.
 
 ### Train interception / land piracy
 
-A Train carries a deterministic snapshotted **current cargo FFY value** for its next eligible paying stop/event. If intercepted before that payout:
+A Train carries a deterministic snapshotted **current cargo FFY value** for its next eligible paying stop/event. After a paying event resolves, the Train's next pending cargo value is established for the next eligible event on its finite route according to the configured FFY-economy rules.
+
+If intercepted before the pending payout:
 
 - the Train is removed;
 - its pending ordinary payout is canceled;
 - the Tank owner receives **100% of that snapshotted current cargo value** as a raiding FFY event;
-- previously earned Train FFY is not clawed back.
+- previously earned Train FFY and previously triggered P33 Population are not clawed back.
+
+The baseline Train's `25 cells/s` speed is intentionally much faster than a Tank's terrain movement, so interception gameplay is primarily about route prediction, rail/station ambushes, and exploiting the Train's 1.5-second station dwell rather than bumper-to-bumper pursuit. The existing 30-cell Train-interception range remains the provisional baseline and must be benchmark/playtested with the finalized rail service.
 
 ---
 
@@ -390,6 +424,8 @@ Heavy Artillery is **not a second baseline unit**. P43 transforms every Tank own
 Heavy-Artillery projectiles may cross terrain the unit cannot traverse, including Mountain and Shallow Water, provided range, observation, and target legality succeed.
 
 No extra health is granted; range and alpha are the unit's protection.
+
+The provisional `1,000 Population / 12s` Population attack is intentionally retained. It has the same sustained direct Population DPS as the baseline Tank's `250 / 3s` (`83.33 Population/s`), converting frequent smaller attacks into large alpha plus a long reload/vulnerability window rather than multiplying sustained Population damage.
 
 ### Matchup benchmark
 
