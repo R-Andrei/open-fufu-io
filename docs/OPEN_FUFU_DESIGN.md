@@ -926,7 +926,7 @@ Higher Silo levels also increase launch-charge capacity under the normal Silo ru
 
 An Origin effect that grants a weapon for free does not bypass launcher legality. In particular, an effect granting one free MIRV still requires an otherwise legal **level-5** launcher and any ordinary non-price legality requirements. If that effect is defined as a purchase-cost waiver, the player must satisfy any authored affordability/precondition check but the successful granted launch/purchase consumes `0 FFY` as specified by the trait.
 
-A starting Silo granted by an Origin begins at **level 1** unless the granting trait explicitly says otherwise.
+A starting Silo granted by an Origin begins at **level 1** unless the granting trait explicitly states otherwise.
 
 ### 17.2 MIRV power target
 
@@ -1094,6 +1094,8 @@ Tank geography is deliberately restrictive. The unit is blocked by **Mountain, S
 
 The accepted **Heavy Artillery** Origin trait, P43, costs 8 points and transforms every Tank owned/built by the faction rather than creating a second baseline unit. Under the accepted provisional profile, Heavy Artillery has a **10-second build time**, `1.5×` Tank purchase cost, `0.5×` final Tank movement speed, `1.5×` range (`30 → 45`), `1,000` anti-armor damage per `12s`, `1,000` Population damage per `12s`, and no Train-raiding ability. It keeps Tank traversal barriers, but its projectiles may cross Mountain/Shallow Water and other terrain the unit itself cannot traverse when range/visibility/target legality succeeds. It receives no extra health.
 
+The `1,000 Population / 12s` Population attack is intentionally retained for the provisional V1 baseline. Its sustained direct Population damage is exactly the same as the baseline Tank's `250 Population / 3s` (`83.33 Population/s`); the transformation trades cadence for large alpha and a long reload/vulnerability window rather than multiplying sustained Population DPS.
+
 The intended unmodified matchup is emergent from those stats: one prepared Heavy Artillery is favored against one Tank; one Heavy Artillery is strongly unfavored against two Tanks after its opening shot; and two Heavy Artillery are intended to lose to three Tanks after the opening volley because the surviving Tank can destroy both during their long reload. There is no hidden outnumbered modifier.
 
 The independent **Radioactive Munitions** Origin trait, P44, costs **9 points** and affects only successful Tank/Heavy-Artillery Population attacks. After ordinary Population damage resolves, eligible enemy-owned population-bearing cells are neutralized and receive Fallout; Capacity is lost because ownership was removed. A radioactive Tank considers a target-centered Manhattan-radius-2 footprint and neutralizes up to **10** eligible cells per successful Population attack. Radioactive Heavy Artillery uses Manhattan radius 5 and neutralizes up to **50** eligible cells. Structure-occupied and non-population-bearing cells are skipped, deterministic nearest-cell ordering is used, and the footprint does not expand beyond its authored radius to compensate for ineligible cells.
@@ -1170,20 +1172,57 @@ Explicit identity-defining rule exceptions may still exist as curated Origin tra
 
 The Origin and Echo catalogues should be curated so a narrow Echo does not trivially erase the defining drawback that makes an Origin strategically distinct. This is a catalogue-design responsibility, not a hidden Origin/Echo incompatibility rule.
 
-### 20.2 Rail/Train design constraints from the V1 scale pass
+### 20.2 Canonical V1 Train service
 
-The inherited OpenFront Train implementation is technical ancestry, not authoritative Open Fufu behavior. The final Open Fufu Train system remains under design, but the following requirements are now accepted:
+Open Fufu keeps the inherited idea of physical rail networks and station-triggered economic events but replaces OpenFront's independent random Train spawning and station-hop routing with a deterministic finite **multi-stop Factory service tour**.
 
-- **Deep, coherent rail webs must have strategic/economic value.** The rules should not make isolated `Factory → nearest City` pairs separated by deliberate gaps the obviously optimal network merely because every Train is forced into a one-destination out-and-back shuttle.
-- A Train service must be able to make **multiple economically meaningful stops during one service run**. Exact stop count, stop-selection policy, termination/return behavior, and payout scaling remain to be defined.
-- Route/destination/stop selection must be deterministic from authoritative match state/RNG where randomness is intentionally used.
-- When choosing a path between already selected service points, the accepted direction is **shortest expected travel time** rather than inherited station-hop count. With uniform rail speed this reduces to shortest physical rail distance; future terrain/speed rules may naturally make it weighted.
-- Network geometry should matter enough that sane rail topology is rewarded, while pathological loops/dense micro-station layouts must not create unbounded economic or P33 Population throughput.
-- **25 rail cells/second** is the current provisional Train-speed target, intentionally only modestly above inherited OpenFront speed and subject to final Tank/Train pursuit-interception testing. Train-speed bonuses must not make ordinary Train hunting nonsensical.
-- Whether a Factory normally supports exactly one active Train, how/when another Train may dispatch, and whether a returned/destroyed Train creates a turnaround delay remain open until the multi-stop service model is finalized.
-- P07's exact `+25% trains spawned` realization and P33's Population-per-City-stop value remain open because both depend directly on the finalized service-cycle/stop cadence.
+The design goal is deliberately permissive: coherent/deep rail webs and high-density optimized circuits should be economically valuable. The game does **not** impose a hidden hard stop cap merely to suppress clever layouts. A controller that arranges an unusually efficient circuit through many Cities/Ports is allowed to profit from that optimization unless real benchmark/playtest evidence shows pathological/game-breaking behavior.
 
-The next rail-design pass must therefore solve **multi-stop routing, anti-cheese throughput, service-cycle termination, and FFY-per-route economics together**, rather than assigning P33 a number against inherited Train behavior.
+Baseline service rules:
+
+- **Train speed:** `25 rail cells/second`.
+- **Primary Train occupancy:** each Factory supports at most **one active primary Train** at a time.
+- A Factory may dispatch its next primary Train only after the prior primary Train **returns to its originating Factory or is destroyed**, then waits a **5-second turnaround**.
+- A normal primary dispatch selects **up to five distinct connected eligible City/Port stations** as route-construction targets. Five is a **target count, not a payout/event cap**. If fewer than five eligible stations are connected, use the available set.
+- Target selection uses a deterministic rotating/shuffled service queue so large connected rail networks are not permanently reduced to their nearest few stations.
+- Route ordering/pathing then minimizes **expected travel time** for a finite closed tour starting and ending at the originating Factory and visiting all selected targets. With uniform rail speed this reduces to shortest physical rail distance between service points.
+- The route generator does not intentionally add arbitrary loops solely to farm events; however, retracing produced naturally by the actual rail topology is legal.
+
+The economic trigger is intentionally simple and physical:
+
+> **Whenever a Train physically reaches/passes through an eligible City or Port station along its finite service route, that station triggers its ordinary Train FFY event.**
+
+This rule is independent of whether the station was one of the route generator's selected targets. Incidental stations count. If the finite route physically reaches the same eligible station multiple times, **every qualifying pass triggers another event**.
+
+Every paying station event imposes a **1.5-second dwell**, exactly 15 simulation ticks at the accepted 10 Hz baseline, before the Train continues. There is no hard per-tour economic-event cap. Travel distance plus station dwell plus the one-primary-Train/return/turnaround cycle provide natural throughput costs while preserving the reward for dense, well-designed rail networks.
+
+Factory level does **not** increase ordinary Train count. It scales the configured industrial/train FFY event value through the canonical `100/110/120/130/140%` L1→L5 progression in `TERRAIN_AND_STRUCTURES.md`.
+
+The exact ordinary **FFY amount/formula** for City/Port Train events remains part of the broader FFY-economy pass alongside Trade Ship and other event payouts. Train route mechanics, stop/event semantics, speed, dwell, occupancy, turnaround, P07 quantity behavior, and P33 Population behavior are no longer blocked on that payout value.
+
+#### P07 — +25% Trains
+
+P07 modifies dispatch quantity rather than Train speed. Each Factory tracks its own normal primary dispatch count. **Every fourth normal primary dispatch simultaneously launches one additional bonus Train** using the same ordinary route-generation/service rules.
+
+Thus four normal dispatch cycles yield four primary Trains plus one bonus Train: exactly `+25%` Train count over the sequence. The bonus Train has an independently generated deterministic route and does **not** occupy or delay the Factory's primary Train slot. Destruction does not reset the per-Factory sequence.
+
+#### P33 — rail-demographic City events
+
+Whenever a Train-triggered ordinary economic event occurs at a City owned by the P33 trait-holder, that City also grants:
+
+```text
+20 × completed City level
+```
+
+Available Population to its owner, Capacity-capped. The provisional L1→L5 event values are therefore:
+
+```text
+20 / 40 / 60 / 80 / 100 Population
+```
+
+P33 follows the same physical-event rule as ordinary Train economics: incidental City passes count, and repeated qualifying passes through the same City during one finite route trigger P33 again. Port events do not generate P33 Population.
+
+Before V1 release, accelerated benchmark simulations should compare optimized rail-demographic strategies—including dense circuits, many Factories, P07/P33, and high City levels—against strong ordinary Population-growth/economic strategies across representative maps and game stages. Hyper-optimized rail being meaningfully stronger is acceptable; retuning is intended for pathological/game-breaking scaling, not for eliminating the reward for clever railway design.
 
 ---
 
@@ -1622,7 +1661,7 @@ Purchased Cities follow §18.4: they can only be bought directly at level 5 for 
 
 #### Heavy Artillery — provisional 8 points
 
-Every baseline Tank is transformed according to §18.6: 10-second construction, `1.5×` purchase cost, half movement, 50% more range, enormous alpha with 12-second reload, and no Train raiding. This is a doctrine transformation of the one baseline Tank unit, not a separate normally purchasable unit class.
+Every baseline Tank is transformed according to §18.6: 10-second construction, `1.5×` purchase cost, half movement, 50% more range, enormous alpha with 12-second reload, and no Train raiding. This is a doctrine transformation of the one baseline Tank unit, not a separate normally purchasable unit class. Its `1,000 Population / 12s` attack intentionally retains the baseline Tank's `83.33 Population/s` sustained direct Population DPS while changing the cadence to large alpha/long reload.
 
 #### Radioactive Munitions — provisional 9 points
 
@@ -1993,15 +2032,15 @@ The following remain intentionally outside the settled design contract unless ot
 - exact counter-response casualty/rate coefficients;
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
-- exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
+- exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory/Train-event baseline and the exact ordinary City/Port Train event value;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled stable identity components + roll-dependent naming/quality treatment;
 - playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
 - executable/property-test implementation for Echo distribution, scoring, generated naming, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
 - authored anime dialogue/catchphrase/reference curation for Origin traits and Official Origins; V1 Echoes deliberately do not depend on an anime quote/subtitle corpus;
-- playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
+- playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, Train speed/dwell/turnaround/P33 coefficient, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
 - exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
 - exact Trade Ship numerical translation where not already specified;
-- **exact Train multi-stop route construction, stop-selection/termination rules, Factory active-Train/turnaround behavior, FFY-per-route/stop economics, P07 realization, P33 Population amount, and final Train/Tank pursuit balance**, subject to the accepted §20.2 rail-network constraints and current provisional 25-cell/s Train-speed target;
+- final Train/Tank pursuit/interception balance after implementing the settled Train route/service model; the mechanics themselves are settled, but the provisional 25-cells/s Train speed and related combat numbers remain benchmark/playtestable;
 - detailed lobby/UI implementation outside the settled Echo collection/reward-card concepts;
 - supply/logistics connectivity as a separate system.
 
@@ -2082,10 +2121,10 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 69. **One canonical design document governs the target; one canonical integration plan governs the migration; `TERRAIN_AND_STRUCTURES.md` is the canonical detailed data appendix for accepted terrain/structure/Tank values.**
 70. **Tundra and Shallow Water are conquerable but non-population-bearing; Tundra is unbuildable and Shallow Water is an unbuildable land-operation/naval crossing terrain.**
 71. **The Tank is the sole baseline persistent land military unit: Factory-produced in 5 seconds, autonomous/strategic rather than RTS-microed, able to fight armor, raid Trains, and attack Population without capturing territory; Mountain and Shallow Water are armored barriers.**
-72. **P43 transforms every Tank into 10-second Heavy Artillery with higher cost, half movement, longer range, huge alpha/long reload, disabled Train raiding, the same movement barriers, and projectiles that may cross those barriers.**
+72. **P43 transforms every Tank into 10-second Heavy Artillery with higher cost, half movement, longer range, huge alpha/long reload, disabled Train raiding, the same movement barriers, and projectiles that may cross those barriers; its 1,000/12s Population attack retains the Tank's sustained direct Population DPS rather than quadrupling it.**
 73. **P44 costs 9 Origin points and makes successful Population attacks neutralize/apply Fallout to up to 10 eligible cells for Tanks or 50 for Heavy Artillery; it is independent of and legally combinable with P43.**
 74. **Purchased Warships have a 5-second construction delay at a Port; purchase-resource/cost transformations do not bypass it unless explicitly stated.**
 75. **Ordinary V1 maps have exactly 4,800,000 raster cells; population-bearing-cell count is map-dependent and alternate gameplay resolution scales are not supported.**
 76. **Ordinary V1 Initial Territory is 1,000 population-bearing cells. Starting Population is 50% of final modified Initial Territory before explicit Starting-Population modifiers, so vanilla starts at 500/1,000.**
 77. **Ordinary Population base growth is exactly `0.05 × Capacity^0.75` Population/s, with piecewise-linear utilization anchors and a 40–60% maximum-efficiency band; P02 horizontally widens that band to 30–70%.**
-78. **The final Train system must reward coherent deep rail webs and support multiple economically meaningful stops per service run; exact throughput/routing/economics remain open under §20.2 rather than inheriting OpenFront's current spawning/station-hop behavior.**
+78. **Factory Trains use finite multi-stop closed service tours at a provisional 25 cells/s: one primary Train per Factory, up to five deterministic target stations per route-construction pass, every actual City/Port pass produces an event and 1.5s dwell with no hard event cap, the Factory waits 5s after return/destruction, P07 adds one bonus Train every fourth primary dispatch, and P33 adds `20 × City level` Capacity-capped Population per qualifying City event. Ordinary Train FFY event values remain part of the broader FFY-economy tuning pass.**
