@@ -1077,12 +1077,12 @@ With the current natural `P0 ≈ 2.50%`, representative next-pull Lucky+ chances
 | ---: | ---: |
 | 0 | **2.50%** |
 | 20 | **~2.50%** |
-| 30 | **~2.68%** |
-| 35 | **~3.72%** |
-| 40 | **~8.80%** |
-| 45 | **~29.30%** |
-| 47 | **~48.18%** |
-| 48 | **~61.63%** |
+| 30 | **~2.77%** |
+| 35 | **~4.22%** |
+| 40 | **~11.04%** |
+| 45 | **~37.59%** |
+| 47 | **~61.63%** |
+| 48 | **~78.63%** |
 | 49 | **100% on the 50th pull** |
 
 The percentages above are derived validation examples for the current natural generator rather than separately authored constants.
