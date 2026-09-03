@@ -24,7 +24,7 @@ The current fork is a strong basis for Open Fufu and should **not** be rewritten
 
 The migration strategy is:
 
-> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and inherited progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol, public spawn-profile transformations, and Initial Territory footprint generation. Extend the inherited terrain substrate with the accepted Open Fufu terrain library and Fallout overlay semantics. Adapt inherited structure/upgrading infrastructure into Open Fufu's deliberate eight-structure level-1-through-level-5 system, public Fort concept, Observation/Command Posts, launcher tier gates, and explicit naval/structure effects. Add the Factory-produced Tank as the sole baseline persistent land military unit and implement Heavy Artillery/Radioactive Munitions as typed Origin transformations of that same unit. Add Open Fufu's versioned **Origin** faction-identity system and the **Echo** system as 12,927 fixed mechanical collectible identities with rerolled EchoScore-weighted acquisition magnitudes, duplicate Pareto progression, accumulated match rewards, versioned private presentation assignments/content, saved Echo Sets, pending reward settlement, Middle Fingers duplicate/Gacha currency, and the 10/100-Middle-Finger Gacha Store with paid-pull-only 50-pull power-12 Lucky+ pity through explicit typed/versioned rules rather than hidden faction bonuses. Keep the public repository focused on engine/contracts/generators/validation while production Echo catalogue/content/account records remain versioned runtime/private data.
+> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and inherited progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol, public spawn-profile transformations, and Initial Territory footprint generation. Extend the inherited terrain substrate with the accepted Open Fufu terrain library and Fallout overlay semantics. Adapt inherited structure/upgrading infrastructure into Open Fufu's deliberate eight-structure level-1-through-level-5 system, public Fort concept, Observation/Command Posts, launcher tier gates, and explicit naval/structure effects. Add the Factory-produced Tank as the sole baseline persistent land military unit and implement Heavy Artillery/Radioactive Munitions as typed Origin transformations of that same unit. Add Open Fufu's versioned **Origin** faction-identity system and the **Echo** system as 12,927 fixed mechanical collectible identities with rerolled EchoScore-weighted acquisition magnitudes, deterministic generated names, duplicate Pareto progression, accumulated match rewards, saved Echo Sets, pending reward settlement, Middle Fingers duplicate/Gacha currency, and the 10/100-Middle-Finger Gacha Store with paid-pull-only 50-pull power-12 Lucky+ pity through explicit typed/versioned rules rather than hidden faction bonuses. Keep production account/progression records in runtime/private data while the compact reusable Echo naming grammar/configuration may live as ordinary versioned game data. V1 Echoes require no anime quote/subtitle/MAL import pipeline.
 
 A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
 
@@ -120,7 +120,7 @@ Origins and Echoes modify the explicit rule-bearing configuration consumed by th
 | Official + Custom Origin definitions/creator | **New** |
 | Exhaustive Origin-catalogue combination deployment gate | **New** |
 | Open Fufu Echo identity catalogue/owned rolls/Echo Sets/rewards/pending settlement/Gacha Store | **New** |
-| Private/versioned Echo production content pack and import pipeline | **New; runtime/private data, not public source content** |
+| Deterministic Echo generated-name grammar/configuration | **New; small versioned character-pool/stat-token/descriptor configuration, no quote corpus required** |
 | Open Fufu-owned SQLite persistence | **New / Adapt surrounding session infrastructure** |
 
 ---
@@ -1195,7 +1195,9 @@ Official PvE AI should consume the same legal gameplay observation/action contra
 
 Official AI factions bind an Origin and Echo loadout through the same legal mechanics. Official Origins are ordinary legal Origin builds from the same deployed trait catalogue, with no creator-only hidden points, traits, formulas, or bonuses.
 
-Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs. Higher-difficulty/special AI presets may additionally carry explicit individually authored Echo reward bonuses; those bonuses are progression data, not hidden simulation advantages. Exact bonus values are defined only when the corresponding AI presets are designed; the Echo system itself does not define a universal difficulty-tier reward multiplier.
+The provisional V1 character-based preset roster and each character's shared allowed Origin pool are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Human controller/Origin/Echo Set choices lock before the match seed resolves each AI preset's allowed Origin; the selected AI Origin is then surfaced before Strategic Spawn. The randomly selected Origin does not alter the preset's eventual difficulty/reward identity.
+
+Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs. Difficulty belongs to the implemented controller's competence rather than lore power. Higher-difficulty/special AI presets may additionally carry explicit individually authored Echo reward bonuses; those bonuses are progression data, not hidden simulation advantages. Exact difficulty ratings and bonus values remain deliberately unset until the corresponding controllers are designed; the Echo system itself does not define a universal difficulty-tier reward multiplier.
 
 ---
 
@@ -1265,7 +1267,9 @@ Controller debug annotations are private participant/developer data, not public 
 
 Strategic spawn selections/reveals should be represented as explicit pre-match state/protocol messages rather than pretending they are ordinary simulation ticks. The UI must display one or two areas/origins according to each faction's public spawn profile without special manual intervention.
 
-The Echo UI must implement the settled card/collection language: a searchable/filterable/favoritable **Echoes** grid; Echo Sets referencing identity IDs; tier-family border colors with continuous EchoScore gradients; responsive hover/focus card expansion with touch-safe alternatives; deliberately dull gray/white Questionable presentation with no special aura/effects; restrained animated Lucky glow; and intentionally excessive Cheater pink/violet/rainbow/radiant-beam presentation. The base item/content identity remains recognizable across those quality treatments.
+The Echo UI must implement the settled card/collection language: a searchable/filterable/favoritable **Echoes** grid; Echo Sets referencing identity IDs; deterministic generated names; tier-family border colors with continuous EchoScore gradients; responsive hover/focus card expansion with touch-safe alternatives; deliberately dull gray/white Questionable presentation with no special aura/effects; restrained animated Lucky glow; and intentionally excessive Cheater pink/violet/rainbow/radiant-beam presentation. The identity-level character/stat naming components remain recognizable across quality treatments and duplicate upgrades, while magnitude adjective(s) change with the retained roll.
+
+Generated names are derived from a stable identity-level character possessive and concrete-stat token(s), plus polarity-aware magnitude descriptor(s). Mixed names use the accepted `with a side of` grammar. Exact mechanical modifiers remain displayed directly and are authoritative; the flavor name never replaces the stat sheet. Avoid mechanically assembling awkward scope prefixes into phrases such as `Naval Guitar Solo` when a deliberate concrete-key token/override would read better.
 
 Large acquisition batches must group repeated identities, eliminate dominated duplicate rolls, and show only surviving incomparable Pareto-frontier choices. The current retained copy is the first/default choice when it survives; if it is dominated, the deterministic highest-EchoScore survivor may be the UI default without redefining Pareto superiority. The result remains a persistent pending settlement through reconnect until accepted, and V1 blocks another reward-bearing match or additional Gacha pulls while one remains unresolved.
 
@@ -1283,7 +1287,7 @@ Preserve deterministic archive/replay philosophy but make the server the source 
 
 Archive exact committed controller decisions/operation changes so ordinary replay does **not** need to re-execute historical untrusted controller code. A stronger verification/debug mode may separately re-run archived controller/runtime versions and compare outputs.
 
-Record/bind the exact terrain/structure/unit ruleset version, Origin definition/version, Origin-trait catalogue identity where required, equipped Echo **identity IDs plus the exact retained magnitude configuration used for the match**, Echo mechanical-identity catalogue version, presentation/content-assignment version where historical presentation needs it, applicable acquisition/roll-rules version, and enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprint(s) without relying on later code defaults.
+Record/bind the exact terrain/structure/unit ruleset version, Origin definition/version, Origin-trait catalogue identity where required, equipped Echo **identity IDs plus the exact retained magnitude configuration used for the match**, Echo mechanical-identity catalogue version, Echo naming/presentation version where historical wording/presentation needs it, applicable acquisition/roll-rules version, and enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprint(s) without relying on later code defaults.
 
 Replay/hash state must include rule-bearing residual/effective state such as faction-level fractional neutral-settlement residuals, mobile-unit construction state, Tank/Heavy-Artillery health/repair/targets, and any deterministic Radioactive-Munitions footprint resolution needed to affect later outcomes.
 
@@ -1364,7 +1368,7 @@ Use **SQLite** as the V1 authoritative structured runtime store, with normal mig
 
 ### 21.0 Public source versus private/runtime data
 
-The public `open-fufu-io` repository defines the reusable game implementation and data contracts; it is **not** the production Echo content database.
+The public `open-fufu-io` repository defines the reusable game implementation and data contracts. For Echoes, the compact generated-name grammar/configuration may also live in public/versioned game data; it is not a 12,927-row authored-name corpus and does not require a private copyrighted quote pack.
 
 Public source should contain things such as:
 
@@ -1372,13 +1376,14 @@ Public source should contain things such as:
 - schemas and migrations;
 - deterministic Echo identity-generation/materialization logic;
 - EchoScore, acquisition, Pareto/duplicate, reward, Gacha, pity, and validation algorithms;
-- import/validation tooling;
+- generated-name grammar and the accepted magnitude descriptor table;
+- versioned shape-character pools and concrete-stat token mappings once authored;
 - UI/rendering implementation;
-- synthetic/sample fixtures sufficient for development/tests without the private anime pack.
+- synthetic/sample fixtures sufficient for development/tests.
 
-The live installation consumes versioned private/runtime records, including active granular Echo/rules configuration, the production mechanical registry/materialization, anime dialogue/content, Echo-to-line and visual assignments, owned rolls, Echo Sets, Middle Fingers balances, pity state, pending settlements, and other account/progression records. Accepted V1 values may be documented here and in the design contract while the executable implementation loads the corresponding active values from versioned data rather than requiring source edits to retune them.
+The live installation consumes versioned runtime/private records including active granular Echo/rules configuration where data-driven, the production mechanical registry/materialization where useful, owned rolls, Echo Sets, Middle Fingers balances, pity state, pending settlements, and other account/progression records. Accepted V1 values may be documented here and in the design contract while the executable implementation loads corresponding active values from versioned data where practical rather than requiring source edits to retune them.
 
-SQLite is the authoritative structured runtime store once content is imported. However, curated private authored content/assignments must not exist only as irreplaceable mutable rows in one live database. Maintain an importable/backed-up private authoring source so the runtime database can be rebuilt or migrated without losing the corpus. The exact private revision-control/storage mechanism is deployment/implementation work.
+**V1 does not require or store an Echo anime-dialogue corpus, Echo-to-line assignments, MAL source catalogue, or quote/subtitle import metadata.** Authored anime dialogue/reference content is instead a much smaller Origin-trait / Official-Origin content concern and can use an implementation-appropriate authoring/revision workflow when that content is produced.
 
 Persistent concepts include:
 
@@ -1394,15 +1399,14 @@ Persistent concepts include:
 - Custom Origin definitions bound to the exact catalogue/version they use;
 - Echo mechanical-identity catalogue versions and acquisition/roll-rules versions;
 - the 12,927 fixed mechanical Echo identity definitions or a versioned deterministic representation/materialization of them;
-- versioned Echo dialogue/content records plus Echo-identity-to-line/visual presentation assignments; line IDs need not be unique per mechanical identity;
-- private anime-source catalogue/import metadata where useful, including MAL/source identity and watched-episode provenance;
+- **Echo naming versions/configuration**: shape-character pools, concrete-key stat tokens, polarity-aware magnitude descriptor table, grammar/order rules;
 - owned Echo rolls: account + Echo identity ID + retained magnitude(s), at most one retained configuration per identity, plus favorite state where stored there or separately;
 - saved named **Echo Sets** referencing owned Echo identity IDs rather than historical magnitude instances;
 - **Middle Fingers** balance;
 - Gacha Store paid-pull pity state: consecutive non-Lucky+ counter plus the versioned purchase/qualification/curve rules needed to interpret it;
 - persistent pending reward/Gacha settlement state including surviving per-identity Pareto-frontier candidates, deterministic defaults, attributable Middle Fingers, source, and status;
 - auditable Echo acquisition/reward events where useful, including source, rolled magnitudes, EchoScore/tier, duplicate/Middle-Fingers result, retained/rejected/chosen outcome, and pity before/after when applicable;
-- official AI versions and configured special-AI Echo reward bonuses once those presets exist;
+- official AI versions and configured special-AI Echo reward bonuses once those presets/controllers are assigned;
 - matches/results;
 - per-faction bound Origin and exact equipped Echo identity+magnitude set used by the match;
 - reward-entity / accumulated Echo-roll result data needed for correct post-match settlement and audit;
@@ -1410,9 +1414,11 @@ Persistent concepts include:
 - replay metadata;
 - progression/rewards.
 
+Generated Echo display-name strings generally need **not** be persisted because they can be reproduced from identity + retained magnitude(s) + naming version.
+
 Large replay/log/debug artifacts may be stored as compressed files with path/hash/version metadata in SQLite rather than bloating the database unnecessarily.
 
-Exact schema, indexes, backup/retention policy, private authoring-source format, and replay-file layout remain implementation work.
+Exact schema, indexes, backup/retention policy, Origin reference-content authoring format, and replay-file layout remain implementation work.
 
 ### 21.1 Origin definitions and production validation
 
@@ -1453,11 +1459,48 @@ The current accepted design passes introduce concrete catalogue mechanics that t
 
 The concrete catalogue is maintained in `ORIGIN_TRAIT_CATALOGUE.md`. Provisional point balancing may change through testing without changing these accepted mechanic identities.
 
-### 21.3 Echo identity, ownership, rewards, collection, content, and Gacha Store migration
+### 21.3 Echo identity, ownership, rewards, collection, generated naming, and Gacha Store migration
 
-The collectible system formerly referred to as **items** is canonically **Echoes**. Implement the model in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md), not the retired magnitude-specific catalogue model.
+The collectible system formerly referred to as **items** is canonically **Echoes**. Implement the model in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md), not the retired magnitude-specific or dialogue-assignment catalogue model.
 
-The persistent mechanical identity registry contains exactly **12,927 fixed identities** derived from the accepted 93 concrete stat+scope keys and three shapes. Mechanical identity fixes identity ID, shape, concrete key(s), and polarity. The production rows should be deterministically derivable/materializable from the versioned key catalogue and shape rules rather than maintained as 12,927 hand-authored source-code constants. Dialogue/flavor lines and visual presentation are separate versioned private content assignments; multiple identities may share one line family without changing their mechanics. Magnitudes are **acquisition-instance data** and reroll whenever that identity is acquired.
+The persistent mechanical identity registry contains exactly **12,927 fixed identities** derived from the accepted 93 concrete stat+scope keys and three shapes. Mechanical identity fixes identity ID, shape, concrete key(s), and polarity. The production rows should be deterministically derivable/materializable from the versioned key catalogue and shape rules rather than maintained as 12,927 hand-authored source-code constants. Magnitudes are **acquisition-instance data** and reroll whenever that identity is acquired.
+
+Implement the Echo display name as a deterministic function of identity + acquired/retained magnitudes + naming version. The naming configuration contains shape-specific anime-character possessive pools, one deliberately authored token/noun phrase per concrete stat key (or explicit concrete-key override), the accepted polarity-aware magnitude descriptors, and fixed grammar/order rules.
+
+Accepted magnitude descriptors:
+
+```text
+-6 Catastrophic
+-5 Cursed
+-4 Wretched
+-3 Dreadful
+-2 Shoddy
+-1 Questionable
++1 Decent
++2 Good
++3 Great
++4 Amazing
++5 Fantastic
++6 Absurd
+```
+
+Descriptor sign follows **beneficial/harmful polarity rather than raw arithmetic sign**. For example, a beneficial `-4%` build-cost modifier uses `Amazing`; a harmful `+4%` build-cost modifier uses `Wretched`.
+
+Accepted templates:
+
+```text
+Single:
+<Character>'s <positive descriptor> <stat token>
+
+Dual positive:
+<Character>'s <descriptor1> <stat token1> of <descriptor2> <stat token2>
+
+Mixed:
+<Character>'s <positive descriptor> <positive stat token>
+with a side of <negative descriptor> <harmful stat token>
+```
+
+Character/stat words remain stable for the identity under the naming version; magnitude adjective(s) may change when the retained roll changes. Dual stat order must be deterministic. Avoid mechanical-sounding scope-prefix assembly such as `Naval Guitar Solo` merely because a key is Warship-scoped; deliberately authored concrete-key phrases/overrides are preferred. Examples such as `Guitar Solo` remain illustrative until deliberately assigned in the naming config.
 
 Ordinary acquisition must follow the settled probability pipeline:
 
@@ -1487,7 +1530,7 @@ Implement match rewards as an accumulated roll pool attached to the canonical re
 
 - start at 0;
 - +1 for each qualifying opponent defeated while the reward entity remains active, regardless of kill credit;
-- configured special-AI preset bonus in addition to its ordinary +1, once such a preset is actually defined;
+- configured special-AI preset bonus in addition to its ordinary +1, once assigned to that implemented preset/controller;
 - +5 for victory;
 - defeat preserves accumulated rolls;
 - every accumulated roll becomes an Echo acquisition.
@@ -1512,11 +1555,9 @@ P_lucky+(n) = P0 + (1 - P0) × r(n)
 
 with the 50th consecutive paid pull guaranteed Lucky-or-better if the ordinary roll does not qualify. Any natural or rescued paid Lucky/Cheater resets the counter. Rescue/guarantee samples from the ordinary generator conditioned on `EchoScore >= 1.00`. There is **no Cheater pity or guarantee**.
 
-The browser collection surface is **Echoes**, not Inventory. Implement the settled card grid, effect/content search, multi-select mechanical filtering, favorites, useful quality sorting, no unknown silhouettes, and multiple saved seven-Echo configurations provisionally named **Echo Sets** referencing identity IDs. Replacing a retained duplicate roll automatically updates every Echo Set that references that identity.
+The browser collection surface is **Echoes**, not Inventory. Implement the settled card grid, generated-name/character/stat-token search where useful, multi-select mechanical filtering, favorites, useful quality sorting, no unknown silhouettes, and multiple saved seven-Echo configurations provisionally named **Echo Sets** referencing identity IDs. Replacing a retained duplicate roll automatically updates every Echo Set that references that identity and may also change the generated magnitude adjective(s) shown for that same identity.
 
-The initial private anime source catalogue is derived from the public MyAnimeList list for user **`Fufuway`**, restricted to **Watching (`status=1`) and Completed (`status=2`)**. Completed titles may contribute dialogue from the full anime. Watching titles may contribute only from episodes at or below the MAL-recorded watched progress. If a candidate source cannot provide reliable episode provenance for a currently-watching title, do not automatically activate that line until the title is completed or the line is manually verified as spoiler-safe.
-
-Actual source adapters/harvesting are implementation work. The importer may later use quote databases/APIs, subtitle sources, manually supplied material, or other usable sources, then normalize, deduplicate, filter, curate, approve, and import the private line corpus. Candidate harvesting and live activation are separate stages. None of this requires the public repository to contain the production anime quotes themselves.
+V1 has **no Echo dialogue-line/voice-line assignments, MAL Echo source catalogue, or quote/subtitle harvesting/import pipeline**. Authored anime dialogue/reference content belongs to the much smaller Origin-trait / Official-Origin presentation surface for V1 and may use its own lightweight curation process independently of Echo implementation.
 
 Do not preserve stale persistence/UI/API naming merely because inherited or provisional code called these records `items`; internal transitional database/type names may be migrated pragmatically, but the public game concept is Echo.
 
@@ -1595,7 +1636,7 @@ Performance and simulation tests should cover:
 - no hidden combination exclusion table being necessary for any deployed catalogue;
 - Echo mechanical identity registry cardinality exactly `93 + C(93,2) + 93×92 = 12,927`, with dual identity order-insensitivity, mixed polarity distinction, and same-key mixed pairs rejected;
 - deterministic Echo identity derivation/materialization from the versioned concrete-key catalogue and shape rules, without requiring 12,927 hand-authored source constants;
-- development/test environments being able to run against synthetic/sample Echo content without access to the private production anime corpus;
+- development/test environments being able to run against synthetic/sample Echo naming configuration without any anime quote corpus;
 - Echo acquisition shape selection using `50% mixed / 35% dual / 15% single` independently of raw per-shape identity cardinality;
 - uniform identity selection within each selected shape, including statistical/property tests that no stat-family/scope/owned-state weighting leaks into V1;
 - Echo magnitude rolls using whole integer percentages and the published dual-positive ceilings;
@@ -1603,9 +1644,15 @@ Performance and simulation tests should cover:
 - positive magnitude-weight anchors following `10^(-2S)` and negative anchors using logarithmic weight interpolation;
 - aggregate deterministic enumeration reproducing the expected current natural Lucky+ rate of approximately 2.50% within an appropriate exact/tolerance test derived from the current registry;
 - exact rolled-quality tier boundaries: Trash / Questionable / Decent / Not Bad / Lucky / Cheater;
-- repeated acquisition of one Echo identity rerolling magnitudes while preserving mechanical/base content identity and using the correct versioned presentation assignment;
-- presentation assignments permitting multiple identities per dialogue line without changing mechanical IDs/owned rolls;
-- Questionable versus Cheater presentation changing only quality treatment, not mechanical/base item identity, with no mechanically required information hidden behind hover;
+- repeated acquisition of one Echo identity rerolling magnitudes while preserving mechanical identity and stable character/stat naming components under the bound naming version;
+- deterministic generated-name character token selection from the correct shape-specific pool;
+- concrete-stat token mapping/override stability under a naming version and avoidance of schema-prefix-dependent identity changes;
+- magnitude descriptors changing deterministically with the acquired/retained roll;
+- descriptor lookup following beneficial/harmful polarity rather than naive arithmetic sign, including beneficial negative-percentage cost/cooldown/time cases;
+- deterministic dual-positive stat-token display order;
+- exact mixed-name grammar using the accepted `with a side of` connector and positive component first;
+- naming-version binding reproducing historical wording where required;
+- Questionable versus Cheater presentation changing only quality treatment, not mechanical identity/stable naming components, with no mechanically required information hidden behind hover;
 - one retained roll per account+identity, exact Middle Fingers salvage `1/2/3/4/6/8` by newly acquired tier regardless of source/retention, and correct Pareto auto-upgrade/auto-reject/player-choice semantics including harmful-axis direction;
 - batch duplicate grouping/Pareto-frontier reduction showing no dominated candidates and preserving Middle Fingers count;
 - pending settlement persistence through disconnect/reconnect, deterministic default selection, atomic acceptance, and blocking of another reward-bearing match/Gacha pull until resolution;
@@ -1622,8 +1669,8 @@ Performance and simulation tests should cover:
 - rescue/guarantee selecting only from the ordinary acquisition distribution conditioned on Lucky+ rather than statistical unusualness;
 - no Cheater guarantee or progressive Cheater pity;
 - Echo Sets referencing identity IDs so retained-roll replacement propagates automatically;
-- Echo collection search/filter/favorite behavior and tier/card rendering semantics at the browser/UI test layer;
-- MAL content importer selecting only Fufuway `status=1`/`status=2` entries and enforcing the watched-episode upper bound for currently-watching titles where candidates are automatically activated;
+- Echo collection generated-name/character/stat-token search, mechanical filter/favorite behavior, and tier/card rendering semantics at the browser/UI test layer;
+- explicit absence of Echo dialogue-assignment/MAL/source-import dependencies from V1 persistence and deployment;
 - Strategic Spawn Phase-1 projection including all participants' public Origins, Initial Territory values, Starting Population effects, effective spawn profiles, and relevant spawn modifiers;
 - Strategic Spawn Phase-1 simultaneous choice/reveal for ordinary one-area and split two-area profiles;
 - split-origin half-area geometry (`50% area`, not `50% radius`) and deterministic public representation;
@@ -1806,14 +1853,17 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
 11. OFFICIAL PVE AI PRESETS + MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
     + REWARD-ENTITY / ECHO ROLL-POOL SETTLEMENT
        ↓
-12. SQLITE / DISCORD AUTH / ECHO OWNED-ROLL+PRIVATE-CONTENT-ASSIGNMENT+ECHO-SET
+12. SQLITE / DISCORD AUTH / ECHO OWNED-ROLL+ECHO-SET
     + MIDDLE-FINGERS+PAID-PITY+PENDING-SETTLEMENT STATE / FOOF API
        ↓
-13. PRIVATE ECHO CONTENT IMPORT/CURATION PIPELINE + MAL SOURCE-CATALOGUE SUPPORT
+13. ECHO GENERATED-NAMING CONFIG + GENERATOR
+    (shape character pools, stat-token dictionary, polarity-aware descriptors, grammar/versioning)
        ↓
 14. BROWSER EDITOR / DEBUG / ORIGIN CREATOR / ECHOES COLLECTION + ECHO SETS
     / CARD PRESENTATION / DUPLICATE SETTLEMENT / GACHA STORE / FINAL LOBBY UX
 ```
+
+There is no V1 private Echo quote/MAL content-import stage. Authored anime dialogue/reference work belongs to the smaller Origin-trait / Official-Origin content pass and can proceed independently of Echo implementation.
 
 Some workstreams may overlap. Typed rule hooks should exist before Origin traits depend on them. The terrain/structure/unit/weapon and spawn rule schemas must be able to express the accepted catalogue mechanics before the exhaustive Origin deployment gate can be meaningful. Downstream systems must not force premature retuning onto otherwise settled mechanic shapes.
 
@@ -1852,27 +1902,27 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority, Population/frontage, combat, capitulation, controller-contract, strategic-spawn, Origin/Echo, expanded-terrain, eight-structure, Tank/Heavy-Artillery, neutral-settlement, amphibious-Fort, SAM-shield, strategic-weapon-gating, and Echo identity/reward/Gacha/content-boundary decisions, the legitimately open questions are now narrower:
+After the authority, Population/frontage, combat, capitulation, controller-contract, strategic-spawn, Origin/Echo, expanded-terrain, eight-structure, Tank/Heavy-Artillery, neutral-settlement, amphibious-Fort, SAM-shield, strategic-weapon-gating, Official-AI roster/Origin-pool, and Echo identity/reward/Gacha/generated-naming decisions, the legitimately open questions are now narrower:
 
 1. **Exact final TypeScript names/types and ergonomic naming** after prototype pressure-testing of the accepted controller-contract shape, including pre-match spawn lifecycle hooks capable of expressing one- and two-origin public spawn profiles and public Origin/effective-modifier views.
-2. **Origin creator tuning/content** — final player-facing trait names/IDs, further deployed trait content/costs, and future Official Origin builds/names. The current builder/catalogue values live in the Origin catalogue and remain playtest-repriceable without reopening accepted mechanics.
-3. **Echo content/import implementation** — implement the MAL/source-catalogue importer, decide concrete quote/subtitle/source adapters at implementation time, harvest/normalize/deduplicate/curate the private line corpus, and implement the private authored-content backup/revision workflow. The source-eligibility policy itself is settled: Fufuway MAL Watching + Completed, with Watching capped at already-watched episodes.
-4. **Echo visual/UI implementation** — implement the exact visual recipe renderer, card motion, responsive/touch behavior, and effects consistent with the settled rule that base item/content identity remains stable while rolled quality controls the dull Questionable → extravagant Cheater treatment.
-5. **Echo validation and later playtest tuning** — implement executable/property coverage for deterministic registry materialization, uniform identity distribution, EchoScore-weighted magnitude sampling, quality tiers, exact Middle Fingers accounting, reward accounting, Pareto/pending settlement, Origin/Echo composition, Echo Set propagation, MAL spoiler-boundary handling, and paid-pull pity. The current V1 values (`50/35/15`, current score weights/tiers, `1/2/3/4/6/8` Middle Fingers salvage, `10/100` Middle Fingers Gacha, and 50-pull power-12 Lucky+ pity) are the implementation baseline; future playtest retuning remains possible without reopening the architecture.
-6. **Exact special-AI Echo reward bonuses, when those AI presets are designed.** The Echo system's per-preset bonus hook and ordinary +1/+5/team reward semantics are settled; no bonus can be finalized for a nonexistent preset.
+2. **Origin creator tuning/content** — final player-facing trait names/IDs, anime dialogue/catchphrase/reference presentation where desired, further deployed trait content/costs, and future Official Origin revisions/additions. The current builder/catalogue values live in the Origin catalogue and remain playtest-repriceable without reopening accepted mechanics.
+3. **Echo generated-name content authoring** — choose the exact shape-specific character pools and deliberately authored concrete-key stat-token dictionary. The naming grammar, polarity semantics, descriptor vocabulary, stable-vs-roll-dependent split, and no-awkward-scope-prefix direction are settled.
+4. **Echo visual/UI implementation** — implement the exact visual recipe renderer, card motion, responsive/touch behavior, and effects consistent with stable character/stat naming components, roll-dependent magnitude adjectives, and the dull Questionable → extravagant Cheater quality treatment.
+5. **Echo validation and later playtest tuning** — implement executable/property coverage for deterministic registry materialization, generated-name stability/versioning, uniform identity distribution, EchoScore-weighted magnitude sampling, quality tiers, exact Middle Fingers accounting, reward accounting, Pareto/pending settlement, Origin/Echo composition, Echo Set propagation, and paid-pull pity. The current V1 values (`50/35/15`, current score weights/tiers, `1/2/3/4/6/8` Middle Fingers salvage, `10/100` Middle Fingers Gacha, and 50-pull power-12 Lucky+ pity) are the implementation baseline; future playtest retuning remains possible without reopening the architecture.
+6. **Exact special-AI Echo reward bonuses, when the provisional character controllers receive actual competence targets/difficulty ratings.** The character roster, allowed shared Origin pools, post-human-lock Origin roll/reveal timing, per-preset bonus hook, and ordinary +1/+5/team reward semantics are settled.
 7. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
 8. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
-9. **Exact SQLite/private-content schema/index/backup/retention details**, including the concrete mechanical-identity/content-assignment/owned-roll/Echo-Set/acquisition-event/Middle-Fingers/paid-pity/pending-settlement representation and private authoring-source format.
+9. **Exact SQLite schema/index/backup/retention details**, including the concrete mechanical-identity/naming-version/owned-roll/Echo-Set/acquisition-event/Middle-Fingers/paid-pity/pending-settlement representation and any separate lightweight Origin reference-content authoring format.
 10. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
 11. **Playtest retuning of accepted provisional terrain/structure/mobile-unit numerical values** — the tables in `TERRAIN_AND_STRUCTURES.md` are the implementation baseline, not unanswered design placeholders; simulation/playtesting may revise costs, radii, pressure, FFY scaling, movement, damage, reload, repair, build times, and P44 footprint magnitudes while preserving the accepted identities.
 12. **Exact MIRV power retuning** within the settled requirement that MIRV needs an L5-equivalent launcher and is moderately weaker than inherited behavior.
-13. **Detailed lobby/UI/UX implementation polish**, including final Origin creator presentation, expanded terrain/structure/unit displays, split-origin spawn visualization, and responsive execution of the already-settled Echoes collection, reward-card/Pareto-settlement, quality effects, Echo Sets, and Gacha/pity concepts.
+13. **Detailed lobby/UI/UX implementation polish**, including final Origin creator/preset presentation, expanded terrain/structure/unit displays, split-origin spawn visualization, and responsive execution of the already-settled Echoes collection, generated names, reward-card/Pareto-settlement, quality effects, Echo Sets, and Gacha/pity concepts.
 14. **Replacement asset creation and final proprietary-directory removal.**
 15. **Normal gameplay tuning not already given a provisional registry value** — capture-progress formula coefficients around the accepted terrain multipliers, neutral settlement progress coefficients, counter-response casualty/rate coefficients, growth reference values/interpolation, broad FFY-source mapping/naming and event payouts (especially the stronger intended Factory baseline), Segment scale, weapon radii/effects, water-nuke conversion geometry, ordinary Strategic-Spawn influence radius/shape, base Initial Territory/Starting Population, and related balance constants.
 16. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
 17. **Exact deterministic spawn-resolution implementation details** — exact-origin collision fallback, compact-footprint growth/tie-breaking details, and map-legality safeguards that ensure Initial Territory quotas whenever topology permits. The three-phase protocol, information timing, overlapping non-exclusive influence areas, accepted two-half-area split-origin profile, and Initial Territory semantics themselves are settled.
 18. **Port trade-frequency level interaction** — whether inherited Port-level trade-spawn scaling remains in addition to the settled repair-range/repair-rate level identity.
 
-The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, private debug overlays, three-phase Strategic Spawn, split-origin spawn profile, neutral-settlement Population cost/residual semantics, expanded terrain library and Fallout overlay, eight-structure model, accepted per-level structure baseline, Observation/Command Posts, Silo weapon gates, MIRV access/power direction, additive Transport costs, fortified amphibious Fort grants, 5-second Warship construction, Factory-produced Tank baseline, P43 Heavy-Artillery transformation, P44 Radioactive-Munitions transformation, Warship launcher-equivalence semantics, giant-SAM transformation, fully-developed-City purchase transformation, Origin system philosophy, exhaustive pre-deployment Origin combination guarantee, and the **12,927 fixed mechanical Echo identities + deterministic runtime materialization/private data boundary + uniform within-shape selection + rerolled EchoScore-weighted integer magnitudes + Trash→Cheater quality tiers + Middle Fingers tier-based duplicate salvage + Pareto/pending-settlement progression + accumulated all-drop reward pool + fixed-human-team reward entity + versioned shared private dialogue assignments + Fufuway MAL Watching/Completed source policy with watched-episode cap + searchable Echoes collection/Echo Sets + 10/100-Middle-Finger Gacha Store + paid-pull-only 50-pull power-12 Lucky+ pity with no Cheater guarantee** are now settled V1 design direction.
+The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, private debug overlays, three-phase Strategic Spawn, split-origin spawn profile, neutral-settlement Population cost/residual semantics, expanded terrain library and Fallout overlay, eight-structure model, accepted per-level structure baseline, Observation/Command Posts, Silo weapon gates, MIRV access/power direction, additive Transport costs, fortified amphibious Fort grants, 5-second Warship construction, Factory-produced Tank baseline, P43 Heavy-Artillery transformation, P44 Radioactive-Munitions transformation, Warship launcher-equivalence semantics, giant-SAM transformation, fully-developed-City purchase transformation, Origin system philosophy, exhaustive pre-deployment Origin combination guarantee, provisional character-based Official-AI roster/shared Origin pools, and the **12,927 fixed mechanical Echo identities + deterministic runtime materialization + uniform within-shape selection + rerolled EchoScore-weighted integer magnitudes + deterministic generated names with stable shape-character/stat components and Catastrophic→Absurd polarity-aware descriptors + `with a side of` mixed grammar + no V1 authored Echo dialogue/MAL import pipeline + Trash→Cheater quality tiers + Middle Fingers tier-based duplicate salvage + Pareto/pending-settlement progression + accumulated all-drop reward pool + fixed-human-team reward entity + searchable Echoes collection/Echo Sets + 10/100-Middle-Finger Gacha Store + paid-pull-only 50-pull power-12 Lucky+ pity with no Cheater guarantee** are now settled V1 design direction.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
