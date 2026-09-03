@@ -44,7 +44,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P04 | **X** | Response-side counter-response effectiveness fixed at `1.0`, ignoring normal response-side imbalance bonus/penalty | 3 |
 | P05 | **X** | Capturing enemy structures generates military/conquest FFY events | 8 |
 | P06 | **X** | `+25% Trade Ship speed` | 5 |
-| P07 | **X** | `+25% trains spawned` | 4 |
+| P07 | **X** | `+25% trains spawned`: every fourth normal primary Train dispatch from each Factory simultaneously launches one additional bonus Train | 4 |
 | P08 | **X** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **X** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **X** | `+100% warhead projectile speed` | 4 |
@@ -70,7 +70,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P30 | **X** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
 | P31 | **X** | Ports project expanded repair zones; Warships inside receive strong repair without docking and may remain operational | 6 |
 | P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing | 6 |
-| P33 | **X** | Train stops at an owned City generate `X` Available Population for that City owner, Capacity-capped | 6 |
+| P33 | **X** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
 | P34 | **X** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
 | P35 | **X** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
 | P36 | **X** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
@@ -90,7 +90,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P50 | **X** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
 | P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 
-P33's Population amount remains TBD. P30–P51 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
+P30–P51 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level` coefficient is likewise explicitly provisional balance data to benchmark before V1 release rather than an unresolved mechanic.
 
 ---
 
@@ -220,7 +220,21 @@ The controller must select an owned active Port as the Transport source. Ordinar
 
 ### S17 — P33 train-stop Population
 
-Any valid train stopping at a City owned by the trait-holder grants that City owner the trait-defined Available Population. Intermediate stops count. Gain is capped so Total Population cannot exceed current Capacity. Exact amount remains TBD.
+P33 attaches Population generation to the same physical City events produced by the canonical Train system. Whenever a Train reaches/passes through a City owned by the P33 trait-holder and that pass triggers the ordinary City Train economic event, the City owner also gains:
+
+```text
+P33PopulationGain = 20 × completedCityLevel
+```
+
+Therefore the provisional L1→L5 gain is exactly:
+
+```text
+20 / 40 / 60 / 80 / 100 Available Population
+```
+
+The gain is Capacity-capped and enters Available Population. The route planner's normal target count does **not** cap P33 events: incidental City passes count, and if a finite service route physically reaches the same City more than once, each qualifying pass/event triggers P33 again. A Train passing a Port does not trigger P33 because the trait is City-specific.
+
+The coefficient is intentionally balance-sensitive. Before V1 release, accelerated simulations should compare optimized rail-demographic builds against strong ordinary Population-growth builds across representative map/geography/economy states. Hyper-optimized rail being meaningfully better is acceptable; only pathological or game-breaking throughput is a reason to nerf the mechanic.
 
 ### S18 — P34 conquered Factories
 
@@ -294,6 +308,8 @@ Starting from the canonical Tank baseline in `TERRAIN_AND_STRUCTURES.md`:
 - projectiles may cross terrain the unit cannot traverse, including Mountain and Shallow Water, provided range/visibility/target legality succeeds.
 
 The intended unmodified open-terrain benchmark is emergent rather than hard-coded: one prepared Heavy Artillery is favored against one Tank, one Heavy Artillery loses to two Tanks after its opening shot, and two Heavy Artillery are intended to lose to three Tanks because the surviving Tank can destroy both during their long reload.
+
+The `1,000 Population / 12s` Population attack is intentionally retained for the provisional V1 baseline. Its sustained direct Population damage is the same `83.33 Population/s` as the baseline Tank's `250 / 3s`; Heavy Artillery converts that cadence into much larger alpha and a much longer vulnerability window rather than gaining four times the sustained Population DPS.
 
 P43 adds no hidden outnumbered modifier and no extra health.
 
@@ -389,6 +405,20 @@ where `A` and `B` are decimal bonus magnitudes. Under the current L5 values, `30
 
 Taking both traits therefore turns both structures into general support fields while preserving their distinct baseline pressure strengths. Under the current provisional baseline, both structures use radius `30/35/40/45/50`; Forts provide the stronger `10/15/20/25/30%` field while Command Posts provide the weaker `3/6/9/12/15%` field. Any future decision to differentiate their coverage radii is a separate baseline-structure tuning change, not part of P50/P51.
 
+### S36 — P07 deterministic +25% Train throughput
+
+P07 modifies dispatch quantity rather than Train speed or the Factory's ordinary primary-Train occupancy rule.
+
+Each Factory maintains its own deterministic count of **normal primary Train dispatches**. On every fourth normal primary dispatch, that Factory simultaneously launches one additional bonus Train using the same ordinary route-generation/service rules:
+
+```text
+4 normal primary dispatches
+→ 4 primary Trains + 1 bonus Train
+→ exactly +25% Train count over the dispatch sequence
+```
+
+The bonus Train does not occupy or delay the Factory's primary-Train slot. Its route/service targets are generated independently and deterministically. Train destruction does not reset the per-Factory dispatch sequence.
+
 ---
 
 ## Catalogue coverage decisions
@@ -469,4 +499,4 @@ Their current mechanical builds are the accepted first Official roster; display 
 
 The expanded terrain/structure/Tank world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning now belongs in `ECHO_CATALOGUE.md`; this catalogue should not describe that work as an unperformed expansion.
 
-Remaining Origin-side priorities are naming, balance/repricing, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
+Remaining Origin-side priorities are naming, balance/repricing, benchmark validation of balance-sensitive traits such as P33, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
