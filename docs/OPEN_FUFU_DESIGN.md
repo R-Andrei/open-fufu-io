@@ -172,12 +172,12 @@ A match must bind every rule-bearing input needed to define what that match mean
 - exact official PvE AI preset versions;
 - exact Origin definition/version for every faction;
 - Origin-trait catalogue/version where relevant;
-- equipped Echo identities/seeds;
-- Echo-generator/catalogue versions;
+- equipped Echo identity IDs plus the exact retained magnitude configuration used by each faction;
+- Echo identity-catalogue/content version and acquisition/roll-rules version where relevant;
 - spawn-mode/configuration and spawn-resolution version where relevant;
 - any other versioned data that materially changes deterministic simulation.
 
-Changing a combat formula, controller API, AI preset, Origin trait, Echo generator, spawn resolver, or map later must not silently change historical matches.
+Changing a combat formula, controller API, AI preset, Origin trait, Echo identity catalogue, Echo acquisition/roll rule, spawn resolver, or map later must not silently change historical matches.
 
 Replay/debug tooling should eventually expose:
 
@@ -792,7 +792,7 @@ A landing makes the coastal target operationally actionable; carried Population 
 
 ### 16.1 Transport embarkation FFY costs
 
-The baseline Transport embarkation FFY cost is **0 FFY**. Explicit Origin/Echo/ruleset effects that add Transport cost compose as **additive embarkation-cost modifiers**, rather than competing absolute replacement prices.
+The baseline Transport embarkation FFY cost is **0 FFY**. Explicit Origin/ruleset effects that add Transport cost compose as **additive embarkation-cost modifiers**, rather than competing absolute replacement prices.
 
 For example, the accepted fortified-landing Origin trait adds `+250 FFY` and the existing Transport-cost drawback adds `+500 FFY`; if both are present, the Transport embarkation cost is `750 FFY`.
 
@@ -838,7 +838,7 @@ Missile Silo level 5  → MIRV
 
 Higher Silo levels also increase launch-charge capacity under the normal Silo rules. A freshly built level-1 Silo therefore cannot immediately launch the strongest strategic weapon.
 
-An Origin/Echo effect that grants a weapon for free does not bypass launcher legality. In particular, an effect granting one free MIRV still requires an otherwise legal **level-5** launcher and any ordinary non-price legality requirements. If that effect is defined as a purchase-cost waiver, the player must satisfy any authored affordability/precondition check but the successful granted launch/purchase consumes `0 FFY` as specified by the trait.
+An Origin effect that grants a weapon for free does not bypass launcher legality. In particular, an effect granting one free MIRV still requires an otherwise legal **level-5** launcher and any ordinary non-price legality requirements. If that effect is defined as a purchase-cost waiver, the player must satisfy any authored affordability/precondition check but the successful granted launch/purchase consumes `0 FFY` as specified by the trait.
 
 A starting Silo granted by an Origin begins at **level 1** unless the granting trait explicitly says otherwise.
 
@@ -1134,9 +1134,9 @@ FFA victory occurs when a faction controls 100% of conquerable territory or all 
 
 Team victory occurs when all non-team opposition is defeated/capitulated or the team collectively controls all conquerable territory.
 
-If a human faction is eliminated earlier but their human team ultimately wins, that human still receives the team win and applicable team-PvE reward.
+For fixed human-team PvE reward accounting, the **human team is one reward entity**. If one human faction is eliminated while at least one human teammate remains active, the team reward entity remains active; that eliminated human still receives the same final accumulated reward pool as the surviving human teammates. If the team wins, every human teammate receives the full pool including the victory bonus rather than a divided share. If the team later loses, every human teammate receives the same pool accumulated before the team itself was eliminated.
 
-Team PvE is available only with multiple **human** players; AI teammates cannot create a solo team-progression farm.
+Team PvE is available only with multiple **human** players; AI teammates cannot create a solo team-progression farm and do not become human reward recipients merely by being allied.
 
 ---
 
@@ -1154,7 +1154,7 @@ Reference personalities may include Tanya-style concentrated breakthrough, Reinh
 
 ---
 
-## 23. Origins, Echoes, loadouts, rarity, and PvE progression
+## 23. Origins, Echoes, loadouts, and PvE progression
 
 ### 23.1 Origins
 
@@ -1267,29 +1267,32 @@ Echoes are collectible anime-dialogue-line modifiers equipped in a multi-slot lo
 
 This separation is achieved by responsible catalogue design rather than hidden Origin/Echo incompatibility restrictions.
 
-### 23.7 Echo catalogue
+### 23.7 Echo identity catalogue
 
-The collectible system formerly called **items** is canonically named **Echoes**.
+The collectible system formerly called **items** is canonically named **Echoes**. The detailed working contract is [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
-An Echo is an anime/JRPG/gacha-flavored collectible represented by a dialogue line or equivalent character-flavor text and carrying one or two deterministic mechanical modifiers.
+The current allowed modifier pool resolves to **93 concrete stat+scope keys** and exactly **12,927 permanent collectible Echo identities**:
 
-The game may contain a very large deterministic/versioned Echo catalogue. Each Echo has stable identity tied to an Echo seed/identity and generator/catalogue version, and intentionally duplicate complete mechanical signatures should be rejected.
+```text
+93 single-positive identities
+4,278 dual-positive identities
+8,556 mixed positive/harmful identities
+= 12,927 total identities
+```
 
-Echoes may contain one or two modifiers, positive effects, drawbacks, mixed combinations, deterministic dialogue/flavor/visual identity, and a positive sampling weight.
+Each identity permanently fixes:
 
-Echoes must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived.
+- shape;
+- one or two concrete stat+scope keys;
+- polarity implied by its shape/slot;
+- one dialogue/flavor identity;
+- one visual identity or deterministic visual-generation recipe.
 
-Allowed Echo modifier families may include:
+**Magnitude is not part of Echo identity.** Whenever an Echo identity is acquired, its legal integer magnitude or magnitudes are rolled for that acquisition. A later acquisition of the same recognizable Echo may therefore be weaker, stronger, or differently distributed while remaining the same collectible identity.
 
-- Population growth;
-- offensive pressure;
-- defensive pressure;
-- broad FFY/trade/economic multipliers;
-- structures;
-- naval/unit behavior;
-- terrain interactions;
-- explicit starting-state modifiers such as **Initial Territory**, which change starting owned-cell count rather than Capacity-per-cell;
-- other explicit surfaced mechanics that do not undermine the intended Origin/Echo separation.
+The permanent item table must not materialize every magnitude permutation as a separate collectible definition. The old magnitude-specific mechanical-signature catalogue model is retired.
+
+Echoes must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived. The authoritative 93-key allowed pool and its exclusions are maintained in `ECHO_CATALOGUE.md`; high-level examples here do not create additional Echo stat families.
 
 ### 23.8 Modifier stacking and rule composition
 
@@ -1315,49 +1318,64 @@ This is not intended as a universal literal implementation ordering for every me
 
 The public mechanical sheet should expose effective values and their relevant surfaced sources.
 
-### 23.9 Echo sampling weights and rarity
+### 23.9 Echo acquisition and rolled quality
 
-Every normally droppable Echo has positive sampling weight:
-
-```text
-P(Echo) = EchoWeight / sum(eligibleWeights)
-```
-
-Lower weight means rarer. Conventional rarity tiers are not required. Power should influence rarity, while deterministic collectible/flavor variation may also influence weight.
-
-Displayed inherent rarity is based on the normal global table, not a temporary filtered store table.
-
-### 23.10 PvE rewards
-
-A won configured PvE match awards independent Echo rolls determined by the configured opposing official AI presets. The player keeps the rarest result according to normal drop probability/weight.
-
-AI contribution depends on being present in the won match, not personal kill credit.
-
-For team PvE:
+The number of identities inside each shape does **not** determine how often that shape is acquired. Each ordinary acquisition first selects shape using the accepted provisional distribution:
 
 ```text
-perHumanRolls = max(1, ceil(soloEquivalentRolls / numberHumanPlayers))
+Mixed positive/harmful: 50%
+Dual positive:          35%
+Single positive:        15%
 ```
 
-Example for solo-equivalent 9:
+It then selects an identity within that shape and rolls its legal integer magnitude(s). Exact identity weighting within each shape and exact base magnitude distributions remain tuning questions.
 
-```text
-1 human → 9 rolls
-2 humans → 5 each
-3 humans → 3 each
-```
+Rolled **quality/rarity** is distinct from Echo identity. A normalized scalar may be useful for diagnostics, broad presentation, statistical analysis, optional rarity labels, or gacha qualification, but it does not redefine the collectible identity and must not override duplicate Pareto choices.
 
-### 23.11 Duplicate Echoes and gambling currency
+Statistical unusualness is not the same as positive desirability. In particular, a catastrophically bad but statistically unusual mixed roll cannot satisfy a high-quality gacha pity guarantee merely because it is rare. Pity qualification uses a separately defined positive/desirable rolled-quality threshold.
 
-Normal PvE drops may produce duplicate Echoes. A duplicate automatically converts into persistent gambling-store currency; there are no multiple owned copies and no required manual sale flow.
+### 23.10 PvE reward roll pool and reward entities
 
-Every duplicate should fund at least one store attempt. The Echo store excludes already owned Echoes, renormalizes remaining eligible weights, preserves displayed inherent rarity, and uses currency separate from FFY.
+PvE Echo rewards use an accumulated **reward roll pool**, not a victory-only `roll several candidates and keep the rarest` system.
+
+The pool begins at **0**. While the relevant reward entity remains active:
+
+- each qualifying opposing faction defeated contributes **+1 Echo roll**, regardless of who actually defeated it;
+- a configured higher-difficulty/special AI contributes that ordinary +1 plus its explicit difficulty bonus;
+- victory contributes **+5 Echo rolls**.
+
+Defeat does **not** erase already accumulated rolls. When the reward entity's run ends, every accumulated roll becomes an actual Echo acquisition. Thus 30 earned rolls produce 30 acquisitions; there is no keep-only-the-best filter.
+
+For solo play, the human faction is the reward entity and stops accumulating when that faction is eliminated.
+
+For fixed human teams, the **human team itself is the reward entity** until the human team as a whole is eliminated or the match ends. Every human teammate receives the **full final pool**, not a divided share. An early-eliminated human continues to share the team's later reward accumulation while another human teammate remains active. Fixed AI allies do not become additional human reward recipients.
+
+Exact special-AI difficulty bonuses remain balance data.
+
+### 23.11 Owned Echoes, duplicates, and Gacha Store
+
+An account retains at most **one magnitude configuration per Echo identity**. Owned identities remain eligible for future acquisition; receiving one again is a duplicate with a fresh magnitude roll.
+
+Every duplicate grants the configured persistent Echo/gacha salvage currency regardless of whether the new roll is retained.
+
+Duplicate comparison uses Pareto dominance:
+
+- if the new roll is at least as good on every axis and strictly better on at least one, it replaces the retained roll automatically;
+- if it is no better on any axis and strictly worse on at least one, the old roll is retained automatically;
+- if some axes improve while others worsen, the player chooses which roll to keep;
+- for harmful modifiers, a smaller harmful magnitude is better.
+
+Large reward/gacha batches group all copies of the same identity, remove strictly dominated candidates, compute the Pareto frontier, and ask the player only when multiple incomparable candidates remain. Duplicate currency is still awarded for every duplicate acquisition.
+
+The store is intentionally framed as the **Gacha Store** and supports single pulls, batch pulls, duplicate recycling, soft pity, and hard pity. Ordinary store-generated duplicate salvage must not deterministically refund at least the full pull cost in a way that creates an infinite-currency loop.
+
+Pity advances with qualifying paid pulls/spend without a qualifying high-quality result, naturally resets when a qualifying result occurs, and guarantees a qualifying **positive-quality** result at the configured hard threshold. Exact prices, salvage values, pity curve/threshold, qualification metric, and batch-trigger semantics remain tuning work.
 
 The final thematic name of the duplicate/store currency remains presentation work.
 
 ### 23.12 Echo loadouts
 
-Standard PvE Echo loadout size is **7 Echoes**. PvP progression/loadout standardization remains deliberately deferred.
+Standard PvE Echo loadout size is **7 Echoes**. A loadout equips the account's currently retained roll for each selected identity. PvP progression/loadout standardization remains deliberately deferred.
 
 ### 23.13 Accepted first-catalogue mechanics from the current design pass
 
@@ -1714,7 +1732,7 @@ The controller chooses origin cells, not arbitrary hand-painted starting territo
 
 Each faction has a surfaced **Initial Territory** starting-state value equal to the target number of population-bearing cells it should own when the match begins.
 
-The ruleset provides the ordinary base value. Explicit Origin traits, Echoes, or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
+The ruleset provides the ordinary base value. Explicit Origin traits or other surfaced starting-state modifiers may change that value in modes where such modifiers are allowed.
 
 After exact spawn origins resolve, the engine deterministically paints a **compact, connected, roughly circular starting footprint** outward from each ordinary origin using nearby legal population-bearing cells.
 
@@ -1772,12 +1790,20 @@ The following remain intentionally outside the settled design contract unless ot
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
 - exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
-- exact AI reward values;
+- exact special-AI Echo reward bonuses;
+- exact Echo identity-selection weighting inside each shape;
+- exact base Echo magnitude distribution within each legal integer interval;
+- final Echo dialogue/flavor authoring or generation pipeline for all 12,927 identities;
+- exact Echo visual recipe/rendering system;
+- exact duplicate/salvage currency values and final thematic currency name;
+- exact Gacha Store single-pull and batch-pull prices/discounts;
+- exact soft-pity curve, hard-pity spend/pull threshold, positive-quality qualification metric, and optional rarity/presentation labels;
+- whether pity guarantees one qualifying item somewhere within a triggering batch or transforms the triggering roll directly;
+- exact UI flow for choosing among incomparable duplicate Pareto-frontier rolls;
 - playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
 - exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
 - exact inherited naval/rail/strategic-weapon numerical translations where not already specified;
 - detailed lobby/UI experience;
-- final thematic name of Echo duplicate/store currency;
 - supply/logistics connectivity as a separate system.
 
 Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
@@ -1834,8 +1860,8 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 46. **The accepted elastic-defense trait preserves the automatic defender when a defended cell is captured while retaining the attacker's ordinary casualty and all ownership/Capacity effects.**
 47. **The accepted giant-SAM trait transforms SAM throughput/range without adding a bespoke controller interception action.**
 48. **The accepted fully-developed-City trait makes purchased Cities direct level-5 purchases at 95% cumulative ordinary level-1-through-level-5 cost.**
-49. **Echoes are the canonical collectible dialogue-line modifier system; standard PvE loadouts contain 7 Echoes.**
-50. **Origins define faction identity while Echoes provide narrower collectible specialization; catalogue curation, not hidden compatibility rules, preserves meaningful tradeoffs.**
+49. **Echoes are 12,927 fixed collectible identities built from 93 concrete stat+scope keys; identity fixes shape, stat keys, dialogue, and visual identity while magnitude is rerolled on every acquisition; standard PvE loadouts contain 7 Echoes.**
+50. **Echo acquisition uses the provisional 50% mixed / 35% dual / 15% single shape distribution; one roll is retained per identity, duplicates always award salvage currency and use Pareto upgrade/reject/player-choice resolution, all earned match rolls become drops even on defeat, fixed human teams share one full reward pool, and the Gacha Store supports batch pulls plus positive-quality soft/hard pity.**
 51. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
 52. **Derived controller helpers never leak information outside the controller's legal observation projection.**
 53. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
