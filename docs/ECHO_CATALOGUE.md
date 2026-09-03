@@ -2,33 +2,39 @@
 
 ## Status
 
-This file is the **provisional working contract for V1 Echo generation/content**, analogous to `ORIGIN_TRAIT_CATALOGUE.md` for Origins.
+This file is the **provisional working contract for Echo identity, acquisition, duplicate handling, match rewards, and gacha-store behavior**, analogous to `ORIGIN_TRAIT_CATALOGUE.md` for Origins.
 
 The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical integration authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md).
 
 Nothing in this file authorizes gameplay implementation.
 
-The rules, intervals, shape probabilities, scoring curve, and generation procedure below are the **accepted provisional V1 baseline**. They are intended to be good enough for implementation/testing and may be revised through development, simulation, balance testing, or playtesting without changing the broader Echo design philosophy.
+The values below are provisional test values and may be retuned through development, simulation, balance testing, or playtesting without changing the broader Echo design philosophy.
 
-Current first-version invariants:
+Current invariants:
 
 - Echoes are collectible anime/JRPG dialogue-line modifiers.
 - Standard PvE loadout size is **7 Echoes**.
-- An Echo carries **one or two deterministic numeric modifiers**.
+- An Echo **identity** has fixed:
+  - shape;
+  - one or two concrete stat+scope keys;
+  - dialogue/flavor identity;
+  - visual identity or deterministic visual-generation recipe.
+- Modifier **magnitudes are not part of Echo identity**. They are rolled again whenever that identity is acquired.
+- An account/player owns at most **one retained magnitude configuration per Echo identity**.
 - Echoes specialize/tune a build; they do not normally introduce Origin-scale rule transformations, hard capabilities, alternate spawn topology, structure-count rules, free structures, or similar mechanics.
-- Echoes may be genuinely mediocre, awkward, or bad for a generic build. The generator is **not required to make every Echo balanced or desirable**.
-- Build-specific value may differ dramatically from inherent/global rarity. A nominally mediocre mixed Echo may be excellent for a controller that ignores its drawback.
-- Strong clean Echoes should feel genuinely exceptional and rare.
+- Build-specific value may differ dramatically from generic rolled quality.
+- Strong clean rolls should feel exceptional.
+- Acquiring a duplicate Echo always produces duplicate/salvage currency even if the newly rolled copy replaces the currently retained copy.
 
 ---
 
-## 1. V1 allowed Echo modifier pool
+## 1. Allowed Echo modifier pool
 
-The pool below is the accepted V1 candidate set after intentionally removing effects that overlap too heavily with Origins or would too easily erase defining Origin rules.
+The pool below intentionally excludes effects that overlap too heavily with Origins or would too easily erase defining Origin rules.
 
 `City Growth contribution` is one stat and appears only once below; it is not duplicated as both a Population-family and City-family identifier.
 
-Scoped definitions are selected as one stat definition first and only then resolve their scope, so adding more terrain, structure, or mobile-unit scopes does not make that stat family intrinsically more common.
+A **concrete stat key** is a stat definition plus its resolved scope. For example, `Tank Damage`, `Warship Damage`, `Forest Offensive Pressure`, and `Marsh Offensive Pressure` are four different concrete keys.
 
 | Family | Stat | Scope |
 | --- | --- | --- |
@@ -70,19 +76,110 @@ Scoped definitions are selected as one stat definition first and only then resol
 |  | FFY cost | Atom / Hydrogen / MIRV |
 |  | Blast area | Atom / Hydrogen |
 
-`Industrial FFY` is the sole ordinary Echo axis for industrial/Factory-generated FFY events. The former separate `Factory FFY-event effectiveness` modifier is intentionally removed as redundant rather than allowing two overlapping Echo definitions to tune the same Factory event value.
+`Industrial FFY` is the sole ordinary Echo axis for industrial/Factory-generated FFY events. There is no separate `Factory FFY-event effectiveness` Echo.
+
+The current pool resolves to **93 concrete stat+scope keys**.
 
 ---
 
-## 2. Modifier identity and polarity
+## 2. Echo identity space
 
-An Echo modifier is conceptually:
+There are exactly three Echo identity shapes.
+
+### 2.1 Single positive
+
+One fixed beneficial concrete stat key:
 
 ```text
-stat identity
-+ optional scope
-+ polarity
-+ mechanical signed value
++A
+```
+
+With 93 concrete keys:
+
+```text
+93 identities
+```
+
+### 2.2 Dual positive
+
+Two different fixed beneficial concrete stat keys:
+
+```text
++A
++B
+```
+
+Order does not create a new identity. `A+B` and `B+A` are the same identity.
+
+The same concrete key may not appear twice.
+
+With 93 concrete keys:
+
+```text
+C(93, 2) = 4,278 identities
+```
+
+### 2.3 Mixed positive / harmful
+
+One fixed beneficial key and one different fixed harmful key:
+
+```text
++A
+-B
+```
+
+Polarity is part of identity. Therefore `+A/-B` and `+B/-A` are different identities.
+
+The positive and harmful sides **may never use the same concrete stat+scope key**. For example:
+
+```text
++Offensive Pressure
+-Offensive Pressure
+```
+
+is invalid regardless of magnitudes.
+
+With 93 concrete keys:
+
+```text
+93 × 92 = 8,556 identities
+```
+
+### 2.4 Total registered identity count
+
+| Shape | Registered identities |
+| --- | ---: |
+| Single positive | **93** |
+| Dual positive | **4,278** |
+| Mixed positive / harmful | **8,556** |
+| **Total** | **12,927** |
+
+These **12,927 identities are the actual collectible item table**.
+
+Magnitude permutations do **not** create additional Echo identities.
+
+Each registered identity is linked to its own dialogue/flavor content and visual identity or visual-generation recipe.
+
+---
+
+## 3. Modifier identity, polarity, and semantics
+
+A retained or newly acquired Echo instance is conceptually:
+
+```text
+echoIdentityId
++ rolled magnitude for modifier #1
++ optional rolled magnitude for modifier #2
+```
+
+The identity already fixes:
+
+```text
+shape
+stat key(s)
+polarity
+dialogue/flavor identity
+visual identity/recipe
 ```
 
 **Polarity** is distinct from mathematical sign because lower values are beneficial for costs, construction time, and cooldowns.
@@ -95,13 +192,11 @@ Examples:
 +4% Fort build cost          ← harmful
 -3% SAM recharge time        ← beneficial
 +3% SAM recharge time        ← harmful
-+5% Warship range            ← beneficial
--5% Warship range            ← harmful
++5% Tank range               ← beneficial
+-5% Tank range               ← harmful
 ```
 
-Rarity scoring uses beneficial/harmful polarity. Simulation arithmetic uses the actual mechanical signed value.
-
-### 2.1 Beneficial and harmful meanings
+### 3.1 Beneficial and harmful meanings
 
 | Stat | Beneficial form | Harmful form |
 | --- | --- | --- |
@@ -144,9 +239,9 @@ Rarity scoring uses beneficial/harmful polarity. Simulation arithmetic uses the 
 
 Counter-response Echoes modify the **response-side** effectiveness hook only unless a future separately named Echo stat is explicitly added.
 
-`Industrial FFY` applies to ordinary industrial FFY events, including the Factory-driven industrial/train FFY event values defined by the canonical structure registry. There is no second Factory-specific FFY Echo layer.
+`Industrial FFY` applies to ordinary industrial FFY events, including Factory-driven industrial/train FFY event values. There is no second Factory-specific FFY Echo layer.
 
-Factory repair-radius/rate Echoes affect the canonical Tank/Heavy-Artillery repair service provided by Factories. They do not alter simultaneous repair capacity, which remains a discrete Factory-level property rather than an Echo stat.
+Factory repair-radius/rate Echoes affect the canonical Tank/Heavy-Artillery repair service provided by Factories. They do not alter simultaneous repair capacity.
 
 A Tank-scoped mobile-unit Echo applies to the faction's canonical Tank chassis **after Origin transformation**. If P43 transforms Tanks into Heavy Artillery, Tank cost/speed/range/damage/health Echoes specialize the resulting Heavy-Artillery profile; there is no separate Heavy-Artillery Echo scope.
 
@@ -158,21 +253,19 @@ For the Tank scope:
 - `Maximum health` modifies the chassis health pool.
 - `FFY purchase cost` modifies the final FFY cost of the purchased Tank/Heavy Artillery after the ordinary active-count curve and Origin purchase-cost transformation are established.
 
-Tank/Heavy-Artillery firing cooldown/reload is deliberately **not** an Echo stat. In particular, Echoes cannot shorten P43 Heavy Artillery's 12-second reload or thereby erase its intended vulnerability window. P44 radioactive footprint radius/cell count is likewise not an Echo stat.
+Tank/Heavy-Artillery firing cooldown/reload is deliberately **not** an Echo stat. Echoes cannot shorten P43 Heavy Artillery's authored reload or thereby erase its intended vulnerability window. P44 radioactive footprint radius/cell count is likewise not an Echo stat.
 
-Observation-radius Echoes modify the Observation Post's effective completed-level radius. Under P49, where Observation Posts become counterintelligence blackout structures, that same numeric radius modifier naturally specializes the blackout radius rather than restoring ordinary observation.
+Observation-radius Echoes modify the Observation Post's effective completed-level radius. Under P49, where Observation Posts become counterintelligence blackout structures, that same numeric radius modifier specializes the blackout radius rather than restoring ordinary observation.
 
 Fort-pressure Echoes specialize the Fort's effective pressure magnitude. Under P50, the Fort's mirrored offensive field uses that same effective Fort-pressure magnitude. Command-Post-pressure Echoes similarly specialize the Command Post's effective pressure magnitude; under P51, the mirrored defensive field uses that same effective magnitude. Cross-type Fort/Command overlap still follows the Origin catalogue's diminishing field-composition rule.
 
-If an Origin makes an underlying stat irrelevant, an Echo may become partially or wholly inert. This is legal and does not create hidden compatibility rules. For example, a Warship-FFY-cost Echo is irrelevant to an Origin whose Warships cost `0 FFY` and consume Population instead.
+If an Origin makes an underlying stat irrelevant, an Echo may become partially or wholly inert. This is legal and does not create hidden compatibility rules.
 
 ---
 
-## 3. Provisional single-Echo maximum magnitudes
+## 4. Provisional single-Echo maximum magnitudes
 
-Beneficial and harmful variants use the **same absolute maximum interval** for a given stat. If a stat may roll `+M` beneficially, it may also roll the equivalent full-strength harmful magnitude `-M` (or `+M` for inverse stats such as costs/cooldowns).
-
-The values below are accepted provisional V1 maxima.
+Beneficial and harmful variants use the same absolute maximum interval for a given stat.
 
 | Echo stat | Single-Echo maximum absolute magnitude |
 | --- | ---: |
@@ -220,360 +313,259 @@ The values below are accepted provisional V1 maxima.
 
 These maxima intentionally vary by strategic sensitivity. Global combat/economy effects and tactically dominant effects such as mobile-unit range are narrower than more specialized economic, repair, or unit stats.
 
-### 3.1 Quantization
+---
 
-The provisional V1 display/mechanical increment is **0.5 percentage points**.
+## 5. Magnitude rolls
 
-A modifier never displays or stores a meaningless `0%` roll. The lowest nonzero generated magnitude is one quantization step.
+Magnitude is rolled **when an Echo identity is acquired**, not when its permanent identity is created.
 
-Examples for a stat with `M = 5%`:
+The same Echo identity may therefore be seen many times with different magnitude configurations.
+
+Example:
 
 ```text
-0.5%, 1.0%, 1.5%, ... 5.0%
+Echo #4821 identity:
+  +Tank Damage
+  +Tank Movement Speed
+
+first acquisition:
+  +3% Tank Damage
+  +2% Tank Movement Speed
+
+later acquisition:
+  +2% Tank Damage
+  +4% Tank Movement Speed
 ```
+
+Those are two rolls of the **same collectible identity**.
+
+### 5.1 Integer magnitudes
+
+The accepted magnitude increment is **1 whole percentage point**.
+
+There are no `0.5%` Echo magnitude rolls.
+
+For a stat whose full single-positive maximum is `M`, a single-positive or mixed modifier may roll any integer magnitude:
+
+```text
+1%, 2%, ... M%
+```
+
+### 5.2 Dual-positive magnitude ceilings
+
+Dual-positive Echoes retain their reduced per-side intensity. With the current integer system, the allowed maximum per side is:
+
+| Ordinary single-positive maximum | Dual-positive maximum |
+| ---: | ---: |
+| 3% | **2%** |
+| 4% | **3%** |
+| 5% | **3%** |
+| 6% | **4%** |
+
+Therefore a dual-positive modifier rolls an integer magnitude from `1%` through the applicable reduced maximum.
+
+The purpose remains the same: two beneficial stats share one Echo slot, so each side has a smaller maximum than a clean single-positive stat.
+
+### 5.3 Base magnitude distribution
+
+The exact production distribution over allowed integer magnitudes remains a balance parameter.
+
+Unless separately tuned, generation should treat every legal magnitude in the applicable interval as an ordinary eligible result. Gacha pity may bias or guarantee qualifying high-quality outcomes as specified later without changing Echo identity.
 
 ---
 
-## 4. Echo shapes
+## 6. Acquisition shape distribution
 
-Exactly three mechanical Echo shapes exist in the provisional V1 generator.
+The number of registered identities in a shape does **not** determine how often that shape drops.
 
-### 4.1 Single positive
-
-One beneficial modifier.
+Every acquisition first selects the Echo shape using the accepted provisional distribution:
 
 ```text
-+X% A
+Mixed positive/harmful: 50%
+Dual positive:          35%
+Single positive:        15%
 ```
 
-Its modifier may use the full `100%` single-Echo maximum `M` for that stat.
+Then it selects one registered identity from that shape according to the identity-selection rule, and finally rolls its magnitude(s).
 
-Single-positive Echoes are the strongest hyper-specialization pieces because one stat can reach its full clean maximum.
+This deliberately keeps:
 
-### 4.2 Dual positive
+- mixed Echoes most common;
+- dual-positive Echoes next;
+- clean single-positive Echoes rarest;
 
-Two beneficial modifiers.
+without allowing the raw `8,556 / 4,278 / 93` identity counts to force approximately `66% / 33% / <1%` acquisition rates.
 
-```text
-+X% A
-+Y% B
-```
-
-Each modifier is capped at approximately **55% of that stat's ordinary single-Echo maximum**.
-
-The intended normalized package ceiling is therefore approximately:
-
-```text
-0.55 + 0.55 = 1.10
-```
-
-This gives dual-positive Echoes a small total-power premium over a perfect single-positive Echo while preventing them from always dominating single-stat specialization.
-
-The two magnitudes are rolled independently inside their reduced intervals.
-
-### 4.3 Mixed positive / harmful
-
-One beneficial modifier and one harmful modifier.
-
-```text
-+X% A
--Y% B
-```
-
-**Both modifiers may roll at the full `100%` single-Echo maximum for their respective stats.**
-
-The drawback is already the price of the package. Mixed Echoes do not receive the dual-positive intensity reduction.
-
-Valid mixed examples include:
-
-```text
-+4% / -7-equivalent normalized magnitude
-+1% / -full-max
-+full-max / -1%
-+full-max / -full-max
-```
-
-subject to each stat's actual own maximum.
-
-A mixed Echo may therefore be excellent, neutral, mediocre, or spectacularly bad in generic power terms.
-
-### 4.4 No negative-only shapes
-
-The V1 generator does **not** create:
-
-- single harmful Echoes;
-- dual-harmful Echoes.
-
-Harmful modifiers exist only as the second side of a mixed Echo.
-
-### 4.5 Provisional shape probabilities
-
-The accepted provisional generation mix is:
-
-```text
-Single positive: 40%
-Dual positive:   25%
-Mixed + / -:     35%
-```
-
-Drop frequency is subsequently reshaped substantially by the rarity-weight system; these are catalogue-generation shape probabilities, not final player-visible drop percentages.
+The shape probabilities are versioned balance data and are not stored redundantly on each Echo identity.
 
 ---
 
-## 5. Combination rules
+## 7. Dialogue, flavor, and visual identity
 
-V1 intentionally uses **almost no semantic pairing restrictions**.
+Every one of the **12,927 registered Echo identities** is linked to persistent presentation content.
 
-Any allowed stat may appear with any other allowed stat, including:
-
-- strongly synergistic stats;
-- partially overlapping stats;
-- global + scoped versions of related mechanics;
-- contradictory stats;
-- completely unrelated / strategically awkward stats.
-
-Examples that are all legal:
+At minimum an identity should have:
 
 ```text
-+Population Growth
-+City Growth contribution
-
-+Warship Range
-+Warship Damage
-
-+All FFY
-+Industrial FFY
-
-+Global Offensive Pressure
-+Highland Offensive Pressure
-
-+Population Growth
--Warship Speed
-
-+Population Growth
--City Growth contribution
-
-+Hydrogen Bomb projectile speed
--Factory repair rate
+echoIdentityId
+shape + concrete stat keys
+dialogue/flavor line
+visual identity or visual-generation recipe
 ```
 
-The generator does not try to understand whether a pair is good for a particular build.
+The visual representation does not need to store a complete standalone SVG or raster image per Echo.
 
-### 5.1 Only exact duplicate keys are forbidden on one Echo
-
-One Echo may not contain the **exact same stat + exact same scope** twice, because that is mechanically just one larger modifier and should be normalized as such.
-
-For example, this is not generated:
+A compact deterministic visual recipe is preferred when practical, for example:
 
 ```text
-+2% Warship Range
-+1% Warship Range
+visualSeed
+character/archetype id
+frame id
+background/pattern id
+accent/variant id
+expression/pose id
 ```
 
-But these are legal:
+The client may combine those identity-level values with shared art/SVG assets and a deterministic renderer.
 
-```text
-+All-structure build-cost reduction
-+Fort build-cost reduction
-```
-
-and:
-
-```text
-+Global offense
-+Highland offense
-```
-
-No wider compatibility matrix exists.
+Magnitude is intentionally **not** part of dialogue or visual identity. A stronger or weaker duplicate remains recognizably the same Echo.
 
 ---
 
-## 6. Modifier generation
+## 8. Owned Echoes and duplicate acquisition
 
-### 6.1 Deterministic identity
+An account/player retains at most **one magnitude configuration for each Echo identity**.
 
-Mechanical generation is deterministic from identities equivalent to:
+Receiving an identity already owned is a **duplicate acquisition**.
+
+A duplicate always grants the configured duplicate/salvage currency regardless of whether:
+
+- the new copy replaces the old copy;
+- the old copy is retained;
+- the new copy is an exact mechanical tie.
+
+The newly rolled magnitudes are compared against the currently retained copy.
+
+### 8.1 Strict automatic upgrade
+
+A new copy is an automatic upgrade when it is at least as good on **every modifier axis** and strictly better on at least one.
+
+For harmful modifiers, a smaller harmful magnitude is better.
+
+Examples:
 
 ```text
-EchoGeneratorVersion
-EchoSeed
+owned: +3 A / +2 B
+new:   +4 A / +2 B
+→ automatic upgrade
+
+owned: +3 A / -4 B
+new:   +4 A / -3 B
+→ automatic upgrade
 ```
 
-Use keyed/independent deterministic RNG streams for at least:
+### 8.2 Strict automatic downgrade
 
-- mechanical package;
-- rarity/derived presentation where randomization is needed;
-- dialogue/flavor/visual identity.
+A new copy is automatically rejected/salvaged when it is no better on every axis and strictly worse on at least one.
 
-Changing flavor-generation logic must never silently change the mechanical modifiers of an existing Echo identity/version.
+Examples:
 
-### 6.2 Stat selection
+```text
+owned: +3 A / +2 B
+new:   +2 A / +2 B
+→ keep owned copy automatically
 
-Select a **stat definition first**, then select a scope if that stat is scoped.
+owned: +3 A / -4 B
+new:   +2 A / -5 B
+→ keep owned copy automatically
+```
 
-This prevents a stat with many scopes from becoming more common merely because it expands to more concrete keys.
+The duplicate currency is still awarded.
 
-Provisional V1 selection uses equal weight among the allowed stat definitions in §1, then equal weight among that stat's legal scopes unless later playtesting gives a reason to author explicit weights.
+### 8.3 Incomparable / player-choice duplicate
 
-For modifier #2, repeat selection independently. If the resulting exact stat+scope key equals modifier #1's exact key, deterministically reroll modifier #2 until it differs.
+If one relevant axis improves while another worsens, the game does **not** collapse the comparison into one aggregate score.
 
-No other pairing reroll is performed.
+The player chooses which copy to retain.
 
-### 6.3 Magnitude generation
+Examples:
 
-For **single-positive** and **mixed** modifiers, independently roll one allowed quantized magnitude between the minimum nonzero step and the stat's full maximum `M`.
+```text
+owned: +3 A / +2 B
+new:   +2 A / +3 B
+→ player chooses
 
-For **dual-positive** modifiers, independently roll one allowed quantized magnitude between the minimum nonzero step and approximately `0.55 × M`, quantized to the V1 increment.
+owned: +3 A / -4 B
+new:   +4 A / -5 B
+→ player chooses
 
-The reduced dual-positive interval is the mechanism by which two beneficial modifiers pay for sharing one Echo slot. The generator does not first roll two full-strength stats and grant both unchanged.
+owned: +3 A / -4 B
+new:   +2 A / -3 B
+→ player chooses
+```
 
-### 6.4 Polarity assignment
+This remains true even if some global scalar quality metric considers one copy numerically superior. Build preference belongs to the player.
 
-- single-positive: modifier is beneficial;
-- dual-positive: both modifiers are beneficial;
-- mixed: one modifier is beneficial and one is harmful.
+### 8.4 Multiple duplicates in one reward batch
 
-Mechanical sign is then derived from the stat's semantics in §2.1.
+Large matches or gacha batches may produce several copies of the same identity at once.
+
+Do not force the player through sequential copy-by-copy dialogs.
+
+Instead:
+
+1. group all newly acquired copies by Echo identity;
+2. include the currently retained copy when one exists;
+3. eliminate all copies strictly dominated by another candidate;
+4. compute the remaining Pareto frontier;
+5. if exactly one candidate remains, retain it automatically;
+6. if multiple incomparable candidates remain, ask the player to choose one;
+7. award duplicate/salvage currency for every duplicate acquisition independently of which candidate is retained.
+
+This allows very large reward batches without turning duplicate resolution into excessive UI friction.
 
 ---
 
-## 7. Normalized Echo power score
+## 9. Rolled quality and rarity terminology
 
-Each finalized modifier is normalized against its **single-positive full maximum**, regardless of Echo shape.
+Echo **identity** and Echo **rolled instance quality** are separate concepts.
 
-For a stat with maximum `M` and finalized absolute magnitude `x`:
+An identity's dialogue, visual, shape, and stat keys are stable.
+
+Its acquired magnitudes vary.
+
+The old model in which every finalized magnitude-specific mechanical signature behaved as a separately weighted collectible item is retired.
+
+### 9.1 Normalized diagnostic quality
+
+For balance, comparison, presentation, or rarity-label derivation, a rolled modifier may still be normalized against its ordinary full single-positive maximum `M`:
 
 ```text
 normalizedMagnitude = x / M
 ```
 
-Then:
+A beneficial modifier contributes positive generic power and a harmful modifier contributes negative generic power.
 
-```text
-beneficial modifier → +normalizedMagnitude
-harmful modifier    → -normalizedMagnitude
-```
+Such a scalar may be useful for:
 
-Echo score is the sum of its signed normalized modifier powers:
+- diagnostics;
+- broad quality presentation;
+- statistical analysis;
+- optional cosmetic labels.
 
-```text
-EchoScore = Σ signedNormalizedModifierPower
-```
+It must **not** override the Pareto duplicate-choice rules in §8.
 
-Examples:
+### 9.2 Pity cannot reward merely unusual bad rolls
 
-```text
-+5% Population Growth, M=5%
-→ score +1.00
+Statistical rarity and positive desirability are not the same thing.
 
-+2.5% Population Growth, M=5%
-→ score +0.50
+A gacha pity guarantee must never be satisfied merely because a roll is extremely unusual or extremely bad.
 
--3% Warship Range, M=3%
-→ score -1.00
+For example, a highly harmful mixed result must not consume a high-quality guarantee simply because its magnitude combination would otherwise be rare.
 
-+5% Population Growth
--4% Fort Coverage
-(both full maxima)
-→ +1.00 - 1.00 = 0.00
-```
+The pity system therefore uses a separately defined **qualifying positive-quality threshold**. The exact threshold/label remains a balance parameter.
 
-A perfect dual-positive Echo has an intended ceiling around `+1.10` because each side can reach about `0.55` normalized power.
-
-A mixed Echo spans approximately `-1.0 .. +1.0` depending on its independently rolled sides.
-
-### 7.1 No synergy score
-
-The rarity system does **not** attempt to score synergy, anti-synergy, conditional build value, or whether the player's Origin/controller ignores a drawback.
-
-For example:
-
-```text
-+5% Population Growth
--4% Warship FFY cost (harmful direction example omitted here)
-```
-
-is scored from its generic modifier powers, not from whether the current player ever builds Warships.
-
-This deliberate gap between inherent/global score and build-specific usefulness is part of the collectible design.
-
----
-
-## 8. Rarity / sampling-weight curve
-
-Rarity is **derived automatically from the generated mechanical package**. It is not manually authored for every Echo.
-
-The most common point is **EchoScore = 0**.
-
-Increasingly good Echoes become progressively rarer. Increasingly bad Echoes also become rarer, so the loot pool does not collapse into mostly terrible items.
-
-Provisional V1 anchor curve:
-
-| EchoScore | Relative sampling weight |
-| ---: | ---: |
-| `-1.00` | **0.03×** |
-| `-0.75` | **0.05×** |
-| `-0.50` | **0.10×** |
-| `-0.25` | **0.50×** |
-| `0.00` | **1.00×** |
-| `+0.25` | **0.316×** |
-| `+0.50` | **0.10×** |
-| `+0.75` | **0.0316×** |
-| `+1.00` | **0.010×** |
-| `+1.10` | **0.0063×** |
-
-For scores between anchors, interpolate **logarithmically in weight space**.
-
-This makes:
-
-- score-0 packages the modal/common center;
-- mildly bad packages common but not dominant;
-- spectacularly bad packages unusual curiosities rather than constant trash;
-- perfect clean single-positive Echoes roughly 100× lower-weight than score-0 Echoes;
-- perfect dual-positive Echoes rarer still.
-
-### 8.1 Inherent drop probability
-
-For a finished eligible catalogue:
-
-```text
-P(Echo_i)
-= weight_i / Σ eligibleCatalogueWeights
-```
-
-This normalized full-catalogue probability is the Echo's **inherent rarity**.
-
-If a store excludes already-owned Echoes and renormalizes the remaining table, the Echo's displayed inherent rarity remains based on the normal full eligible catalogue rather than the temporary filtered store probability.
-
-Conventional labels such as Common/Rare/Legendary may later be derived from probability bands for presentation, but they are not manually authored mechanical rarity tiers.
-
----
-
-## 9. Catalogue-generation procedure
-
-For each deterministic candidate seed under one `EchoGeneratorVersion`:
-
-1. derive the mechanical RNG stream;
-2. roll Echo shape using the provisional 40/25/35 shape distribution;
-3. select modifier #1 stat definition;
-4. select modifier #1 scope if applicable;
-5. roll modifier #1 magnitude from the interval appropriate to the shape;
-6. assign modifier #1 polarity required by the shape;
-7. if the shape has two modifiers, independently select modifier #2 stat + scope;
-8. reroll modifier #2 only if it exactly duplicates modifier #1's stat+scope key;
-9. independently roll modifier #2 magnitude from the interval appropriate to the shape;
-10. assign modifier #2 polarity required by the shape;
-11. convert polarity to actual mechanical signed values according to each stat's semantics;
-12. canonicalize modifier ordering;
-13. compute normalized modifier powers and `EchoScore`;
-14. derive the Echo's relative sampling weight from the versioned score→weight curve;
-15. compute the canonical mechanical signature from finalized stat/scope/polarity/value pairs;
-16. reject an **exact duplicate mechanical signature** already admitted to this catalogue version and continue deterministic catalogue generation;
-17. after the mechanical package is fixed, derive/assign dialogue, character/flavor, and visual identity from separate versioned/keyed generation data.
-
-Two Echoes with the same stat types but different values are not duplicates. Exact finalized mechanical packages are duplicates regardless of flavor text.
-
-The final catalogue size remains a content/deployment parameter and does not change the algorithm above.
+A naturally rolled item that meets or exceeds the active pity threshold may satisfy/reset pity.
 
 ---
 
@@ -594,23 +586,15 @@ Exact same-calculation percentages follow the canonical additive-percentage rule
 
 An Echo can therefore mitigate an Origin drawback without necessarily erasing it.
 
-Example: the Population-funded Warship Origin gives Warships approximately `0.67×` ordinary attack range. Seven 75%-quality Warship-range Echoes under the provisional `3%` maximum provide `+15.75%` total Echo range specialization:
-
-```text
-0.67 × 1.1575 ≈ 0.7755
-```
-
-The highly specialized fleet still has about **22.4% less attack range than ordinary Warships**.
-
 For P43, the Heavy-Artillery transformation establishes the Tank chassis first; Tank-scoped Echo percentages then specialize that transformed profile. Nothing in the Echo layer changes the authored P43 reload cadence or P44 footprint unless a future separately accepted rule explicitly says so.
 
 ---
 
 ## 11. Provisional 75%-optimal stress test
 
-The working balance rule for Echo maxima is:
+The working balance rule for Echo maxima remains:
 
-> When evaluating one Echo stat, assume a highly optimized player can fill all 7 slots with Echoes averaging **75% of that stat's single-Echo maximum**, then combine that loadout with the strongest relevant legal Origin effects. This is not the expected ordinary loadout; it is a safety/stress target.
+> When evaluating one Echo stat, assume a highly optimized player can fill all 7 slots with retained Echoes averaging **75% of that stat's single-Echo maximum**, then combine that loadout with the strongest relevant legal Origin effects. This is not the expected ordinary loadout; it is a safety/stress target.
 
 For a stat maximum `M`, the seven-slot 75%-quality single-axis contribution is:
 
@@ -618,7 +602,7 @@ For a stat maximum `M`, the seven-slot 75%-quality single-axis contribution is:
 7 × 0.75 × M = 5.25M
 ```
 
-Provisional stress magnitudes therefore include:
+Reference stress magnitudes:
 
 | Stat maximum | 7 slots × 75% |
 | ---: | ---: |
@@ -627,69 +611,22 @@ Provisional stress magnitudes therefore include:
 | 5% | 26.25% |
 | 6% | 31.50% |
 
-### 11.1 Checked high-risk interactions
+Important retained conclusions:
 
-The following checks use simple published modifier composition as a conservative design sanity test. Some final mechanics, especially pressure-field composition and implemented FFY formulas, still require exact executable tests.
-
-| Stress case | Approximate result | Assessment |
-| --- | ---: | --- |
-| `P01 + 7×75% Starting Population` | about **+39.1% absolute starting Population vs ordinary**, if Starting Population is fraction-of-final-Capacity | Strong opening specialization, but consumes all seven Echo slots and P01; provisional value retained for testing |
-| `P15 + 7×75% Highland offense` | about **+67.9% Highland offense** | Large but terrain-specific and seven-slot specialized; retained |
-| `P18 + P15 + 7×75% Highland offense` | rough **3.36×** baseline pressure on a Fort-supported Highland lane | Extreme, but primarily created by the already-extreme legal Origin combination (`+100%` Fort-supported offense + `+33%` Highland offense); Echoes add only bounded specialization. Flag for playtesting rather than lowering Echo maxima now |
-| `P09 + P13 + 7×75% Mountain defense` | rough upper-bound around **1.83×** relevant baseline before exact Fort baseline semantics | Appropriate stress case for an intentionally hyper-defensive build; exact Fort formula must be tested later |
-| `P40 + 7×75% SAM range` | about **1.736×** ordinary SAM range | Very large umbrella but requires giant-shield Origin + all seven range Echoes; still one charge under P40 |
-| `P40 + 7×75% SAM cooldown reduction` | about **1.58× ordinary cooldown** | P40's doubled cooldown remains a real drawback even under extreme Echo mitigation |
-| `P42 + 7×75% Warship range` | about **0.776× ordinary Warship range** | P42's defining `-33%` range weakness remains clearly intact |
-| `P23 + 7×75% Warship range` | about **1.389× ordinary range** | Powerful but applies to the one-super-Warship Origin constraint; retained |
-| `P30 + 7×75% Warship speed` | about **1.815× ordinary Warship speed** | Extreme pirate mobility, but P30 Warships cannot fight ships with gunfire; retained |
-| `P43 + 7×75% Tank range` | Heavy-Artillery range about **52.1 cells / 1.736× ordinary Tank range** | Strong artillery specialization, but reload remains 12s and terrain barriers remain unchanged |
-| `P43 + 7×75% Tank speed` | Heavy-Artillery movement remains about **0.605×** the corresponding ordinary Tank movement | Echo specialization cannot erase the defining half-speed doctrine |
-| `P43 + 7×75% Tank health` | Heavy Artillery reaches about **1,262.5 HP** | A surviving baseline Tank needs six 250-damage shots rather than four, but still kills it well before the 12s artillery reload; vulnerability remains real |
-| `P44 + 7×75% Tank damage` | numeric Population/anti-armor damage rises by at most **26.25%** | Radioactive 10/50-cell neutralization footprint and firing cadence remain unchanged; Echoes cannot scale the territorial erosion mechanic itself |
-| `P49 + 7×75% Observation radius` | effective Observation/blackout radius about **1.21×** its Origin-established value | Strong recon/counterintel specialization, but no new visibility capability is created |
-| `P25 + 7×75% Hydrogen blast area` | about **1.736×** ordinary H-bomb area | Large but weapon-specific; P25 forbids Atom/MIRV and raises H-bomb price |
-| `P25 + 7×75% strategic-weapon cost reduction` | about **1.185× ordinary H-bomb cost** | Even maximum stress mitigation does not erase P25's +50% H-bomb cost |
-| `P10 + 7×75% specific-warhead speed` | about **2.63× ordinary projectile speed** | High but affects delivery/interception timing rather than blast damage; retained for testing |
-| `P09 + 7×75% Fort build-cost reduction` | roughly **32% cheaper** than ordinary under multiplicative composition | Safely away from free structures |
-| `P41 + 7×75% City build-cost reduction` | direct-L5 City about **70% of ordinary cumulative L1→L5 cost** | Very strong dedicated City economy but still substantial cost; retained |
-| `P34 + 7×75% Industrial FFY` | rough upper-bound around **2.63×** ordinary conquered-Factory event effectiveness | P34 already doubles conquered Factories; the single Industrial-FFY Echo axis adds bounded specialization without a redundant Factory-specific modifier |
-
-### 11.2 Upgrade-cost asymptote note
-
-P17's `0.99^S` structure-upgrade Origin trait naturally approaches very low costs at very high owned-structure counts even without Echoes. Seven 75%-quality specific-structure-upgrade Echoes add at most a `26.25%` reduction layer.
-
-Illustrative combined factors:
-
-```text
-S = 50 structures  → ~0.446× ordinary upgrade cost
-S = 100            → ~0.270×
-S = 200            → ~0.099×
-```
-
-This is primarily a **P17 late-game balance question**, not evidence that the provisional Echo maximum itself is unsafe. Keep it explicitly on the playtest watch list.
-
-### 11.3 Multi-axis conclusion
-
-No provisional Echo maximum currently creates an obvious standalone invariant break under the 75%-optimal stress rule:
-
-- no structure-cost stack reaches free/negative cost;
-- P40's cooldown drawback remains meaningful under full mitigation;
-- P42's range drawback remains meaningful under full mitigation;
+- no structure-cost stack should reach free/negative cost;
+- P40's cooldown drawback must remain meaningful under full mitigation;
+- P42's range drawback must remain meaningful under full mitigation;
 - P43's half-speed/long-reload artillery identity remains meaningful because reload is not Echo-modifiable;
 - P44's radioactive territorial footprint remains fixed rather than Echo-scalable;
-- Starting Population is substantially increased but not multiplied into a several-fold opening advantage;
-- extreme local offense/defense cases are driven mainly by deliberate Origin rule combinations and highly conditional geography rather than Echoes alone;
-- the strongest economic multipliers remain scope-dependent and/or rely on already-specialized Origin mechanics.
+- extreme local offense/defense cases should be driven mainly by deliberate Origin combinations and conditional geography rather than Echoes alone.
 
-Therefore the maxima in §3 are retained as the accepted **provisional V1 test values**.
-
-This stress pass must be converted into executable/property tests once the exact baseline formulas for structures, FFY, terrain combat, mobile units, and strategic weapons exist.
+These checks must eventually become executable/property tests against implemented formulas.
 
 ---
 
 ## 12. Echo / Origin boundary
 
-The following are intentionally **not** part of the normal V1 Echo pool at this stage:
+The following are intentionally **not** part of the normal Echo pool at this stage:
 
 - Population Capacity / Max Population / Capacity per cell;
 - Origin points, Origin trait slots, Echo slots;
@@ -709,17 +646,315 @@ Echoes may partially improve or worsen a numeric stat that an Origin also modifi
 
 ---
 
-## 13. Remaining provisional content questions
+## 13. Match reward roll pool
 
-The mechanical V1 generator is now sufficiently specified for implementation/prototyping, subject to playtest tuning.
+End-of-match Echo rewards use an accumulated **reward roll pool**.
 
-Remaining content/presentation parameters include:
+The pool starts at:
 
-1. final target catalogue size;
-2. whether stat-definition/scope selection should remain fully uniform or receive small authored frequency weights after observing generated catalogues;
-3. final dialogue/flavor/visual generation or curation system;
-4. optional derived cosmetic rarity labels/probability bands;
-5. numerical retuning of maxima, shape probabilities, or rarity anchors after simulation/playtesting;
-6. final validation against exact implemented structure, FFY, terrain, combat, mobile-unit, and weapon formulas.
+```text
+0 rolls
+```
 
-These are tuning/content questions rather than reasons to reopen the accepted three-shape, unrestricted-pairing, normalized-score, score-centered-rarity design.
+There is no guaranteed base roll merely for entering a match.
+
+### 13.1 Qualifying opponent elimination
+
+Every qualifying opponent defeated while the player's reward entity remains active contributes:
+
+```text
++1 Echo roll
+```
+
+The roll is granted regardless of **who** actually defeated that opponent.
+
+Fixed teammates/allies never count as qualifying opponents.
+
+Diplomacy does not change during a match, so the set of teammates/allies/opponents relevant to reward accounting is known from match start.
+
+### 13.2 AI difficulty bonuses
+
+A special higher-difficulty AI preset grants:
+
+```text
++1 ordinary opponent-defeat roll
++ that preset's configured difficulty bonus
+```
+
+Example:
+
+```text
+Tanya defeated
+ordinary defeat contribution: +1
+Tanya difficulty modifier:    +3
+total contribution:           +4 rolls
+```
+
+Exact preset bonuses are defined by their own balance data.
+
+### 13.3 Victory bonus
+
+Victory contributes:
+
+```text
++5 Echo rolls
+```
+
+### 13.4 Defeat does not erase earned rewards
+
+Victory is **not required** to receive Echoes.
+
+At match end, the player/reward entity receives every roll accumulated before its run ended.
+
+A player who survives most of a difficult match and contributes to a large number of opponent eliminations may therefore receive meaningful Echo rewards even if ultimately defeated.
+
+The old model of receiving nothing on defeat is retired.
+
+### 13.5 All rolls become actual item drops
+
+The old concept of rolling multiple candidate Echoes and keeping only the highest/best roll is retired.
+
+Every accumulated roll produces an Echo acquisition.
+
+Therefore:
+
+```text
+30 earned rolls → 30 Echo acquisitions
+100 earned rolls → 100 Echo acquisitions
+```
+
+Large matches may legitimately produce very large reward batches. Duplicate grouping and Pareto resolution in §8 exist partly to make those batches manageable.
+
+---
+
+## 14. Reward entities and human teams
+
+Reward accounting is attached to a **reward entity** rather than always to one individual human seat.
+
+### 14.1 Solo
+
+In solo play, the human player is the reward entity.
+
+Opponent eliminations count while that player remains active in the match.
+
+When that player is eliminated, later unrelated eliminations do not continue growing that player's pool.
+
+### 14.2 Fixed human team
+
+When multiple human players begin the match on the same fixed team, the **human team is the reward entity**.
+
+Consequences:
+
+- the team has one shared accumulated roll-pool result;
+- the reward entity remains active until the human team as a whole is eliminated or the match ends;
+- one human teammate being eliminated early does not end reward accumulation for that teammate;
+- if the human team later wins, every human team member receives the full victorious final roll pool;
+- if the team ultimately loses, every human team member receives the same pool accumulated before team elimination;
+- rewards are **not divided** among human teammates.
+
+Example:
+
+```text
+Alice + Bob are fixed human teammates.
+Alice is eliminated early.
+Bob continues, several opponents are defeated, and Bob eventually wins.
+
+Result:
+the human team won.
+Alice and Bob each receive the full final team reward pool,
+including the +5 victory bonus.
+```
+
+Fixed allied AI or other non-human allies do not become additional human reward recipients unless a future mode explicitly defines otherwise.
+
+---
+
+## 15. Gacha Store
+
+The Echo store is intentionally framed in-game as a **Gacha Store**.
+
+It supports:
+
+- single pulls;
+- batch purchasing;
+- duplicate recycling;
+- soft bad-luck protection;
+- a hard qualifying guarantee.
+
+### 15.1 Purchase sizing
+
+The provisional economy target may use a simple ratio such as:
+
+```text
+1 pull  ≈ 10 currency
+10 pulls ≈ 100 currency
+```
+
+Exact currency values remain balance parameters.
+
+Batch purchase must not be mechanically worse than buying the same number of single pulls.
+
+### 15.2 Duplicate salvage and economy safety
+
+Every duplicate grants Echo/gacha currency.
+
+However, ordinary duplicate salvage must not create a deterministic infinite-money loop.
+
+In particular, if one store pull costs `C`, an ordinary store-generated duplicate must not universally refund `>= C` in a way that allows:
+
+```text
+buy pull
+→ guaranteed duplicate
+→ recover full or greater pull cost
+→ repeat forever
+```
+
+Exact salvage values remain to be tuned, but the economy must preserve a real sink.
+
+Match-earned duplicates may be generous while still obeying the global economy's anti-loop constraints.
+
+### 15.3 Pity / bad-luck protection
+
+Paid gacha spending advances a bad-luck-protection state.
+
+The intended provisional structure is:
+
+- a soft-pity modifier that rises gradually with qualifying spend/pulls without a qualifying high-quality result;
+- a hard guarantee after a configured threshold;
+- a natural qualifying result satisfies/resets the relevant pity state;
+- after a guaranteed qualifying result, pity resets and begins again from zero.
+
+A provisional target equivalent to roughly **100 ordinary single pulls / 1000 currency at a 10-currency pull price** may be used for initial tuning, but both the threshold and qualifying quality/rarity level remain provisional.
+
+Pity modifies **rolled positive quality**, not Echo identity count and not mere statistical unusualness.
+
+The exact implementation may bias magnitude rolls, guarantee one qualifying result in a batch, or use another deterministic/simulatable method, provided it preserves the published guarantee and does not allow a catastrophically bad-but-rare roll to consume the guarantee.
+
+---
+
+## 16. Generation / acquisition procedure
+
+A normal Echo acquisition conceptually proceeds as follows:
+
+1. determine acquisition source (`match`, `gacha`, future source);
+2. select Echo **shape** using the current `50% mixed / 35% dual-positive / 15% single-positive` distribution unless the source explicitly defines another approved table;
+3. select one registered Echo identity within that shape;
+4. roll legal integer magnitude(s) for that identity;
+5. apply any source-specific quality modifier or active gacha pity rule;
+6. finalize the rolled instance;
+7. if the identity is not owned, add it to the collection;
+8. if the identity is already owned, award duplicate currency and resolve the retained copy using §8;
+9. for a batch, group repeated identities and resolve them together rather than sequentially.
+
+Identity selection and magnitude selection must be deterministic from the authoritative acquisition RNG/state where deterministic replay/audit is required.
+
+Flavor-generation changes must never silently alter an existing identity's mechanical stat keys.
+
+---
+
+## 17. Data/storage model
+
+The intended persistent separation is:
+
+### Echo definition / identity
+
+One of 12,927 rows:
+
+```text
+echoIdentityId
+shape
+statKey1
+optional statKey2
+polarity implied by shape/slot
+dialogue/flavor reference or text
+visual recipe/reference
+content/generator version
+```
+
+### Owned Echo
+
+One retained roll per owned identity:
+
+```text
+account/player id
+echoIdentityId
+magnitude1
+optional magnitude2
+```
+
+### Acquisition event
+
+Transient/auditable event as needed:
+
+```text
+source
+echoIdentityId
+rolled magnitude(s)
+duplicate?
+salvage awarded
+retained/rejected/chosen result
+```
+
+The game should **not** materialize the roughly hundreds of thousands of legal magnitude permutations as separate permanent collectible definitions.
+
+---
+
+## 18. Required stale-document migration
+
+Any other design/integration documentation must be updated so none of the following retired assumptions remain authoritative:
+
+- magnitude-specific finalized signatures are separate collectible Echo identities;
+- an exhaustive magnitude catalogue is the player-facing item table;
+- `0.5%` magnitude quantization;
+- `40% / 25% / 35%` single/dual/mixed generation;
+- raw catalogue cardinality directly determines shape drop frequency;
+- exact finalized magnitude signature de-duplication is part of identity generation;
+- owned Echoes are excluded from future acquisition rather than rerolled as duplicates;
+- duplicates have no magnitude comparison / replacement choice;
+- end-of-match rewards require victory;
+- defeat yields zero Echo rewards;
+- multiple earned candidates are rolled and only the best is retained;
+- human teammates each own isolated reward accounting when they are one fixed human team;
+- magnitude-derived sampling rarity is an immutable property of the Echo identity;
+- a bad-but-statistically-rare result may satisfy positive-quality gacha pity;
+- the store has no batch pulls, recycling, or bad-luck protection.
+
+The canonical replacement concepts are:
+
+```text
+12,927 fixed Echo identities
++ magnitude rerolled on every acquisition
++ 50% mixed / 35% dual / 15% single shape acquisition
++ one retained roll per identity
++ duplicate currency
++ Pareto automatic upgrade/downgrade
++ player choice for incomparable duplicates
++ all accumulated match rolls become drops
++ defeat preserves earned rolls
++ fixed human teams share reward accounting
++ Gacha Store with batches and positive-quality pity
+```
+
+---
+
+## 19. Remaining provisional questions
+
+The core identity/acquisition model is now specified.
+
+Still to be tuned or finalized:
+
+1. exact identity-selection weighting inside each shape;
+2. exact base magnitude distribution within each legal integer interval;
+3. dialogue/flavor authoring or generation pipeline for all 12,927 identities;
+4. exact visual recipe/rendering system;
+5. duplicate/salvage currency values;
+6. single-pull and batch-pull prices;
+7. exact soft-pity curve;
+8. exact hard-pity spend/pull threshold;
+9. exact positive-quality qualification metric and rarity/presentation labels;
+10. whether pity guarantees one qualifying item within the triggering batch or transforms the triggering roll directly;
+11. exact special-AI reward bonuses;
+12. executable/property tests for reward accounting, duplicate Pareto resolution, Origin/Echo composition, and gacha pity;
+13. synchronization of `OPEN_FUFU_DESIGN.md`, `OPENFRONT_INTEGRATION_PLAN.md`, and every other repository document that still contains retired Echo/reward/store semantics.
+
+These are tuning/integration tasks rather than reasons to reopen the accepted **12,927 stable identities + rerolled magnitudes + duplicate progression + all-earned-roll rewards + gacha** architecture.
