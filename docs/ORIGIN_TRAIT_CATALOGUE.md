@@ -111,7 +111,7 @@ P33's Population amount remains TBD. P30–P51 numerical costs remain especially
 | N11 | **X** | FFY events located inside SAM Launcher area yield `0` | -7 |
 | N12 | **X** | Cannot build Warships | -6 |
 | N13 | **X** | `50%` of Transport Population dies when landing | -7 |
-| N14 | **X** | Lose `(1% of)/X` FFY when a Trade Ship is captured; exact formula TBD | -4 |
+| N14 | **X** | When one of your Trade Ships is first captured by a hostile faction, lose FFY equal to that voyage's snapshotted ordinary owner-side success value | -4 |
 | N15 | **X** | `+500 FFY` Transport embarkation cost | -5 |
 | N16 | **X** | Successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value; hostile capture instead returns that value once | -6 |
 | N17 | **X** | Enemy structures you would ordinarily capture are destroyed instead of transferred to you | -4 |
@@ -188,16 +188,27 @@ Under the canonical structure-level rules, a P29 Warship's effective Silo level 
 
 P30 is a role conversion: very fast piracy vessels with `3×` piracy payout, but no naval gunfire against ships. Trade Ship pursuit/capture remains. The intended tradeoff is economic raiding in exchange for conventional naval-combat and Transport-interception capability.
 
-### S14 — N16 trade inversion
+### S14 — snapshotted Trade-voyage value; N14 and N16
 
-Snapshot a deterministic ordinary voyage value at launch.
+Every Trade Ship voyage has one deterministic **ordinary owner-side success value** snapshotted at launch. Effects that refer to the economic value of that voyage use this same snapshot rather than recomputing value from later rerouting, capture, or distance traveled after launch.
 
-- successful uncaptured voyage: original owner loses that value instead of receiving ordinary owner-side Trade Ship reward;
+For N14:
+
+- a successful uncaptured voyage remains ordinary;
+- on the **first hostile capture** of that voyage, subtract exactly the snapshotted owner-side success value from the original owner's current FFY balance;
+- later recaptures/transfers of the same ship do not trigger N14 again;
+- captor-side piracy/capture rewards and destination-side rewards remain governed by their ordinary rules unless another effect changes them.
+
+For N16:
+
+- successful uncaptured voyage: original owner loses that same snapshotted value instead of receiving the ordinary owner-side Trade Ship reward;
 - first hostile capture: original owner gains that snapshotted value once;
 - captor may still receive ordinary piracy reward;
 - destination-side rewards for other factions are not automatically removed.
 
-The drawback can be avoided by declining to invest in trade, which is why its refund is below an unavoidable economy penalty.
+If N14 and N16 are selected together, their original-owner first-capture effects cancel (`-V + V = 0`) without a special-case incompatibility. An uncaptured voyage still follows N16 and costs the owner `V`.
+
+These trade drawbacks can be avoided by declining to invest in trade, which is why their refunds may remain below comparable unavoidable economy penalties.
 
 ### S15 — P31 Port repair
 
@@ -412,6 +423,7 @@ Examples:
 - P26 + P25 (MIRV boon plus MIRV prohibition);
 - P35 + N05 (creates Fallout the faction itself cannot capture);
 - P44 + N05 (radioactive Tank/Artillery attacks create neutral Fallout the faction itself cannot later capture);
+- N14 + N16 (first hostile capture has net-zero FFY effect for the original owner because `-V + V` cancels; an uncaptured N16 voyage still costs `V`);
 - N17 + P05/P34 (destroys the structure before capture-dependent rewards can apply);
 - P37 + N15 (Transport cost becomes 750 FFY);
 - P41 + N06 (direct L5 City purchase remains one purchase rather than upgrade spending);
