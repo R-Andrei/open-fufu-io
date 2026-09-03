@@ -82,8 +82,13 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P42 | **X** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
 | P43 | **X** | **Heavy Artillery:** all Tanks transform into Heavy Artillery: `10s` build time, `1.5×` purchase cost, `0.5×` movement, `1.5×` weapon range, `1,000` anti-armor damage / `12s`, `1,000` Population damage / `12s`, Train raiding disabled; same Tank terrain barriers; projectiles may cross terrain the unit cannot traverse | 8 |
 | P44 | **X** | **Radioactive Munitions:** successful Tank/Heavy-Artillery Population attacks neutralize enemy population-bearing cells and apply Fallout; Tank affects up to `10` cells in Manhattan radius 2, Heavy Artillery up to `50` cells in Manhattan radius 5 | 9 |
+| P45 | **X** | **Forest concealment:** enemy tactical observation cannot penetrate the interior of Forest cells owned by this faction; exposed Forest-front boundary cells remain observable and hostile manifestations reveal only the minimum directly relevant attacking state | 6 |
+| P46 | **X** | May construct persistent structures on owned **Tundra**; Tundra otherwise retains its ordinary `0 Capacity`, spawn-ineligible, terrain-combat, acquisition, and movement rules | 4 |
+| P47 | **X** | Whenever an enemy successfully captures one of this faction's **Marsh** cells, the capturing faction loses `+1 Population` after ordinary capture resolution | 4 |
+| P48 | **X** | Owned **Shallow Water** is population-bearing for this faction and contributes `+1 Population Capacity/cell`; all other Shallow-Water terrain/traversal/buildability rules remain unchanged | 4 |
+| P49 | **X** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
 
-P33's Population amount remains TBD. P30–P44 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
+P33's Population amount remains TBD. P30–P49 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline.
 
 ---
 
@@ -304,6 +309,55 @@ P44 does not add a second direct Population-damage multiplier: direct damage rem
 
 P43 and P44 are independent and explicitly legal together, yielding radioactive Heavy Artillery. Their combined positive cost is `17`, so the pair is legal under the `20` positive-spend cap and requires at least `7` refunded points beyond the base 10-point budget if selected together without other point changes.
 
+### S30 — P45 Forest concealment
+
+P45 changes tactical visibility over **Forest owned by the trait-holder** rather than changing Forest combat percentages.
+
+- Terrain type and political ownership remain public facts; the trait does not create hidden territory.
+- Enemy tactical observation cannot reveal units, persistent structures, or manifested operational state in the **interior** of owned Forest.
+- Forest cells on the exposed outer boundary where the trait-holder's Forest directly contacts an enemy territorial front remain normally observable so front geometry and direct territorial interaction are not hidden.
+- Observation Posts and other ordinary tactical-observation sources do not penetrate the concealed Forest interior.
+- A unit or other hostile source that directly attacks/manifests from concealment exposes only the minimum information mechanically necessary to identify and respond to that hostile manifestation; it does not reveal unrelated nearby contents or illuminate the Forest around it.
+
+### S31 — P46 Tundra construction
+
+P46 permits ordinary persistent-structure construction on owned Tundra.
+
+Tundra otherwise remains Tundra: `0 Capacity`, non-population-bearing, Initial-Territory/spawn-ineligible, ordinarily slow to acquire, and subject to its normal combat/movement properties. The trait does not make Tundra equivalent to Plains.
+
+A structure legally built there is an ordinary persistent structure afterward. If another faction captures it, normal structure-capture rules apply even if the new owner lacks P46; lacking P46 prevents new Tundra construction, not ownership/use of a structure already present there.
+
+### S32 — P47 Marsh attrition
+
+Whenever an enemy successfully captures one Marsh cell owned by the P47 faction, resolve the ordinary capture first and then remove **one additional Population** from the capturing faction.
+
+The extra casualty comes from the terrain doctrine itself and does not require an automatic defender to have been present. It does not alter ownership transfer, Capacity transfer, ordinary capture casualties, or Marsh's baseline pressure/capture-speed modifiers.
+
+### S33 — P48 population-bearing Shallow Water
+
+For the P48 faction only, owned Shallow Water counts as population-bearing and contributes **`+1 Population Capacity per owned cell`**.
+
+Consequences follow the ordinary population-bearing terrain rules for that faction:
+
+- neutral Shallow Water costs `1 Population/cell` to settle rather than `0`;
+- owned Shallow Water may receive ordinary automatic defense;
+- losing it removes Capacity;
+- effects requiring an enemy-owned population-bearing cell, including P44 Radioactive Munitions, may affect it when otherwise legal;
+- it participates in the faction's population-bearing terrain-share denominator.
+
+All other Shallow-Water identity remains unchanged: it is still unbuildable, still slow/poor terrain for ordinary land operations, still naval-traversable, and still blocks Tank/Heavy-Artillery traversal.
+
+### S34 — P49 Counterintelligence Observation Posts
+
+P49 inverts the tactical role of the faction's Observation Posts without creating a bespoke controller action.
+
+- Owned active Observation Posts provide **no ordinary observation** to their owner.
+- Their ordinary completed-level radius (`40 / 55 / 70 / 85 / 100`) instead becomes an enemy-intelligence blackout area.
+- Enemy tactical observation cannot reveal the trait-holder's units, persistent structures, or manifested operational state inside that area through ordinary observation mechanics.
+- The Observation Post itself remains publicly observable, and the existence/extent of its blackout field is mechanically knowable to affected opponents; the trait conceals contents rather than concealing the fact that counterintelligence is operating.
+- Direct hostile manifestations from inside the blackout reveal the minimum information necessary for the attacked faction to identify/respond to the manifestation, without revealing unrelated contents of the field.
+- Overlapping P49 Observation Posts do not create stronger concealment; they only extend the union of blackout coverage.
+
 ---
 
 ## Catalogue coverage decisions
@@ -318,7 +372,11 @@ P36 provides an Origin-worthy neutral-expansion mechanic by changing Population 
 
 ### Recon / visibility
 
-Observation Posts establish the baseline structure-driven tactical observation mechanic. Generic numerical observation/range tuning is better suited to Echoes; any future Origin visibility trait should be structural enough to justify Origin status.
+Observation Posts establish the baseline structure-driven tactical observation mechanic. Generic numerical observation/range tuning remains Echo territory. P45 and P49 cover Origin-level information warfare through structural concealment/counterintelligence rules rather than simple range bonuses.
+
+### Command Posts remain open
+
+The expanded structure library still needs an Origin-level Command Post trait. It must change Command Post doctrine through generic existing game concepts and must **not** require a bespoke faction-specific controller command/API contract merely to operate the trait.
 
 ---
 
@@ -376,4 +434,4 @@ Their current mechanical builds are the accepted first Official roster; display 
 
 ## Next Origin work
 
-The Origin system now has a broad first catalogue including the Tank doctrine transformations. Further work should prioritize traits made newly possible by the expanded terrain/structure library, Echo coverage, final anime/JRPG naming, balance/repricing, and exhaustive legal-combination validation rather than trait proliferation for its own sake.
+Resolve the remaining Command Post Origin trait without introducing a trait-specific controller API. After that, expand Echo coverage for the newly accepted terrain/structure/Tank axes, then continue naming, balance/repricing, and exhaustive legal-combination validation rather than proliferating traits for its own sake.
