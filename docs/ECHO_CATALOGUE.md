@@ -516,17 +516,15 @@ The generated name is flavor/presentation. The card still shows the exact mechan
 
 ### 7.1 Character-owner token
 
-Every Echo identity deterministically receives one stable anime-character possessive token such as conceptually:
+Every Echo identity deterministically receives one stable anime-character possessive token. Character tokens come from **shape-specific pools**, giving the three item shapes slightly different flavor identities without changing mechanics.
 
-```text
-Bocchi's
-Frieren's
-Senjougahara's
-Kaiki's
-...
-```
+Accepted provisional V1 pools:
 
-Character tokens come from **shape-specific pools** so the character can provide a soft flavor/readability cue for single-positive, dual-positive, or mixed identities. Exact V1 character pools remain a naming-content pass rather than a mechanical rule.
+| Shape | Character-owner tokens |
+| --- | --- |
+| **Single positive** | **Bocchi, Yui, Saitama, Misaka, Maomao, Thorfinn, Frieren, Edward, Mob, Fern** |
+| **Dual positive** | **Senjougahara, Hanekawa, Ferdinand, Yang, Reinhard, Askeladd, Tanya, Holo, Kurisu, Shiroe** |
+| **Mixed positive / harmful** | **Kaiki, Übel, Power, Reze, Kiss-Shot, Hachikuji, Yotsugi, Nadeko, Ougi, Makima** |
 
 Selection must be deterministic and stable for an identity under a naming version, conceptually equivalent to a stable identity-derived hash/index into that shape's character pool. Reacquiring the same Echo identity must not randomly change the possessive character.
 
@@ -534,19 +532,113 @@ The character token is a presentation identity, not a claim that the character c
 
 ### 7.2 Stat tokens
 
-Every concrete Echo stat+scope key maps to one stable **name token / noun phrase**. The token is a memorable flavor handle for the mechanical key, not required to be a literal English description of the stat.
+Every concrete Echo stat+scope key maps to one stable **name token / noun phrase**. The token is a memorable flavor handle for the mechanical key, not a description the player is expected to decode before seeing the stat sheet.
 
-The exact V1 token dictionary is intentionally **not yet assigned**. Examples discussed during design such as `Guitar Solo` were illustrative only and are not canonized to a particular stat by this contract.
+Formal V1 authoring rule:
 
-Authoring direction:
+> **Each concrete key receives one deliberately authored phrase. Never construct names by mechanically bolting scope words together.**
 
-- prefer one natural, memorable phrase for each concrete key;
-- funny/arbitrary associations are allowed when they remain easy to recognize;
-- avoid mechanical-sounding scope-prefix assembly such as `Amazing Naval Guitar Solo` merely because a key happens to be Warship-scoped;
-- shared helper vocabulary may be used internally where it produces a good phrase, but final player-facing tokens should read like deliberately authored phrases rather than concatenated schema labels;
-- per-concrete-key overrides are always allowed and are preferred over awkward generic composition.
+The token vocabulary intentionally mixes anime tropes/references, gaming/JRPG language, Japanese-culture/fandom jokes, and more generic absurd phrases. Some associations are deliberately opaque. The card's exact mechanical stat text and percentage remain authoritative.
 
-The card's exact mechanical stat text remains authoritative regardless of token wording.
+Accepted provisional V1 concrete-key mapping:
+
+| # | Concrete mechanical key | Stat token |
+| ---: | --- | --- |
+| 1 | Population Growth | **Power of Friendship** |
+| 2 | Starting Population | **Episode One Budget** |
+| 3 | Neutral settlement progress/speed | **Truck-kun** |
+| 4 | Global Offensive Pressure | **Main Character Energy** |
+| 5 | Global Defensive Pressure | **Plot Armor** |
+| 6 | Counter-response effectiveness while responding | **Uno Reverse Card** |
+| 7 | Plains Offensive Pressure | **Tournament Arc** |
+| 8 | Highland Offensive Pressure | **Hilltop Duel** |
+| 9 | Mountain Offensive Pressure | **Training Mountain** |
+| 10 | Desert Offensive Pressure | **Desert Episode** |
+| 11 | Forest Offensive Pressure | **Forest Ambush** |
+| 12 | Tundra Offensive Pressure | **Snowball Fight** |
+| 13 | Marsh Offensive Pressure | **Poison Swamp** |
+| 14 | Shallow Water Offensive Pressure | **Beach Episode** |
+| 15 | Plains Defensive Pressure | **Picnic Blanket** |
+| 16 | Highland Defensive Pressure | **High Ground Speech** |
+| 17 | Mountain Defensive Pressure | **Hermit Training** |
+| 18 | Desert Defensive Pressure | **Sand Castle** |
+| 19 | Forest Defensive Pressure | **Hidden Village** |
+| 20 | Tundra Defensive Pressure | **Kotatsu Doctrine** |
+| 21 | Marsh Defensive Pressure | **Mud Wrestling** |
+| 22 | Shallow Water Defensive Pressure | **Water Breathing** |
+| 23 | Plains Capture/Settlement Speed | **Speedrun Route** |
+| 24 | Highland Capture/Settlement Speed | **Staircase Skip** |
+| 25 | Mountain Capture/Settlement Speed | **Mountaineering Montage** |
+| 26 | Desert Capture/Settlement Speed | **Desert Bus** |
+| 27 | Forest Capture/Settlement Speed | **Secret Shortcut** |
+| 28 | Tundra Capture/Settlement Speed | **Snow Boots** |
+| 29 | Marsh Capture/Settlement Speed | **Swamp Side Quest** |
+| 30 | Shallow Water Capture/Settlement Speed | **River Crossing OVA** |
+| 31 | All FFY Event Yield | **Gacha Fund** |
+| 32 | Military/Conquest FFY | **Loot Goblin** |
+| 33 | Naval/Trade FFY | **Merchant Guild Quest** |
+| 34 | Industrial FFY | **Salaryman Overtime** |
+| 35 | All-structure Build Cost | **Budget Anime** |
+| 36 | City Build Cost | **Culture Festival Budget** |
+| 37 | Fort Build Cost | **Cardboard Castle** |
+| 38 | Port Build Cost | **Dockside Date** |
+| 39 | Factory Build Cost | **Mecha Workshop** |
+| 40 | Missile Silo Build Cost | **Secret Base** |
+| 41 | SAM Launcher Build Cost | **Bullet Hell Umbrella** |
+| 42 | Observation Post Build Cost | **Rooftop Telescope** |
+| 43 | Command Post Build Cost | **Student Council Room** |
+| 44 | All-structure Upgrade Cost | **New Game Plus** |
+| 45 | City Upgrade Cost | **Town Renovation Arc** |
+| 46 | Fort Upgrade Cost | **Castle Upgrade Screen** |
+| 47 | Port Upgrade Cost | **Expansion Pack** |
+| 48 | Factory Upgrade Cost | **Mecha Upgrade Kit** |
+| 49 | Missile Silo Upgrade Cost | **Final Boss Budget** |
+| 50 | SAM Launcher Upgrade Cost | **Skill Tree Tax** |
+| 51 | Observation Post Upgrade Cost | **Binocular DLC** |
+| 52 | Command Post Upgrade Cost | **Strategy Guide** |
+| 53 | All-structure Construction Time | **Timeskip** |
+| 54 | City Construction Time | **Festival Prep** |
+| 55 | Fort Construction Time | **Emergency Blanket Fort** |
+| 56 | Port Construction Time | **Ship-in-a-Bottle Speedrun** |
+| 57 | Factory Construction Time | **Lab All-Nighter** |
+| 58 | Missile Silo Construction Time | **Countdown Episode** |
+| 59 | SAM Launcher Construction Time | **Reload Dance** |
+| 60 | Observation Post Construction Time | **Detective Arc** |
+| 61 | Command Post Construction Time | **Thirty-Second War Room** |
+| 62 | City Growth Contribution | **Slice-of-Life Season** |
+| 63 | Fort Coverage Area | **Blanket Fort** |
+| 64 | Fort Defensive Pressure | **Final Stand** |
+| 65 | Factory Armored-unit Repair Radius | **Pit Stop Episode** |
+| 66 | Factory Armored-unit Repair Rate | **Repair OVA** |
+| 67 | Port Passive Repair Radius | **Beach House** |
+| 68 | Port Passive Repair Rate | **Hot Spring Recovery** |
+| 69 | Observation Post Radius | **Stare** |
+| 70 | Command Post Coverage Area | **Monologue** |
+| 71 | Command Post Offensive-pressure Magnitude | **Charisma Check** |
+| 72 | SAM Interception Range | **Bullet Hell Screen** |
+| 73 | SAM Recharge/Cooldown Time | **Gacha Pity** |
+| 74 | Missile Silo Recharge/Cooldown Time | **Villain Monologue** |
+| 75 | Warship FFY Purchase Cost | **Shipgirl Tax** |
+| 76 | Tank FFY Purchase Cost | **Mecha Tax** |
+| 77 | Warship Movement Speed | **Ocean Drift** |
+| 78 | Tank Movement Speed | **Drift King** |
+| 79 | Warship Attack Range | **Battleship Horizon** |
+| 80 | Tank Attack Range | **Beam Spam** |
+| 81 | Warship Damage | **Guitar Solo** |
+| 82 | Tank Damage | **Rocket Punch** |
+| 83 | Warship Maximum Health | **Unsinkable Waifu** |
+| 84 | Tank Maximum Health | **Plot Armor Mk II** |
+| 85 | All-warhead Projectile Speed | **Sakuga Missile** |
+| 86 | Atom Bomb Projectile Speed | **Pocket Sun Delivery** |
+| 87 | Hydrogen Bomb Projectile Speed | **Second Sun Delivery** |
+| 88 | MIRV Projectile Speed | **Macross Missile Spam** |
+| 89 | Atom Bomb FFY Cost | **Pocket Sun Budget** |
+| 90 | Hydrogen Bomb FFY Cost | **Season Finale Budget** |
+| 91 | MIRV FFY Cost | **Whale Button** |
+| 92 | Atom Bomb Blast Area | **Explosion Cut-In** |
+| 93 | Hydrogen Bomb Blast Area | **Final Episode Explosion** |
+
+These are deliberately **not** generated from family/scope labels. Similar mechanics may therefore have completely different flavor tokens. Future naming-version changes may revise wording without changing the mechanical key or collectible identity.
 
 ### 7.3 Universal magnitude descriptors
 
@@ -583,7 +675,7 @@ Accepted V1 naming templates:
 <Character>'s <positive descriptor> <stat token>
 ```
 
-Example form:
+Example form using the accepted Warship-Damage token:
 
 ```text
 Bocchi's Fantastic Guitar Solo
@@ -598,7 +690,7 @@ Bocchi's Fantastic Guitar Solo
 Example form:
 
 ```text
-Senjougahara's Amazing Beat Saber Highscore of Fantastic Height
+Senjougahara's Amazing Stare of Fantastic Rocket Punch
 ```
 
 Because dual-positive mechanical identity is unordered, presentation order must be deterministic (for example stable concrete-key order) so the same identity does not flip between `A of B` and `B of A`.
@@ -612,7 +704,7 @@ Because dual-positive mechanical identity is unordered, presentation order must 
 Example form:
 
 ```text
-Kaiki's Fantastic Guitar Solo with a side of Wretched Flower Field
+Kaiki's Fantastic Guitar Solo with a side of Wretched Power of Friendship
 ```
 
 The positive component always appears first and the harmful component second.
@@ -640,10 +732,10 @@ Example conceptually:
 same identity: Kaiki + Tank Damage / harmful Population Growth
 
 old retained roll:
-Kaiki's Good <Tank-Damage Token> with a side of Wretched <Population-Growth Token>
+Kaiki's Good Rocket Punch with a side of Wretched Power of Friendship
 
 new retained roll:
-Kaiki's Fantastic <Tank-Damage Token> with a side of Questionable <Population-Growth Token>
+Kaiki's Fantastic Rocket Punch with a side of Questionable Power of Friendship
 ```
 
 The stable character/stat words make the underlying duplicate recognizable while the adjectives visibly reflect the retained roll.
@@ -1129,7 +1221,7 @@ It supports:
 10 pulls = 100 Middle Fingers
 ```
 
-There is no V1 batch discount or bonus roll.
+There is no V1 batch discount or bonus.
 
 A 10-pull batch is mechanically equivalent to ten sequential single pulls. It exists for convenience/presentation, not superior expected value.
 
@@ -1483,16 +1575,16 @@ The canonical replacement concepts are:
 
 ## 20. Remaining work / design closure
 
-The V1 Echo **mechanical and generated-naming architecture is design-complete**. Remaining Echo work is implementation, naming-content authoring, validation, visual production, and later playtest tuning.
+The V1 Echo **mechanical architecture and initial generated-naming content are design-complete**. Remaining Echo work is implementation/versioning, validation, visual production, optional future naming-version revisions, and later playtest tuning.
 
 Deferred implementation/content work includes:
 
-1. author the exact shape-specific character pools and concrete-key stat-token dictionary; examples used during design such as `Guitar Solo` remain illustrative until deliberately assigned;
-2. implement/version the deterministic naming generator and tests for stable identity components, polarity-aware descriptors, deterministic dual ordering, and roll-dependent adjective changes;
+1. implement/version the accepted shape-specific character pools and 93-key stat-token dictionary in the deterministic naming configuration;
+2. implement the naming generator and tests for stable identity components, polarity-aware descriptors, deterministic dual ordering, and roll-dependent adjective changes;
 3. implement the concrete SQLite/account schema/indexes/migrations for owned rolls, Echo Sets, Middle Fingers, pity, settlements, and audit events;
 4. implement the exact visual recipe renderer, card motion, quality effects, and responsive/touch behavior consistent with the accepted presentation rules;
 5. implement executable/property tests for identity generation/distribution, EchoScore-weighted magnitude sampling, quality tiers, Middle Fingers accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, saved-set propagation, generated naming, and Gacha pity;
-6. later playtest-retune versioned numerical values if real play provides a reason.
+6. later playtest-retune versioned numerical values or revise a future naming version if real play/content review provides a reason.
 
 The following are no longer open design questions for V1:
 
@@ -1513,6 +1605,8 @@ The following are no longer open design questions for V1:
 - unresolved-result persistence — pending settlement until accepted;
 - V1 Echo authored dialogue/voice-line content — none; anime-line/reference effort is reserved for Origin traits/Official Origins and may be revisited for Echoes after V1;
 - generated naming grammar — character possessive + magnitude descriptor(s) + stat token(s), with shape-specific templates;
+- V1 shape-specific character-owner pools — accepted 10/10/10 pools in §7.1;
+- V1 concrete-key naming content — one deliberately authored phrase for each of the 93 keys in §7.2, with no mechanical scope-prefix construction;
 - Mixed connector — `with a side of`;
 - magnitude descriptor vocabulary — Catastrophic / Cursed / Wretched / Dreadful / Shoddy / Questionable / Decent / Good / Great / Amazing / Fantastic / Absurd for naming magnitudes `-6..-1/+1..+6`;
 - descriptor semantics — beneficial/harmful polarity, not naive arithmetic sign;
