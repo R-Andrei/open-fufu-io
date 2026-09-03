@@ -376,7 +376,7 @@ combinedBonus = 1 - (1 - A) × (1 - B)
 where `A` and `B` are decimal bonus magnitudes. Under the current L5 values, `30%` Fort support and `15%` Command support combine to **40.5%**, not 45% or 49.5%.
 - The same cross-type composition rule applies whether the relevant direction is offense, defense, or—when both P50 and P51 are selected—both.
 
-Taking both traits therefore turns both structures into general support fields while preserving their distinct baseline identities: Forts remain stronger/concentrated (`10/15/20/25/30%`, radius `30/35/40/45/50`) and Command Posts remain weaker/wider (`3/6/9/12/15%`, radius `30/35/40/45/50` under the current provisional table).
+Taking both traits therefore turns both structures into general support fields while preserving their distinct baseline pressure strengths. Under the current provisional baseline, both structures use radius `30/35/40/45/50`; Forts provide the stronger `10/15/20/25/30%` field while Command Posts provide the weaker `3/6/9/12/15%` field. Any future decision to differentiate their coverage radii is a separate baseline-structure tuning change, not part of P50/P51.
 
 ---
 
