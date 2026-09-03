@@ -4,13 +4,13 @@
 
 This document is the **canonical content registry for Official Origins**.
 
-It does not replace [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains authoritative for game mechanics and Origin-system rules, or [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md), which remains authoritative for migration/implementation direction.
+It does not replace [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains authoritative for game mechanics and Origin-system rules, or [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md), which remains authoritative for migration/implementation direction. Trait definitions/costs come from [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). Official AI preset pools are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md).
 
-The seven builds below are the accepted first Official Origin roster. Their **mechanical trait combinations are canonical provisionally for the first catalogue pass**, while their current display names are explicitly working names and are expected to be replaced later, preferably with suitable anime/JRPG-reference identities.
+The roster below is the accepted **provisional V1 Official Origin library**. Mechanical combinations are provisional content baselines subject to playtest repricing/revision while remaining ordinary legal builds under the public Origin catalogue. Display names are also provisional thematic names and may receive a later wording/reference cleanup without silently changing mechanics.
 
-Official Origins obey exactly the same public builder rules and deployed trait catalogue as Custom Origins. No Official Origin receives hidden points, hidden traits, compatibility exceptions, or creator-only mechanics.
+Official Origins obey exactly the same public builder rules as Custom Origins. No Official Origin receives hidden points, hidden traits, compatibility exceptions, or creator-only mechanics.
 
-Current builder constraints for this roster:
+Current builder constraints:
 
 ```text
 Base Origin Points:       10
@@ -19,252 +19,135 @@ Maximum drawback refund:  10
 Maximum positive spend:   20
 ```
 
-Point costs remain subject to catalogue balance revision. If a trait is repriced, the Official builds must remain ordinary legal builds under the same public rules or be revised openly.
+---
+
+## Default and authoring direction
+
+**Business as Usual (O08)** is the provisional V1 **first-listed and default-selected Origin** in the player UI.
+
+It exists for a player who does not yet want to solve an Origin buildcraft puzzle: it gives two broadly useful scalar improvements and otherwise stays close to ordinary Open Fufu play.
+
+Official-Origin authoring follows these principles:
+
+- **Simple does not mean intentionally weak.** A starter-friendly Origin should normally use roughly the ordinary 10-point base budget without forcing the player into several rule transformations.
+- Leaving points or trait slots unused is legal and sometimes desirable.
+- **9–10 positive spend is a healthy ordinary baseline.**
+- An Official Origin with **8 or fewer positive points requires a specific design justification**; low complexity by itself is not enough reason to leave a large fraction of the base budget unused.
+- Specialized Origins may spend well above 10 positive points by accepting coherent drawbacks, up to the normal public limits.
+- Drawbacks for beginner-oriented Origins should prefer understandable scalar tradeoffs over mechanics that radically change the rules or demand specialized knowledge.
+- Origins are a **global shared library**, not content owned by one AI character. Multiple AI presets may legally include the same Official Origin in their allowed pools even when the Origin name/reference has no lore relationship to that character.
+- Duplicate mechanical builds under different presentation names are generally undesirable; **O35/O36 are currently a known provisional duplicate pair** and should be differentiated or consolidated before implementation if a good distinction is found.
+
+The first three UI-facing starter choices are:
+
+| Origin | Compact build | Intent |
+| --- | --- | --- |
+| **Business as Usual — DEFAULT** | **P06** (+25% Trade Ship speed) · **P09** (better/cheaper Forts) | Near-vanilla generalist; 10 positive points, no drawback. |
+| **Head Start** | **P01** (+15% Initial Territory) · **P06** (+25% Trade Ship speed) · **N01** (-20% City Growth) | Stronger opening with a mild long-term scalar drawback. |
+| **Home Field Advantage** | **P09** (better/cheaper Forts) · **P13** (+33% Mountain defense) · **P15** (+33% Highland offense) · **N02** (-25% Plains offense) | Easy-to-understand terrain/defense specialization. |
 
 ---
 
-## O01 — Last Bastion
+## Provisional V1 Official Origin library
 
-**Display name status:** temporary.
+**Spend** is shown as `positive / raw drawback refund` where applicable. At most 10 drawback points are usable under the builder even if raw drawbacks exceed 10.
 
-**Strategic identity:** extreme territorial defense, defender preservation, selective counterattack, poor power projection.
-
-Selected traits:
-
-1. **Elastic automatic defense** — `10`: when an automatically defended population-bearing cell is captured, its automatic defender survives and remains/returns Available; the attacker still pays the ordinary defended-capture casualty and ownership/Capacity transfer normally.
-2. **Improved Forts** — `5`: `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost`.
-3. **Mountain defensive doctrine** — `4`: Mountains offer `+33% defensive pressure`.
-4. **Weak Plains offense** — `-4`: `25% reduced Plains offensive pressure`.
-5. **Disastrous amphibious projection** — `-7`: `50% of Transport Ship Population dies when landing`.
-
-Accounting:
-
-```text
-positive spend: 19
-raw drawbacks:   11
-usable refund:   10
-traits:           5
-```
-
-Design intent:
-
-- exceptionally difficult to dislodge from prepared/high-value terrain;
-- can trade territory while preserving Population;
-- should reward controllers that distinguish land worth holding from land worth yielding;
-- deliberately poor at broad open-terrain conquest and overseas power projection;
-- retains access to Factories and Warships so its drawbacks remain about projection rather than arbitrary industrial denial.
-
----
-
-## O02 — Golden City
-
-**Display name status:** temporary.
-
-**Strategic identity:** concentrated peaceful infrastructure, trade wealth, extremely consequential structure placement.
-
-Selected traits:
-
-1. **No wartime trade penalty** — `4`: ordinary wartime trade multiplier becomes `1.0` instead of `0.5`.
-2. **Fast Trade Ships** — `5`: `+25% Trade Ship speed`.
-3. **More trains** — `4`: `+25% amount of trains spawned`.
-4. **Fully developed City purchases** — provisional `6`: purchased Cities can only be bought directly at level 5 for `95%` of the ordinary cumulative level-1 build plus level-2-through-level-5 upgrade cost.
-5. **One of each structure** — `-10`: cannot own more than one of each structure type.
-
-Accounting:
-
-```text
-positive spend: 19
-usable refund:   10
-traits:           5
-```
-
-Design intent:
-
-- a rich city-state / concentrated infrastructure economy rather than broad structure spam;
-- placement of the single City, Port, Factory, Fort, Silo, and SAM becomes strategically defining;
-- war does not automatically destroy the trade economy;
-- losing one key structure may be catastrophic;
-- peaceful/economic without being strategically passive.
+| Official Origin | Traits — human-readable shorthand | Spend | Strategic fantasy |
+| --- | --- | ---: | --- |
+| **O08 — Business as Usual** | **P06** (+25% Trade Ship speed) · **P09** (better/cheaper Forts) | **10** | Default near-vanilla Origin: faster merchants and stronger/cheaper Forts. |
+| **O09 — Head Start** | **P01** (+15% Initial Territory) · **P06** (+25% Trade Ship speed) · **N01** (-20% City Growth) | **12 / -4** | Bigger opening position and faster trade in exchange for mildly weaker long-term City growth. |
+| **O10 — Home Field Advantage** | **P09** (better/cheaper Forts) · **P13** (+33% Mountain defense) · **P15** (+33% Highland offense) · **N02** (-25% Plains offense) | **13 / -4** | Prepared/high-ground warfare; strong Fort/Mountain/Highland play, weaker Plains offense. |
+| **O11 — Fun Things Are Fun** | **P08** (no wartime trade penalty) · **P06** (+25% Trade Ship speed) · **P07** (+25% trains spawned) · **N01** (-20% City Growth) | **13 / -4** | Fast trade and rail that keep functioning through war, with mildly weaker City growth. |
+| **O12 — One Punch** | **P23** (one Warship only; +20% range/damage/speed) · **P22** (+2 maximum Warship rank) · **N01** (-20% City Growth) | **14 / -4** | One extremely strong, high-rank flagship instead of an ordinary fleet. |
+| **O13 — Bomb Girl** | **P25** (Hydrogen-only doctrine; +50% H-bomb area, +50% cost) | **10** | Simple self-contained Hydrogen-Bomb specialization. |
+| **O14 — Bocchi Time** | **P39** (two half-area spawn regions / two exact origins) | **10** | Pure split-start Origin: one faction, two starting regions. |
+| **O15 — Kessoku Band** | **P50** (Forts also support offense) · **P51** (Command Posts also support defense) | **10** | Forts and Command Posts become complementary all-purpose support infrastructure. |
+| **O16 — The Art of Surviving** | **P38** (automatic defender survives captured cell) | **10** | One defining rule: automatic defenders survive losing their cells. |
+| **O17 — To Them Words Are Merely a Means to Deceive** | **P49** (Observation Posts become intel-blackout zones) · **P45** (Forest concealment) · **N02** (-25% Plains offense) | **13 / -4** | Information warfare: blackout Observation Posts and concealed Forest interiors; weaker straightforward Plains offense. |
+| **O01 — I Have No Enemies** | **P38** (automatic defender survives captured cell) · **P09** (better/cheaper Forts) · **P13** (+33% Mountain defense) · **N02** (-25% Plains offense) · **N13** (half Transport Population dies on landing) | **19 / -11 (10 usable)** | Extreme territorial defense and Population preservation; terrible open-terrain/amphibious projection. |
+| **O18 — What Is a True Warrior?** | **P38** (automatic defender survives captured cell) · **P04** (response-side counter-response fixed at 1.0) · **P13** (+33% Mountain defense) · **N13** (half Transport Population dies on landing) | **17 / -7** | Preserve defenders, fight efficiently in direct counter-response and Mountains, project poorly overseas. |
+| **O19 — The Magician** | **P04** (response-side counter-response fixed at 1.0) · **P08** (no wartime trade penalty) · **P38** (automatic defender survives captured cell) · **N07** (max one of each structure type) | **17 / -10** | Reactive defense and wartime economy under severe infrastructure concentration. |
+| **O20 — A War Worth Avoiding** | **P08** (no wartime trade penalty) · **P02** (wide 30–70% Population-utilization growth profile) · **P21** (first purchase of each structure costs 0 FFY) · **N07** (max one of each structure type) | **20 / -10** | Prosper peacefully and remain economically functional when war is forced on you. |
+| **O21 — Heart-Under-Blade** | **P38** (automatic defender survives captured cell) · **P02** (wide 30–70% Population-utilization growth profile) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Extremely persistent continental Population economy with weaker ordinary Cities. |
+| **O22 — The Weak Die First** | **P19** (+5% offense per contacted faction) · **P03** (ignore enemy Fort defensive-pressure bonus) · **P15** (+33% Highland offense) · **N01** (-20% City Growth) · **N04** (-50% Mountain FFY) | **18 / -8** | Predatory multi-contact aggression that ignores Fort pressure and favors Highlands. |
+| **O04 — Spoils of Empire** | **P05** (captured enemy structures generate conquest FFY) · **P34** (conquered Factories operate at 2× effect) · **P15** (+33% Highland offense) · **N09** (cannot build Factories) · **N02** (-25% Plains offense) | **18 / -10** | Conquest-fed economy that must seize industrial capacity rather than build it. |
+| **O23 — Money Is Everything** | **P05** (captured enemy structures generate conquest FFY) · **P08** (no wartime trade penalty) · **P06** (+25% Trade Ship speed) · **N13** (half Transport Population dies on landing) | **17 / -7** | Both commerce and conquest are profit engines; amphibious projection is poor. |
+| **O24 — The Devil of the Rhine** | **P43** (Heavy Artillery replaces Tanks) · **P15** (+33% Highland offense) · **P19** (+5% offense per contacted faction) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Continental Heavy-Artillery breakthrough warfare that escalates with multiple contacts. |
+| **O25 — I Can Cut It** | **P03** (ignore enemy Fort defensive-pressure bonus) · **P43** (Heavy Artillery replaces Tanks) · **P15** (+33% Highland offense) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Fort-ignoring Heavy-Artillery assault doctrine for breaking prepared positions. |
+| **O26 — A Rational War** | **P05** (captured enemy structures generate conquest FFY) · **P43** (Heavy Artillery replaces Tanks) · **P04** (response-side counter-response fixed at 1.0) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Heavy Artillery, disciplined counter-response, and conquest-funded warfare. |
+| **O27 — Ordinary Offensive Magic** | **P43** (Heavy Artillery replaces Tanks) · **P25** (Hydrogen-only doctrine; +50% H-bomb area, +50% cost) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **18 / -10** | Long-range Heavy Artillery backed by oversized Hydrogen weapons. |
+| **O28 — The Height of Magic** | **P25** (Hydrogen-only doctrine; +50% H-bomb area, +50% cost) · **P10** (+100% warhead projectile speed) · **P40** (giant single-charge SAM shields) · **N07** (max one of each structure type) | **20 / -10** | Concentrated strategic arsenal: huge/faster Hydrogen weapons and giant SAM shields. |
+| **O29 — Serious Series** | **P43** (Heavy Artillery replaces Tanks) · **P44** (Radioactive Munitions) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **17 / -10** | Radioactive Heavy Artillery. |
+| **O30 — A Miracle Is Merely a Miscalculation** | **P43** (Heavy Artillery replaces Tanks) · **P10** (+100% warhead projectile speed) · **P20** (free starting Missile Silo) · **N12** (cannot build Warships) · **N03** (-33% Desert defense) | **19 / -10** | Starts armed, fields Heavy Artillery, and launches exceptionally fast strategic weapons. |
+| **O31 — Hell's Snipe** | **P20** (free starting Missile Silo) · **P25** (Hydrogen-only doctrine; +50% H-bomb area, +50% cost) · **N11** (FFY events inside SAM areas yield 0) | **17 / -7** | Free starting Silo into specialized long-range Hydrogen warfare with awkward SAM-area economy. |
+| **O32 — Watchtower** | **P11** (Population-unlocked 0-FFY SAM slots) · **P40** (giant single-charge SAM shields) · **N11** (FFY events inside SAM areas yield 0) | **14 / -7** | Population-scaled free giant SAM shields whose coverage interferes with FFY events. |
+| **O33 — It's a Matter of Visualization** | **P44** (Radioactive Munitions) · **P16** (ignore Fallout capture resistance) · **P35** (deliberately relinquished cells become Fallout) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Radioactive warfare plus Fallout-friendly scorched-earth geography. |
+| **O34 — This Is Poison** | **P44** (Radioactive Munitions) · **P16** (ignore Fallout capture resistance) · **P47** (enemy Marsh captures cost +1 Population) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **17 / -10** | Radioactive weapons, Fallout tolerance, and punishing Marsh territory. |
+| **O35 — Curiosity Killed the Cat** | **P16** (ignore Fallout capture resistance) · **P46** (may build on Tundra) · **P48** (owned Shallow Water gives +1 Capacity/cell) · **P36** (neutral settlement costs 0.5 Population/cell) · **N13** (half Transport Population dies on landing) | **17 / -7** | Treats Fallout, Tundra, Shallow Water, and neutral expansion as opportunities. |
+| **O36 — Radical Edward** | **P46** (may build on Tundra) · **P48** (owned Shallow Water gives +1 Capacity/cell) · **P16** (ignore Fallout capture resistance) · **P36** (neutral settlement costs 0.5 Population/cell) · **N13** (half Transport Population dies on landing) | **17 / -7** | Bizarre-terrain settlement doctrine; currently mechanically identical to Curiosity Killed the Cat pending later differentiation. |
+| **O37 — Hacker's Paradise** | **P49** (Observation Posts become intel-blackout zones) · **P45** (Forest concealment) · **P17** (structure-count upgrade discount) · **N07** (max one of each structure type) | **20 / -10** | Extreme information denial plus tightly concentrated infrastructure optimization. |
+| **O38 — I Don't Know Everything** | **P17** (structure-count upgrade discount) · **P21** (first purchase of each structure costs 0 FFY) · **P04** (response-side counter-response fixed at 1.0) · **N01** (-20% City Growth) · **N04** (-50% Mountain FFY) | **17 / -8** | Preparation, efficient infrastructure, and stable counter-response rather than omniscience. |
+| **O02 — Tea Time** | **P08** (no wartime trade penalty) · **P06** (+25% Trade Ship speed) · **P07** (+25% trains spawned) · **P41** (purchased Cities are direct L5 at 95% cumulative cost) · **N07** (max one of each structure type) | **19 / -10** | Concentrated rich city-state economy: fast trade/rail, direct-L5 Cities, but only one of each structure. |
+| **O39 — A Mere Ten Years** | **P17** (structure-count upgrade discount) · **P21** (first purchase of each structure costs 0 FFY) · **P41** (purchased Cities are direct L5 at 95% cumulative cost) · **N07** (max one of each structure type) | **20 / -10** | Long-horizon infrastructure monster with free first purchases and direct-L5 Cities. |
+| **O40 — Efficiency Above All** | **P02** (wide 30–70% Population-utilization growth profile) · **P17** (structure-count upgrade discount) · **P07** (+25% trains spawned) · **N07** (max one of each structure type) | **20 / -10** | Population-utilization, structure-upgrade, and rail optimization under infrastructure concentration. |
+| **O41 — There Is No Time to Waste** | **P17** (structure-count upgrade discount) · **P07** (+25% trains spawned) · **P41** (purchased Cities are direct L5 at 95% cumulative cost) · **N13** (half Transport Population dies on landing) | **17 / -7** | Rapid continental development through cheaper upgrades, more trains, and direct-L5 Cities. |
+| **O42 — The Stars Are Within My Grasp** | **P01** (+15% Initial Territory) · **P17** (structure-count upgrade discount) · **P07** (+25% trains spawned) · **N01** (-20% City Growth) · **N04** (-50% Mountain FFY) | **18 / -8** | Starts broad and scales infrastructure/rail aggressively, with weaker City/Mountain economy. |
+| **O07 — The Conman** | **P30** (fast 3×-piracy Warships; no naval gunfire) · **P06** (+25% Trade Ship speed) · **P31** (expanded operational Port repair zones) · **N13** (half Transport Population dies on landing) | **17 / -7** | Piracy/trade economy whose Warships raid merchants rather than fight battle fleets. |
+| **O05 — The Country Mouse and the City Mouse** | **P37** (+250 FFY embarkation; successful landing grants L1 Fort) · **P32** (Port-only armored Transports) · **P12** (+25% Transport speed) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Armored, fast, self-fortifying amphibious invasion without conventional Warships. |
+| **O43 — King of Apparitions** | **P23** (one Warship only; +20% range/damage/speed) · **P22** (+2 maximum Warship rank) · **P31** (expanded operational Port repair zones) · **N07** (max one of each structure type) | **20 / -10** | One absurd high-rank flagship sustained by powerful Port repair support. |
+| **O03 — Railgun** | **P02** (wide 30–70% Population-utilization growth profile) · **P07** (+25% trains spawned) · **P33** (City train stops grant Population) · **N01** (-20% City Growth) · **N12** (cannot build Warships) | **19 / -10** | Rail-driven demographic engine with broad utilization management; continental and weak at ordinary City growth. |
+| **O44 — Hero for Fun** | **P21** (first purchase of each structure costs 0 FFY) · **P36** (neutral settlement costs 0.5 Population/cell) · **P01** (+15% Initial Territory) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Strong land-expansion generalist with cheap settlement and free first structures, but weak naval/City scaling. |
+| **O06 — Somewhere Not Here** | **P39** (two half-area spawn regions / two exact origins) · **P01** (+15% Initial Territory) · **N07** (max one of each structure type) | **17 / -10** | Two starting homelands sharing one global economy and only one of each structure. |
+| **O45 — Level 5** | **P11** (Population-unlocked 0-FFY SAM slots) · **P27** (SAMs may attack ships) · **N11** (FFY events inside SAM areas yield 0) | **17 / -7** | Population-unlocked free SAM network that can also attack ships, at an economic spatial cost. |
+| **O46 — Nobel Prize** | **P19** (+5% offense per contacted faction) · **P44** (Radioactive Munitions) · **N13** (half Transport Population dies on landing) | **16 / -7** | Multi-contact aggression plus radioactive munitions; poor amphibious projection. |
+| **O47 — Blood Devil** | **P28** (destroyed enemy Transports give carried Population) · **P38** (automatic defender survives captured cell) · **N12** (cannot build Warships) · **N01** (-20% City Growth) | **19 / -10** | Steals Transport Population while preserving its own automatic defenders; continental and City-light. |
 
 ---
 
-## O03 — Rail-Demographic Origin
+## Roster notes
 
-**Display name status:** temporary and expected to change.
+### Existing seven-origin roster migration
 
-**Strategic identity:** Population through circulation; rail activity and utilization management replace passive demographic simplicity.
+The original seven Official Origin builds remain present mechanically, but have been absorbed into the expanded thematic library:
 
-Selected traits:
-
-1. **30–70% utilization-growth profile** — `9`: replaces the ordinary Population-utilization growth curve with the accepted wide 30–70% profile.
-2. **More trains** — `4`: `+25% amount of trains spawned`.
-3. **Population from City train stops** — provisional `6`: when a valid train stops at an owned City, that City owner gains the trait-defined amount of Available Population, capped by Capacity; exact Population amount remains tuning data.
-4. **Weaker ordinary City Growth** — `-4`: Cities contribute `20% less Population Growth`.
-5. **No Warships** — `-6`: cannot build Warships.
-
-Accounting:
-
-```text
-positive spend: 19
-usable refund:   10
-traits:           5
-```
-
-Design intent:
-
-- Population comes from a deliberately managed demographic/railway engine rather than a generic `+Population` bonus;
-- the controller should value active rail circulation through Cities;
-- direct train-stop Population and the wide utilization sweet spot create a distinct Population-management problem;
-- ordinary passive City Growth is weaker;
-- the faction is strongly continental and cannot establish conventional Warship dominance.
-
----
-
-## O04 — Spoils of Empire
-
-**Display name status:** temporary.
-
-**Strategic identity:** conquest-fed economy, stolen industry, terrain-sensitive aggression.
-
-Selected traits:
-
-1. **Structure-capture FFY** — `8`: capturing enemy structures generates military/conquest FFY events.
-2. **Conquered Factory amplification** — provisional `6`: Factories acquired from another faction by conquest operate at `2×` ordinary Factory effect while owned.
-3. **Highland offensive doctrine** — `4`: `+33% offensive pressure on Highlands`.
-4. **Cannot build Factories** — `-6`.
-5. **Weak Plains offense** — `-4`: `25% reduced Plains offensive pressure`.
-
-Accounting:
-
-```text
-positive spend: 18
-usable refund:   10
-traits:           5
-```
-
-Design intent:
-
-- cannot create its own industrial base normally and therefore wants to seize one;
-- enemy infrastructure becomes an explicit strategic target rather than incidental territory;
-- conquered Factories are unusually valuable and captured structures fund further conquest;
-- favors Highland approaches and performs poorly in broad Plains offensives;
-- should cause a controller to choose enemies partly from visible infrastructure and geography.
-
----
-
-## O05 — Iron Tide
-
-**Display name status:** temporary.
-
-**Strategic identity:** expensive, fast, armored, self-fortifying amphibious invasion without conventional naval combat supremacy.
-
-Selected traits:
-
-1. **Fortified amphibious landings** — provisional `7`: Transport embarkation receives `+250 FFY`; a successful landing grants a permanent level-1 Fort at the landing location.
-2. **Armored Port-launched Transports** — `6`: Transports may embark only from explicitly selected owned active Ports, but become armored/health-bearing.
-3. **Fast Transports** — `6`: Transport Ships are `25% faster`.
-4. **Cannot build Warships** — `-6`.
-5. **Weaker ordinary City Growth** — `-4`: Cities contribute `20% less Population Growth`.
-
-Accounting:
-
-```text
-positive spend: 19
-usable refund:   10
-traits:           5
-```
-
-Design intent:
-
-- highly capable amphibious invasion apparatus with no conventional Warship screen;
-- Transport launches are economically meaningful rather than disposable spam;
-- successful landings immediately establish persistent Fort-backed beach positions;
-- controllers must solve launch-Port selection, route/timing risk, concentration, and follow-up without owning a normal battle fleet;
-- aggressive and high-risk rather than a generic naval-superiority faction.
-
----
-
-## O06 — Gemini
-
-**Display name status:** temporary.
-
-**Strategic identity:** two starting territorial blobs, one global resource system, severe infrastructure concentration decisions.
-
-Selected traits:
-
-1. **Split strategic origin** — `10`: two influence areas, each `50%` of ordinary influence area; one exact origin is selected in each; final Initial Territory is split approximately equally between the two starting footprints; Starting Population remains one unchanged global pool.
-2. **Larger Initial Territory** — `7`: `+15% Initial Territory`, applied once to the faction's final total before the split.
-3. **One of each structure** — `-10`: cannot own more than one of each structure type.
-
-Accounting:
-
-```text
-positive spend: 17
-usable refund:   10
-traits:           3
-```
-
-Design intent:
-
-- the deliberately wonky Official Origin;
-- may start in nearby regions for safety or in radically separated regions for strategic reach;
-- both territorial blobs share one global Population/economy rather than local resource pools;
-- having only one of each structure forces the controller to decide which geographic half receives unique infrastructure;
-- showcases strategic-spawn programming and multi-region controller reasoning more directly than any other initial Official Origin.
-
----
-
-## O07 — Corsair State
-
-**Display name status:** temporary.
-
-**Strategic identity:** piracy/trade economy whose Warships are economic raiders rather than naval battle units.
-
-Selected traits:
-
-1. **Pirate-Warship conversion** — `6`: Warships move `+50% faster` and piracy FFY is `3×` baseline, but Warships cannot use naval gunfire against ships; they retain Trade Ship pursuit/capture behavior.
-2. **Fast Trade Ships** — `5`: `+25% Trade Ship speed`.
-3. **Expanded Port repair zones** — `6`: Ports project substantially larger repair zones and Warships inside receive strong repair without docking while remaining operational.
-4. **Disastrous amphibious landings** — `-7`: `50% of Transport Ship Population dies when landing`.
-
-Accounting:
-
-```text
-positive spend: 17
-usable refund:    7
-traits:           4
-```
-
-Design intent:
-
-- the sea is primarily an economic space rather than a conquest space;
-- Warships hunt merchants and evade real battle fleets instead of contesting them directly;
-- Ports act as raider safe-harbors/forward repair zones;
-- fast Trade Ships reinforce the maritime economy;
-- amphibious conquest is deliberately poor, preventing the strong naval economy from trivially converting into overseas territorial domination.
-
----
-
-## Roster coverage
-
-The first seven Official Origins intentionally demonstrate different controller problems rather than seven variants of generic stat optimization:
-
-| Origin | Primary strategic lesson |
+| Previous working name | Current provisional identity |
 | --- | --- |
-| O01 Last Bastion | extreme defense, selective retreat, Population preservation |
-| O02 Golden City | concentrated infrastructure and peaceful/trade wealth |
-| O03 Rail-Demographic Origin | Population utilization + rail circulation |
-| O04 Spoils of Empire | conquest economy and stolen infrastructure |
-| O05 Iron Tide | high-risk fortified amphibious invasion |
-| O06 Gemini | split strategic spawning and multi-region resource allocation |
-| O07 Corsair State | piracy/trade economy without conventional naval battle power |
+| Last Bastion | **O01 — I Have No Enemies** |
+| Golden City | **O02 — Tea Time** |
+| Rail-Demographic Origin | **O03 — Railgun** |
+| Spoils of Empire | **O04 — Spoils of Empire** |
+| Iron Tide | **O05 — The Country Mouse and the City Mouse** |
+| Gemini | **O06 — Somewhere Not Here** |
+| Corsair State | **O07 — The Conman** |
 
-This first roster deliberately does not require every major mechanic family to have an Official Origin. In particular, a dedicated nuclear Official Origin may be added later without displacing one of these seven merely to satisfy category symmetry.
+Their mechanics were not discarded merely because the presentation names changed.
+
+### Global sharing
+
+An Official Origin may appear in any number of Official AI preset pools. The Origin's name is a thematic identity for the build, **not a claim that the preset character said the line or belongs to the source work referenced by the Origin name**.
+
+This is intentional. For example, an information-denial Origin may fit several ruthless/aloof/analytical characters even if only one—or none—has any literal relationship to the phrase used as its title.
+
+### Player availability
+
+Official Origins are ordinary legal public builds and should be selectable by human players as curated ready-made Origins. Custom Origin creation remains available separately under the same trait catalogue/builder constraints.
+
+### No forced category symmetry
+
+The library does not need a fixed quota of naval, economic, nuclear, defensive, or other Origin categories. New Official Origins should be added when a coherent mechanical fantasy or AI-pool need exists, not to fill an arbitrary taxonomy.
 
 ---
 
-## Naming pass still required
+## Implementation/content work still open
 
-The roster mechanics are accepted; **most or all current display names are placeholders**.
+The following remain implementation/content work rather than reasons to reopen the Origin-system architecture:
 
-A later content pass should replace them with thematic names, preferably anime/JRPG references where a reference fits the actual mechanical identity. Naming must not change the bound mechanical build or silently alter trait accounting.
+1. final display-name/reference cleanup;
+2. differentiation or consolidation of the current O35/O36 duplicate build;
+3. playtest repricing/revision if trait costs change;
+4. UI art/presentation for Official Origins;
+5. runtime data schema/import representation;
+6. exhaustive legality/invariant validation against the deployed trait catalogue;
+7. future additions where an AI preset or player-facing fantasy genuinely needs another build.
+
+No gameplay implementation is authorized by this document alone.
