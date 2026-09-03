@@ -1007,16 +1007,28 @@ Diplomacy does not change during a match, so the set of teammates/allies/opponen
 
 ### 13.2 AI difficulty bonuses
 
-A special higher-difficulty AI preset may grant:
+Official AI reward contribution is derived from the bound/versioned Official AI preset's **difficulty**, which is maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). That preset difficulty is the single per-character source of truth; the Echo system does not maintain a second per-character bonus field/table.
+
+For defeating an Official AI preset:
 
 ```text
-+1 ordinary opponent-defeat roll
-+ that preset's individually authored difficulty bonus
+ordinary qualifying-opponent roll = 1
+special-AI bonus                  = difficulty - 1
+--------------------------------------------------
+total defeat contribution         = difficulty Echo rolls
 ```
 
-The Echo system does **not** define a universal Easy/Medium/Hard reward multiplier or invent bonus values for presets whose implemented controller difficulty has not yet been assigned. Exact special-AI bonuses belong to the Official AI preset/controller design and become ordinary versioned preset/reward data when finalized.
+Therefore:
 
-The provisional character-based Official AI roster now exists, but its exact 1–5 difficulty ratings and reward bonuses remain deliberately unset until the corresponding controller behavior is designed.
+```text
+Difficulty 1 → 1 total roll
+Difficulty 2 → 2 total rolls
+Difficulty 3 → 3 total rolls
+Difficulty 4 → 4 total rolls
+Difficulty 5 → 5 total rolls
+```
+
+The randomly selected allowed Origin does **not** change that value. Difficulty/reward belongs to the character/controller preset and is versioned with the preset/match record. If later playtesting changes a preset's difficulty target/rating, its special-AI defeat reward follows that same single source of truth rather than requiring a second reward-table edit.
 
 ### 13.3 Victory bonus
 
@@ -1480,8 +1492,7 @@ Deferred implementation/content work includes:
 3. implement the concrete SQLite/account schema/indexes/migrations for owned rolls, Echo Sets, Middle Fingers, pity, settlements, and audit events;
 4. implement the exact visual recipe renderer, card motion, quality effects, and responsive/touch behavior consistent with the accepted presentation rules;
 5. implement executable/property tests for identity generation/distribution, EchoScore-weighted magnitude sampling, quality tiers, Middle Fingers accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, saved-set propagation, generated naming, and Gacha pity;
-6. assign exact special-AI Echo reward bonuses **when those AI presets/controllers are designed**; this is an AI-system/preset decision, not an unresolved Echo mechanic;
-7. later playtest-retune versioned numerical values if real play provides a reason.
+6. later playtest-retune versioned numerical values if real play provides a reason.
 
 The following are no longer open design questions for V1:
 
@@ -1509,6 +1520,7 @@ The following are no longer open design questions for V1:
 - duplicate/Gacha currency name — Middle Fingers;
 - saved configuration name — Echo Sets provisionally;
 - visual identity rule — stable identity components plus roll-dependent naming adjectives and quality treatment;
-- collection concept — searchable/filterable/favoritable Echo card grid with multiple saved equipped sets and no unknown silhouettes.
+- collection concept — searchable/filterable/favoritable Echo card grid with multiple saved equipped sets and no unknown silhouettes;
+- Official AI reward contribution — bound preset difficulty is the single per-character source of truth, with total defeat rolls equal to difficulty (`1..5`) and no independent per-character reward-bonus table.
 
 These implementation/content tasks are not reasons to reopen the accepted **12,927 stable mechanical identities + rerolled score-weighted magnitudes + deterministic generated naming + duplicate progression + all-earned-roll rewards + Middle Fingers Gacha Store** architecture.
