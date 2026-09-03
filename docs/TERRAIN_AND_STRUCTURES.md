@@ -446,12 +446,12 @@ Construction time is a real delay before the purchased unit becomes active. Purc
 
 ---
 
-# 6. Next design work
+# 6. Echo integration status
 
-Before recomputing the exhaustive Echo catalogue:
+The terrain/structure/Tank expansion is already reflected in the canonical Echo system:
 
-1. add appropriate Origin traits for the expanded terrain/structure library without duplicating simple Echo-style tuning;
-2. expand the Echo stat/scope pool for Forest, Tundra, Marsh, Shallow Water, Observation Post, Command Post, Tank, and accepted Tank-related axes;
-3. audit all builder-legal P43/P44 combinations;
-4. recompute the exhaustive whole-percentage Echo catalogue after the modifier-key pool is settled;
-5. tune values through simulation/playtesting while preserving the accepted identities.
+1. the allowed Echo pool resolves to **93 concrete stat+scope keys**, including the accepted terrain offense/defense/capture scopes, Observation Post, Command Post, Factory repair, and Tank axes;
+2. those keys generate **12,927 fixed collectible Echo identities** by shape+concrete-key identity as defined in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md);
+3. magnitude permutations are rolled acquisition instances of those identities, **not** separate permanent catalogue entries;
+4. Tank-scoped Echoes apply after Origin transformation, including P43 Heavy Artillery, while authored reload/cooldown, traversal permissions, repair-retreat threshold, and P44 radioactive footprint remain outside the ordinary Echo pool;
+5. future work is balance/playtest tuning and keeping terrain/structure/Tank semantics synchronized with the Echo contract—not recomputing a magnitude-specific permanent Echo catalogue.
