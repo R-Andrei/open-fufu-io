@@ -24,7 +24,7 @@ The current fork is a strong basis for Open Fufu and should **not** be rewritten
 
 The migration strategy is:
 
-> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and inherited progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol, public spawn-profile transformations, and Initial Territory footprint generation. Extend the inherited terrain substrate with the accepted Open Fufu terrain library and Fallout overlay semantics. Adapt inherited structure/upgrading infrastructure into Open Fufu's deliberate eight-structure level-1-through-level-5 system, public Fort concept, Observation/Command Posts, launcher tier gates, and explicit naval/structure effects. Add the Factory-produced Tank as the sole baseline persistent land military unit and implement Heavy Artillery/Radioactive Munitions as typed Origin transformations of that same unit. Add Open Fufu's versioned **Origin** faction-identity system and **Echo** collectible/progression system through explicit typed rule hooks rather than hidden faction bonuses.
+> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and inherited progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol, public spawn-profile transformations, and Initial Territory footprint generation. Extend the inherited terrain substrate with the accepted Open Fufu terrain library and Fallout overlay semantics. Adapt inherited structure/upgrading infrastructure into Open Fufu's deliberate eight-structure level-1-through-level-5 system, public Fort concept, Observation/Command Posts, launcher tier gates, and explicit naval/structure effects. Add the Factory-produced Tank as the sole baseline persistent land military unit and implement Heavy Artillery/Radioactive Munitions as typed Origin transformations of that same unit. Add Open Fufu's versioned **Origin** faction-identity system and the **Echo** system as 12,927 fixed collectible identities with rerolled acquisition magnitudes, duplicate progression, accumulated match rewards, and Gacha Store progression through explicit typed rule hooks rather than hidden faction bonuses.
 
 A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
 
@@ -119,7 +119,7 @@ Origins and Echoes modify the explicit rule-bearing configuration consumed by th
 | Typed Origin/Echo rule-composition hooks | **New** |
 | Official + Custom Origin definitions/creator | **New** |
 | Exhaustive Origin-catalogue combination deployment gate | **New** |
-| Open Fufu Echo catalogue/ownership/loadouts/progression | **New** |
+| Open Fufu Echo identity catalogue/owned rolls/loadouts/rewards/Gacha Store | **New** |
 | Open Fufu-owned SQLite persistence | **New / Adapt surrounding session infrastructure** |
 
 ---
@@ -482,7 +482,7 @@ Any mode that permits Origin spawn-profile mechanics must define deterministic R
 
 Add a surfaced **Initial Territory** starting-state quantity representing the target number of population-bearing cells each faction should own at match start.
 
-The base comes from the ruleset. Explicit allowed Origin traits, Echoes, or other surfaced starting-state modifiers may change this quantity without changing Capacity-per-cell.
+The base comes from the ruleset. Explicit allowed Origin traits or other surfaced starting-state modifiers may change this quantity without changing Capacity-per-cell.
 
 After exact origins resolve, deterministically grow compact connected roughly circular footprints outward from all origins **simultaneously** across legal population-bearing cells.
 
@@ -576,7 +576,7 @@ There is no neutral defender-side Population casualty because Terra Nullius is n
 
 Conquerable **non-population-bearing** terrain such as Tundra/Shallow Water still requires acquisition progress/time but has zero baseline neutral-settlement Population cost because the 1-Population settlement rule is scoped to population-bearing cells.
 
-Typed Origin/Echo/ruleset hooks may alter the settlement cost. The accepted settlement-efficiency Origin trait changes it to `0.5 Population/cell`; implement that through deterministic faction-level residual accounting that survives ending/recreating expansion operations, preventing operation-churn exploits.
+Typed Origin/Echo/ruleset hooks may alter settlement progress/speed; structural settlement-cost changes such as the accepted Origin trait changing cost to `0.5 Population/cell` use their own typed hook. Implement fractional costs through deterministic faction-level residual accounting that survives ending/recreating expansion operations, preventing operation-churn exploits.
 
 Neutral Fallout follows the underlying terrain's population-bearing classification and additionally applies its explicit acquisition-resistance/progress rule.
 
@@ -952,7 +952,7 @@ Retain/adapt the generic unit framework internally: stable IDs, ownership, movem
 
 Current transport payload maps naturally to committed Population. Carried Population is not Available for defense; a legal landing joins local offensive engagement. Transport destruction can explicitly kill carried Population.
 
-The baseline Transport embarkation FFY cost is **0**. Implement a typed **additive embarkation-cost modifier** surface for Origin/Echo/ruleset effects rather than absolute replacement prices.
+The baseline Transport embarkation FFY cost is **0**. Implement a typed **additive embarkation-cost modifier** surface for Origin/ruleset effects rather than absolute replacement prices.
 
 Accepted combination example:
 
@@ -1167,7 +1167,7 @@ On resignation/capitulation:
 - territory remains capturable normally;
 - no new strategic actions occur.
 
-Replace old partial-territory/overtime/doomsday victory rules with the canonical 100%-territory/opposition-defeated rules.
+Replace old partial-territory/overtime/doomsday victory rules with the canonical 100%-territory/opposition-defeated rules. Reward settlement is separate from victory: defeat preserves the Echo rolls already accumulated by the relevant solo or fixed-human-team reward entity, while victory adds the explicit +5-roll bonus.
 
 Detailed lobby UI/UX remains later product work.
 
@@ -1194,7 +1194,7 @@ Official PvE AI should consume the same legal gameplay observation/action contra
 
 Official AI factions bind an Origin and Echo loadout through the same legal mechanics. Official Origins are ordinary legal Origin builds from the same deployed trait catalogue, with no creator-only hidden points, traits, formulas, or bonuses.
 
-Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs.
+Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs. Higher-difficulty/special AI presets may additionally carry explicit Echo reward bonuses; those bonuses are progression data, not hidden simulation advantages.
 
 ---
 
@@ -1245,6 +1245,8 @@ debugger / private controller-overlay viewer
 replay viewer
 Origin creator / Origin selection UI
 Echo collection / 7-Echo loadout UI
+Echo reward-batch / duplicate-comparison UI
+Gacha Store / pity presentation UI
 lobby / strategic-spawn UI
 ```
 
@@ -1262,6 +1264,8 @@ Controller debug annotations are private participant/developer data, not public 
 
 Strategic spawn selections/reveals should be represented as explicit pre-match state/protocol messages rather than pretending they are ordinary simulation ticks. The UI must display one or two areas/origins according to each faction's public spawn profile without special manual intervention.
 
+The Echo UI must be able to present large acquisition batches, group repeated identities, automatically resolve dominated duplicate rolls, surface only incomparable Pareto-frontier choices to the player, show salvage currency independently of the retained-copy decision, and represent soft/hard pity without implying that statistically unusual bad rolls are desirable high-quality results.
+
 The renderer/UI must gain clear state for the new terrain identities, Observation/Command Posts, Tank/Heavy-Artillery construction/combat/repair, and the difference between ordinary owned terrain, neutralized Fallout patches, and Deep/Shallow Water.
 
 Observer publishing must be optional in headless certification/batch simulations.
@@ -1274,7 +1278,7 @@ Preserve deterministic archive/replay philosophy but make the server the source 
 
 Archive exact committed controller decisions/operation changes so ordinary replay does **not** need to re-execute historical untrusted controller code. A stronger verification/debug mode may separately re-run archived controller/runtime versions and compare outputs.
 
-Record/bind the exact terrain/structure/unit ruleset version, Origin definition/version, Origin-trait catalogue identity where required, Echo identities/versions, and enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprint(s) without relying on later code defaults.
+Record/bind the exact terrain/structure/unit ruleset version, Origin definition/version, Origin-trait catalogue identity where required, equipped Echo **identity IDs plus the exact retained magnitude configuration used for the match**, Echo identity-catalogue/content version and applicable acquisition/roll-rules version, and enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprint(s) without relying on later code defaults.
 
 Replay/hash state must include rule-bearing residual/effective state such as faction-level fractional neutral-settlement residuals, mobile-unit construction state, Tank/Heavy-Artillery health/repair/targets, and any deterministic Radioactive-Munitions footprint resolution needed to affect later outcomes.
 
@@ -1365,13 +1369,17 @@ Persistent concepts include:
 - Origin trait-catalogue versions;
 - Official Origin definitions/versions;
 - Custom Origin definitions bound to the exact catalogue/version they use;
-- Echo catalogue/generator versions;
-- owned Echoes;
-- Echo loadouts;
-- Echo duplicate/gambling currency;
-- official AI versions;
+- Echo identity-catalogue/content versions and acquisition/roll-rules versions;
+- the 12,927 fixed Echo identity definitions or a versioned deterministic representation of them;
+- owned Echo rolls: account + Echo identity ID + retained magnitude(s), at most one retained configuration per identity;
+- Echo loadouts referencing owned Echo identity IDs;
+- Echo duplicate/Gacha Store salvage currency;
+- Gacha Store pity state/counters and any versioned purchase/qualification rule needed to interpret them;
+- auditable Echo acquisition/reward events where useful, including source, rolled magnitudes, duplicate/salvage result, and retained/rejected/chosen outcome;
+- official AI versions and configured special-AI Echo reward bonuses;
 - matches/results;
-- per-faction bound Origin and Echo-loadout identities;
+- per-faction bound Origin and exact equipped Echo identity+magnitude loadout used by the match;
+- reward-entity / accumulated Echo-roll result data needed for correct post-match settlement and audit;
 - spawn configuration/resolution metadata required for replay, including effective one-/two-origin spawn profile where relevant;
 - replay metadata;
 - progression/rewards.
@@ -1419,11 +1427,26 @@ The current accepted design passes introduce concrete catalogue mechanics that t
 
 The concrete catalogue is maintained in `ORIGIN_TRAIT_CATALOGUE.md`. Provisional point balancing may change through testing without changing these accepted mechanic identities.
 
-### 21.3 Echo migration
+### 21.3 Echo identity, ownership, rewards, and Gacha Store migration
 
-The collectible system formerly referred to as **items** is canonically **Echoes**.
+The collectible system formerly referred to as **items** is canonically **Echoes**. Implement the model in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md), not the retired magnitude-specific catalogue model.
 
-Persist and expose Echoes as deterministic/versioned dialogue-line collectibles with stable identities, one/two mechanical modifiers, sampling weights, ownership, seven-slot PvE loadouts, duplicate conversion, and store/gambling progression as defined by the canonical design.
+The persistent identity registry contains exactly **12,927 fixed identities** derived from the accepted 93 concrete stat+scope keys and three shapes. Identity data fixes shape, concrete key(s), polarity, dialogue/flavor identity, and visual identity/recipe. Magnitudes are **acquisition-instance data** and are rerolled whenever that identity is acquired.
+
+Persist at most one retained magnitude configuration per account+identity. Owned identities remain eligible to drop/pull again. Every duplicate awards salvage currency, then the new roll is compared with the retained roll using the canonical Pareto rules: strict dominance auto-upgrades, strict inferiority auto-rejects, and incomparable rolls require player choice. Batch acquisition processing groups repeated identities and reduces them to the Pareto frontier before asking the player.
+
+Implement match rewards as an accumulated roll pool attached to the canonical reward entity:
+
+- start at 0;
+- +1 for each qualifying opponent defeated while the reward entity remains active, regardless of kill credit;
+- configured special-AI difficulty bonus in addition to its ordinary +1;
+- +5 for victory;
+- defeat preserves accumulated rolls;
+- every accumulated roll becomes an Echo acquisition.
+
+For fixed human teams, the human team is the reward entity and each human teammate receives the **full** final pool rather than a divided share; one human's early elimination does not stop team reward accumulation while another human teammate remains active.
+
+Implement the **Gacha Store** with single pulls, batch pulls, duplicate recycling, soft pity, and hard pity. Pity qualification uses a separately defined positive/desirable rolled-quality threshold, never mere statistical unusualness, so a catastrophically bad but rare roll cannot consume the guarantee. Ordinary store duplicate salvage must preserve a real currency sink and may not create a deterministic full-refund-or-better infinite loop.
 
 Do not preserve stale persistence/UI/API naming merely because inherited or provisional code called these records `items`; internal transitional database/type names may be migrated pragmatically, but the public game concept is Echo.
 
@@ -1500,6 +1523,18 @@ Performance and simulation tests should cover:
 - Origin offense/defense/counter-response/FFY/start-state/structure/naval/settlement/Tank hooks staying inside deliberate engine-safe domains;
 - representative Origin + Echo compositions preserving canonical invariants;
 - no hidden combination exclusion table being necessary for any deployed catalogue;
+- Echo identity registry cardinality exactly `93 + C(93,2) + 93×92 = 12,927`, with dual identity order-insensitivity, mixed polarity distinction, and same-key mixed pairs rejected;
+- Echo acquisition shape selection using the current `50% mixed / 35% dual / 15% single` table independently of raw per-shape identity cardinality;
+- Echo magnitude rolls using whole integer percentages and the published dual-positive ceilings;
+- repeated acquisition of one Echo identity rerolling magnitudes while preserving identity/dialogue/visual identity;
+- one retained roll per account+identity, duplicate salvage on every duplicate, and correct Pareto auto-upgrade/auto-reject/player-choice semantics including harmful-axis direction;
+- batch duplicate grouping/Pareto-frontier reduction producing no sequential dialog storm and preserving salvage count;
+- match reward pool starting at zero, +1 qualifying-opponent accounting independent of kill credit, configured special-AI bonuses, and +5 victory;
+- solo reward accumulation stopping after solo elimination, while defeat preserves already-earned rolls;
+- fixed-human-team reward entity persistence through one human's early elimination, full final pool to every human teammate, and no reward division;
+- every earned reward roll producing an actual Echo acquisition rather than a keep-best filter;
+- Gacha Store single/batch pull equivalence constraints, duplicate recycling, soft/hard pity reset behavior, and anti-infinite-currency safeguards;
+- pity qualification based on positive/desirable rolled quality so statistically rare bad rolls never consume a high-quality guarantee;
 - Strategic Spawn Phase-1 projection including all participants' public Origins, Initial Territory values, Starting Population effects, effective spawn profiles, and relevant spawn modifiers;
 - Strategic Spawn Phase-1 simultaneous choice/reveal for ordinary one-area and split two-area profiles;
 - split-origin half-area geometry (`50% area`, not `50% radius`) and deterministic public representation;
@@ -1511,7 +1546,7 @@ Performance and simulation tests should cover:
 - overlapping broad influence areas without territorial reservation;
 - deterministic spawn-hook fallback behavior for each spawn profile;
 - Random and Fixed spawn modes;
-- Initial Territory Origin/Echo/ruleset modifiers changing starting ownership rather than Capacity-per-cell;
+- Initial Territory Origin/ruleset modifiers changing starting ownership rather than Capacity-per-cell;
 - simultaneous compact footprint generation and full-quota preservation where topology permits;
 - spawn collision/tie resolution independent of controller execution order;
 - whole-integer controller-visible Population accounting;
@@ -1669,7 +1704,8 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
        ↓
 7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
        ↓
-8. ORIGIN CATALOGUE / CREATOR + EXHAUSTIVE DEPLOYMENT GATE + ECHO CATALOGUE FOUNDATION
+8. ORIGIN CATALOGUE / CREATOR + EXHAUSTIVE DEPLOYMENT GATE
+   + ECHO 12,927-IDENTITY REGISTRY / ACQUISITION RULES
        ↓
 9. STRATEGIC / RANDOM / FIXED SPAWN RESOLVER + INITIAL TERRITORY FOOTPRINTS
    (including accepted split-origin spawn profile)
@@ -1679,10 +1715,12 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
      SAM, Silo gates, MIRV rebalance, 5s Warships, Tanks, P43/P44, amphibious Fort grants)
        ↓
 11. OFFICIAL PVE AI PRESETS + MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
+    + REWARD-ENTITY / ECHO ROLL-POOL SETTLEMENT
        ↓
-12. SQLITE / DISCORD AUTH / ORIGIN+ECHO PROGRESSION / FOOF API
+12. SQLITE / DISCORD AUTH / ECHO OWNED-ROLL+SALVAGE+PITY STATE / FOOF API
        ↓
-13. BROWSER EDITOR / DEBUG / ORIGIN CREATOR / ECHO LOADOUT / FINAL LOBBY UX
+13. BROWSER EDITOR / DEBUG / ORIGIN CREATOR / ECHO LOADOUT
+    / DUPLICATE RESOLUTION / GACHA STORE / FINAL LOBBY UX
 ```
 
 Some workstreams may overlap. Typed rule hooks should exist before Origin traits depend on them. The terrain/structure/unit/weapon and spawn rule schemas must be able to express the accepted catalogue mechanics before the exhaustive Origin deployment gate can be meaningful. Downstream systems must not force premature retuning onto otherwise settled mechanic shapes.
@@ -1722,24 +1760,26 @@ If a future audit finding does not map to this plan, update this same document r
 
 ## 28. Remaining open integration/design questions
 
-After the authority, Population/frontage, combat, capitulation, controller-contract, strategic-spawn, Origin/Echo, expanded-terrain, eight-structure, Tank/Heavy-Artillery, neutral-settlement, amphibious-Fort, SAM-shield, and strategic-weapon-gating decisions, the legitimately open questions are now narrower:
+After the authority, Population/frontage, combat, capitulation, controller-contract, strategic-spawn, Origin/Echo, expanded-terrain, eight-structure, Tank/Heavy-Artillery, neutral-settlement, amphibious-Fort, SAM-shield, strategic-weapon-gating, and Echo identity/reward/Gacha decisions, the legitimately open questions are now narrower:
 
 1. **Exact final TypeScript names/types and ergonomic naming** after prototype pressure-testing of the accepted controller-contract shape, including pre-match spawn lifecycle hooks capable of expressing one- and two-origin public spawn profiles and public Origin/effective-modifier views.
 2. **Origin creator tuning/content** — final player-facing trait names/IDs, further deployed trait content/costs, and future Official Origin builds/names. The current builder/catalogue values live in the Origin catalogue and remain playtest-repriceable without reopening accepted mechanics.
-3. **Echo catalogue/content details** — final generator/catalogue content, expanded modifier-key pool for the new terrain/structures/Tank axes, exact modifier distributions/rarity tuning, and thematic name for duplicate/store currency. The public name Echo, seven-slot PvE loadout, deterministic ownership/progression direction, and narrower-than-Origin design role are settled.
-4. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
-5. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
-6. **Exact SQLite schema/index/backup/retention details.**
-7. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
-8. **Playtest retuning of accepted provisional terrain/structure/mobile-unit numerical values** — the tables in `TERRAIN_AND_STRUCTURES.md` are the implementation baseline, not unanswered design placeholders; simulation/playtesting may revise costs, radii, pressure, FFY scaling, movement, damage, reload, repair, build times, and P44 footprint magnitudes while preserving the accepted identities.
-9. **Exact MIRV power retuning** within the settled requirement that MIRV needs an L5-equivalent launcher and is moderately weaker than inherited behavior.
-10. **Detailed lobby/UI/UX redesign**, including final Origin creator/Echo collection presentation, expanded terrain/structure/unit displays, and split-origin spawn visualization.
-11. **Replacement asset creation and final proprietary-directory removal.**
-12. **Normal gameplay tuning not already given a provisional registry value** — capture-progress formula coefficients around the accepted terrain multipliers, neutral settlement progress coefficients, counter-response casualty/rate coefficients, growth reference values/interpolation, broad FFY-source mapping/naming and event payouts (especially the stronger intended Factory baseline), AI reward values, Segment scale, weapon radii/effects, water-nuke conversion geometry, ordinary Strategic-Spawn influence radius/shape, base Initial Territory/Starting Population, and related balance constants.
-13. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
-14. **Exact deterministic spawn-resolution implementation details** — exact-origin collision fallback, compact-footprint growth/tie-breaking details, and map-legality safeguards that ensure Initial Territory quotas whenever topology permits. The three-phase protocol, information timing, overlapping non-exclusive influence areas, accepted two-half-area split-origin profile, and Initial Territory semantics themselves are settled.
-15. **Port trade-frequency level interaction** — whether inherited Port-level trade-spawn scaling remains in addition to the settled repair-range/repair-rate level identity.
+3. **Echo identity/content/acquisition tuning** — exact identity-selection weighting within each of the three shapes, exact base magnitude distribution over each legal integer interval, dialogue/flavor authoring or generation pipeline for all 12,927 identities, exact visual recipe/rendering system, and optional rarity/presentation labels. The 93-key pool, 12,927 fixed identities, rerolled magnitudes, integer magnitude system, and 50/35/15 shape distribution are settled.
+4. **Echo salvage/Gacha tuning and duplicate-choice UX** — duplicate/salvage currency values and final thematic currency name, single/batch pull prices or discount, exact soft-pity curve, exact hard-pity spend/pull threshold, exact positive-quality qualification metric, whether pity transforms the triggering roll or guarantees a qualifying result somewhere in a batch, and exact UI flow for incomparable Pareto-frontier duplicate choices. The anti-infinite-currency rule and positive-quality pity requirement are settled.
+5. **Exact special-AI Echo reward bonuses.** The ordinary +1 qualifying-opponent roll, +5 victory bonus, defeat-preserved accumulated pool, all-rolls-become-drops rule, and fixed-human-team reward entity/full-pool semantics are settled.
+6. **Real Fufubox performance capacity** after a representative authoritative simulation exists.
+7. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
+8. **Exact SQLite schema/index/backup/retention details**, including the concrete identity/owned-roll/acquisition-event/salvage/pity representation.
+9. **Exact Discord session/cookie/expiry/CSRF implementation** and optional later Fufubox credential linking.
+10. **Playtest retuning of accepted provisional terrain/structure/mobile-unit numerical values** — the tables in `TERRAIN_AND_STRUCTURES.md` are the implementation baseline, not unanswered design placeholders; simulation/playtesting may revise costs, radii, pressure, FFY scaling, movement, damage, reload, repair, build times, and P44 footprint magnitudes while preserving the accepted identities.
+11. **Exact MIRV power retuning** within the settled requirement that MIRV needs an L5-equivalent launcher and is moderately weaker than inherited behavior.
+12. **Detailed lobby/UI/UX redesign**, including final Origin creator/Echo collection presentation, expanded terrain/structure/unit displays, split-origin spawn visualization, reward-batch presentation, duplicate-choice handling, and Gacha Store/pity display.
+13. **Replacement asset creation and final proprietary-directory removal.**
+14. **Normal gameplay tuning not already given a provisional registry value** — capture-progress formula coefficients around the accepted terrain multipliers, neutral settlement progress coefficients, counter-response casualty/rate coefficients, growth reference values/interpolation, broad FFY-source mapping/naming and event payouts (especially the stronger intended Factory baseline), Segment scale, weapon radii/effects, water-nuke conversion geometry, ordinary Strategic-Spawn influence radius/shape, base Initial Territory/Starting Population, and related balance constants.
+15. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention. The existence and public visibility of these limits are settled; only values are open.
+16. **Exact deterministic spawn-resolution implementation details** — exact-origin collision fallback, compact-footprint growth/tie-breaking details, and map-legality safeguards that ensure Initial Territory quotas whenever topology permits. The three-phase protocol, information timing, overlapping non-exclusive influence areas, accepted two-half-area split-origin profile, and Initial Territory semantics themselves are settled.
+17. **Port trade-frequency level interaction** — whether inherited Port-level trade-spawn scaling remains in addition to the settled repair-range/repair-rate level identity.
 
-The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, private debug overlays, three-phase Strategic Spawn, split-origin spawn profile, neutral-settlement Population cost/residual semantics, expanded terrain library and Fallout overlay, eight-structure model, accepted per-level structure baseline, Observation/Command Posts, Silo weapon gates, MIRV access/power direction, additive Transport costs, fortified amphibious Fort grants, 5-second Warship construction, Factory-produced Tank baseline, P43 Heavy-Artillery transformation, P44 Radioactive-Munitions transformation, Warship launcher-equivalence semantics, giant-SAM transformation, fully-developed-City purchase transformation, Origin system philosophy, exhaustive pre-deployment Origin combination guarantee, and Echo naming/progression direction are now settled design direction.
+The public API philosophy, observation/directive split, geographic QoL layer, persistent-directive semantics, defense/counter surfaces, pure mechanics calculators, events/receipts, deterministic randomness, team signals/shared legal observation, public mechanical modifiers, multi-file authoring, private debug overlays, three-phase Strategic Spawn, split-origin spawn profile, neutral-settlement Population cost/residual semantics, expanded terrain library and Fallout overlay, eight-structure model, accepted per-level structure baseline, Observation/Command Posts, Silo weapon gates, MIRV access/power direction, additive Transport costs, fortified amphibious Fort grants, 5-second Warship construction, Factory-produced Tank baseline, P43 Heavy-Artillery transformation, P44 Radioactive-Munitions transformation, Warship launcher-equivalence semantics, giant-SAM transformation, fully-developed-City purchase transformation, Origin system philosophy, exhaustive pre-deployment Origin combination guarantee, and the **12,927 fixed Echo identities + rerolled magnitudes + duplicate Pareto progression + accumulated all-drop reward pool + fixed-human-team reward entity + Gacha Store with positive-quality pity** are now settled design direction.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
