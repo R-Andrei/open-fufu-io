@@ -1267,7 +1267,7 @@ Echoes are collectible anime-dialogue-line modifiers equipped in a multi-slot lo
 
 This separation is achieved by responsible catalogue design rather than hidden Origin/Echo incompatibility restrictions.
 
-### 23.7 Echo identity catalogue
+### 23.7 Echo identity catalogue and data boundary
 
 The collectible system formerly called **items** is canonically named **Echoes**. The detailed working contract is [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
@@ -1292,6 +1292,10 @@ Dialogue/flavor and visual presentation are linked through **versioned content a
 **Magnitude is not part of Echo identity.** Whenever an Echo identity is acquired, its legal integer magnitude or magnitudes are rolled for that acquisition. A later acquisition of the same Echo may therefore be weaker, stronger, or differently distributed while remaining the same collectible identity.
 
 The permanent item table must not materialize every magnitude permutation as a separate collectible definition. The old magnitude-specific mechanical-signature catalogue model is retired.
+
+The public source repository defines **how Echoes work**, not the live production Echo/content database. Public code may contain schemas/types, migrations, semantic identifiers, deterministic identity-generation/materialization logic, validation/import tooling, algorithms, UI/rendering code, and synthetic fixtures. Production mechanical rows/configuration, anime dialogue/content, Echo-to-line and visual assignments, account inventories, **Middle Fingers** balances, pity state, and other granular live records are versioned private/runtime data consumed through explicit data contracts rather than hard-coded gameplay source.
+
+The initial private anime source catalogue is the public MyAnimeList list for user `Fufuway`, restricted to **Watching (`status=1`) and Completed (`status=2`)**. Completed titles may contribute from the full anime. Watching titles may contribute only from episodes at or below the recorded watched-episode progress; sources without reliable episode provenance must not automatically surface later-episode dialogue for a currently-watching title. Actual harvesting, source adapters, curation, and import are implementation/content work.
 
 Echoes must **not** modify Population Capacity / maximum Population per owned cell while Capacity remains exactly territory-derived. The authoritative 93-key allowed pool and its exclusions are maintained in `ECHO_CATALOGUE.md`; high-level examples here do not create additional Echo stat families.
 
@@ -1352,7 +1356,7 @@ Lucky         1.00 <= S < 1.25
 Cheater       S >= 1.25
 ```
 
-These are roll-quality/presentation tiers, not permanent identity rarity classes. Cards use tier-family border colors with continuous score-driven gradients; Lucky receives a restrained animated blue glow and Cheater receives an intentionally excessive pink/violet radiant/rainbow aura. The same identity may occupy different tiers on different acquisitions.
+These are roll-quality/presentation tiers, not permanent identity rarity classes. The **base item/content identity remains the same across qualities**; rolled quality controls the border/effects treatment. Questionable is intentionally dull gray/white, largely blending into ordinary UI with no special aura/effects. Lucky receives a restrained animated blue glow. Cheater receives intentionally excessive bright pink/violet presentation and may emanate animated rainbow/radiant beams on hover/focus. The same identity may therefore look mundane as Questionable and spectacular as Cheater while remaining mechanically the same item.
 
 ### 23.10 PvE reward roll pool and reward entities
 
@@ -1361,7 +1365,7 @@ PvE Echo rewards use an accumulated **reward roll pool**, not a victory-only `ro
 The pool begins at **0**. While the relevant reward entity remains active:
 
 - each qualifying opposing faction defeated contributes **+1 Echo roll**, regardless of who actually defeated it;
-- a configured higher-difficulty/special AI contributes that ordinary +1 plus its explicit difficulty bonus;
+- a configured higher-difficulty/special AI contributes that ordinary +1 plus its explicit individually authored preset bonus;
 - victory contributes **+5 Echo rolls**.
 
 Defeat does **not** erase already accumulated rolls. When the reward entity's run ends, every accumulated roll becomes an actual Echo acquisition. Thus 30 earned rolls produce 30 acquisitions; there is no keep-only-the-best filter.
@@ -1370,21 +1374,21 @@ For solo play, the human faction is the reward entity and stops accumulating whe
 
 For fixed human teams, the **human team itself is the reward entity** until the human team as a whole is eliminated or the match ends. Every human teammate receives the **full final pool**, not a divided share. An early-eliminated human continues to share the team's later reward accumulation while another human teammate remains active. Fixed AI allies do not become additional human reward recipients.
 
-Exact special-AI difficulty bonuses remain balance data.
+Exact special-AI Echo bonuses are assigned when those AI presets are actually designed. There is no universal difficulty-tier reward multiplier; the Echo system merely provides the per-preset bonus hook.
 
 ### 23.11 Owned Echoes, duplicates, reward settlement, and Gacha Store
 
 An account retains at most **one magnitude configuration per Echo identity**. Owned identities remain eligible for future acquisition; receiving one again is a duplicate with a fresh magnitude roll.
 
-Every duplicate grants persistent Echo/Gacha salvage currency based on the **new duplicate roll's quality tier**, regardless of whether the new roll is retained:
+The duplicate/Gacha currency is canonically named **Middle Fingers**. Every duplicate grants Middle Fingers based on the **new duplicate roll's quality tier**, regardless of whether the new roll is retained:
 
 ```text
-Trash 1
-Questionable 2
-Decent 3
-Not Bad 4
-Lucky 6
-Cheater 8
+Trash         1 Middle Finger
+Questionable  2 Middle Fingers
+Decent        3 Middle Fingers
+Not Bad       4 Middle Fingers
+Lucky         6 Middle Fingers
+Cheater       8 Middle Fingers
 ```
 
 Duplicate comparison uses Pareto dominance:
@@ -1401,8 +1405,8 @@ A reward/Gacha result with unresolved choices is persisted as one **pending sett
 The store is intentionally framed as the **Gacha Store**. V1 uses:
 
 ```text
-1 pull   = 10 currency
-10 pulls = 100 currency
+1 pull   = 10 Middle Fingers
+10 pulls = 100 Middle Fingers
 ```
 
 There is no ten-pull discount or bonus roll; a ten-pull is mechanically ten sequential singles sharing the same pity state.
@@ -1420,13 +1424,11 @@ for `0 <= n <= 49`, where `P0` is the ordinary generator's natural Lucky+ probab
 
 There is **no Cheater pity or Cheater guarantee**. The relatively generous Lucky protection is intentional for the friends-oriented V1 and remains versioned balance data that may be retuned after playtesting without reopening Echo identity architecture.
 
-The final thematic name of the duplicate/store currency remains presentation work.
-
 ### 23.12 Echo collection and saved sets
 
-Standard PvE equipped set size is **7 Echoes**. Players may maintain multiple named saved seven-Echo configurations; **Echo Sets** is the current working term until a better thematic player-facing name is chosen.
+Standard PvE equipped set size is **7 Echoes**. Players may maintain multiple named saved seven-Echo configurations; **Echo Sets** is the accepted provisional V1 player-facing name.
 
-A saved set references Echo identity IDs rather than frozen historical rolls. When duplicate resolution changes the retained roll for an identity, every saved set using that identity automatically uses the newly retained roll.
+An Echo Set references Echo identity IDs rather than frozen historical rolls. When duplicate resolution changes the retained roll for an identity, every Echo Set using that identity automatically uses the newly retained roll.
 
 The player-facing collection surface is **Echoes**, not `Inventory`. It uses a card grid, supports search by identity/dialogue/content metadata where indexed, multi-select filtering by mechanical effect/stat key, favorites pinned/promoted ahead of ordinary results, and useful EchoScore/quality sorting. Unknown Echo silhouettes/Pokédex-style empty slots are not required.
 
@@ -1845,13 +1847,12 @@ The following remain intentionally outside the settled design contract unless ot
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
 - exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
-- exact special-AI Echo reward bonuses;
-- final thematic name of Echo duplicate/Gacha currency;
-- final player-facing name for saved seven-Echo configurations (`Echo Sets` is the working term);
-- exact anime-dialogue-line sourcing/licensing/provenance workflow and initial versioned line-library content;
-- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior;
-- playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
-- executable/property-test implementation for Echo distribution, scoring, salvage, rewards, pending settlement, Pareto resolution, and Gacha pity;
+- exact special-AI Echo reward bonuses, deferred until the relevant AI presets are designed;
+- implementation of the MAL/source-catalogue importer, quote/subtitle/source adapters, candidate normalization/deduplication/curation workflow, and actual private anime-line corpus population;
+- exact private authored-content backup/revision workflow and concrete Echo SQLite schema/index/migration details;
+- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled base-identity-versus-quality-treatment rule;
+- playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
+- executable/property-test implementation for Echo distribution, scoring, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
 - playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
 - exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
 - exact inherited naval/rail/strategic-weapon numerical translations where not already specified;
@@ -1912,26 +1913,29 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 46. **The accepted elastic-defense trait preserves the automatic defender when a defended cell is captured while retaining the attacker's ordinary casualty and all ownership/Capacity effects.**
 47. **The accepted giant-SAM trait transforms SAM throughput/range without adding a bespoke controller interception action.**
 48. **The accepted fully-developed-City trait makes purchased Cities direct level-5 purchases at 95% cumulative ordinary level-1-through-level-5 cost.**
-49. **Echoes use 12,927 fixed mechanical identities built from 93 concrete stat+scope keys; identity fixes shape/stat keys/polarity, presentation is versioned separately, magnitudes reroll on every acquisition, and standard PvE equips 7 Echoes.**
-50. **Echo acquisition uses 50% mixed / 35% dual / 15% single shape selection, uniform identity selection within shape, EchoScore-weighted integer magnitude rolls, Trash→Cheater rolled-quality tiers, one retained roll per identity, tier-based duplicate salvage, Pareto filtering with only incomparable survivors shown, pending batch settlement, all earned match rolls as drops even on defeat, fixed-human-team full-pool rewards, and a 10/100 Gacha Store with paid-pull-only power-12 Lucky+ pity guaranteed by pull 50 and no Cheater guarantee.**
-51. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
-52. **Derived controller helpers never leak information outside the controller's legal observation projection.**
-53. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
-54. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
-55. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
-56. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
-57. **Zero population-bearing territory after tick resolution means immediate defeat.**
-58. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-59. **Official AI obeys the same gameplay information and mechanics as player controllers.**
-60. **Ordinary users cannot live-spectate unrelated matches.**
-61. **Historical matches bind exact rule-bearing versions.**
-62. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
-63. **A public spawn-profile modifier may change one ordinary area/origin into the accepted two-half-area/two-origin profile without changing the phase/reveal fairness model.**
-64. **Initial territory is generated deterministically as compact footprint(s) around the exact spawn origin(s) and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
-65. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
-66. **One canonical design document governs the target; one canonical integration plan governs the migration; `TERRAIN_AND_STRUCTURES.md` is the canonical detailed data appendix for accepted terrain/structure/Tank values.**
-67. **Tundra and Shallow Water are conquerable but non-population-bearing; Tundra is unbuildable and Shallow Water is an unbuildable land-operation/naval crossing terrain.**
-68. **The Tank is the sole baseline persistent land military unit: Factory-produced in 5 seconds, autonomous/strategic rather than RTS-microed, able to fight armor, raid Trains, and attack Population without capturing territory; Mountain and Shallow Water are armored barriers.**
-69. **P43 transforms every Tank into 10-second Heavy Artillery with higher cost, half movement, longer range, huge alpha/long reload, disabled Train raiding, the same movement barriers, and projectiles that may cross those barriers.**
-70. **P44 costs 9 Origin points and makes successful Population attacks neutralize/apply Fallout to up to 10 eligible cells for Tanks or 50 for Heavy Artillery; it is independent of and legally combinable with P43.**
-71. **Purchased Warships have a 5-second construction delay at a Port; purchase-resource/cost transformations do not bypass it unless explicitly stated.**
+49. **Echoes use 12,927 fixed mechanical identities built from 93 concrete stat+scope keys; identity fixes shape/stat keys/polarity, presentation is versioned separately, magnitudes reroll on every acquisition, standard PvE equips 7 Echoes, and production catalogue/content/account records are private/runtime data rather than public source constants.**
+50. **Echo acquisition uses 50% mixed / 35% dual / 15% single shape selection, uniform identity selection within shape, EchoScore-weighted integer magnitude rolls, Trash→Cheater rolled-quality tiers, one retained roll per identity, tier-based Middle Fingers salvage, Pareto filtering with only incomparable survivors shown, pending batch settlement, all earned match rolls as drops even on defeat, fixed-human-team full-pool rewards, and a 10/100-Middle-Finger Gacha Store with paid-pull-only power-12 Lucky+ pity guaranteed by pull 50 and no Cheater guarantee.**
+51. **Echo content initially draws from Fufuway's MAL Watching and Completed lists; currently-watching titles are limited to already-watched episodes, and actual harvesting/import remains implementation work.**
+52. **Saved seven-Echo configurations are provisionally named Echo Sets; replacing a retained roll automatically updates every Echo Set referencing that identity.**
+53. **An Echo's base item/content identity is stable across rolls; rolled quality changes the border/effects treatment, from deliberately dull Questionable presentation to extravagant Cheater presentation.**
+54. **Strategically relevant active mechanical modifiers, Origins, and Origin trait sheets are publicly surfaced.**
+55. **Derived controller helpers never leak information outside the controller's legal observation projection.**
+56. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
+57. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
+58. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
+59. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
+60. **Zero population-bearing territory after tick resolution means immediate defeat.**
+61. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
+62. **Official AI obeys the same gameplay information and mechanics as player controllers.**
+63. **Ordinary users cannot live-spectate unrelated matches.**
+64. **Historical matches bind exact rule-bearing versions.**
+65. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
+66. **A public spawn-profile modifier may change one ordinary area/origin into the accepted two-half-area/two-origin profile without changing the phase/reveal fairness model.**
+67. **Initial territory is generated deterministically as compact footprint(s) around the exact spawn origin(s) and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+68. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
+69. **One canonical design document governs the target; one canonical integration plan governs the migration; `TERRAIN_AND_STRUCTURES.md` is the canonical detailed data appendix for accepted terrain/structure/Tank values.**
+70. **Tundra and Shallow Water are conquerable but non-population-bearing; Tundra is unbuildable and Shallow Water is an unbuildable land-operation/naval crossing terrain.**
+71. **The Tank is the sole baseline persistent land military unit: Factory-produced in 5 seconds, autonomous/strategic rather than RTS-microed, able to fight armor, raid Trains, and attack Population without capturing territory; Mountain and Shallow Water are armored barriers.**
+72. **P43 transforms every Tank into 10-second Heavy Artillery with higher cost, half movement, longer range, huge alpha/long reload, disabled Train raiding, the same movement barriers, and projectiles that may cross those barriers.**
+73. **P44 costs 9 Origin points and makes successful Population attacks neutralize/apply Fallout to up to 10 eligible cells for Tanks or 50 for Heavy Artillery; it is independent of and legally combinable with P43.**
+74. **Purchased Warships have a 5-second construction delay at a Port; purchase-resource/cost transformations do not bypass it unless explicitly stated.**
