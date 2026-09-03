@@ -115,7 +115,9 @@ Two different fixed beneficial concrete stat keys:
 +B
 ```
 
-Order does not create a new identity. `A+B` and `B+A` are the same identity. The same concrete key may not appear twice.
+Order does not create a new identity. `A+B` and `B+A` are the same identity.
+
+The same concrete key may not appear twice.
 
 With 93 concrete keys:
 
@@ -321,7 +323,9 @@ These maxima intentionally vary by strategic sensitivity. Global combat/economy 
 
 ## 5. Magnitude rolls and EchoScore-weighted quality
 
-Magnitude is rolled **when an Echo identity is acquired**, not when its permanent identity is created. The same Echo identity may therefore be seen many times with different magnitude configurations.
+Magnitude is rolled **when an Echo identity is acquired**, not when its permanent identity is created.
+
+The same Echo identity may therefore be seen many times with different magnitude configurations.
 
 Example:
 
@@ -343,7 +347,9 @@ Those are two rolls of the **same collectible identity**.
 
 ### 5.1 Integer magnitudes
 
-The accepted magnitude increment is **1 whole percentage point**. There are no `0.5%` Echo magnitude rolls.
+The accepted magnitude increment is **1 whole percentage point**.
+
+There are no `0.5%` Echo magnitude rolls.
 
 For a stat whose full single-positive maximum is `M`, a single-positive or mixed modifier may roll any integer magnitude:
 
@@ -364,6 +370,8 @@ Dual-positive Echoes retain their reduced per-side intensity. With the current i
 
 Therefore a dual-positive modifier rolls an integer magnitude from `1%` through the applicable reduced maximum.
 
+The purpose remains the same: two beneficial stats share one Echo slot, so each side has a smaller maximum than a clean single-positive stat.
+
 ### 5.3 EchoScore
 
 For any rolled modifier with absolute magnitude `x` and ordinary full single-positive maximum `M`:
@@ -383,6 +391,24 @@ The rolled Echo's generic quality score is:
 
 ```text
 EchoScore = Σ signedNormalizedMagnitude
+```
+
+Examples:
+
+```text
++5% Population Growth, M=5
+→ EchoScore +1.00
+
++2% Population Growth, M=5
+→ EchoScore +0.40
+
+-3% Warship Range, M=3
+→ EchoScore -1.00 contribution
+
++5% Population Growth
+-4% Fort Coverage
+(both full single-positive maxima)
+→ +1.00 - 1.00 = 0.00
 ```
 
 EchoScore deliberately does **not** score synergy, anti-synergy, Origin-specific usefulness, current build relevance, or whether a harmful stat is irrelevant to the current player. It is a generic roll-quality metric, not a build oracle.
@@ -436,7 +462,7 @@ This produces the intended shape:
 - spectacularly bad mixed rolls are also suppressed rather than allowing the pool to collapse into mostly garbage;
 - score affects the **acquired magnitude roll**, never the permanent Echo identity's probability after that identity has already been selected.
 
-With the current 93-key/maxima registry and the accepted `50/35/15` shape mix, deterministic enumeration gives an overall natural **Lucky-or-better rate of approximately 2.50%**, or roughly one qualifying roll per 40 acquisitions before pity.
+With the current 93-key/maxima registry and the accepted `50/35/15` shape mix, deterministic enumeration of this V1 curve gives an overall natural **Lucky-or-better rate of approximately 2.50%**, or roughly one qualifying roll per 40 acquisitions before pity. This percentage is a validation target derived from the current tables, not a separately authored drop-rate constant.
 
 ---
 
@@ -452,7 +478,7 @@ Dual positive:          35%
 Single positive:        15%
 ```
 
-After shape selection:
+After shape selection, identity selection is intentionally simple:
 
 > **Every registered identity inside the selected shape has equal probability.**
 
@@ -464,7 +490,17 @@ dual selected   → uniform pick among 4,278 identities
 mixed selected  → uniform pick among 8,556 identities
 ```
 
-There is no V1 stat-family weighting, scope protection, collection-completion weighting, owned/unowned weighting, or hidden synergy weighting. Only after the identity is selected are its legal magnitudes sampled using §5.
+There is no V1 stat-family weighting, scope protection, collection-completion weighting, owned/unowned weighting, or hidden synergy weighting.
+
+Only after the identity is selected are its legal magnitudes sampled using §5.
+
+This deliberately keeps:
+
+- mixed Echoes most common;
+- dual-positive Echoes next;
+- clean single-positive Echoes rarest;
+
+without allowing raw identity counts to force approximately `66% / 33% / <1%` acquisition rates.
 
 The shape probabilities and magnitude-weight curve are versioned balance data and are not stored redundantly on each Echo identity.
 
@@ -631,7 +667,18 @@ Historical presentation/replays need only bind the naming version when reproduci
 
 ### 7.7 Visual identity and rolled-quality treatment
 
-An Echo identity may also have a stable/versioned **base visual recipe** suitable for card presentation, preferably deterministic/shared rather than requiring 12,927 bespoke artworks.
+An Echo identity has a stable or content-versioned **base visual identity/recipe** suitable for card presentation. The base identity may use a compact deterministic recipe rather than a complete standalone image per Echo, for example:
+
+```text
+visualSeed
+character/archetype id
+frame id
+background/pattern id
+accent/variant id
+expression/pose id
+```
+
+The client may combine those identity-level values with shared art/SVG assets and a deterministic renderer.
 
 The key separation is:
 
@@ -650,25 +697,85 @@ A Questionable and Cheater acquisition of the same Echo remain the same mechanic
 
 ## 8. Owned Echoes and duplicate acquisition
 
-An account/player retains at most **one magnitude configuration for each Echo identity**. Receiving an identity already owned is a **duplicate acquisition**.
+An account/player retains at most **one magnitude configuration for each Echo identity**.
 
-A duplicate always grants the configured Middle Fingers regardless of whether the new copy replaces the old copy, the old copy is retained, or the new copy is an exact mechanical tie.
+Receiving an identity already owned is a **duplicate acquisition**.
+
+A duplicate always grants the configured Middle Fingers regardless of whether:
+
+- the new copy replaces the old copy;
+- the old copy is retained;
+- the new copy is an exact mechanical tie.
+
+The newly rolled magnitudes are compared against the currently retained copy.
 
 ### 8.1 Strict automatic upgrade
 
-A new copy is an automatic upgrade when it is at least as good on **every modifier axis** and strictly better on at least one. For harmful modifiers, a smaller harmful magnitude is better.
+A new copy is an automatic upgrade when it is at least as good on **every modifier axis** and strictly better on at least one.
+
+For harmful modifiers, a smaller harmful magnitude is better.
+
+Examples:
+
+```text
+owned: +3 A / +2 B
+new:   +4 A / +2 B
+→ automatic upgrade
+
+owned: +3 A / -4 B
+new:   +4 A / -3 B
+→ automatic upgrade
+```
 
 ### 8.2 Strict automatic downgrade
 
-A new copy is automatically rejected/salvaged when it is no better on every axis and strictly worse on at least one. The duplicate Middle Fingers are still awarded.
+A new copy is automatically rejected/salvaged when it is no better on every axis and strictly worse on at least one.
+
+Examples:
+
+```text
+owned: +3 A / +2 B
+new:   +2 A / +2 B
+→ keep owned copy automatically
+
+owned: +3 A / -4 B
+new:   +2 A / -5 B
+→ keep owned copy automatically
+```
+
+The duplicate Middle Fingers are still awarded.
 
 ### 8.3 Incomparable / player-choice duplicate
 
-If one relevant axis improves while another worsens, the game does **not** collapse the comparison into one aggregate score. The player chooses which copy to retain even if EchoScore considers one copy numerically superior.
+If one relevant axis improves while another worsens, the game does **not** collapse the comparison into one aggregate score.
+
+The player chooses which copy to retain.
+
+Examples:
+
+```text
+owned: +3 A / +2 B
+new:   +2 A / +3 B
+→ player chooses
+
+owned: +3 A / -4 B
+new:   +4 A / -5 B
+→ player chooses
+
+owned: +3 A / -4 B
+new:   +2 A / -3 B
+→ player chooses
+```
+
+This remains true even if EchoScore considers one copy numerically superior. Build preference belongs to the player.
 
 ### 8.4 Multiple duplicates in one reward batch
 
-For several copies of the same identity:
+Large matches or Gacha batches may produce several copies of the same identity at once.
+
+Do not force the player through sequential copy-by-copy dialogs.
+
+Instead:
 
 1. group all newly acquired copies by Echo identity;
 2. include the currently retained copy when one exists;
@@ -684,6 +791,22 @@ The player-facing choice UI must show **only candidates that survive this automa
 
 Reward settlement is presented as a batch rather than one modal per drop.
 
+Conceptually:
+
+```text
+CHOICES / UPGRADES
+- one picker group per Echo identity that still needs player choice
+- current retained copy first when it survives the Pareto frontier
+- surviving new incomparable candidates beside it
+
+NEW ECHOES
+- grid of newly discovered identities
+
+SUMMARY
+- automatic upgrades/rejections as appropriate
+- total Middle Fingers earned
+```
+
 For a picker group:
 
 - the current owned copy is first and selected by default whenever it remains on the Pareto frontier;
@@ -691,9 +814,9 @@ For a picker group:
 - if the current copy is dominated and multiple incomparable new candidates remain, default to the surviving candidate with highest EchoScore, using a stable deterministic tie-break for exact-score ties;
 - this default is a convenience only and does **not** redefine Pareto superiority.
 
-Reward results are persisted as a **pending settlement** until accepted. Closing/reconnecting must not lose the reward batch.
+Reward results are persisted as a **pending settlement** until the player accepts the result screen. Closing/reconnecting must not lose the reward batch.
 
-V1 should not allow another reward-bearing match or additional Gacha Store pulls while an unresolved pending settlement exists.
+V1 should not allow another reward-bearing match or additional Gacha Store pulls while an unresolved pending settlement exists. This avoids arbitrarily nesting unresolved Pareto choices. A player who does not care about optimizing duplicates can simply accept the default selections immediately.
 
 ---
 
@@ -701,9 +824,13 @@ V1 should not allow another reward-bearing match or additional Gacha Store pulls
 
 Echo **identity** and Echo **rolled instance quality** are separate concepts.
 
-The same identity may therefore be Questionable on one acquisition and Cheater on a later acquisition while remaining mechanically the same item. Its generated magnitude adjectives may also change with the retained roll as described in §7.
+The identity's mechanical shape/stat keys and stable character/stat naming components are fixed for the applicable naming/content version. Its acquired magnitudes—and therefore generated adjective(s), EchoScore/tier, and quality treatment—vary.
+
+The same Echo identity may therefore be Questionable on one acquisition and Cheater on a later acquisition while remaining mechanically and recognizably the same item.
 
 ### 9.1 Accepted V1 quality tiers
+
+Use these score bands:
 
 | Quality tier | EchoScore |
 | --- | ---: |
@@ -714,9 +841,13 @@ The same identity may therefore be Questionable on one acquisition and Cheater o
 | **Lucky** | `1.00 ≤ S < 1.25` |
 | **Cheater** | `S ≥ 1.25` |
 
-These are **rolled-quality tiers**, not permanent identity rarity classes. Under the current shape/maxima rules, Cheater rolls emerge only from sufficiently strong dual-positive rolls as a consequence of the score/magnitude system.
+These are **rolled-quality tiers**, not permanent identity rarity classes.
+
+Under the current shape/maxima rules, Cheater rolls emerge only from sufficiently strong dual-positive rolls; this is a consequence of the score/magnitude system rather than a separately hard-coded shape restriction.
 
 ### 9.2 Border gradient and quality treatment
+
+The quality tier selects the broad visual family while exact EchoScore controls a **continuous gradient/intensity within that family**.
 
 Target direction:
 
@@ -729,18 +860,24 @@ Lucky         → light blue through stronger blue
 Cheater       → violet through intense pink/purple
 ```
 
-Questionable should deliberately feel dull and ordinary: muted gray/white border, no colored aura, no particles, no special glow.
+Do not reduce this to one rigid color per tier if the client can cheaply preserve continuous score feedback.
+
+**Questionable** should deliberately feel dull and ordinary: a muted gray/white border that largely blends into the surrounding UI, no colored aura, no particles, no special glow, and no attempt to demand attention. Its text/data structure remains the same as stronger copies; only the quality treatment is intentionally unremarkable.
 
 Lucky cards receive a restrained animated blue glow/light effect.
 
-Cheater should be the opposite extreme: bright pink/violet plus intentionally excessive premium presentation, potentially including animated rainbow/radiant/sunray/lens-ray-like beams outside the card on hover/focus.
+**Cheater** should be the opposite extreme: a bright pink/violet border plus intentionally excessive premium presentation. On hover/focus it may emanate animated rainbow/radiant/sunray/lens-ray-like beams outside the card and should be visually difficult to ignore.
+
+These treatments never create a different mechanical identity. A dull Questionable card and an extravagant Cheater card with the same Echo identity are still the same item with different retained magnitude quality.
 
 ### 9.3 Card interaction
+
+Echoes are presented as interactive cards.
 
 Collapsed/unhovered cards should prioritize:
 
 - visual/icon;
-- generated Echo name;
+- generated Echo name/identity;
 - quality border;
 - compact stat preview.
 
@@ -757,7 +894,9 @@ Presentation must remain usable without hover on touch/non-pointer interfaces. N
 
 ### 9.4 EchoScore never decides incomparable ownership
 
-Score tiers, color, sorting, pity, and Middle Fingers salvage are allowed to use EchoScore. Duplicate retention still follows §8.
+Score tiers, color, sorting, pity, and Middle Fingers salvage are allowed to use EchoScore.
+
+Duplicate retention still follows §8. If two copies are Pareto-incomparable, the player chooses even when one card has a higher quality tier or EchoScore.
 
 ---
 
@@ -774,7 +913,9 @@ ruleset baseline
 → local terrain / structures / situational effects
 ```
 
-Exact same-calculation percentages follow the canonical additive-percentage rule unless a specific mechanic defines otherwise.
+Exact same-calculation percentages follow the canonical additive-percentage rule unless a specific mechanic defines otherwise. Distinct rule hooks may compose separately.
+
+An Echo can therefore mitigate an Origin drawback without necessarily erasing it.
 
 For P43, the Heavy-Artillery transformation establishes the Tank chassis first; Tank-scoped Echo percentages then specialize that transformed profile. Nothing in the Echo layer changes the authored P43 reload cadence or P44 footprint unless a future separately accepted rule explicitly says so.
 
@@ -786,7 +927,7 @@ The working balance rule for Echo maxima remains:
 
 > When evaluating one Echo stat, assume a highly optimized player can fill all 7 slots with retained Echoes averaging **75% of that stat's single-Echo maximum**, then combine that loadout with the strongest relevant legal Origin effects. This is not the expected ordinary loadout; it is a safety/stress target.
 
-For a stat maximum `M`:
+For a stat maximum `M`, the seven-slot 75%-quality single-axis contribution is:
 
 ```text
 7 × 0.75 × M = 5.25M
@@ -832,7 +973,7 @@ The following are intentionally **not** part of the normal Echo pool at this sta
 - Tank/Heavy-Artillery firing cooldown/reload, operational leash, automatic repair-retreat threshold, terrain traversal permissions, or similar doctrine-defining control axes;
 - P44 radioactive footprint size/radius/cell count or other niche modifiers whose underlying mechanic exists only because one specific Origin enables it.
 
-Echoes may partially improve or worsen a numeric stat that an Origin also modifies, but the Origin rule remains the underlying faction identity.
+Echoes may partially improve or worsen a numeric stat that an Origin also modifies, but the Origin rule remains the underlying faction identity and Echoes specialize the resulting profile through the published modifier-composition rules.
 
 For V1 content scope, **authored anime dialogue/reference lines belong to Origin traits and Official Origins rather than Echoes**. This is a content-production boundary, not a mechanical incompatibility rule.
 
@@ -840,7 +981,15 @@ For V1 content scope, **authored anime dialogue/reference lines belong to Origin
 
 ## 13. Match reward roll pool
 
-End-of-match Echo rewards use an accumulated **reward roll pool** beginning at `0`.
+End-of-match Echo rewards use an accumulated **reward roll pool**.
+
+The pool starts at:
+
+```text
+0 rolls
+```
+
+There is no guaranteed base roll merely for entering a match.
 
 ### 13.1 Qualifying opponent elimination
 
@@ -850,7 +999,11 @@ Every qualifying opponent defeated while the player's reward entity remains acti
 +1 Echo roll
 ```
 
-The roll is granted regardless of who actually defeated that opponent. Fixed teammates/allies never count as qualifying opponents.
+The roll is granted regardless of **who** actually defeated that opponent.
+
+Fixed teammates/allies never count as qualifying opponents.
+
+Diplomacy does not change during a match, so the set of teammates/allies/opponents relevant to reward accounting is known from match start.
 
 ### 13.2 AI difficulty bonuses
 
@@ -861,7 +1014,9 @@ A special higher-difficulty AI preset may grant:
 + that preset's individually authored difficulty bonus
 ```
 
-The Echo system does **not** define a universal difficulty multiplier. Exact special-AI bonuses are assigned by the Official-AI preset design and stored as versioned preset/reward data.
+The Echo system does **not** define a universal Easy/Medium/Hard reward multiplier or invent bonus values for presets whose implemented controller difficulty has not yet been assigned. Exact special-AI bonuses belong to the Official AI preset/controller design and become ordinary versioned preset/reward data when finalized.
+
+The provisional character-based Official AI roster now exists, but its exact 1–5 difficulty ratings and reward bonuses remain deliberately unset until the corresponding controller behavior is designed.
 
 ### 13.3 Victory bonus
 
@@ -873,36 +1028,87 @@ Victory contributes:
 
 ### 13.4 Defeat does not erase earned rewards
 
-At match end, the player/reward entity receives every roll accumulated before its run ended. Victory is not required to receive already-earned Echoes.
+Victory is **not required** to receive Echoes.
+
+At match end, the player/reward entity receives every roll accumulated before its run ended.
+
+A player who survives most of a difficult match and contributes to a large number of opponent eliminations may therefore receive meaningful Echo rewards even if ultimately defeated.
+
+The old model of receiving nothing on defeat is retired.
 
 ### 13.5 All rolls become actual item drops
 
-Every accumulated roll produces an Echo acquisition. There is no keep-best filter.
+The old concept of rolling multiple candidate Echoes and keeping only the highest/best roll is retired.
+
+Every accumulated roll produces an Echo acquisition.
+
+Therefore:
+
+```text
+30 earned rolls → 30 Echo acquisitions
+100 earned rolls → 100 Echo acquisitions
+```
+
+Large matches may legitimately produce very large reward batches. Duplicate grouping and Pareto resolution in §8 exist partly to make those batches manageable.
 
 ---
 
 ## 14. Reward entities and human teams
 
+Reward accounting is attached to a **reward entity** rather than always to one individual human seat.
+
 ### 14.1 Solo
 
-In solo play, the human player is the reward entity. Opponent eliminations count while that player remains active; later unrelated eliminations after solo elimination do not grow that pool.
+In solo play, the human player is the reward entity.
+
+Opponent eliminations count while that player remains active in the match.
+
+When that player is eliminated, later unrelated eliminations do not continue growing that player's pool.
 
 ### 14.2 Fixed human team
 
-When multiple humans begin on the same fixed team, the **human team is the reward entity**.
+When multiple human players begin the match on the same fixed team, the **human team is the reward entity**.
 
-- reward accumulation remains active until the human team as a whole is eliminated or the match ends;
-- early human elimination does not end that human's eventual team reward;
-- every human teammate receives the **full** final pool, not a divided share;
-- victory adds the +5 pool bonus for every human teammate's identical final pool.
+Consequences:
 
-Fixed allied AI do not become additional human reward recipients.
+- the team has one shared accumulated roll-pool result;
+- the reward entity remains active until the human team as a whole is eliminated or the match ends;
+- one human teammate being eliminated early does not end reward accumulation for that teammate;
+- if the human team later wins, every human team member receives the full victorious final roll pool;
+- if the team ultimately loses, every human team member receives the same pool accumulated before team elimination;
+- rewards are **not divided** among human teammates.
+
+Example:
+
+```text
+Alice + Bob are fixed human teammates.
+Alice is eliminated early.
+Bob continues, several opponents are defeated, and Bob eventually wins.
+
+Result:
+the human team won.
+Alice and Bob each receive the full final team reward pool,
+including the +5 victory bonus.
+```
+
+Fixed allied AI or other non-human allies do not become additional human reward recipients unless a future mode explicitly defines otherwise.
 
 ---
 
 ## 15. Gacha Store and duplicate economy
 
-The Echo store is intentionally framed as a **Gacha Store**. Its currency is **Middle Fingers**.
+The Echo store is intentionally framed in-game as a **Gacha Store**.
+
+Its currency is canonically named **Middle Fingers**.
+
+It supports:
+
+- single pulls;
+- 10-pull batches;
+- duplicate recycling;
+- nonlinear Lucky-or-better bad-luck protection;
+- a hard Lucky-or-better guarantee;
+- **no Cheater guarantee**.
 
 ### 15.1 Accepted V1 purchase sizing
 
@@ -911,9 +1117,15 @@ The Echo store is intentionally framed as a **Gacha Store**. Its currency is **M
 10 pulls = 100 Middle Fingers
 ```
 
-There is no V1 batch discount or bonus roll. A 10-pull is mechanically ten sequential singles sharing the same pity state.
+There is no V1 batch discount or bonus roll.
+
+A 10-pull batch is mechanically equivalent to ten sequential single pulls. It exists for convenience/presentation, not superior expected value.
+
+A future specialized banner/pool system is not part of initial V1. The initial Gacha Store uses one ordinary Echo acquisition pool.
 
 ### 15.2 Duplicate salvage values
+
+Every duplicate awards **Middle Fingers** according to the newly acquired duplicate roll's quality tier, regardless of whether that roll is retained:
 
 | Duplicate roll tier | Middle Fingers |
 | --- | ---: |
@@ -924,19 +1136,37 @@ There is no V1 batch discount or bonus roll. A 10-pull is mechanically ten seque
 | Lucky | **6** |
 | Cheater | **8** |
 
-The same salvage table applies regardless of whether the duplicate came from a match reward or Gacha.
+The same salvage table applies regardless of whether the duplicate came from a match reward or the Gacha Store.
+
+A 10-Middle-Finger pull therefore cannot deterministically refund its entire price from one ordinary duplicate; even a Cheater duplicate returns 8. The Gacha Store remains a real currency sink while match-earned duplicates remain a meaningful currency source.
 
 ### 15.3 Lucky-or-better qualification
+
+For pity purposes:
 
 ```text
 Lucky-or-better ⇔ EchoScore >= 1.00
 ```
 
+Both Lucky and naturally rolled Cheater Echoes satisfy/reset Lucky+ pity.
+
 There is **no Cheater pity**, no minimum Cheater frequency, and no mechanic that progressively guarantees `EchoScore >= 1.25`.
 
 ### 15.4 One shared sequential pity counter
 
-Pity belongs only to **paid Gacha Store pulls**. Singles and 10-pull batches use the same sequential pity state. Match reward acquisitions neither advance nor reset Gacha pity.
+Pity belongs only to **paid Gacha Store pulls**.
+
+Singles and 10-pull batches use the same sequential pity state. A batch is processed pull by pull in deterministic order:
+
+```text
+pull #1 updates pity before pull #2
+...
+pull #10 sees the state left by pull #9
+```
+
+If pull #4 in a batch is Lucky/Cheater, pity resets before pulls #5–#10.
+
+**Match reward acquisitions neither advance nor reset Gacha pity.** A Lucky/Cheater earned from ordinary match rewards therefore does not erase paid-pull bad-luck protection.
 
 ### 15.5 Accepted power-12 soft pity
 
@@ -948,18 +1178,32 @@ n = consecutive non-Lucky+ paid pulls already suffered since the last reset
 P0 = natural Lucky+ probability under the ordinary acquisition generator
 ```
 
-Use:
+Use the accepted **power-12 rescue curve**:
 
 ```text
 r(n) = (n / 49)^12
-P_lucky+(n) = P0 + (1 - P0) × r(n)
 ```
 
 for `0 <= n <= 49`.
 
-One clean implementation performs the normal roll first, then applies only the additional rescue probability needed to reach the target chance; rescue samples from the ordinary acquisition distribution conditioned on `EchoScore >= 1.00`.
+The effective probability that the next paid pull is Lucky+ is conceptually:
 
-Representative next-pull Lucky+ chances under the current `P0 ≈ 2.50%`:
+```text
+P_lucky+(n) = P0 + (1 - P0) × r(n)
+```
+
+Equivalent implementations are allowed if deterministic/simulatable and distributionally equivalent.
+
+One clean implementation is:
+
+1. perform the normal acquisition path with its natural Lucky+ chance;
+2. independently apply only the **additional rescue probability** implied by the target `P_lucky+(n)`;
+3. if rescue activates, sample from the ordinary acquisition distribution **conditioned on EchoScore >= 1.00**;
+4. reset pity after any natural or rescued Lucky+ result.
+
+This deliberately leaves ordinary early-pull luck almost untouched, begins helping during a real drought, rises sharply near the end of the streak, and avoids manufacturing a special fixed pity item.
+
+With the current natural `P0 ≈ 2.50%`, representative next-pull Lucky+ chances are approximately:
 
 | Consecutive misses before next pull | Lucky+ chance on next pull |
 | ---: | ---: |
@@ -973,11 +1217,23 @@ Representative next-pull Lucky+ chances under the current `P0 ≈ 2.50%`:
 | 48 | **~78.63%** |
 | 49 | **100% on the 50th pull** |
 
+The percentages above are derived validation examples for the current natural generator rather than separately authored constants.
+
 ### 15.6 Accepted 50-pull hard guarantee
 
-A player can never complete 50 consecutive paid Gacha pulls without receiving at least one Lucky-or-better result. Any natural or rescued Lucky/Cheater result resets the paid-pull pity counter to zero.
+The V1 hard pity endpoint is:
 
-The guarantee is Lucky-or-better only and does not guarantee Cheater.
+```text
+H = 50 paid Gacha pulls
+```
+
+A player can never complete 50 consecutive paid Gacha pulls without receiving at least one Lucky-or-better result. The 50th pull after 49 consecutive non-Lucky+ paid pulls is therefore forced/conditioned to `EchoScore >= 1.00` if the ordinary roll does not already qualify.
+
+Any natural or rescued Lucky/Cheater result resets the paid-pull pity counter to zero.
+
+This is intentionally generous. Open Fufu is a friends-oriented game with a very large mechanical roll space, so V1 prefers visible protection against unfun droughts over maximizing progression scarcity. The value remains versioned balance data and may be retuned after real play without changing the Echo identity architecture.
+
+The guarantee is **Lucky-or-better only**. It does not guarantee Cheater, does not progressively increase Cheater probability, and does not alter the ordinary conditioned distribution beyond requiring `EchoScore >= 1.00` when pity rescue/guarantee fires.
 
 ---
 
@@ -986,18 +1242,20 @@ The guarantee is Lucky-or-better only and does not guarantee Cheater.
 A normal Echo acquisition conceptually proceeds as follows:
 
 1. determine acquisition source (`match`, `gacha`, future source);
-2. select Echo shape using `50% mixed / 35% dual / 15% single` unless the source explicitly defines another approved table;
-3. select one registered Echo identity uniformly within that shape;
+2. select Echo **shape** using the current `50% mixed / 35% dual-positive / 15% single-positive` distribution unless the source explicitly defines another approved table;
+3. select one registered Echo identity **uniformly within that shape**;
 4. enumerate and EchoScore-weight the legal integer magnitude configuration(s) for that identity;
 5. sample the ordinary rolled instance;
-6. for a paid Gacha pull, apply the current Lucky+ pity state;
-7. finalize EchoScore, quality tier, and generated display name from the naming version + retained/acquired magnitudes;
+6. for a paid Gacha pull, apply the current Lucky+ pity state as specified in §15;
+7. finalize EchoScore, quality tier, and the generated display name under the bound naming version;
 8. if the identity is not owned, add it to the collection;
-9. if already owned, award tier-based Middle Fingers and resolve the retained copy using §8;
-10. for a batch, group repeated identities and resolve them together;
+9. if the identity is already owned, award tier-based Middle Fingers and resolve the retained copy using §8;
+10. for a batch, group repeated identities and resolve them together rather than sequentially;
 11. persist unresolved player-choice frontiers as one pending settlement until accepted.
 
-Identity selection and magnitude selection must be deterministic from authoritative acquisition RNG/state where deterministic replay/audit is required. Naming is deterministic presentation and must never alter an identity's mechanical stat keys or owned magnitude roll.
+Identity selection and magnitude selection must be deterministic from the authoritative acquisition RNG/state where deterministic replay/audit is required.
+
+Naming/flavor changes must never silently alter an existing identity's mechanical stat keys or owned magnitude roll.
 
 ---
 
@@ -1007,15 +1265,15 @@ The player-facing collection surface should be named **Echoes**, not `Inventory`
 
 ### 17.1 Collection grid
 
-The Echoes screen supports:
+The Echoes screen uses the same general card language as reward presentation and supports:
 
-- grid/card presentation;
-- search by generated Echo name, character-owner token, or stat-token text where useful;
+- grid presentation;
+- search by generated Echo name, character-owner token, or stat-token text where indexed/useful;
 - search/filter by mechanical effect/stat key;
-- multi-select mechanical filters;
+- multi-select mechanical filters, e.g. show every Echo containing `Offensive Pressure` plus one or more additional selected effects;
 - favorites;
-- quality/EchoScore sorting;
-- ordinary identity search/debug visibility where appropriate.
+- quality/EchoScore sorting where useful;
+- ordinary identity/name search.
 
 Unknown Echo silhouettes/completion-grid placeholders are **not** required. The collection shows what the player actually owns rather than a Pokédex of hidden empty slots.
 
@@ -1025,7 +1283,9 @@ A favorited Echo is pinned/promoted ahead of ordinary results unless the active 
 
 Players may maintain multiple named saved 7-Echo configurations. The accepted provisional V1 player-facing term is **Echo Sets**.
 
-Each Echo Set references Echo **identity IDs**, not frozen copies of historical magnitude rolls. When duplicate resolution replaces the retained roll for an identity, every Echo Set containing that identity automatically uses the newly retained roll.
+Each Echo Set references Echo **identity IDs**, not frozen copies of historical magnitude rolls.
+
+Therefore, when duplicate resolution replaces the retained roll for an identity, every Echo Set containing that identity automatically uses the newly retained roll. The player does not need to re-equip an upgraded copy.
 
 Standard PvE uses one selected seven-Echo set for the match. PvP progression/loadout standardization remains deliberately deferred.
 
@@ -1052,7 +1312,11 @@ UI/rendering implementation
 synthetic/sample test fixtures
 ```
 
-Runtime/private data supplies granular live/account state such as active balance/config rows where deployment chooses data-driven tuning, materialized Echo identities where useful, owned Echo rolls, Echo Sets, Middle Fingers balances, pity state, pending settlements, and acquisition/progression records.
+Runtime/private data supplies granular live/account state including active balance/config rows where deployment chooses data-driven tuning, materialized Echo identities where useful, owned Echo rolls, Echo Sets, Middle Fingers balances, pity state, pending settlements, and acquisition/progression records.
+
+The code should consume tunable values through explicit data/configuration contracts rather than requiring source edits merely to retune a probability, magnitude ceiling, salvage value, Gacha price, pity parameter, or active catalogue/config row.
+
+Design documentation may state accepted V1 values as a human-readable contract even though the executable implementation loads corresponding active values from versioned data where appropriate.
 
 V1 has **no production Echo anime-dialogue corpus or Echo-to-line assignment table**.
 
@@ -1088,6 +1352,8 @@ This configuration is small enough to be ordinary versioned game data rather tha
 A deterministic/versioned visual seed/recipe may be derived from the identity or stored compactly where needed. It must not require one bespoke artwork row per magnitude permutation.
 
 #### Owned Echo
+
+One retained roll per owned identity:
 
 ```text
 account/player id
@@ -1129,6 +1395,8 @@ status
 
 #### Acquisition event
 
+Transient/auditable event as needed:
+
 ```text
 source
 echoIdentityId
@@ -1161,7 +1429,7 @@ Any other design/integration documentation must be updated so none of the follow
 - multiple earned candidates are rolled and only the best is retained;
 - human teammates each own isolated reward accounting when they are one fixed human team;
 - magnitude-derived sampling rarity is an immutable property of the Echo identity;
-- a bad-but-statistically-rare result may satisfy positive-quality gacha pity;
+- a bad-but-statistically-rare result may satisfy positive-quality Gacha pity;
 - the store has no batch pulls, recycling, or bad-luck protection;
 - legal magnitudes are uniformly sampled;
 - Echoes require anime dialogue-line assignments, MAL harvesting, quote/subtitle import, or one unique authored content line per identity;
@@ -1212,7 +1480,7 @@ Deferred implementation/content work includes:
 3. implement the concrete SQLite/account schema/indexes/migrations for owned rolls, Echo Sets, Middle Fingers, pity, settlements, and audit events;
 4. implement the exact visual recipe renderer, card motion, quality effects, and responsive/touch behavior consistent with the accepted presentation rules;
 5. implement executable/property tests for identity generation/distribution, EchoScore-weighted magnitude sampling, quality tiers, Middle Fingers accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, saved-set propagation, generated naming, and Gacha pity;
-6. assign exact special-AI Echo reward bonuses when those AI presets are designed; this is an AI-system/preset decision, not an unresolved Echo mechanic;
+6. assign exact special-AI Echo reward bonuses **when those AI presets/controllers are designed**; this is an AI-system/preset decision, not an unresolved Echo mechanic;
 7. later playtest-retune versioned numerical values if real play provides a reason.
 
 The following are no longer open design questions for V1:
@@ -1237,6 +1505,7 @@ The following are no longer open design questions for V1:
 - Mixed connector — `with a side of`;
 - magnitude descriptor vocabulary — Catastrophic / Cursed / Wretched / Dreadful / Shoddy / Questionable / Decent / Good / Great / Amazing / Fantastic / Absurd for naming magnitudes `-6..-1/+1..+6`;
 - descriptor semantics — beneficial/harmful polarity, not naive arithmetic sign;
+- public/runtime boundary — reusable engine/contracts/naming configuration may be public; live account/progression state remains runtime/private;
 - duplicate/Gacha currency name — Middle Fingers;
 - saved configuration name — Echo Sets provisionally;
 - visual identity rule — stable identity components plus roll-dependent naming adjectives and quality treatment;
