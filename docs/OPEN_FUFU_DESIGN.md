@@ -1150,7 +1150,7 @@ Official AI factions select/bind Origins under the same game rules. Official Ori
 
 Trusted runtime execution is allowed operationally; difficulty comes from strategy quality. Reusable internal strategy components are encouraged but do not become privileged player-facing policies.
 
-The provisional V1 character roster, allowed shared Origin pools, and AI-Origin reveal timing are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Exact difficulty ratings and special-AI Echo reward bonuses remain assigned when the corresponding controllers are designed.
+The provisional V1 character roster, allowed shared Origin pools, provisional difficulty targets, and difficulty-derived Echo reward contribution are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Difficulty is a property of the character/controller preset, not the randomly selected Origin. For reward accounting, an Official AI defeat contributes total Echo rolls equal to its bound difficulty: the ordinary qualifying-opponent `+1` plus a special-AI bonus of `difficulty - 1`.
 
 ---
 
@@ -1410,7 +1410,7 @@ PvE Echo rewards use an accumulated **reward roll pool**, not a victory-only `ro
 The pool begins at **0**. While the relevant reward entity remains active:
 
 - each qualifying opposing faction defeated contributes **+1 Echo roll**, regardless of who actually defeated it;
-- a configured higher-difficulty/special AI contributes that ordinary +1 plus its explicit individually authored preset bonus;
+- defeating an Official AI contributes the ordinary +1 plus `difficulty - 1` additional rolls, so its total defeat contribution equals the bound preset difficulty from `OFFICIAL_AI_PRESETS.md`;
 - victory contributes **+5 Echo rolls**.
 
 Defeat does **not** erase already accumulated rolls. When the reward entity's run ends, every accumulated roll becomes an actual Echo acquisition. Thus 30 earned rolls produce 30 acquisitions; there is no keep-only-the-best filter.
@@ -1419,7 +1419,7 @@ For solo play, the human faction is the reward entity and stops accumulating whe
 
 For fixed human teams, the **human team itself is the reward entity** until the human team as a whole is eliminated or the match ends. Every human teammate receives the **full final pool**, not a divided share. An early-eliminated human continues to share the team's later reward accumulation while another human teammate remains active. Fixed AI allies do not become additional human reward recipients.
 
-Exact special-AI Echo bonuses are assigned when those AI presets are actually designed. There is no universal difficulty-tier reward multiplier; the Echo system merely provides the per-preset bonus hook.
+The Official AI preset's bound difficulty is the single per-character reward source of truth. Do not maintain an independent per-character Echo-bonus table. Randomly selecting a different allowed Origin does not alter the preset's difficulty or reward contribution.
 
 ### 23.11 Owned Echoes, duplicates, reward settlement, and Gacha Store
 
@@ -1892,7 +1892,6 @@ The following remain intentionally outside the settled design contract unless ot
 - exact Segment size heuristics;
 - playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
 - exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory-event baseline;
-- exact special-AI Echo reward bonuses, deferred until the relevant AI controllers/difficulty ratings are designed;
 - exact V1 Echo shape-character pools and concrete-stat naming-token dictionary; the naming grammar and magnitude descriptor vocabulary are settled, but the actual token assignments remain content authoring;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled stable identity components + roll-dependent naming/quality treatment;
 - playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
@@ -1971,7 +1970,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 59. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
 60. **Zero population-bearing territory after tick resolution means immediate defeat.**
 61. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
-62. **Official AI obeys the same gameplay information and mechanics as player controllers; the provisional character roster and shared Origin pools live in `OFFICIAL_AI_PRESETS.md`.**
+62. **Official AI obeys the same gameplay information and mechanics as player controllers; the provisional character roster, shared Origin pools, difficulty targets, and difficulty-derived Echo reward contribution live in `OFFICIAL_AI_PRESETS.md`.**
 63. **Ordinary users cannot live-spectate unrelated matches.**
 64. **Historical matches bind exact rule-bearing versions.**
 65. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
