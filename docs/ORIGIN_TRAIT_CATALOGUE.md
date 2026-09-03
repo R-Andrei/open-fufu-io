@@ -4,7 +4,7 @@
 
 This file is the **provisional working catalogue for Origin traits**, not a competing game-design contract.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md).
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Echo identity/acquisition/reward semantics are recorded in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -455,4 +455,6 @@ Their current mechanical builds are the accepted first Official roster; display 
 
 ## Next Origin work
 
-The expanded terrain/structure/Tank world-system pass now has provisional Origin coverage. Next priority is expanding Echo coverage for the newly accepted terrain/Observation/Command/Tank axes, followed by naming, balance/repricing, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
+The expanded terrain/structure/Tank world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning now belongs in `ECHO_CATALOGUE.md`; this catalogue should not describe that work as an unperformed expansion.
+
+Remaining Origin-side priorities are naming, balance/repricing, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
