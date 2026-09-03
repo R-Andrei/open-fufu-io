@@ -24,9 +24,11 @@ Current first-version invariants:
 
 ## 1. V1 allowed Echo modifier pool
 
-The pool below is the accepted first V1 candidate set after intentionally removing many effects that overlap too heavily with Origins or would too easily erase defining Origin rules.
+The pool below is the accepted V1 candidate set after intentionally removing effects that overlap too heavily with Origins or would too easily erase defining Origin rules.
 
 `City Growth contribution` is one stat and appears only once below; it is not duplicated as both a Population-family and City-family identifier.
+
+Scoped definitions are selected as one stat definition first and only then resolve their scope, so adding more terrain, structure, or mobile-unit scopes does not make that stat family intrinsically more common.
 
 | Family | Stat | Scope |
 | --- | --- | --- |
@@ -36,32 +38,39 @@ The pool below is the accepted first V1 candidate set after intentionally removi
 | **Land combat** | Offensive pressure | global |
 |  | Defensive pressure | global |
 |  | Counter-response effectiveness while responding | global |
-|  | Terrain offensive pressure | Plains / Highlands / Mountain / Desert |
-|  | Terrain defensive pressure | Plains / Highlands / Mountain / Desert |
+|  | Terrain offensive pressure | Plains / Highlands / Mountain / Desert / Forest / Tundra / Marsh / Shallow Water |
+|  | Terrain defensive pressure | Plains / Highlands / Mountain / Desert / Forest / Tundra / Marsh / Shallow Water |
+|  | Terrain capture/settlement speed | Plains / Highlands / Mountain / Desert / Forest / Tundra / Marsh / Shallow Water |
 | **FFY economy** | All FFY event yield | global |
 |  | Military/conquest FFY | global |
 |  | Naval/trade FFY | global |
 |  | Industrial FFY | global |
-| **Construction** | Structure build cost | all / City / Fort / Port / Factory / Silo / SAM |
-|  | Structure upgrade cost | all / City / Fort / Port / Factory / Silo / SAM |
-|  | Structure construction time | all / City / Fort / Port / Factory / Silo / SAM |
+| **Construction** | Structure build cost | all / City / Fort / Port / Factory / Silo / SAM / Observation Post / Command Post |
+|  | Structure upgrade cost | all / City / Fort / Port / Factory / Silo / SAM / Observation Post / Command Post |
+|  | Structure construction time | all / City / Fort / Port / Factory / Silo / SAM / Observation Post / Command Post |
 | **City** | City Growth contribution | City |
 | **Fort** | Fort coverage area | Fort |
 |  | Fort defensive pressure | Fort |
-| **Factory** | Factory FFY-event effectiveness | Factory |
+| **Factory** | Armored-unit repair radius | Factory |
+|  | Armored-unit repair rate | Factory |
 | **Port** | Passive repair radius | Port |
 |  | Passive repair rate | Port |
+| **Observation Post** | Observation radius | Observation Post |
+| **Command Post** | Coverage area | Command Post |
+|  | Offensive-pressure magnitude | Command Post |
 | **SAM** | Interception range | SAM |
 |  | Recharge/cooldown time | SAM |
 | **Missile Silo** | Recharge/cooldown time | Silo |
-| **Warships** | FFY purchase cost | Warship |
-|  | Movement speed | Warship |
-|  | Attack range | Warship |
-|  | Damage | Warship |
-|  | Maximum health | Warship |
+| **Mobile units** | FFY purchase cost | Warship / Tank |
+|  | Movement speed | Warship / Tank |
+|  | Attack range | Warship / Tank |
+|  | Damage | Warship / Tank |
+|  | Maximum health | Warship / Tank |
 | **Strategic weapons** | Warhead projectile speed | all / Atom / Hydrogen / MIRV |
 |  | FFY cost | Atom / Hydrogen / MIRV |
 |  | Blast area | Atom / Hydrogen |
+
+`Industrial FFY` is the sole ordinary Echo axis for industrial/Factory-generated FFY events. The former separate `Factory FFY-event effectiveness` modifier is intentionally removed as redundant rather than allowing two overlapping Echo definitions to tune the same Factory event value.
 
 ---
 
@@ -104,6 +113,7 @@ Rarity scoring uses beneficial/harmful polarity. Simulation arithmetic uses the 
 | Counter-response effectiveness | stronger response side | weaker response side |
 | Terrain offense | stronger on selected terrain | weaker on selected terrain |
 | Terrain defense | stronger on selected terrain | weaker on selected terrain |
+| Terrain capture/settlement speed | faster acquisition on selected terrain | slower acquisition on selected terrain |
 | FFY event yield | more FFY | less FFY |
 | Structure build cost | lower cost | higher cost |
 | Structure upgrade cost | lower cost | higher cost |
@@ -111,17 +121,21 @@ Rarity scoring uses beneficial/harmful polarity. Simulation arithmetic uses the 
 | City Growth contribution | more | less |
 | Fort coverage | larger | smaller |
 | Fort defensive pressure | stronger | weaker |
-| Factory FFY effectiveness | more | less |
+| Factory armored-unit repair radius | larger | smaller |
+| Factory armored-unit repair rate | faster healing | slower healing |
 | Port repair radius | larger | smaller |
 | Port repair rate | faster healing | slower healing |
+| Observation radius | larger | smaller |
+| Command Post coverage | larger | smaller |
+| Command Post pressure | stronger | weaker |
 | SAM range | larger | smaller |
 | SAM cooldown | shorter | longer |
 | Silo cooldown | shorter | longer |
-| Warship FFY cost | cheaper | more expensive |
-| Warship speed | faster | slower |
-| Warship range | longer | shorter |
-| Warship damage | more | less |
-| Warship health | more | less |
+| Mobile-unit FFY cost | cheaper | more expensive |
+| Mobile-unit speed | faster | slower |
+| Mobile-unit range | longer | shorter |
+| Mobile-unit damage | more | less |
+| Mobile-unit health | more | less |
 | Warhead projectile speed | faster | slower |
 | Strategic-weapon FFY cost | cheaper | more expensive |
 | Blast area | larger | smaller |
@@ -129,6 +143,26 @@ Rarity scoring uses beneficial/harmful polarity. Simulation arithmetic uses the 
 `Starting Population` is multiplicative against the configured starting Population fraction rather than an absolute Population grant. For example, if the ruleset starts a faction at `50%` of Capacity, `+4% Starting Population` means `50% × 1.04 = 52% of Capacity`, not 54 percentage points.
 
 Counter-response Echoes modify the **response-side** effectiveness hook only unless a future separately named Echo stat is explicitly added.
+
+`Industrial FFY` applies to ordinary industrial FFY events, including the Factory-driven industrial/train FFY event values defined by the canonical structure registry. There is no second Factory-specific FFY Echo layer.
+
+Factory repair-radius/rate Echoes affect the canonical Tank/Heavy-Artillery repair service provided by Factories. They do not alter simultaneous repair capacity, which remains a discrete Factory-level property rather than an Echo stat.
+
+A Tank-scoped mobile-unit Echo applies to the faction's canonical Tank chassis **after Origin transformation**. If P43 transforms Tanks into Heavy Artillery, Tank cost/speed/range/damage/health Echoes specialize the resulting Heavy-Artillery profile; there is no separate Heavy-Artillery Echo scope.
+
+For the Tank scope:
+
+- `Attack range` modifies the unit's ordinary anti-armor and Population-attack range, and Train-interception range when that capability exists.
+- `Damage` modifies numeric anti-armor HP damage and Population damage. It does not alter the binary Train-destruction result or P44's radioactive neutralization footprint.
+- `Movement speed` modifies final Tank/Heavy-Artillery movement after the Origin-established chassis profile and terrain movement rules.
+- `Maximum health` modifies the chassis health pool.
+- `FFY purchase cost` modifies the final FFY cost of the purchased Tank/Heavy Artillery after the ordinary active-count curve and Origin purchase-cost transformation are established.
+
+Tank/Heavy-Artillery firing cooldown/reload is deliberately **not** an Echo stat. In particular, Echoes cannot shorten P43 Heavy Artillery's 12-second reload or thereby erase its intended vulnerability window. P44 radioactive footprint radius/cell count is likewise not an Echo stat.
+
+Observation-radius Echoes modify the Observation Post's effective completed-level radius. Under P49, where Observation Posts become counterintelligence blackout structures, that same numeric radius modifier naturally specializes the blackout radius rather than restoring ordinary observation.
+
+Fort-pressure Echoes specialize the Fort's effective pressure magnitude. Under P50, the Fort's mirrored offensive field uses that same effective Fort-pressure magnitude. Command-Post-pressure Echoes similarly specialize the Command Post's effective pressure magnitude; under P51, the mirrored defensive field uses that same effective magnitude. Cross-type Fort/Command overlap still follows the Origin catalogue's diminishing field-composition rule.
 
 If an Origin makes an underlying stat irrelevant, an Echo may become partially or wholly inert. This is legal and does not create hidden compatibility rules. For example, a Warship-FFY-cost Echo is irrelevant to an Origin whose Warships cost `0 FFY` and consume Population instead.
 
@@ -150,6 +184,7 @@ The values below are accepted provisional V1 maxima.
 | Counter-response effectiveness | **5%** |
 | Terrain Offensive Pressure | **5%** |
 | Terrain Defensive Pressure | **5%** |
+| Terrain Capture/Settlement Speed | **5%** |
 | All FFY yield | **4%** |
 | Military/conquest FFY | **6%** |
 | Naval/trade FFY | **6%** |
@@ -163,23 +198,27 @@ The values below are accepted provisional V1 maxima.
 | City Growth contribution | **5%** |
 | Fort coverage area | **4%** |
 | Fort defensive pressure | **4%** |
-| Factory FFY effectiveness | **6%** |
+| Factory armored-unit repair radius | **5%** |
+| Factory armored-unit repair rate | **5%** |
 | Port passive repair radius | **5%** |
 | Port passive repair rate | **5%** |
+| Observation Post radius | **4%** |
+| Command Post coverage area | **4%** |
+| Command Post pressure | **4%** |
 | SAM interception range | **3%** |
 | SAM recharge time | **4%** |
 | Silo recharge time | **4%** |
-| Warship FFY purchase cost | **4%** |
-| Warship movement speed | **4%** |
-| Warship attack range | **3%** |
-| Warship damage | **5%** |
-| Warship maximum health | **5%** |
+| Mobile-unit FFY purchase cost | **4%** |
+| Mobile-unit movement speed | **4%** |
+| Mobile-unit attack range | **3%** |
+| Mobile-unit damage | **5%** |
+| Mobile-unit maximum health | **5%** |
 | All-warhead projectile speed | **5%** |
 | Specific-warhead projectile speed | **6%** |
 | Strategic-weapon FFY cost | **4%** |
 | Atom/Hydrogen blast area | **3%** |
 
-These maxima intentionally vary by strategic sensitivity. Global combat/economy effects and tactically dominant effects such as Warship range are narrower than more specialized economic or unit stats.
+These maxima intentionally vary by strategic sensitivity. Global combat/economy effects and tactically dominant effects such as mobile-unit range are narrower than more specialized economic, repair, or unit stats.
 
 ### 3.1 Quantization
 
@@ -315,7 +354,7 @@ Examples that are all legal:
 -City Growth contribution
 
 +Hydrogen Bomb projectile speed
--Factory FFY effectiveness
+-Factory repair rate
 ```
 
 The generator does not try to understand whether a pair is good for a particular build.
@@ -563,6 +602,8 @@ Example: the Population-funded Warship Origin gives Warships approximately `0.67
 
 The highly specialized fleet still has about **22.4% less attack range than ordinary Warships**.
 
+For P43, the Heavy-Artillery transformation establishes the Tank chassis first; Tank-scoped Echo percentages then specialize that transformed profile. Nothing in the Echo layer changes the authored P43 reload cadence or P44 footprint unless a future separately accepted rule explicitly says so.
+
 ---
 
 ## 11. Provisional 75%-optimal stress test
@@ -588,7 +629,7 @@ Provisional stress magnitudes therefore include:
 
 ### 11.1 Checked high-risk interactions
 
-The following checks use simple published modifier composition as a conservative design sanity test. Some final mechanics, especially Fort/Factory/Port effects, still require their exact baseline formulas before these become executable balance tests.
+The following checks use simple published modifier composition as a conservative design sanity test. Some final mechanics, especially pressure-field composition and implemented FFY formulas, still require exact executable tests.
 
 | Stress case | Approximate result | Assessment |
 | --- | ---: | --- |
@@ -601,12 +642,17 @@ The following checks use simple published modifier composition as a conservative
 | `P42 + 7×75% Warship range` | about **0.776× ordinary Warship range** | P42's defining `-33%` range weakness remains clearly intact |
 | `P23 + 7×75% Warship range` | about **1.389× ordinary range** | Powerful but applies to the one-super-Warship Origin constraint; retained |
 | `P30 + 7×75% Warship speed` | about **1.815× ordinary Warship speed** | Extreme pirate mobility, but P30 Warships cannot fight ships with gunfire; retained |
-| `P25 + 7×75% Hydrogen blast area` | about **1.736× ordinary H-bomb area** | Large but weapon-specific; P25 forbids Atom/MIRV and raises H-bomb price |
+| `P43 + 7×75% Tank range` | Heavy-Artillery range about **52.1 cells / 1.736× ordinary Tank range** | Strong artillery specialization, but reload remains 12s and terrain barriers remain unchanged |
+| `P43 + 7×75% Tank speed` | Heavy-Artillery movement remains about **0.605×** the corresponding ordinary Tank movement | Echo specialization cannot erase the defining half-speed doctrine |
+| `P43 + 7×75% Tank health` | Heavy Artillery reaches about **1,262.5 HP** | A surviving baseline Tank needs six 250-damage shots rather than four, but still kills it well before the 12s artillery reload; vulnerability remains real |
+| `P44 + 7×75% Tank damage` | numeric Population/anti-armor damage rises by at most **26.25%** | Radioactive 10/50-cell neutralization footprint and firing cadence remain unchanged; Echoes cannot scale the territorial erosion mechanic itself |
+| `P49 + 7×75% Observation radius` | effective Observation/blackout radius about **1.21×** its Origin-established value | Strong recon/counterintel specialization, but no new visibility capability is created |
+| `P25 + 7×75% Hydrogen blast area` | about **1.736×** ordinary H-bomb area | Large but weapon-specific; P25 forbids Atom/MIRV and raises H-bomb price |
 | `P25 + 7×75% strategic-weapon cost reduction` | about **1.185× ordinary H-bomb cost** | Even maximum stress mitigation does not erase P25's +50% H-bomb cost |
 | `P10 + 7×75% specific-warhead speed` | about **2.63× ordinary projectile speed** | High but affects delivery/interception timing rather than blast damage; retained for testing |
 | `P09 + 7×75% Fort build-cost reduction` | roughly **32% cheaper** than ordinary under multiplicative composition | Safely away from free structures |
 | `P41 + 7×75% City build-cost reduction` | direct-L5 City about **70% of ordinary cumulative L1→L5 cost** | Very strong dedicated City economy but still substantial cost; retained |
-| `P34 + optimized Factory/Industrial FFY Echo mix` | rough upper-bound around **2.68×** ordinary conquered-Factory event effectiveness | P34 already doubles conquered Factories; Echoes add bounded specialization; conquest-only dependency remains |
+| `P34 + 7×75% Industrial FFY` | rough upper-bound around **2.63×** ordinary conquered-Factory event effectiveness | P34 already doubles conquered Factories; the single Industrial-FFY Echo axis adds bounded specialization without a redundant Factory-specific modifier |
 
 ### 11.2 Upgrade-cost asymptote note
 
@@ -629,13 +675,15 @@ No provisional Echo maximum currently creates an obvious standalone invariant br
 - no structure-cost stack reaches free/negative cost;
 - P40's cooldown drawback remains meaningful under full mitigation;
 - P42's range drawback remains meaningful under full mitigation;
+- P43's half-speed/long-reload artillery identity remains meaningful because reload is not Echo-modifiable;
+- P44's radioactive territorial footprint remains fixed rather than Echo-scalable;
 - Starting Population is substantially increased but not multiplied into a several-fold opening advantage;
 - extreme local offense/defense cases are driven mainly by deliberate Origin rule combinations and highly conditional geography rather than Echoes alone;
 - the strongest economic multipliers remain scope-dependent and/or rely on already-specialized Origin mechanics.
 
 Therefore the maxima in §3 are retained as the accepted **provisional V1 test values**.
 
-This stress pass must be converted into executable/property tests once the exact baseline formulas for structures, FFY, terrain combat, and strategic weapons exist.
+This stress pass must be converted into executable/property tests once the exact baseline formulas for structures, FFY, terrain combat, mobile units, and strategic weapons exist.
 
 ---
 
@@ -647,13 +695,15 @@ The following are intentionally **not** part of the normal V1 Echo pool at this 
 - Origin points, Origin trait slots, Echo slots;
 - controller cadence, CPU, memory, query limits, or sandbox behavior;
 - victory/defeat/capitulation rules;
-- visibility/fog-of-war changes before that system is implemented and tested;
+- structural visibility/fog-of-war capability changes; numeric Observation Post radius remains a normal Echo stat;
 - automatic defender count above the canonical 0/1 rule;
-- hard build/capability permissions such as `can build Warships`, `SAM may attack ships`, `Warships count as Silos`, weapon-family prohibitions, or launcher-tier requirements;
+- hard build/capability permissions such as `can build Warships`, `SAM may attack ships`, `Warships count as Silos`, weapon-family prohibitions, launcher-tier requirements, or terrain traversal permissions;
 - split spawning, extra spawn origins, Initial Territory topology transformations, or other strategic-spawn rule changes;
 - free structures/weapons, structure ownership caps, structure grants on landing, defender survival on capture, alternate Population-growth curves, Port-only Transport requirements, armored-Transport conversion, or equivalent structural Origin mechanics;
 - direct creation of special FFY/Population event types that do not exist for ordinary factions;
-- niche modifiers whose underlying mechanic exists only because one specific Origin enables it.
+- discrete structure capacities such as Factory simultaneous armored-unit repair count;
+- Tank/Heavy-Artillery firing cooldown/reload, operational leash, automatic repair-retreat threshold, terrain traversal permissions, or similar doctrine-defining control axes;
+- P44 radioactive footprint size/radius/cell count or other niche modifiers whose underlying mechanic exists only because one specific Origin enables it.
 
 Echoes may partially improve or worsen a numeric stat that an Origin also modifies, but the Origin rule remains the underlying faction identity and Echoes specialize the resulting profile through the published modifier-composition rules.
 
@@ -670,6 +720,6 @@ Remaining content/presentation parameters include:
 3. final dialogue/flavor/visual generation or curation system;
 4. optional derived cosmetic rarity labels/probability bands;
 5. numerical retuning of maxima, shape probabilities, or rarity anchors after simulation/playtesting;
-6. final validation against exact implemented structure, FFY, combat, and weapon formulas.
+6. final validation against exact implemented structure, FFY, terrain, combat, mobile-unit, and weapon formulas.
 
 These are tuning/content questions rather than reasons to reopen the accepted three-shape, unrestricted-pairing, normalized-score, score-centered-rarity design.
