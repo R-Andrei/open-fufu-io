@@ -118,20 +118,22 @@ Starting Population remains calculated from the final total Initial Territory un
 
 P54 is a **spawn-geometry transformation**, not an acquisition-speed stat bonus.
 
-The faction keeps exactly the same final Initial-Territory population-bearing-cell quota it would otherwise receive. Instead of an ordinary approximately circular footprint, each of its starting footprints uses a deliberately sharp **eight-point star** target geometry centered on the exact origin.
+The faction keeps exactly the same final Initial-Territory population-bearing-cell quota it would otherwise receive. Instead of an ordinary approximately circular footprint, each of its starting footprints uses a deliberately thin-bodied, long-armed **five-point star** target geometry centered on the exact origin.
 
 ## 5.1 Ideal star profile
 
 The ideal profile has:
 
-- **8 outward points**;
-- 16 alternating outer/inner vertices at equal angular intervals;
+- **5 outward points**;
+- 10 alternating outer/inner vertices at equal angular intervals;
 - one outer point aligned to the canonical map north axis, giving one deterministic orientation without adding another spawn-control input;
-- approximately **3:1 outer-tip radius to inner-valley radius**.
+- approximately **6:1 outer-tip radius to inner-valley radius**.
 
-At equal idealized area, that 8-point `3:1` star has a little over three times the perimeter of the equivalent circle. The intended mechanical benefit is therefore much greater initial Territorial Contact with surrounding neutral land.
+The extreme tip-to-valley ratio is deliberate. At the ordinary roughly 1,000-cell scale, the intent is a small central body with long, thin territorial arms extending much farther from the origin than an equal-area circular start.
 
-The pointiness is deliberate: this Origin is meant to expose many more neutral boundary cells without receiving extra starting cells or a hidden capture-speed multiplier.
+At equal idealized area, a five-point `6:1` star has roughly three-and-a-half times the perimeter of the equivalent circle before raster/geography deformation. That additional boundary is the only intended mechanical benefit: more neutral cells can be simultaneously adjacent/actionable under ordinary expansion rules.
+
+P54 therefore does **not** guarantee faster expansion. It merely creates more potential starting contact surface if geography and Population allocation allow the controller to exploit it. Terrain can blunt, bend, or waste individual arms.
 
 ## 5.2 Raster/geography construction
 
@@ -164,10 +166,10 @@ When both are selected:
 
 - P39 still provides two half-area influence regions and two exact origins;
 - final modified Initial Territory is still divided between the two footprints;
-- **each split footprint uses the P54 eight-point star geometry**;
+- **each split footprint uses the P54 five-point `6:1` star geometry**;
 - Starting Population remains one global pool.
 
-Thus the combination produces two smaller pointy starts rather than one star receiving the full quota twice.
+Thus the combination produces two smaller needle-like starts rather than one star receiving the full quota twice.
 
 ---
 
