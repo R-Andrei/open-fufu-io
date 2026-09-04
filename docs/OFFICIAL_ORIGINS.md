@@ -119,7 +119,7 @@ The original seven Official Origin builds remain present mechanically, but have 
 | Rail-Demographic Origin | **O03 — Railgun** |
 | Spoils of Empire | **O04 — Right of Conquest** |
 | Iron Tide | **O05 — The Country Mouse** |
-| Gemini | **O06 — Somewhere Not Here** |
+| Gemini | **O06 — Gemini** |
 | Corsair State | **O07 — The Fake Is of Far Greater Value** |
 
 Their mechanics were not discarded merely because the presentation names changed.
