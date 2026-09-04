@@ -8,7 +8,6 @@ on:
 permissions:
   contents: write
 
-# One-shot documentation synchronizer; removes itself after success.
 jobs:
   patch-docs:
     runs-on: ubuntu-latest
@@ -18,7 +17,7 @@ jobs:
           ref: docs/water-nukes-closure
           fetch-depth: 0
       - name: Apply accepted Water Nukes specification
-        run: python .github/scripts/canonize_water_nukes.py
+        run: python .github/scripts/canonize_water_nukes_v2.py
       - name: Verify documentation-only diff and commit
         run: |
           set -euo pipefail
@@ -32,6 +31,6 @@ jobs:
           git config user.name "open-fufu-doc-sync"
           git config user.email "open-fufu-doc-sync@users.noreply.github.com"
           git add docs/NAVAL_AND_STRATEGIC_WEAPONS.md docs/OPENFRONT_INTEGRATION_PLAN.md docs/OPEN_FUFU_DESIGN.md
-          git rm .github/scripts/canonize_water_nukes.py .github/workflows/canonize-water-nukes.yml
+          git rm .github/scripts/canonize_water_nukes.py .github/scripts/canonize_water_nukes_v2.py .github/workflows/canonize-water-nukes.yml
           git commit -m "docs: close Water Nukes V1 ruleset"
           git push origin HEAD:docs/water-nukes-closure
