@@ -9,14 +9,27 @@ Related canonical documents:
 - [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) — game-design authority;
 - [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) — migration/implementation authority;
 - [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md) — Official-AI architecture;
-- [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md) — shared concrete AI configuration contract;
+- [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md) — shared AI configuration contract;
 - [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md) — generic Origin support/adaptation contract;
+- [`OFFICIAL_AI_TRAIT_SUPPORT.md`](./OFFICIAL_AI_TRAIT_SUPPORT.md) — trait-support rationale;
+- [`OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) — named-Origin AI rationale;
 - [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) — Official Origin content/mechanics;
 - [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) — generic Echo reward semantics.
 
+Exact code-readable AI mappings live under `design/official-ai/` and are not duplicated here.
+
 Nothing in this file authorizes gameplay implementation.
 
-The generic AI architecture/configuration language is now defined. Concrete trait-support mappings, Origin-level configurations, and per-character `CharacterProfile` mappings remain content work.
+Current content status:
+
+```text
+shared AI architecture/configuration contracts: closed
+Origin trait AI support:                    72 / 72 complete
+Official Origin AI configuration:            10 / 49 complete
+Baseline/character CharacterProfiles:          0 / 21 complete
+```
+
+The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets.
 
 Difficulty values below are creator-authored competence targets, not claims that unfinished implementations already achieve those ratings.
 
@@ -55,7 +68,7 @@ Open Fufu also has one generic **Difficulty 0 Baseline AI**.
 
 It is not a character preset and is not part of the 20-character roster or its Origin-pool table.
 
-Baseline is the default first-match opponent and the initial capability-benchmark reference. Its configuration is defined through the same shared AI architecture but is intentionally generic and substantially less sophisticated than the character presets.
+Baseline is the default first-match opponent and the initial capability-benchmark reference. Its configuration uses the same shared AI architecture but is intentionally generic and substantially less sophisticated than the character presets.
 
 ---
 
@@ -181,18 +194,19 @@ The Difficulty-0 Baseline AI is not counted.
 
 ## Concrete content work still open
 
-The generic architecture and configuration contracts are closed enough for content authoring.
+The generic architecture/configuration contracts and the complete 72-trait support catalogue are closed for the current V1 design. Named-Origin configuration is in progress.
 
 Remaining content work proceeds in this order:
 
-1. define the complete AI-support configuration for every deployed Origin trait, including explicit combination support where necessary;
-2. define/validate every Official Origin's composed strategic configuration;
-3. define the Difficulty-0 Baseline and every character's complete `CharacterProfile`, including Origin adaptation and fidelity expectations;
-4. benchmark each character against its authored capability target;
-5. benchmark thematic/fidelity behavior separately;
-6. test every character × allowed-Origin pairing for coherent Origin usage and retained character identity;
-7. version/hash final preset/controller/Origin configuration for match/replay/reward records.
+1. complete/validate the remaining **39 Official Origin** AI configurations in canonical roster order;
+2. run the full named-Origin coverage/composition audit;
+3. define the Difficulty-0 Baseline `CharacterProfile`;
+4. define all 20 character `CharacterProfile`s, including Origin adaptation and fidelity expectations;
+5. benchmark each character against its authored capability target;
+6. benchmark thematic/fidelity behavior separately;
+7. test every character × allowed-Origin pairing for coherent Origin usage and retained character identity;
+8. version/hash final preset/controller/Origin configuration for match/replay/reward records.
 
-For reviewability, trait, Origin, and character mappings are authored in **batches of ten** with a consistency check after each batch.
+For reviewability, Origin and character mappings may be authored in batches of ten, but accepted content is appended to the single canonical configuration files under `design/official-ai/`; batch shards must not be created.
 
 The roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, provisional difficulty targets, additive difficulty-bonus reward rule, and generic Official-AI architecture/configuration are accepted V1 direction.
