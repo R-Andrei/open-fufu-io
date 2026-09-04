@@ -563,6 +563,299 @@ export const OFFICIAL_AI_ORIGIN_TRAIT_SUPPORT = [
       },
     ],
   },
+  {
+    traitId: "P31",
+    mode: "EXTENDED",
+    themes: ["NAVAL_PROJECTION", "FORCE_PRESERVATION", "FORTIFICATION", "INFRASTRUCTURE"],
+    affordances: ["PRESERVE_FORCE", "PROJECT_FROM_SEA"],
+    cautions: ["INFRASTRUCTURE_DEPENDENCE", "COAST_DEPENDENCE"],
+    synergyTags: ["WARSHIP", "NAVAL", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P31_PORT_REPAIR_SUSTAIN_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P31_PORT_REPAIR_COMBAT_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "NAVAL",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P31_REPAIR_FIELD_POSITION_VALUE",
+      },
+      {
+        domain: "RETREAT",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P31_PORT_REPAIR_RETREAT_VALUE",
+      },
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P31_NAVAL_REPAIR_PORT_PLACEMENT_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P32",
+    mode: "EXTENDED",
+    themes: ["AMPHIBIOUS", "FORCE_PRESERVATION", "NAVAL_PROJECTION", "INFRASTRUCTURE"],
+    affordances: ["PRESERVE_FORCE", "PROJECT_FROM_SEA", "CREATE_SECOND_FRONT"],
+    cautions: ["INFRASTRUCTURE_DEPENDENCE", "COAST_DEPENDENCE"],
+    synergyTags: ["AMPHIBIOUS_LANDING"],
+    signalSupport: [
+      {
+        evaluator: "THREAT",
+        hookId: "P32_ARMORED_TRANSPORT_SURVIVABILITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P32_PORT_EMBARKATION_TRANSIT_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "AMPHIBIOUS",
+        phase: "ENRICH_INPUT",
+        hookId: "P32_PORT_ONLY_ARMORED_TRANSPORT_SEMANTICS",
+      },
+      {
+        domain: "AMPHIBIOUS",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P32_ARMORED_TRANSPORT_ROUTE_VALUE",
+      },
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P32_TRANSPORT_PORT_ACCESS_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P33",
+    mode: "EXTENDED",
+    themes: ["GROWTH", "INDUSTRIALIZATION", "INFRASTRUCTURE", "ECONOMIC_COMPOUNDING"],
+    affordances: ["SCALE_GROWTH", "SCALE_INDUSTRY", "BUILD_HIGH_LEVEL_INFRASTRUCTURE"],
+    cautions: ["INFRASTRUCTURE_DEPENDENCE"],
+    synergyTags: ["TRAIN_ECONOMY", "INDUSTRIAL_ECONOMY", "POPULATION_GROWTH", "ECONOMY"],
+    signalSupport: [
+      {
+        evaluator: "ECONOMY",
+        hookId: "P33_TRAIN_CITY_POPULATION_ENGINE",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P33_TRAIN_POPULATION_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P33_TRAIN_CITY_NETWORK_VALUE",
+      },
+      {
+        domain: "UPGRADE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P33_CITY_LEVEL_POPULATION_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P34",
+    mode: "EXTENDED",
+    themes: ["RAIDING", "INDUSTRIALIZATION", "ECONOMIC_COMPOUNDING", "EXPANSION"],
+    affordances: ["RAID_INFRASTRUCTURE", "SCALE_INDUSTRY", "SCALE_ECONOMY"],
+    cautions: [],
+    synergyTags: ["INDUSTRIAL_ECONOMY", "ECONOMY", "OFFENSE"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P34_CONQUERED_FACTORY_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P34_FACTORY_CAPTURE_PRODUCTION_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "LAND_WAR",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P34_FACTORY_CAPTURE_TARGET_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P35",
+    mode: "EXTENDED",
+    themes: ["SACRIFICE", "TERRITORIAL_SHAPING", "POSITIONAL_CONTROL", "ATTRITION"],
+    affordances: ["DENY_AREA", "SHAPE_TERRITORY"],
+    cautions: ["REQUIRES_GIVING_GROUND", "SELF_GEOMETRY_RISK"],
+    synergyTags: ["FALLOUT", "TERRITORY_NEUTRALIZATION", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "TERRITORY",
+        hookId: "P35_RELINQUISH_FALLOUT_POSITION_VALUE",
+      },
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P35_FALLOUT_DENIAL_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P35_RELINQUISH_FALLOUT_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "RETREAT",
+        phase: "AUGMENT_CANDIDATES",
+        hookId: "P35_FALLOUT_RELINQUISH_PLANS",
+      },
+      {
+        domain: "RETREAT",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P35_FALLOUT_RELINQUISH_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P36",
+    mode: "GENERIC",
+    themes: ["EXPANSION", "GROWTH", "FORCE_PRESERVATION"],
+    affordances: ["EXPAND_CHEAPLY", "EXPAND_WITH_LOW_POPULATION", "PRESERVE_FORCE"],
+    cautions: [],
+    synergyTags: ["NEUTRAL_EXPANSION"],
+    signalSupport: [],
+    plannerSupport: [],
+  },
+  {
+    traitId: "P37",
+    mode: "EXTENDED",
+    themes: ["AMPHIBIOUS", "FORTIFICATION", "NAVAL_PROJECTION", "POSITIONAL_CONTROL"],
+    affordances: ["FORTIFY_BEACHHEAD", "CREATE_SECOND_FRONT", "PROJECT_FROM_SEA", "HOLD_GROUND"],
+    cautions: ["HIGH_UPFRONT_COST", "EXPENSIVE_FAILURE", "COAST_DEPENDENCE"],
+    synergyTags: ["AMPHIBIOUS_LANDING", "FORT_CREATION", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P37_FORTIFIED_LANDING_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P37_LANDING_FORT_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "AMPHIBIOUS",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P37_FORTIFIED_BEACHHEAD_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P38",
+    mode: "EXTENDED",
+    themes: ["FORCE_PRESERVATION", "ATTRITION", "SACRIFICE"],
+    affordances: ["PRESERVE_FORCE", "TRADE_GROUND_FOR_CASUALTIES", "LURE_OVEREXTENSION"],
+    cautions: [],
+    synergyTags: ["DEFENDER_SURVIVAL", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P38_ELASTIC_DEFENSE_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P38_DEFENDER_SURVIVAL_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "DEFENSE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P38_DEFENDED_CELL_TRADE_VALUE",
+      },
+      {
+        domain: "RETREAT",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P38_TERRITORY_TRADE_RETREAT_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P39",
+    mode: "EXTENDED",
+    themes: ["DISTRIBUTED_PLAY", "POSITIONAL_CONTROL", "EXPANSION", "SPECIALIZATION"],
+    affordances: ["DISTRIBUTE_START", "MULTI_THEATER_ACCESS"],
+    cautions: ["SPLIT_FRONT_RISK", "ISOLATED_CORE_RISK"],
+    synergyTags: ["MULTI_SPAWN", "INITIAL_TERRITORY"],
+    signalSupport: [
+      {
+        evaluator: "TERRITORY",
+        hookId: "P39_SPLIT_CORE_POSITION_VALUE",
+      },
+      {
+        evaluator: "THREAT",
+        hookId: "P39_SPLIT_CORE_ISOLATION_THREAT",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P39_SPLIT_SPAWN_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "SPAWN",
+        phase: "ENRICH_INPUT",
+        hookId: "P39_TWO_ORIGIN_SEMANTICS",
+      },
+      {
+        domain: "SPAWN",
+        phase: "AUGMENT_CANDIDATES",
+        hookId: "P39_SPLIT_SPAWN_CANDIDATES",
+      },
+      {
+        domain: "SPAWN",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P39_SPLIT_SPAWN_PAIR_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P40",
+    mode: "EXTENDED",
+    themes: ["FORTIFICATION", "DETERRENCE", "SPECIALIZATION", "POSITIONAL_CONTROL"],
+    affordances: ["INTERCEPT_OVER_LARGE_AREA", "PROTECT_HIGH_VALUE_ASSET"],
+    cautions: ["LOW_THROUGHPUT", "BAITABLE_DEFENSE", "LONG_RELOAD"],
+    synergyTags: ["SAM_INTERCEPTION", "SINGLE_CHARGE_DEFENSE", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "THREAT",
+        hookId: "P40_SINGLE_CHARGE_SAM_THREAT",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P40_INTERCEPTION_CHARGE_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P40_GIANT_SAM_PLACEMENT_VALUE",
+      },
+      {
+        domain: "DEFENSE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P40_SINGLE_CHARGE_DEFENSE_VALUE",
+      },
+    ],
+  },
 ] as const;
 
 export const OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT = [] as const;
