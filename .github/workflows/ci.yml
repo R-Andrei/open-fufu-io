@@ -96,27 +96,3 @@ jobs:
             git --no-pager diff
             exit 1
           fi
-
-  sync-controller-contract:
-    name: 🧹 Sync controller contract docs
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout controller branch
-        uses: actions/checkout@v7
-        with:
-          ref: feat/controller-typescript-contract
-          fetch-depth: 0
-      - name: Apply docs sync and self-remove helper
-        shell: bash
-        run: |
-          python .github/controller_contract_sync.py
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/controller_contract_sync.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "docs: close TypeScript controller contract wording"
-          git push origin HEAD:feat/controller-typescript-contract

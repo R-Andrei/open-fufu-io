@@ -253,7 +253,7 @@ Accelerated simulations execute the same logical ticks without real-time waiting
 
 ---
 
-## 6A. Public controller API contract — Accepted direction
+## 6A. Public controller API contract — Accepted
 
 The public controller API is a deliberate game-facing contract and must **not** be the inherited `Game`, `Player`, `GameMap`, `Unit`, or `Execution` API.
 
@@ -263,7 +263,7 @@ The design principle is:
 
 ### 6A.1 Conceptual context surface
 
-Exact final TypeScript names/types remain prototype work, but the public context should cover concepts equivalent to:
+The V1 TypeScript controller surface is defined in `src/core/controller/ControllerApi.ts`; the public context covers:
 
 ```text
 game
@@ -1906,7 +1906,7 @@ If a future audit finding does not map to this plan, update this same document r
 
 Most V1 gameplay mechanics that were historically tracked here as open now have accepted provisional implementation baselines in the detailed registries. The genuinely open work is narrower and mostly implementation/content/validation work:
 
-1. **Exact final TypeScript API names/types and ergonomic naming** after prototype pressure-testing of the accepted controller contract, including pre-match spawn hooks and public Origin/effective-modifier views.
+1. **Controller API runtime wiring/certification** — the V1 TypeScript contract is now defined in `src/core/controller/ControllerApi.ts`; remaining work is implementing the immutable observation projection, validated directive/command adapter, sandbox bridge, certification harness, and later non-semantic ergonomic polish.
 2. **Origin content maintenance** — future additions/revisions and playtest repricing remain possible under the same builder/catalogue rules; the V1 trait/Official-Origin naming pass and duplicate cleanup are complete.
 3. **Echo visual/UI implementation** — implement the visual recipe renderer, card motion/effects, responsive/touch behavior, collection UI, reward settlement presentation, and other presentation work around the already-settled Echo mechanics/naming content.
 4. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
