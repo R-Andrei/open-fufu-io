@@ -27,11 +27,12 @@ jobs:
             echo 'Strategic Spawn still contains stale open hash wording'
             exit 1
           fi
+          git restore .github/scripts/apply_determinism_representation_docs.py
 
       - name: Verify documentation-only diff
         run: |
           set -euo pipefail
-          changed="$(git diff --name-only | sort)"
+          changed="$(git status --porcelain | sed -E 's/^.. //' | sort)"
           expected=$'docs/CONTROLLER_MEMORY.md\ndocs/Maps.md\ndocs/OPENFRONT_INTEGRATION_PLAN.md\ndocs/OPEN_FUFU_DESIGN.md\ndocs/SEGMENTS.md\ndocs/STRATEGIC_SPAWN.md'
           if [[ "$changed" != "$expected" ]]; then
             echo "Unexpected changed files:"
