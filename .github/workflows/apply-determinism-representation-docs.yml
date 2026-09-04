@@ -21,6 +21,7 @@ jobs:
         run: |
           sed -i 's/### 7.2 Terrain extension/### 7.2 Canonical terrain translation/' .github/scripts/apply_determinism_representation_docs.py
           sed -i '/"The exact hash\/RNG representation is implementation\/versioning detail": "spawn hash still open",/d' .github/scripts/apply_determinism_representation_docs.py
+          sed -i 's/"geography outranks size"/"Geography outranks size"/' .github/scripts/apply_determinism_representation_docs.py
           python .github/scripts/apply_determinism_representation_docs.py
           if grep -Fq 'The exact hash/RNG representation is implementation/versioning detail' docs/STRATEGIC_SPAWN.md; then
             echo 'Strategic Spawn still contains stale open hash wording'
