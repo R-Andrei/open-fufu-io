@@ -4,9 +4,9 @@
 
 This document is the **canonical content registry for the provisional V1 Official PvE AI preset roster**.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). Official Origin mechanics are maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md), and generic Echo reward semantics are maintained in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted Official-AI reasoning/component architecture is maintained in [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md). Official Origin mechanics are maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md), and generic Echo reward semantics are maintained in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
-Nothing in this file authorizes gameplay implementation. Controller logic remains future AI implementation/design work. The difficulty values below are **provisional competence targets**, not a claim that an unfinished controller already achieves that difficulty; final deployed ratings may be retuned after implementation and playtesting.
+Nothing in this file authorizes gameplay implementation. The high-level Official-AI architecture is now defined, while exact final configuration literals and per-character mappings remain design work. The difficulty values below are **provisional competence targets**, not a claim that an unfinished controller already achieves that difficulty; final deployed ratings may be retuned after implementation and playtesting.
 
 ---
 
@@ -37,6 +37,12 @@ This separation is intentional:
 
 Official AI still obeys all ordinary game rules and uses ordinary legal Origins from the same public Origin catalogue as humans. Difficulty comes from controller quality/strategy, **not simulation cheats or privileged Origin mechanics**.
 
+### Difficulty-0 Baseline AI
+
+Open Fufu also has one generic **Difficulty 0 Baseline AI**. It is not a character preset and therefore is not part of the 20-character roster or its Origin-pool table.
+
+The Baseline AI is the default first-match opponent and initial capability-benchmark reference. It should be a simple complete controller: generic, mostly unopinionated, coherent across the whole game, and substantially less sophisticated than the authored character presets. Its architecture and role are specified in [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md).
+
 ---
 
 ## Origin selection and reveal timing
@@ -61,11 +67,11 @@ Origin selection should be deterministic from the match seed/versioned preset de
 
 ## Difficulty targets and Echo rewards
 
-Every Official AI preset has a creator-authored difficulty target on a **1–5 scale**:
+Every character Official AI preset has a creator-authored difficulty target on a **1–5 scale**:
 
 | Difficulty | Target controller behavior |
 | ---: | --- |
-| **1 — Easy** | Intentionally simple and exploitable. Makes broadly sensible moves but has obvious weaknesses; suitable as an introductory opponent. |
+| **1 — Easy** | Intentionally simple and exploitable but still characterful; broadly sensible and slightly above the generic Difficulty-0 baseline, with obvious weaknesses. |
 | **2 — Moderate** | Competent at its preferred game plan but predictable, limited in adaptation, and readily punishable by experienced players. |
 | **3 — Hard** | Solid and coherent all-around opposition. Recognizes ordinary threats and uses its doctrine competently enough that the player must actually play well. |
 | **4 — Expert** | Strong adaptive controller with good prioritization, timing, economy, geography, and opponent exploitation. Difficult without requiring near-global optimization. |
@@ -73,40 +79,46 @@ Every Official AI preset has a creator-authored difficulty target on a **1–5 s
 
 The number describes the **implemented controller's strategic competence and difficulty to defeat**, not canonical character power level, visual harmlessness, morality, age, or anime lore strength.
 
-These are implementation **targets**. A controller should be designed toward its assigned target, then measured in simulations/playtesting. If observed strength materially misses the label, improve/limit the controller or revise the target rather than adding hidden gameplay cheats.
+These are implementation **targets**. A controller should be designed toward its assigned target, then measured in simulations/playtesting. If observed strength materially misses the label, improve/limit the controller or revise the target rather than adding hidden gameplay cheats. The normal expectation is to tune the controller toward the authored target rather than casually relabeling it after the first benchmark result.
 
-### Difficulty is the reward source of truth
+### Difficulty bonus is separate from ordinary opponent loot
 
-The preset's bound difficulty is also the single V1 source used to determine the special-AI opponent-defeat Echo reward.
+Every qualifying defeated opponent contributes the ordinary reward independently of difficulty:
 
 ```text
-ordinary qualifying opponent defeat = 1 Echo roll
-special AI bonus                    = difficulty - 1 Echo rolls
------------------------------------------------
-total defeat contribution           = difficulty Echo rolls
+ordinary qualifying opponent defeat = +1 Echo roll
+```
+
+An Official/Baseline AI additionally contributes a difficulty bonus equal to its difficulty:
+
+```text
+AI difficulty bonus = +difficulty Echo rolls
 ```
 
 Therefore:
 
 ```text
-Difficulty 1 → 1 total roll
-Difficulty 2 → 2 total rolls
-Difficulty 3 → 3 total rolls
-Difficulty 4 → 4 total rolls
-Difficulty 5 → 5 total rolls
+Baseline AI, Difficulty 0 → +1 ordinary +0 bonus = 1 total
+Difficulty 1 character    → +1 ordinary +1 bonus = 2 total
+Difficulty 2 character    → +1 ordinary +2 bonus = 3 total
+Difficulty 3 character    → +1 ordinary +3 bonus = 4 total
+Difficulty 4 character    → +1 ordinary +4 bonus = 5 total
+Difficulty 5 character    → +1 ordinary +5 bonus = 6 total
 ```
 
-Do **not** maintain a second per-character Echo-bonus table or independent `echoRewardBonus` value. Reward calculation should resolve the bound/versioned Official AI preset and read its difficulty. Changing a preset's difficulty therefore changes its special-AI defeat reward through the same single source of truth.
+The important rule is **ordinary opponent reward + difficulty bonus**, not “Difficulty 1 means two loot.” Difficulty controls only the extra AI bonus.
 
-`ECHO_CATALOGUE.md` owns the generic reward-pool rules (`+1` qualifying opponent logic, victory bonus, team reward entity, settlement, etc.); this registry owns the per-preset difficulty value used by the special-AI reward calculation.
+Do **not** maintain a second per-character Echo-bonus table or independent `echoRewardBonus` value. Reward calculation should resolve the bound/versioned AI identity and read its difficulty. Changing a character preset's difficulty therefore changes only its difficulty bonus through the same single source of truth.
 
-Randomly selecting a different allowed Origin does **not** change difficulty or reward rolls. Difficulty/reward is a property of the character controller preset.
+`ECHO_CATALOGUE.md` owns the generic reward-pool rules (`+1` qualifying opponent logic, victory bonus, team reward entity, settlement, etc.); this registry owns the per-character preset difficulty value used by the AI bonus calculation. The Baseline AI's difficulty is fixed at `0` for this purpose.
+
+Randomly selecting a different allowed Origin does **not** change difficulty or reward rolls. Difficulty/reward is a property of the character controller preset (or the explicit Baseline AI identity), not of the selected Origin.
 
 ---
 
 ## Provisional V1 character roster
 
-The following characters are the accepted provisional V1 preset roster. Controller fantasies are directional design briefs, not executable behavior specifications yet.
+The following characters are the accepted provisional V1 preset roster. Controller fantasies are directional design briefs; the shared architecture is defined in `OFFICIAL_AI_ARCHITECTURE.md`, while exact per-character component/configuration mappings remain the next design stage.
 
 | AI preset | Source | Difficulty target | Provisional controller fantasy | Allowed Official Origins |
 | --- | --- | ---: | --- | --- |
@@ -141,7 +153,7 @@ Difficulty 4: 6 presets
 Difficulty 5: 3 presets
 ```
 
-The asymmetry is intentional. The roster is selected for distinctive strategic personalities rather than to fill equal-sized difficulty buckets.
+The asymmetry is intentional. The roster is selected for distinctive strategic personalities rather than to fill equal-sized difficulty buckets. The separate Difficulty-0 Baseline AI is not counted in this distribution.
 
 ---
 
@@ -162,11 +174,12 @@ The asymmetry is intentional. The roster is selected for distinctive strategic p
 
 Before the AI/reward subsystem can be considered content-complete, future work must:
 
-1. define each character controller's actual strategic logic/heuristics/behavior modules to target the assigned provisional difficulty;
-2. benchmark/playtest each implemented preset and revise controller strength or the provisional target if observed difficulty materially differs;
-3. decide whether any allowed Origin pools need weights rather than uniform seeded selection;
-4. verify every preset can operate coherently under every Origin in its pool;
-5. define final presentation metadata/art/flavor for the preset-selection UI;
-6. version/hash preset definitions, difficulty, and selected Origin identity for replay/match/reward records.
+1. finish the exact Official-AI configuration vocabulary described as open work in `OFFICIAL_AI_ARCHITECTURE.md`, then map the Baseline AI and all 20 character presets to concrete capability/doctrine/expression/planner configurations;
+2. benchmark/playtest each implemented preset against its authored difficulty target and improve/limit the controller when observed strength materially misses that target;
+3. run a separate thematic/fidelity benchmark for each preset so raw win strength does not substitute for character behavior;
+4. decide whether any allowed Origin pools need weights rather than uniform seeded selection;
+5. verify every preset can operate coherently and recognizably under every Origin in its pool;
+6. define final presentation metadata/art/flavor for the preset-selection UI;
+7. version/hash preset definitions, difficulty, selected Origin identity, and rule-bearing AI configuration for replay/match/reward records.
 
-The **character roster, character-based preset model, global shared Origin pools, current allowed Origin pools, provisional difficulty targets, difficulty-derived special-AI Echo rewards, and post-human-lock/pre-Strategic-Spawn Origin-selection timing are provisionally accepted V1 content direction**.
+The **character roster, character-based preset model, Difficulty-0 Baseline AI, global shared Origin pools, current allowed Origin pools, provisional difficulty targets, additive difficulty-bonus reward rule, post-human-lock/pre-Strategic-Spawn Origin-selection timing, and shared Official-AI architecture in `OFFICIAL_AI_ARCHITECTURE.md` are provisionally accepted V1 direction**.
