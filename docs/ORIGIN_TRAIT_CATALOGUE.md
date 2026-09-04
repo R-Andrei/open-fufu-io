@@ -68,7 +68,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P28 | **X** | Destroying Transport Ships steals their carried Population | 9 |
 | P29 | **X** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
 | P30 | **X** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
-| P31 | **X** | Ports project expanded repair zones; Warships inside receive strong repair without docking and may remain operational | 6 |
+| P31 | **X** | Warships inside owned active Port repair fields receive `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate; they may remain operational while receiving it | 6 |
 | P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
 | P33 | **X** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
 | P34 | **X** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
@@ -91,9 +91,9 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 | P52 | **X** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
 | P53 | **X** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
-| P54 | **X** | **Star start:** each generated Initial-Territory footprint uses the accepted sharp eight-point `3:1` star geometry instead of the ordinary compact circular profile; final Initial Territory and Starting Population are unchanged | 10 |
+| P54 | **X** | **Star start:** each generated Initial-Territory footprint uses the accepted thin five-point `6:1` star geometry instead of the ordinary compact circular profile; final Initial Territory and Starting Population are unchanged | 5 |
 
-P30–P54 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, and P53's `2,000 FFY/s per ready Silo charge` are explicitly provisional balance data to benchmark before V1 release rather than unresolved mechanics.
+P30–P54 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, P53's `2,000 FFY/s per ready Silo charge`, and P54's five-point `6:1` geometry are explicitly provisional balance/geometry data to benchmark before V1 release rather than unresolved mechanics.
 
 ---
 
@@ -225,9 +225,28 @@ These trade drawbacks can be avoided by declining to invest in trade, which is w
 
 ### S15 — P31 Port repair
 
-Owned active Ports project a substantially larger repair zone; Warships inside receive strong repair without docking and may continue normal operation. Overlapping Ports do not multiply the same repair effect in one tick.
+P31 is now numerically pinned rather than described as an open-ended “strong repair” effect.
 
-The ordinary baseline Port repair radii/rates are now pinned in `NAVAL_AND_STRATEGIC_WEAPONS.md`. P31's additional expansion/strength coefficients remain balance-tuning data until separately pinned.
+For **Warships** receiving repair from an owned active Port:
+
+```text
+P31 repair radius = ordinary completed-level Port repair radius × 2.0
+P31 repair rate   = ordinary completed-level Port repair rate × 1.5
+```
+
+Using the canonical Port baseline, this yields:
+
+| Port level | P31 Warship repair radius | P31 Warship repair rate |
+| ---: | ---: | ---: |
+| L1 | **40** | **75 HP/s** |
+| L2 | **50** | **93.75 HP/s** |
+| L3 | **60** | **112.5 HP/s** |
+| L4 | **70** | **131.25 HP/s** |
+| L5 | **80** | **150 HP/s** |
+
+Warships may continue ordinary movement/combat while receiving P31 repair. Same-type overlapping Ports still do not stack repair rates on one Warship; use the strongest applicable Port effect.
+
+P31 does not silently turn every health-bearing naval unit into a P31 Warship. P32 armored Transports continue to receive ordinary eligible Port repair unless another explicit mechanic says otherwise.
 
 ### S16 — P32 armored Port-launched Transports
 
@@ -530,18 +549,18 @@ N18's `0.50×` is a structural post-multiplier. Ordinary terrain-capture/settlem
 
 P54 changes only generated **starting-footprint geometry**. It is not a positive capture-speed modifier.
 
-Each Initial-Territory footprint uses the canonical eight-point star geometry from `STRATEGIC_SPAWN.md`:
+Each Initial-Territory footprint uses the canonical five-point needle-star geometry from `STRATEGIC_SPAWN.md`:
 
-- 8 outward points / 16 alternating vertices;
+- 5 outward points / 10 alternating vertices;
 - fixed deterministic map-axis orientation;
-- approximately `3:1` outer-tip radius to inner-valley radius;
+- approximately `6:1` outer-tip radius to inner-valley radius;
 - the same final population-bearing Initial-Territory quota the faction would otherwise receive.
 
-The star's much larger boundary/contact surface may allow many more neutral cells to be engaged simultaneously under ordinary neutral-expansion rules. This emergent opening-speed advantage is the purpose of the trait.
+The very long, thin arms create substantially more potential neutral boundary/contact surface, but this is only an opportunity to spend Population across more simultaneous neutral acquisition. P54 grants no extra Population, no extra territory, and no capture/settlement-speed stat. Terrain or collisions may substantially reduce the realized benefit.
 
 P54 does not alter Starting Population, Capacity per cell, neutral-settlement Population cost, capture/settlement progress coefficients, or later territorial growth geometry.
 
-P39 + P54 is legal. P39 still splits final Initial Territory between two exact origins; each split quota is generated as its own smaller star rather than duplicating the full quota.
+P39 + P54 is legal. P39 still splits final Initial Territory between two exact origins; each split quota is generated as its own smaller five-point `6:1` star rather than duplicating the full quota. With the current costs, P39 + P54 totals **15 positive points** and therefore needs at least 5 usable drawback refund beyond the ordinary 10-point base budget.
 
 ---
 

@@ -282,7 +282,30 @@ There is no hidden simultaneous-healing slot cap. Every otherwise eligible frien
 
 Same-type overlapping Ports do not stack repair rates on one unit; use the strongest applicable Port effect.
 
-P31 remains a legal structural Origin transformation that expands Port repair geography and strengthens operational in-field repair beyond this baseline. Its exact additional expansion/strength coefficients remain balance-tuning data until separately pinned; the ordinary baseline above is now fixed provisionally.
+## 5.1 P31 operational Port repair
+
+P31 applies a stronger/larger **Warship** repair field without turning Ports into effectively unbreakable fleet-healing zones:
+
+```text
+P31 Warship repair radius = ordinary completed-level Port radius × 2.0
+P31 Warship repair rate   = ordinary completed-level Port rate × 1.5
+```
+
+Resulting progression:
+
+| Port level | P31 Warship repair radius | P31 Warship repair rate |
+| ---: | ---: | ---: |
+| L1 | **40** | **75 HP/s** |
+| L2 | **50** | **93.75 HP/s** |
+| L3 | **60** | **112.5 HP/s** |
+| L4 | **70** | **131.25 HP/s** |
+| L5 | **80** | **150 HP/s** |
+
+Warships may continue ordinary movement, targeting, and gunfire while receiving P31 repair. Same-type overlapping Ports still do not stack repair rates on one Warship; use the strongest applicable field.
+
+P31's enhanced field is Warship-specific. Other eligible health-bearing naval units, including P32 armored Transports, continue to use the ordinary Port repair radius/rate unless another explicit rule modifies them.
+
+The L5 `150 HP/s` ceiling is intentional: it exceeds one baseline rank-1 Warship's unmodified sustained `125 HP/s` gun damage, making a defended naval base meaningfully strong, but multiple attackers can still overwhelm the repair rather than producing practical immortality.
 
 ---
 
@@ -348,7 +371,7 @@ These are compositions of existing public traits, not hidden compatibility rules
 
 - P23's one-Warship `+20% range/damage/speed` modifies the baseline Warship/rank profile above;
 - P30 removes naval gunfire while retaining Trade Ship pursuit/capture and gives its existing speed/piracy transformations;
-- P31 strengthens/expands Port repair beyond the baseline field above;
+- P31 gives Warships `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate while allowing normal operation inside the field;
 - P32 changes Transport source/health as defined above;
 - P42 changes Warship purchase resource to Population and applies its existing `-33% range`; the 5-second build time still applies;
 - P22 allows rank 5;
@@ -365,6 +388,7 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - ordinary fleet-vs-fleet time-to-kill across ranks and P23/P42 combinations;
 - autonomous target priority around mixed Transport/Warship/Trade traffic;
 - repair-retreat behavior at each Port level and overlapping repair fields;
+- P31 fleet survivability under one/multiple attackers at each Port level;
 - P32 Transport survival/repair and P12 speed stacking;
 - three-Transport amphibious throughput across representative coasts;
 - Atom/Hydrogen blast impact on early/mid/late territories;
