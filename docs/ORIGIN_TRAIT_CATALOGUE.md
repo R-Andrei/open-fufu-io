@@ -8,7 +8,7 @@ The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_
 
 Nothing in this file authorizes gameplay implementation.
 
-Trait names are intentionally left as `X` until the final anime/JRPG-reference naming pass. Temporary IDs (`Pxx` and `Nxx`) exist only so candidates can be discussed unambiguously.
+Trait names below are the accepted V1 player-facing naming baseline. Stable mechanical IDs (`Pxx` and `Nxx`) remain canonical identifiers for rules, saves/replays, tests, and future content maintenance even when display wording is later polished.
 
 ---
 
@@ -38,60 +38,60 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 
 | ID | Name | Effect | Cost |
 | --- | --- | --- | ---: |
-| P01 | **X** | `+15% Initial Territory` | 7 |
-| P02 | **X** | Replace ordinary Population-utilization growth curve with the accepted 30–70% profile | 9 |
-| P03 | **X** | Ignore enemy Fort defensive-pressure bonuses | 7 |
-| P04 | **X** | Response-side counter-response effectiveness fixed at `1.0`, ignoring normal response-side imbalance bonus/penalty | 3 |
-| P05 | **X** | Capturing enemy structures generates military/conquest FFY events | 8 |
-| P06 | **X** | `+25% Trade Ship speed` | 5 |
-| P07 | **X** | `+25% trains spawned`: every fourth normal primary Train dispatch from each Factory simultaneously launches one additional bonus Train | 4 |
-| P08 | **X** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
-| P09 | **X** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
-| P10 | **X** | `+100% warhead projectile speed` | 4 |
-| P11 | **X** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
-| P12 | **X** | `+25% Transport Ship speed` | 6 |
-| P13 | **X** | Mountains provide `+33% defensive pressure` | 4 |
-| P14 | **X** | FFY events located on Desert yield `+33% FFY` | 4 |
-| P15 | **X** | `+33% offensive pressure on Highlands` | 4 |
-| P16 | **X** | Ignore ordinary Fallout capture resistance | 4 |
-| P17 | **X** | Structure upgrade cost multiplier is `0.99^S`, where `S` is currently owned structures | 7 |
-| P18 | **X** | `+100% offensive pressure` for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area | 5 |
-| P19 | **X** | `+5% offensive pressure` per distinct currently active other faction with current Territorial Contact, including Minor Factions | 8 |
-| P20 | **X** | Start with a free Missile Silo | 7 |
-| P21 | **X** | First purchase of each structure consumes `0 FFY`, after ordinary affordability/legality succeeds | 7 |
-| P22 | **X** | `+2 maximum Warship rank` | 6 |
-| P23 | **X** | Warships `+20% range, +20% damage, +20% speed`, but may own only one | 8 |
-| P24 | **X** | FFY events located inside Fort areas yield `+20% FFY` | 7 |
-| P25 | **X** | Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area `+50%`, FFY cost `+50%` | 10 |
-| P26 | **X** | May use MIRV at most once; ordinary affordability/legality required, successful MIRV consumes `0 FFY` | 8 |
-| P27 | **X** | SAM Launchers may attack ships | 9 |
-| P28 | **X** | Destroying Transport Ships steals their carried Population | 9 |
-| P29 | **X** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
-| P30 | **X** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
-| P31 | **X** | Warships inside owned active Port repair fields receive `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate; they may remain operational while receiving it | 6 |
-| P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
-| P33 | **X** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
-| P34 | **X** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
-| P35 | **X** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
-| P36 | **X** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
-| P37 | **X** | Transport embarkation costs `+250 FFY`; each successful amphibious landing grants a permanent level-1 Fort at the landing location | 7 |
-| P38 | **X** | When one of your automatically defended cells is captured, its automatic defender survives and remains/returns Available | 10 |
-| P39 | **X** | Strategic Spawn uses two influence areas at 50% ordinary area each and two exact origins; final Initial Territory is split between two footprints; Starting Population remains one global pool | 10 |
-| P40 | **X** | SAMs become giant single-charge shields: provisionally `+50% range`, exactly one charge at every level, `2×` recharge cooldown | 6 |
-| P41 | **X** | Purchased Cities are created directly at level 5 for `95%` of cumulative ordinary level-1 build + level-2–5 upgrade cost | 6 |
-| P42 | **X** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
-| P43 | **X** | **Heavy Artillery:** all Tanks transform into Heavy Artillery: `10s` build time, `1.5×` purchase cost, `0.5×` movement, `1.5×` weapon range, `1,000` anti-armor damage / `12s`, `1,000` Population damage / `12s`, Train raiding disabled; same Tank terrain barriers; projectiles may cross terrain the unit cannot traverse | 8 |
-| P44 | **X** | **Radioactive Munitions:** successful Tank/Heavy-Artillery Population attacks neutralize enemy population-bearing cells and apply Fallout; Tank affects up to `10` cells in Manhattan radius 2, Heavy Artillery up to `50` cells in Manhattan radius 5 | 9 |
-| P45 | **X** | **Forest concealment:** enemy tactical observation cannot penetrate the interior of Forest cells owned by this faction; exposed Forest-front boundary cells remain observable and hostile manifestations reveal only the minimum directly relevant attacking state | 6 |
-| P46 | **X** | May construct persistent structures on owned **Tundra**; Tundra otherwise retains its ordinary `0 Capacity`, spawn-ineligible, terrain-combat, acquisition, and movement rules | 4 |
-| P47 | **X** | Whenever an enemy successfully captures one of this faction's **Marsh** cells, the capturing faction loses `+1 Population` after ordinary capture resolution | 4 |
-| P48 | **X** | Owned **Shallow Water** is population-bearing for this faction and contributes `+1 Population Capacity/cell`; all other Shallow-Water terrain/traversal/buildability rules remain unchanged | 4 |
-| P49 | **X** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
-| P50 | **X** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
-| P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
-| P52 | **X** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
-| P53 | **X** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
-| P54 | **X** | **Star start:** each generated Initial-Territory footprint uses the accepted thin five-point `6:1` star geometry instead of the ordinary compact circular profile; final Initial Territory and Starting Population are unchanged | 5 |
+| P01 | **Domain Expansion** | `+15% Initial Territory` | 7 |
+| P02 | **The Era of Humans** | Replace ordinary Population-utilization growth curve with the accepted 30–70% profile | 9 |
+| P03 | **Imagine Breaker** | Ignore enemy Fort defensive-pressure bonuses | 7 |
+| P04 | **Level 0** | Response-side counter-response effectiveness fixed at `1.0`, ignoring normal response-side imbalance bonus/penalty | 3 |
+| P05 | **Big Shot** | Capturing enemy structures generates military/conquest FFY events | 8 |
+| P06 | **See You, Space Cowboy** | `+25% Trade Ship speed` | 5 |
+| P07 | **Galaxy Express 999** | `+25% trains spawned`: every fourth normal primary Train dispatch from each Factory simultaneously launches one additional bonus Train | 4 |
+| P08 | **Tea Time** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
+| P09 | **Wall Maria** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
+| P10 | **Scorpion's Tail** | `+100% warhead projectile speed` | 4 |
+| P11 | **Level Upper** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
+| P12 | **Somewhere Not Here** | `+25% Transport Ship speed` | 6 |
+| P13 | **Mountain Training Arc** | Mountains provide `+33% defensive pressure` | 4 |
+| P14 | **60 Billion Double Dollars** | FFY events located on Desert yield `+33% FFY` | 4 |
+| P15 | **The High Ground** | `+33% offensive pressure on Highlands` | 4 |
+| P16 | **Poison Taster** | Ignore ordinary Fallout capture resistance | 4 |
+| P17 | **Ten Billion Percent** | Structure upgrade cost multiplier is `0.99^S`, where `S` is currently owned structures | 7 |
+| P18 | **The Best Defense** | `+100% offensive pressure` for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area | 5 |
+| P19 | **The Weak Die First** | `+5% offensive pressure` per distinct currently active other faction with current Territorial Contact, including Minor Factions | 8 |
+| P20 | **A Miracle Is Merely a Miscalculation** | Start with a free Missile Silo | 7 |
+| P21 | **Fun Things Are Fun** | First purchase of each structure consumes `0 FFY`, after ordinary affordability/legality succeeds | 7 |
+| P22 | **Limit Break** | `+2 maximum Warship rank` | 6 |
+| P23 | **Space Battleship Yamato** | Warships `+20% range, +20% damage, +20% speed`, but may own only one | 8 |
+| P24 | **A King's Price** | FFY events located inside Fort areas yield `+20% FFY` | 7 |
+| P25 | **EXPLOSION!** | Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area `+50%`, FFY cost `+50%` | 10 |
+| P26 | **Serious Punch** | May use MIRV at most once; ordinary affordability/legality required, successful MIRV consumes `0 FFY` | 8 |
+| P27 | **Only My Railgun** | SAM Launchers may attack ships | 9 |
+| P28 | **Blood Devil** | Destroying Transport Ships steals their carried Population | 9 |
+| P29 | **The Kaiser** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
+| P30 | **The Conman** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
+| P31 | **Heart-Under-Blade** | Warships inside owned active Port repair fields receive `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate; they may remain operational while receiving it | 6 |
+| P32 | **Armored Titan** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
+| P33 | **Misaka Network** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
+| P34 | **Spoils of the Empire** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
+| P35 | **It's a Matter of Visualization** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
+| P36 | **Half-Priced Bento** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
+| P37 | **The City Mouse** | Transport embarkation costs `+250 FFY`; each successful amphibious landing grants a permanent level-1 Fort at the landing location | 7 |
+| P38 | **Return by Death** | When one of your automatically defended cells is captured, its automatic defender survives and remains/returns Available | 10 |
+| P39 | **Stereo Separation** | Strategic Spawn uses two influence areas at 50% ordinary area each and two exact origins; final Initial Territory is split between two footprints; Starting Population remains one global pool | 10 |
+| P40 | **Barrier Magic** | SAMs become giant single-charge shields: provisionally `+50% range`, exactly one charge at every level, `2×` recharge cooldown | 6 |
+| P41 | **Level 5** | Purchased Cities are created directly at level 5 for `95%` of cumulative ordinary level-1 build + level-2–5 upgrade cost | 6 |
+| P42 | **The Price of Empire** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
+| P43 | **The Devil of the Rhine** | **Heavy Artillery:** all Tanks transform into Heavy Artillery: `10s` build time, `1.5×` purchase cost, `0.5×` movement, `1.5×` weapon range, `1,000` anti-armor damage / `12s`, `1,000` Population damage / `12s`, Train raiding disabled; same Tank terrain barriers; projectiles may cross terrain the unit cannot traverse | 8 |
+| P44 | **Nobel Prize** | **Radioactive Munitions:** successful Tank/Heavy-Artillery Population attacks neutralize enemy population-bearing cells and apply Fallout; Tank affects up to `10` cells in Manhattan radius 2, Heavy Artillery up to `50` cells in Manhattan radius 5 | 9 |
+| P45 | **Hidden Leaf Village** | **Forest concealment:** enemy tactical observation cannot penetrate the interior of Forest cells owned by this faction; exposed Forest-front boundary cells remain observable and hostile manifestations reveal only the minimum directly relevant attacking state | 6 |
+| P46 | **Northern Lands** | May construct persistent structures on owned **Tundra**; Tundra otherwise retains its ordinary `0 Capacity`, spawn-ineligible, terrain-combat, acquisition, and movement rules | 4 |
+| P47 | **This Is Poison** | Whenever an enemy successfully captures one of this faction's **Marsh** cells, the capturing faction loses `+1 Population` after ordinary capture resolution | 4 |
+| P48 | **Aqua's Blessing** | Owned **Shallow Water** is population-bearing for this faction and contributes `+1 Population Capacity/cell`; all other Shallow-Water terrain/traversal/buildability rules remain unchanged | 4 |
+| P49 | **Laughing Man** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
+| P50 | **Iserlohn Fortress** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
+| P51 | **One Flag Beneath the Stars** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
+| P52 | **Humanity Has Declined** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
+| P53 | **Money Is Everything** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
+| P54 | **Starlight Breaker** | **Star start:** each generated Initial-Territory footprint uses the accepted thin five-point `6:1` star geometry instead of the ordinary compact circular profile; final Initial Territory and Starting Population are unchanged | 5 |
 
 P30–P54 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, P53's `2,000 FFY/s per ready Silo charge`, and P54's five-point `6:1` geometry are explicitly provisional balance/geometry data to benchmark before V1 release rather than unresolved mechanics.
 
@@ -101,24 +101,24 @@ P30–P54 numerical costs remain especially balance-sensitive, though the underl
 
 | ID | Name | Effect | Refund |
 | --- | --- | --- | ---: |
-| N01 | **X** | Cities contribute `20% less Population Growth` | -4 |
-| N02 | **X** | `25% reduced Plains offensive pressure` | -4 |
-| N03 | **X** | `33% reduced Desert defensive pressure` | -4 |
-| N04 | **X** | FFY events located on Mountain yield `50% less FFY` | -4 |
-| N05 | **X** | Cannot capture Fallout terrain | -5 |
-| N06 | **X** | Cannot spend FFY to upgrade buildings | -5 |
-| N07 | **X** | Cannot own more than one of each building/structure type | -10 |
-| N08 | **X** | Forts provide no defensive-pressure bonus | -4 |
-| N09 | **X** | Cannot build Factories | -6 |
-| N10 | **X** | `25% reduced Fort coverage area` | -4 |
-| N11 | **X** | FFY events located inside SAM Launcher area yield `0` | -7 |
-| N12 | **X** | Cannot build Warships | -6 |
-| N13 | **X** | `50%` of Transport Population dies when landing | -7 |
-| N14 | **X** | When one of your Trade Ships is first captured by a hostile faction, lose FFY equal to that voyage's snapshotted ordinary owner-side success value | -4 |
-| N15 | **X** | `+500 FFY` Transport embarkation cost | -5 |
-| N16 | **X** | Successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value; hostile capture instead returns that value once | -6 |
-| N17 | **X** | Enemy structures you would ordinarily capture are destroyed instead of transferred to you | -4 |
-| N18 | **X** | Final capture/settlement progress against **non-Fallout** target cells is multiplied by `0.50`; Fallout targets are exempt from this drawback | -8 |
+| N01 | **The Lost Decade** | Cities contribute `20% less Population Growth` | -4 |
+| N02 | **Flat Is Justice** | `25% reduced Plains offensive pressure` | -4 |
+| N03 | **I Hate Sand** | `33% reduced Desert defensive pressure` | -4 |
+| N04 | **Northern Expedition** | FFY events located on Mountain yield `50% less FFY` | -4 |
+| N05 | **Curse of the Abyss** | Cannot capture Fallout terrain | -5 |
+| N06 | **No Second Season** | Cannot spend FFY to upgrade buildings | -5 |
+| N07 | **One Piece** | Cannot own more than one of each building/structure type | -10 |
+| N08 | **It's Just Decoration** | Forts provide no defensive-pressure bonus | -4 |
+| N09 | **Medieval Isekai** | Cannot build Factories | -6 |
+| N10 | **Domain Contraction** | `25% reduced Fort coverage area` | -4 |
+| N11 | **Absolute Territory** | FFY events located inside SAM Launcher area yield `0` | -7 |
+| N12 | **Panzer Vor!** | Cannot build Warships | -6 |
+| N13 | **Beach Episode Gone Wrong** | `50%` of Transport Population dies when landing | -7 |
+| N14 | **To Them Words Are Merely a Means to Deceive** | When one of your Trade Ships is first captured by a hostile faction, lose FFY equal to that voyage's snapshotted ordinary owner-side success value | -4 |
+| N15 | **King's Ransom** | `+500 FFY` Transport embarkation cost | -5 |
+| N16 | **Insurance Fraud** | Successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value; hostile capture instead returns that value once | -6 |
+| N17 | **I Can Cut It** | Enemy structures you would ordinarily capture are destroyed instead of transferred to you | -4 |
+| N18 | **I Have No Enemies** | Final capture/settlement progress against **non-Fallout** target cells is multiplied by `0.50`; Fallout targets are exempt from this drawback | -8 |
 
 ---
 

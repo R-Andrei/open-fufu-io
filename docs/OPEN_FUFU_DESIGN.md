@@ -2024,7 +2024,7 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
-- final player-facing Origin trait names/IDs, Official-Origin wording/reference cleanup, and later playtest repricing of provisional trait costs without reopening accepted mechanics;
+- later playtest repricing of provisional Origin-trait costs or future catalogue additions without reopening accepted mechanics;
 - exact sandbox hardening/resource-budget values;
 - exact SQLite schema/index/backup/retention details;
 - exact wire protocol/session encoding;
