@@ -6,7 +6,7 @@ This file is the **canonical detailed data registry for Open Fufu terrain, persi
 
 [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains the overarching game-design contract. **Within this registry's domain, this file is authoritative for the concrete terrain/structure/mobile-unit roster, numeric baselines, construction times, level tables, and detailed mechanical data.** A shorter or older summary in the high-level design/integration documents does not override this registry's more specific data; those summaries must instead be synchronized to this registry when touched.
 
-Concrete Origin trait IDs/costs remain in [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
+Concrete Origin trait IDs/costs remain in [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). Detailed FFY payout/economy semantics are maintained in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) where that registry is more specific.
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -205,7 +205,7 @@ These are ordinary FFY costs before explicit Origin/Echo modifiers.
 | **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
 | **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
 | **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
-| **Factory — industrial/train FFY event value** | 100% | 110% | 120% | 130% | **140%** |
+| **Factory — industrial/train FFY event value** | **10,000** | **11,250** | **12,500** | **13,750** | **15,000** |
 | **Factory — simultaneous Tank/Heavy-Artillery repair capacity** | 1 | 2 | 3 | 4 | **5** |
 | **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
@@ -232,7 +232,7 @@ Ports also construct Warships. A baseline Warship purchase has a **5-second cons
 
 ### Factory
 
-Factories generate Trains and Factory-driven industrial/train FFY events. Factory level multiplies those FFY events but does not inherently increase Train count.
+Factories generate Trains and Factory-driven industrial/train FFY events. Factory level sets the base value of those Train events but does not inherently increase Train count.
 
 Factories also construct and repair Tanks/Heavy Artillery.
 
@@ -257,7 +257,17 @@ Baseline rules:
 - There is **no hard per-tour economic-stop cap**. A well-designed circuit that physically routes a Train through substantially more than five Cities/Ports is intentionally allowed to earn substantially more events.
 - Dense/highly optimized rail layouts are not considered exploits merely for outperforming ordinary layouts. Balance intervention is reserved for demonstrated pathological/game-breaking throughput, not ordinary hyper-optimization.
 
-The exact ordinary **FFY amount** produced by each City/Port Train event remains part of the broader FFY-economy tuning pass alongside Trade Ship and other FFY events. Factory level continues to multiply the final configured industrial/train FFY event value by `100/110/120/130/140%` as listed above.
+Each qualifying City/Port Train pass has one base industrial FFY value determined by the originating Factory's completed level:
+
+```text
+L1 Factory → 10,000 FFY
+L2 Factory → 11,250 FFY
+L3 Factory → 12,500 FFY
+L4 Factory → 13,750 FFY
+L5 Factory → 15,000 FFY
+```
+
+The event recipient then applies the ordinary FFY modifier rules from `FFY_ECONOMY.md`. Factory level does not add a second multiplier on top of these values; the table above **is** the level progression.
 
 P07 and P33 layer onto this baseline through the Origin catalogue:
 
@@ -383,13 +393,14 @@ Population attacks never capture territory by themselves.
 
 ### Train interception / land piracy
 
-A Train carries a deterministic snapshotted **current cargo FFY value** for its next eligible paying stop/event. After a paying event resolves, the Train's next pending cargo value is established for the next eligible event on its finite route according to the configured FFY-economy rules.
+A Train carries a deterministic snapshotted **pending base cargo FFY value** for its next eligible paying stop/event. For the ordinary Train service this base cargo equals the originating Factory-level value above (`10,000` through `15,000`) before recipient-side yield modifiers. After a paying event resolves, the next pending base cargo is established for the next eligible event on the finite route.
 
 If intercepted before the pending payout:
 
 - the Train is removed;
-- its pending ordinary payout is canceled;
-- the Tank owner receives **100% of that snapshotted current cargo value** as a raiding FFY event;
+- its pending ordinary industrial payout is canceled;
+- the Tank owner receives a **military/conquest FFY event whose base value equals 100% of that pending base cargo**;
+- the raider's own eligible military/conquest, All-FFY, spatial, and other ordinary yield modifiers apply to that new event rather than inheriting the Train owner's industrial modifiers;
 - previously earned Train FFY and previously triggered P33 Population are not clawed back.
 
 The baseline Train's `25 cells/s` speed is intentionally much faster than a Tank's terrain movement, so interception gameplay is primarily about route prediction, rail/station ambushes, and exploiting the Train's 1.5-second station dwell rather than bumper-to-bumper pursuit. The existing 30-cell Train-interception range remains the provisional baseline and must be benchmark/playtested with the finalized rail service.
