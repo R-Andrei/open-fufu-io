@@ -40,7 +40,7 @@ export const OFFICIAL_AI_ORIGIN_TRAIT_SUPPORT_N17_N18 = [
     mode: "GENERIC",
     themes: ["SPECIALIZATION"],
     affordances: [],
-    cautions: ["LONG_PAYBACK"],
+    cautions: ["SETUP_TIME"],
     synergyTags: ["NEUTRAL_EXPANSION", "OFFENSE", "FALLOUT"],
     signalSupport: [],
     plannerSupport: [],
