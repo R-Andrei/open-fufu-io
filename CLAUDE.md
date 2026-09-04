@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Repository-wide agent policy:** read and follow [`AGENTS.md`](./AGENTS.md), including its Git/remote-branch hygiene rules. For Open Fufu target architecture and design, the canonical Open Fufu documents supersede inherited OpenFront descriptions below wherever they conflict.
+
 ## Commands
 
 ```bash
