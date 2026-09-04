@@ -145,6 +145,10 @@ filtered = [line for line in lines if not line.startswith("| **O35 — Curiosity
 if len(filtered) != len(lines) - 1:
     raise SystemExit("expected exactly one O35 roster row to retire")
 origins = "\n".join(filtered) + ("\n" if origins.endswith("\n") else "")
+origins = origins.replace(
+    "Bizarre-terrain settlement doctrine; currently mechanically identical to Curiosity Killed the Cat pending later differentiation.",
+    "Bizarre-terrain settlement doctrine that treats Tundra, Shallow Water, Fallout, and cheap neutral settlement as opportunities.",
+)
 
 # Keep the migration table synchronized with renamed O01-O07 identities.
 for old, new in [
