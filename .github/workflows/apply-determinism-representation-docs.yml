@@ -18,7 +18,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply accepted documentation specifications
-        run: python .github/scripts/apply_determinism_representation_docs.py
+        run: |
+          sed -i 's/### 7.2 Terrain extension/### 7.2 Canonical terrain translation/' .github/scripts/apply_determinism_representation_docs.py
+          python .github/scripts/apply_determinism_representation_docs.py
 
       - name: Verify documentation-only diff
         run: |
