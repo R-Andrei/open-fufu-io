@@ -196,7 +196,7 @@ The existing `tests/perf/fullgame` tooling is a strong starting point but will n
 
 ---
 
-## 5. Controller-runtime isolation — Accepted initial implementation direction
+## 5. Controller-runtime isolation — Accepted V1 baseline
 
 Player controller code must not execute with unrestricted access inside the canonical match process.
 
@@ -207,7 +207,7 @@ immutable legal observation
        |
 controller worker-process pool
        |
-V8 isolate (`isolated-vm` initially)
+V8 isolate (`isolated-vm`)
        |
 proposed transactional decision
        |
@@ -216,15 +216,84 @@ validation
 canonical commit/reject
 ```
 
-The accepted **first implementation to try** is `isolated-vm` inside separate dedicated controller-runtime worker processes, with explicit isolate memory/time/output/action/query limits and ordinary Linux process hardening. The match processes themselves do not host user isolates.
+The V1 sandbox architecture is settled: use **`isolated-vm` inside separate dedicated controller-runtime worker processes**. The match processes themselves never host untrusted user isolates.
 
-Do not grant untrusted code Node capabilities such as `require`, `process`, filesystem/network access, arbitrary host references, environment variables, or system time.
+Do not grant untrusted code Node capabilities such as `require`, `process`, filesystem/network access, arbitrary host references, environment variables, or system/real time. Controller-persistent game-facing state lives only in the explicit serialized controller-memory object; mutable module/global state is not trusted persistence.
 
-This is a pragmatic choice for a tiny authenticated friends-oriented service, not a claim that the package is an absolute security boundary. Benchmark and harden it before relying on it. A QuickJS-family runtime remains a possible later alternative if security/maintenance/performance measurements justify switching.
+`isolated-vm` is the V1 implementation target, not one option in an unresolved runtime bake-off. QuickJS/WASM is retained only as a future contingency if concrete maintenance, security, or runtime-compatibility evidence gives a reason to replace `isolated-vm` without changing the controller API or deterministic game contract.
 
-Do **not** assume one permanent OS process per controller. A reusable worker pool is preferred because persistent controller state is explicitly serialized by the game contract.
+For the current Node 24 deployment, pin an `isolated-vm` release compatible with that Node major and obey its process-launch requirements. The current upstream compatibility guidance maps Node 24 to the 6.x/5.x lines and requires `--no-node-snapshot` for Node 20+; re-verify these operational compatibility details whenever the deployed Node major or `isolated-vm` version changes. This is deployment compatibility, not an open sandbox-architecture decision.
 
-### Deterministic parallel execution
+### 5.1 Accepted V1 controller runtime limits
+
+The initial controller runtime limits are:
+
+| Limit | V1 default |
+| --- | ---: |
+| Persistent controller memory | **128 KiB** |
+| `isolated-vm` heap limit | **32 MiB per controller isolate** |
+| Normal `decide()` execution | **20 ms max** |
+| Strategic Spawn hook execution | **50 ms max** |
+| Initial module evaluation | **100 ms max** |
+| Serialized returned decision | **256 KiB max** |
+| Queries per decision | **128** |
+| Materialized cells per decision | **25,000** |
+| Directive updates per decision | **128** |
+| One-shot commands per decision | **64** |
+| Total policy/weight rules | **256** |
+| Debug overlay objects | **256 per decision** |
+| Controller log text | **8 KiB per decision** |
+| Observable events delivered | **512 per decision**, then deterministic truncation; overflow is summarized in diagnostics/replay |
+| Team-signal payload | **1 KiB** |
+
+Twenty milliseconds is intentionally not microscopic: normal controllers run only twice per simulation second, outside the authoritative match process, and expensive map work should use the bounded native/query helpers instead of JavaScript loops over the 4.8-million-cell raster.
+
+These are **accepted V1 defaults**, not permanent universal constants. Benchmark-driven changes later must be explicit/versioned runtime-limit changes rather than silently changing an existing deployment contract.
+
+### 5.2 Runtime-fault semantics
+
+Ordinary stale-state or gameplay-legality command rejection produces a receipt and is **not** a controller runtime fault.
+
+The following are runtime faults:
+
+- uncaught controller exception;
+- execution timeout;
+- malformed whole decision/output;
+- isolate/controller memory-limit violation;
+- sandbox violation.
+
+A runtime fault discards the current invocation's temporary output/memory changes and leaves the previous successfully committed directives active. Existing valid operations continue under ordinary simulation rules.
+
+The deterministic V1 circuit breaker is:
+
+```text
+5 consecutive normal-runtime faults
+OR
+20 total normal-runtime faults in one match
+→ controller FAULTED for the remainder of that match
+```
+
+A non-faulting normal invocation breaks a consecutive-fault run. No replacement AI takes over. Strategic Spawn hook failure instead uses the already-specified deterministic legal spawn fallback and does **not by itself** fault the controller for normal match play.
+
+### 5.3 Worker-pool deployment baseline
+
+Worker-pool sizing is deployment configuration rather than replay/game determinism. The accepted initial Fufubox baseline is:
+
+```text
+4 controller worker processes
+1 controller callback executing at a time per worker
+```
+
+A worker process may service different controller isolates over time; do **not** create one permanent OS process per controller. Because controller-persistent state is external/serialized, a worker may be killed and recreated without losing trusted game-facing state.
+
+Recycle an idle worker when either condition is met:
+
+- process RSS exceeds **512 MiB**; or
+- the worker has been alive for roughly **1 hour** and is idle.
+
+Later pool-size or recycling tuning based on measured Fufubox load is ordinary deployment tuning and does not reopen the sandbox architecture.
+
+### 5.4 Deterministic parallel execution
 
 Controllers at the same decision tick or the same simultaneous spawn phase may execute concurrently against immutable snapshots of the same canonical pre-state. Completion order must not create gameplay advantage; results are collected and committed/resolved deterministically.
 
@@ -394,9 +463,22 @@ Never expose uncontrolled entropy or system time.
 
 ### 6A.10 Controller limits and performance guardrails
 
-Expose deterministic structural limits for operations, commands, selector/policy rules, materialized/query results, persistent memory and debug/log output.
+`ControllerLimitsView` exposes the deterministic structural limits that controller code may reasonably plan around:
 
-Do not make remaining wall-clock CPU time a gameplay-readable variable.
+| Public limit | V1 value |
+| --- | ---: |
+| `persistentMemoryBytes` | **131,072** |
+| `queriesPerDecision` | **128** |
+| `materializedCellsPerDecision` | **25,000** |
+| `directiveUpdatesPerDecision` | **128** |
+| `commandsPerDecision` | **64** |
+| `policyRulesPerDecision` | **256** |
+| `debugItemsPerDecision` | **256** |
+| `logBytesPerDecision` | **8,192** |
+
+The runtime additionally enforces the accepted **512 observable events per decision** and **1 KiB team-signal payload** bounds. `EventsApi.sinceLastDecision` therefore contains at most 512 typed events. Overflow handling is deterministic; any omitted-event summary belongs to diagnostics/replay rather than inventing an undeclared `ControllerEvent` variant in the already-defined V1 TypeScript contract.
+
+Heap limits, callback time limits, module-evaluation time, and the whole serialized-decision size limit are sandbox/runtime enforcement rather than a gameplay-readable countdown. In particular, do not expose remaining wall-clock CPU time as a value on which controller strategy can branch.
 
 ### 6A.11 Debugging surface
 
@@ -464,7 +546,7 @@ A split-origin faction chooses **one exact legal origin in each final influence 
 
 Resolve duplicate/conflicting exact-origin submissions deterministically from the same pre-state, reveal final origins, generate starting footprint(s), then begin normal simulation/controller decisions.
 
-The public API should therefore expose specialized pre-match lifecycle hooks capable of representing the faction's effective spawn profile rather than hard-coding exactly one anchor/origin into the protocol. Exact TypeScript names/types are implementation work.
+The public API exposes the specialized pre-match lifecycle hooks already defined in `src/core/controller/ControllerApi.ts`: `chooseInfluence`, `reconsiderInfluence`, and `chooseOrigins`. They represent the faction's effective spawn profile rather than hard-coding exactly one anchor/origin into the protocol. Remaining work is runtime projection, validation, fallback, and transactional wiring, not another TypeScript contract-design pass.
 
 Spawn-hook failure/missing output must use a deterministic legal fallback appropriate to the profile rather than faulting the controller for the match.
 
@@ -1360,11 +1442,43 @@ Exact cookie/session encoding, CSRF handling, expiry/refresh policy, and optiona
 
 ---
 
-## 21. Persistence — Accepted SQLite direction
+## 21. Persistence — Accepted V1 SQLite baseline
 
 Open Fufu owns its persistent state rather than depending on OpenFront's external account/archive backend.
 
-Use **SQLite** as the V1 authoritative structured runtime store, with normal migrations, foreign keys, and WAL-style deployment where appropriate.
+Use **SQLite** as the V1 authoritative structured runtime store through Node's built-in **`node:sqlite`** API. Do not add Prisma, Sequelize, or another ORM/database abstraction layer merely to wrap this small service.
+
+Every normal writable connection applies the accepted startup baseline:
+
+```sql
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;
+PRAGMA wal_autocheckpoint = 1000;
+```
+
+Schema changes use explicit SQL migrations committed to Git. The intended persistence source layout is:
+
+```text
+src/server/persistence/
+    Database.ts
+    migrations/
+        0001_initial.sql
+        0002_...
+```
+
+The accepted runtime-data layout is:
+
+```text
+data/
+    open-fufu.sqlite3
+    replays/
+    controller-logs/
+    backups/
+```
+
+`node:sqlite` supplies the prepared statements, transactions, and online-backup capability needed by this V1 design. Persistence implementation should use those primitives directly rather than introducing an ORM layer.
 
 ### 21.0 Public source versus private/runtime data
 
@@ -1381,44 +1495,334 @@ Public source should contain things such as:
 - UI/rendering implementation;
 - synthetic/sample fixtures sufficient for development/tests.
 
-The live installation consumes versioned runtime/private records including active granular Echo/rules configuration where data-driven, the production mechanical registry/materialization where useful, owned rolls, Echo Sets, Middle Fingers balances, pity state, pending settlements, and other account/progression records. Accepted V1 values may be documented here and in the design contract while the executable implementation loads corresponding active values from versioned data where practical rather than requiring source edits to retune them.
+The live installation consumes the structured runtime/private records defined by the accepted V1 schema below. Official rulesets, terrain/structure/unit registries, Origin catalogue content, Official Origins, Echo identity/naming catalogues, and similar reusable rule-bearing definitions remain versioned game data in Git/data rather than being duplicated wholesale into relational tables. Historical matches retain exact version/hash bindings and the accepted Origin/Echo/spawn snapshots needed to interpret old results.
 
 **V1 does not require or store an Echo anime-dialogue corpus, Echo-to-line assignments, MAL source catalogue, or quote/subtitle import metadata.** Authored anime dialogue/reference content is instead a much smaller Origin-trait / Official-Origin content concern and can use an implementation-appropriate authoring/revision workflow when that content is produced.
 
-Persistent concepts include:
+### V1 relational schema — Accepted
 
-- internal users/linked identities;
-- sessions/auth metadata;
-- controller drafts/source packages;
-- immutable published controller bundles/versions;
-- certification status;
-- active presets;
-- ruleset/terrain/structure/mobile-unit data versions;
-- Origin trait-catalogue versions;
-- Official Origin definitions/versions;
-- Custom Origin definitions bound to the exact catalogue/version they use;
-- Echo mechanical-identity catalogue versions and acquisition/roll-rules versions;
-- the 12,927 fixed mechanical Echo identity definitions or a versioned deterministic representation/materialization of them;
-- **Echo naming versions/configuration**: shape-character pools, concrete-key stat tokens, polarity-aware magnitude descriptor table, grammar/order rules;
-- owned Echo rolls: account + Echo identity ID + retained magnitude(s), at most one retained configuration per identity, plus favorite state where stored there or separately;
-- saved named **Echo Sets** referencing owned Echo identity IDs rather than historical magnitude instances;
-- **Middle Fingers** balance;
-- Gacha Store paid-pull pity state: consecutive non-Lucky+ counter plus the versioned purchase/qualification/curve rules needed to interpret it;
-- persistent pending reward/Gacha settlement state including surviving per-identity Pareto-frontier candidates, deterministic defaults, attributable Middle Fingers, source, and status;
-- auditable Echo acquisition/reward events where useful, including source, rolled magnitudes, EchoScore/tier, duplicate/Middle-Fingers result, retained/rejected/chosen outcome, and pity before/after when applicable;
-- official AI preset versions and bound difficulty values needed to reproduce difficulty-derived special-AI defeat rewards;
-- matches/results;
-- per-faction bound Origin and exact equipped Echo identity+magnitude set used by the match;
-- reward-entity / accumulated Echo-roll result data needed for correct post-match settlement and audit;
-- spawn configuration/resolution metadata required for replay, including effective one-/two-origin spawn profile where relevant;
-- replay metadata;
-- progression/rewards.
+The initial V1 persistence model is **16 core tables**. Internal relational keys use SQLite integer primary keys where applicable; externally surfaced entities use random NanoID-style `public_id` values. Published/version-bound historical records are immutable where stated below.
 
-Generated Echo display-name strings generally need **not** be persisted because they can be reproduced from identity + retained magnitude(s) + naming version.
+#### 1. `schema_migrations`
 
-Large replay/log/debug artifacts may be stored as compressed files with path/hash/version metadata in SQLite rather than bloating the database unnecessarily.
+```text
+version              INTEGER PRIMARY KEY
+name                 TEXT NOT NULL
+applied_at_ms        INTEGER NOT NULL
+app_git_sha          TEXT NOT NULL
+```
 
-Exact schema, indexes, backup/retention policy, Origin reference-content authoring format, and replay-file layout remain implementation work.
+#### 2. `users`
+
+```text
+id                   INTEGER PRIMARY KEY
+public_id            TEXT UNIQUE NOT NULL
+display_name         TEXT NOT NULL
+created_at_ms        INTEGER NOT NULL
+deleted_at_ms        INTEGER
+```
+
+Use integer primary keys internally and random NanoID-style `public_id` values externally.
+
+#### 3. `linked_identities`
+
+Discord is the immediate provider; the representation deliberately permits later providers.
+
+```text
+provider             TEXT NOT NULL
+provider_subject     TEXT NOT NULL
+user_id              INTEGER NOT NULL REFERENCES users(id)
+created_at_ms        INTEGER NOT NULL
+
+PRIMARY KEY(provider, provider_subject)
+```
+
+Session-cookie transport/expiry/CSRF details remain part of the later auth pass; they are not grounds to keep the persistence schema itself open.
+
+#### 4. `controller_projects`
+
+The mutable logical controller project shown in the editor.
+
+```text
+id                   INTEGER PRIMARY KEY
+public_id            TEXT UNIQUE NOT NULL
+user_id              INTEGER NOT NULL REFERENCES users(id)
+name                 TEXT NOT NULL
+created_at_ms        INTEGER NOT NULL
+updated_at_ms        INTEGER NOT NULL
+archived_at_ms       INTEGER
+```
+
+#### 5. `controller_drafts`
+
+One current autosaved draft per project; do not create an unbounded row history for every editor autosave.
+
+```text
+project_id           INTEGER PRIMARY KEY REFERENCES controller_projects(id)
+source_package_json  TEXT NOT NULL
+updated_at_ms        INTEGER NOT NULL
+```
+
+#### 6. `controller_versions`
+
+Published controller versions are immutable.
+
+```text
+id                         INTEGER PRIMARY KEY
+public_id                  TEXT UNIQUE NOT NULL
+project_id                 INTEGER NOT NULL REFERENCES controller_projects(id)
+version_no                 INTEGER NOT NULL
+controller_api_version     TEXT NOT NULL
+source_package_json        TEXT NOT NULL
+source_sha256              TEXT NOT NULL
+bundle_js                  TEXT NOT NULL
+bundle_sha256              TEXT NOT NULL
+compiler_version           TEXT NOT NULL
+certification_status       TEXT NOT NULL
+certification_report_json  TEXT
+created_at_ms              INTEGER NOT NULL
+
+UNIQUE(project_id, version_no)
+```
+
+Once published, source and bundle never mutate. A match binds exactly one `controller_versions.id` for a controller-backed faction.
+
+#### 7. `custom_origins`
+
+Official Origin definitions stay in versioned game content. User-created Origin definitions require persistence:
+
+```text
+id                    INTEGER PRIMARY KEY
+public_id             TEXT UNIQUE NOT NULL
+user_id               INTEGER NOT NULL REFERENCES users(id)
+name                  TEXT NOT NULL
+catalogue_version     TEXT NOT NULL
+trait_ids_json        TEXT NOT NULL
+definition_sha256     TEXT NOT NULL
+created_at_ms         INTEGER NOT NULL
+archived_at_ms        INTEGER
+```
+
+A used Custom Origin definition is effectively immutable; editing creates a new definition/version rather than changing historical meaning.
+
+#### 8. `echo_inventory`
+
+EchoScore is **not authoritative stored state**. It is a fractional derived quality value on the V1 `-1.00 .. +1.50` scale, computed from the retained rolled modifier magnitudes under the bound Echo catalogue/version. Persist the rolled magnitudes and catalogue version; recompute EchoScore when needed for presentation, sorting, quality classification, pity qualification, or validation. Do not introduce a second integer/fixed-point EchoScore representation merely because the current modifier maxima happen to use small integer percentages.
+
+```text
+user_id                 INTEGER NOT NULL REFERENCES users(id)
+echo_catalogue_version  TEXT NOT NULL
+echo_identity_id        INTEGER NOT NULL
+magnitudes_json         TEXT NOT NULL
+tier                    TEXT NOT NULL
+favorite                INTEGER NOT NULL DEFAULT 0
+acquired_at_ms          INTEGER NOT NULL
+updated_at_ms           INTEGER NOT NULL
+
+PRIMARY KEY(user_id, echo_catalogue_version, echo_identity_id)
+```
+
+The composite key enforces one retained Echo configuration per identity per catalogue version. Generated display names are not stored; they are deterministic from identity + retained magnitudes + naming version.
+
+#### 9. `echo_sets`
+
+```text
+id                    INTEGER PRIMARY KEY
+public_id             TEXT UNIQUE NOT NULL
+user_id               INTEGER NOT NULL REFERENCES users(id)
+name                  TEXT NOT NULL
+created_at_ms         INTEGER NOT NULL
+updated_at_ms         INTEGER NOT NULL
+```
+
+#### 10. `echo_set_members`
+
+```text
+echo_set_id             INTEGER NOT NULL REFERENCES echo_sets(id)
+slot_index               INTEGER NOT NULL
+echo_catalogue_version   TEXT NOT NULL
+echo_identity_id         INTEGER NOT NULL
+
+PRIMARY KEY(echo_set_id, slot_index)
+```
+
+Echo Sets reference Echo identity IDs, not historical acquisition instances. A retained-roll replacement therefore propagates automatically to every set using that identity.
+
+#### 11. `progression`
+
+```text
+user_id                     INTEGER PRIMARY KEY REFERENCES users(id)
+middle_fingers              INTEGER NOT NULL DEFAULT 0
+paid_non_lucky_plus_streak  INTEGER NOT NULL DEFAULT 0
+gacha_rules_version         TEXT NOT NULL
+updated_at_ms               INTEGER NOT NULL
+```
+
+#### 12. `reward_settlements`
+
+Match/Gacha settlement must survive retries and process crashes without double-applying rewards.
+
+```text
+id                   INTEGER PRIMARY KEY
+public_id            TEXT UNIQUE NOT NULL
+user_id              INTEGER NOT NULL REFERENCES users(id)
+source_type          TEXT NOT NULL   -- MATCH / GACHA
+source_id            TEXT NOT NULL
+rules_version        TEXT NOT NULL
+status               TEXT NOT NULL
+payload_json         TEXT NOT NULL
+created_at_ms        INTEGER NOT NULL
+applied_at_ms        INTEGER
+
+UNIQUE(user_id, source_type, source_id)
+```
+
+The uniqueness constraint makes processing idempotent. One SQLite transaction performs:
+
+```text
+settlement pending
+→ modify Echo inventory
+→ modify Middle Fingers / pity
+→ append audit events
+→ settlement applied
+```
+
+A process death before commit rolls the entire transaction back.
+
+#### 13. `echo_events`
+
+Append-only reward/acquisition audit trail; current inventory is **not** derived by replaying this log.
+
+```text
+id                       INTEGER PRIMARY KEY
+user_id                  INTEGER NOT NULL REFERENCES users(id)
+settlement_id            INTEGER REFERENCES reward_settlements(id)
+source_type              TEXT NOT NULL
+source_id                TEXT NOT NULL
+echo_catalogue_version   TEXT NOT NULL
+echo_identity_id         INTEGER
+rolled_magnitudes_json   TEXT
+tier                     TEXT
+outcome                  TEXT
+middle_fingers_delta     INTEGER NOT NULL DEFAULT 0
+pity_before              INTEGER
+pity_after               INTEGER
+created_at_ms            INTEGER NOT NULL
+```
+
+#### 14. `matches`
+
+```text
+id                        INTEGER PRIMARY KEY
+public_id                 TEXT UNIQUE NOT NULL
+seed                      TEXT NOT NULL
+status                    TEXT NOT NULL
+map_id                    TEXT NOT NULL
+map_hash                  TEXT NOT NULL
+game_git_sha              TEXT NOT NULL
+ruleset_version           TEXT NOT NULL
+controller_api_version    TEXT NOT NULL
+origin_catalogue_version  TEXT NOT NULL
+echo_catalogue_version    TEXT NOT NULL
+echo_naming_version       TEXT NOT NULL
+ai_preset_version         TEXT NOT NULL
+spawn_resolver_version    TEXT NOT NULL
+lobby_config_json         TEXT NOT NULL
+result_json               TEXT
+started_at_ms             INTEGER
+ended_at_ms               INTEGER
+```
+
+#### 15. `match_factions`
+
+Do not hide faction bindings in one giant match JSON blob.
+
+```text
+match_id                 INTEGER NOT NULL REFERENCES matches(id)
+slot                     INTEGER NOT NULL
+kind                     TEXT NOT NULL
+user_id                  INTEGER REFERENCES users(id)
+controller_version_id    INTEGER REFERENCES controller_versions(id)
+official_ai_preset_id    TEXT
+team_id                  TEXT
+origin_snapshot_json     TEXT NOT NULL
+echo_snapshot_json       TEXT NOT NULL
+spawn_snapshot_json      TEXT
+result                   TEXT
+eliminated_at_tick       INTEGER
+
+PRIMARY KEY(match_id, slot)
+```
+
+The **snapshot** fields are intentional. Historical matches retain enough exact bound Origin/Echo/spawn data to remain understandable without assuming a future checkout interprets an old ID exactly as the old build did.
+
+#### 16. `replays`
+
+Replay payloads live as files; SQLite stores metadata and integrity information.
+
+```text
+match_id             INTEGER PRIMARY KEY REFERENCES matches(id)
+format_version       TEXT NOT NULL
+relative_path        TEXT NOT NULL
+sha256               TEXT NOT NULL
+compressed_bytes     INTEGER NOT NULL
+created_at_ms        INTEGER NOT NULL
+expires_at_ms        INTEGER
+pinned               INTEGER NOT NULL DEFAULT 0
+```
+
+Ordinary file layout:
+
+```text
+data/replays/YYYY/MM/<match-public-id>.ofr.zst
+```
+
+Do not put multi-megabyte replay/debug payloads into SQLite BLOBs merely because SQLite can store them.
+
+### Accepted indexes
+
+Add indexes for the known V1 query patterns rather than shotgun-indexing every foreign key before measurements justify it:
+
+```text
+controller_versions(project_id, version_no DESC)
+echo_sets(user_id, updated_at_ms DESC)
+echo_events(user_id, created_at_ms DESC)
+reward_settlements(user_id, status, created_at_ms)
+matches(ended_at_ms DESC)
+match_factions(user_id, match_id)
+replays(expires_at_ms)
+```
+
+### Retention and backups — Accepted V1 baseline
+
+Keep indefinitely:
+
+- user/account state;
+- controller published versions referenced by matches;
+- Origin/Echo progression;
+- match metadata/results;
+- reward audit;
+- pity state;
+- current Echo inventory.
+
+File retention:
+
+- ordinary replay: **90 days**;
+- pinned/benchmark replay: **indefinite**;
+- detailed controller diagnostic logs: **7 days**;
+- replay metadata may remain after the replay file expires.
+
+Use the SQLite online-backup mechanism for routine database backups and retain:
+
+```text
+7 daily
+4 weekly
+6 monthly
+```
+
+Create an automatic database backup immediately before every schema migration. Replay files are separate files and therefore require separate backup handling if a retained replay is intended to survive loss of the primary data directory; backing up `open-fufu.sqlite3` does not back up `data/replays/`.
+
+The schema, index set, file layout, and retention/backup baseline above are **closed V1 specifications**. Remaining persistence work is implementation: write `Database.ts`, migration `0001_initial.sql`, transaction helpers, cleanup/backup jobs, and tests.
 
 ### 21.1 Origin definitions and production validation
 
@@ -1902,22 +2306,22 @@ If a future audit finding does not map to this plan, update this same document r
 
 ---
 
-## 28. Remaining open integration/design questions
+## 28. Remaining implementation/content/validation work
 
-Most V1 gameplay mechanics that were historically tracked here as open now have accepted provisional implementation baselines in the detailed registries. The genuinely open work is narrower and mostly implementation/content/validation work:
+Most V1 gameplay mechanics and the controller-runtime/persistence architecture now have accepted implementation baselines. The remaining work below is implementation, content, validation, transport detail, or later benchmark-driven tuning rather than a reason to relabel closed architecture as TBD:
 
 1. **Controller API runtime wiring/certification** — the V1 TypeScript contract is now defined in `src/core/controller/ControllerApi.ts`; remaining work is implementing the immutable observation projection, validated directive/command adapter, sandbox bridge, certification harness, and later non-semantic ergonomic polish.
 2. **Origin content maintenance** — future additions/revisions and playtest repricing remain possible under the same builder/catalogue rules; the V1 trait/Official-Origin naming pass and duplicate cleanup are complete.
 3. **Echo visual/UI implementation** — implement the visual recipe renderer, card motion/effects, responsive/touch behavior, collection UI, reward settlement presentation, and other presentation work around the already-settled Echo mechanics/naming content.
 4. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
 5. **Real Fufubox performance capacity** after a representative authoritative simulation and controller runtime exist.
-6. **`isolated-vm` production benchmark/hardening details** — concrete time/memory/output/query limits, worker-pool size, lifecycle/recycling policy, and whether later QuickJS testing is worthwhile.
-7. **Exact SQLite schema/index/backup/retention details** for controllers, matches/replays, Origins/Echoes/progression, pending settlement, pity, and related versioned data.
+6. **Controller-runtime benchmarking/hardening** — implement and measure the accepted `isolated-vm` worker-process baseline, enforce the accepted V1 limits, and retune them only if representative Fufubox evidence justifies an explicit versioned change. QuickJS testing is contingency work only if `isolated-vm` produces a concrete operational reason to investigate replacement.
+7. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 16-table schema/index set, idempotent transactional settlements, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
 8. **Exact Discord/session/auth transport details** including cookies/expiry/CSRF and optional later Fufubox credential linking.
 9. **Post-implementation balance validation/retuning** of accepted provisional values across Population growth, combat/capture, FFY, Train/Trade economies, Origin traits, spawn geometry, terrain/structures, mobile/naval units, and strategic weapons. This is validation work, not an unanswered pre-implementation mechanics list.
 10. **Detailed lobby/UI/UX implementation polish**, including controller authoring/debug surfaces, Origin creator/preset presentation, spawn visualization, expanded terrain/structure/unit displays, Echoes/Gacha presentation, and match/replay diagnostics.
 11. **Replacement asset creation and final proprietary-directory removal.**
-12. **Exact deterministic controller limits/diagnostic retention values** — materialized-cell/query budgets, policy-rule counts, log/debug-overlay budgets, command/directive caps, and replay retention.
+12. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
 13. **Low-level implementation/versioning details for the settled Strategic Spawn resolver** — exact queue/data-structure/hash representation, map-validation diagnostics, and replay/version encoding. The 400-cell influence radius, 50-cell foreign-origin spacing, deterministic collision fallback, quota-limited footprint rules, P39 split profile, P54 star profile, and five-second immunity are already settled gameplay rules in `STRATEGIC_SPAWN.md`.
 14. **Optional ruleset minutiae not yet pinned**, especially water-nuke conversion geometry.
 

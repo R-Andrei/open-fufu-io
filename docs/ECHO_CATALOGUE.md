@@ -393,6 +393,8 @@ The rolled Echo's generic quality score is:
 EchoScore = Σ signedNormalizedMagnitude
 ```
 
+**EchoScore is itself a fractional derived value.** The integer-only rule applies to the rolled modifier magnitudes (`1%`, `2%`, and so on), not to EchoScore. The V1 quality scale is defined over **`-1.00` through `+1.50`**: values near `-1.00` represent an almost purely harmful roll, while `+1.50` is the ceiling for a perfect beneficial dual-positive roll. Individual Echo shapes/configurations do not necessarily make every point on that scale reachable.
+
 Examples:
 
 ```text
