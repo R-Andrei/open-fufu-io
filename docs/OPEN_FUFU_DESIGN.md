@@ -299,7 +299,7 @@ plain structured objects
 
 Controllers must not rely on mutable module/global runtime state surviving between invocations. Only explicit controller memory is guaranteed writable persistence.
 
-Current provisional memory limit: **128 KiB serialized per faction per match**.
+Accepted V1 memory limit: **128 KiB serialized per faction per match**.
 
 ### 6.4 Decision-as-set semantics
 
@@ -350,17 +350,19 @@ A complete invalid controller decision, such as simultaneous commitments exceedi
 
 ### 7.5 Runtime failure behavior
 
-A controller exception, timeout, sandbox violation, malformed output, or invalid decision must never crash/corrupt the match.
+A controller runtime fault must never crash or corrupt the match. Runtime faults are uncaught controller exceptions, timeout, malformed whole-decision/output, controller/isolate memory-limit violation, or sandbox violation.
 
-On failure:
+Ordinary stale-state/gameplay-legality rejection is different: it produces a deterministic transaction/command receipt and is **not** a controller runtime fault.
+
+On a runtime fault:
 
 - output/memory from that invocation is discarded;
 - the faction keeps its last successfully committed operations/directives;
 - existing attacks, counter-responses, builds, units, and other prior valid actions continue under normal simulation rules;
-- the failure is logged;
-- later controller invocations are attempted again.
+- the fault is logged/counted;
+- later controller invocations are attempted again until the circuit breaker trips.
 
-If the **first-ever normal match invocation** fails:
+If the **first-ever normal match invocation** faults:
 
 ```text
 all Population is Available
@@ -369,9 +371,20 @@ no active counter-responses
 no new actions/orders/directives
 ```
 
-The faction still receives normal automatic defense. Persistent failures trigger a deterministic circuit breaker; sufficiently persistent failure marks the controller **FAULTED** for the remainder of the match. No replacement AI takes over.
+The faction still receives normal automatic defense.
 
-Pre-match spawn-hook failure is handled by deterministic spawn defaults and does not by itself fault an otherwise valid controller.
+The accepted V1 normal-runtime circuit breaker is deterministic:
+
+```text
+5 consecutive runtime faults
+OR
+20 total runtime faults in one match
+→ controller FAULTED for the remainder of the match
+```
+
+A non-faulting normal invocation breaks a consecutive-fault run. Once FAULTED, no replacement AI takes over.
+
+Pre-match spawn-hook failure/missing/malformed/rejected output is handled by the deterministic legal spawn default appropriate to the faction's spawn profile and does **not by itself** fault an otherwise valid controller for normal match play.
 
 ### 7.6 Diagnostics
 
@@ -383,11 +396,31 @@ Pre-match spawn-hook failure is handled by deterministic spawn defaults and does
 
 Player controller code must be treated as hostile even though the intended user group is small and authenticated.
 
-It must not receive unrestricted access to filesystem, network, subprocesses, environment variables, system clock, arbitrary native modules, host process objects, or unrestricted CPU/memory.
+It must not receive unrestricted access to filesystem, network, subprocesses, environment variables, system clock, arbitrary native modules, host process objects, or unrestricted CPU/memory. The runtime provides deterministic game RNG rather than uncontrolled entropy.
 
-The runtime must provide deterministic game RNG rather than uncontrolled randomness. CPU, memory, output/logging, persistent-memory, query/materialization, directive, and action budgets must be explicit.
+Raw `eval` and Node `vm` alone are not sufficient security boundaries. The accepted V1 implementation uses `isolated-vm` isolates hosted in separate controller worker processes as specified in `OPENFRONT_INTEGRATION_PLAN.md`; QuickJS/WASM is only a future contingency if concrete operational evidence requires replacement.
 
-Raw `eval` and Node `vm` alone are not sufficient security boundaries. The initial implementation choice is described in the integration plan.
+The accepted V1 runtime-enforcement baseline is:
+
+| Limit | V1 value |
+| --- | ---: |
+| Persistent controller memory | **128 KiB** |
+| Isolate heap | **32 MiB** |
+| Normal `decide()` callback | **20 ms max** |
+| Strategic Spawn callback | **50 ms max** |
+| Initial module evaluation | **100 ms max** |
+| Serialized returned decision | **256 KiB max** |
+| Queries per decision | **128** |
+| Materialized cells per decision | **25,000** |
+| Directive updates per decision | **128** |
+| One-shot commands per decision | **64** |
+| Total policy/weight rules | **256** |
+| Debug overlay items | **256 per decision** |
+| Controller log text | **8 KiB per decision** |
+| Observable events delivered | **512 per decision**, then deterministic truncation; overflow is summarized in diagnostics/replay |
+| Team-signal payload | **1 KiB** |
+
+Structural limits are visible through the controller API where useful. Wall-clock/heap enforcement is **not** exposed as a gameplay-readable remaining-budget value. Benchmarking may justify later explicit/versioned runtime-limit changes; that is tuning, not an unanswered V1 architecture decision.
 
 ---
 
@@ -1720,7 +1753,7 @@ Players should win through better strategy and abstractions, not because they re
 
 ### 24A.1 One deterministic entry point and explicit memory
 
-The normal runtime model is one controller `decide(context)`-style entry point operating on an immutable observation and explicit persistent `memory`. Exact TypeScript names remain API implementation work, but the conceptual context is equivalent to:
+The normal runtime model is the source-level contract already defined in `src/core/controller/ControllerApi.ts`: `decide(context)` operates on an immutable observation and explicit persistent `memory`. The public context is:
 
 ```text
 game
@@ -1903,9 +1936,22 @@ No uncontrolled entropy or real system clock is exposed.
 
 ### 24A.17 Runtime/controller limits are public
 
-Deterministic structural limits such as operation count, command count, selector/policy-rule count, materialized-cell/query limits, memory and debug/log budgets are visible to the controller/API documentation.
+Deterministic **structural** limits are public controller/API facts. The V1 `ControllerLimitsView` values are:
 
-Controllers must not branch on nondeterministic wall-clock CPU time remaining. Human diagnostics may report CPU/runtime usage separately.
+| API field | V1 value |
+| --- | ---: |
+| `persistentMemoryBytes` | **131,072** |
+| `queriesPerDecision` | **128** |
+| `materializedCellsPerDecision` | **25,000** |
+| `directiveUpdatesPerDecision` | **128** |
+| `commandsPerDecision` | **64** |
+| `policyRulesPerDecision` | **256** |
+| `debugItemsPerDecision` | **256** |
+| `logBytesPerDecision` | **8,192** |
+
+The runtime also bounds observable events to **512 per decision** with deterministic overflow handling and team-signal payloads to **1 KiB**.
+
+Controllers must not branch on nondeterministic wall-clock CPU time remaining. The accepted callback/module/heap/whole-output limits are runtime enforcement documented in Section 8 and the integration plan; human diagnostics may report runtime usage separately.
 
 ### 24A.18 Team coordination
 
@@ -2011,7 +2057,7 @@ Open Fufu supports at least:
 - **Random Spawn** — deterministic match-seeded legal placement that bypasses controller strategic spawn choices;
 - **Fixed Spawn** — exact configured starts for benchmarks, certification, debugging, tournaments/scenarios, and reproducible tests.
 
-Strategic-spawn controller hooks are specialized **pre-match lifecycle hooks**, separate from the normal `decide()` loop. Exact TypeScript names are implementation work, but the conceptual phases correspond to initial influence choice, optional reconsideration, and exact-origin choice.
+Strategic-spawn controller hooks are specialized **pre-match lifecycle hooks**, separate from the normal `decide()` loop. `src/core/controller/ControllerApi.ts` defines the V1 hooks as `chooseInfluence`, `reconsiderInfluence`, and `chooseOrigins`, corresponding to initial influence choice, optional reconsideration, and exact-origin choice.
 
 The spawn API must represent the faction's effective public **spawn profile**: ordinary factions submit one area/origin while a split-origin faction submits the required pair through the same phase semantics. This must not require a second controller program or an out-of-band manual action.
 
@@ -2023,15 +2069,13 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
-- exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
+- future controller-API-version additions or non-semantic ergonomic polish after implementation pressure-testing; the current V1 TypeScript contract itself is already defined in `src/core/controller/ControllerApi.ts`;
 - later playtest repricing of provisional Origin-trait costs or future catalogue additions without reopening accepted mechanics;
-- exact sandbox hardening/resource-budget values;
-- exact SQLite schema/index/backup/retention details;
-- exact wire protocol/session encoding;
+- exact wire protocol/session encoding and the remaining Discord/session/auth transport details;
 - exact deterministic controller-memory codec;
-- exact controller query/materialization/debug-output/action/directive limits;
 - exact Segment generation/size heuristics within the accepted Segment ontology;
 - playtest retuning of accepted provisional terrain, structure, economy, Population, combat, mobile-unit, naval, strategic-weapon, spawn-geometry, Origin, and Echo balance values after representative implementation exists;
+- later benchmark-driven **versioned tuning** of the accepted controller runtime limits or worker-pool deployment settings; the V1 baseline values/architecture are not deferred;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura/responsive/touch polish;
 - executable/property-test implementation for Echo distribution, scoring, generated naming, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
 - authored anime dialogue/catchphrase/reference curation for Origin traits and Official Origins; V1 Echoes deliberately do not depend on an anime quote/subtitle corpus;
@@ -2040,7 +2084,7 @@ The following remain intentionally outside the settled design contract unless ot
 - detailed lobby/UI implementation outside the settled gameplay/content concepts;
 - supply/logistics connectivity as a separate system.
 
-The concrete provisional gameplay values previously listed here as open—Origin builder limits, Population growth/utilization, capture pacing, counter-response coefficients, FFY baselines, Train service/payouts, Strategic Spawn geometry, Initial Territory/Starting Population, Warship/Transport values, and Atom/Hydrogen/MIRV values—are now recorded in their canonical detailed registries and are implementation baselines rather than unanswered design placeholders.
+The concrete V1 controller API, sandbox/runtime budgets, worker-pool baseline, SQLite schema/index/backup/retention model, and the detailed gameplay values previously tracked as open are now accepted specifications. Their remaining work is implementation, validation, and later evidence-driven tuning rather than architecture selection.
 
 Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
 

@@ -1,3 +1,5 @@
+> **Open Fufu fork notice:** this repository is being transformed from OpenFront into Open Fufu. The authoritative target design is [`docs/OPEN_FUFU_DESIGN.md`](docs/OPEN_FUFU_DESIGN.md) and the authoritative migration/integration plan is [`docs/OPENFRONT_INTEGRATION_PLAN.md`](docs/OPENFRONT_INTEGRATION_PLAN.md). The inherited OpenFront material below remains useful setup/upstream reference but is not normative when it conflicts with those Open Fufu documents.
+
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="proprietary/images/OpenFrontLogoDark.svg">
