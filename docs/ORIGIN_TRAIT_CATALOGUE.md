@@ -4,7 +4,7 @@
 
 This file is the **provisional working catalogue for Origin traits**, not a competing game-design contract.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Detailed FFY economy semantics are recorded in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). Echo identity/acquisition/reward semantics are recorded in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Detailed FFY economy semantics are recorded in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). Echo identity/acquisition/reward semantics are recorded in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md). Detailed Strategic Spawn geometry is recorded in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Detailed Warship/Transport/strategic-weapon values are recorded in [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md). Minor-Faction semantics are recorded in [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md).
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -56,7 +56,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P16 | **X** | Ignore ordinary Fallout capture resistance | 4 |
 | P17 | **X** | Structure upgrade cost multiplier is `0.99^S`, where `S` is currently owned structures | 7 |
 | P18 | **X** | `+100% offensive pressure` for engagement lanes whose attacking source cell lies inside a self/fixed-teammate Fort area | 5 |
-| P19 | **X** | `+5% offensive pressure` per distinct other faction with current Territorial Contact | 7 |
+| P19 | **X** | `+5% offensive pressure` per distinct currently active other faction with current Territorial Contact, including Minor Factions | 8 |
 | P20 | **X** | Start with a free Missile Silo | 7 |
 | P21 | **X** | First purchase of each structure consumes `0 FFY`, after ordinary affordability/legality succeeds | 7 |
 | P22 | **X** | `+2 maximum Warship rank` | 6 |
@@ -69,7 +69,7 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P29 | **X** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
 | P30 | **X** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
 | P31 | **X** | Ports project expanded repair zones; Warships inside receive strong repair without docking and may remain operational | 6 |
-| P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing | 6 |
+| P32 | **X** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
 | P33 | **X** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
 | P34 | **X** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
 | P35 | **X** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
@@ -91,8 +91,9 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 | P52 | **X** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
 | P53 | **X** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
+| P54 | **X** | **Star start:** each generated Initial-Territory footprint uses the accepted sharp eight-point `3:1` star geometry instead of the ordinary compact circular profile; final Initial Territory and Starting Population are unchanged | 10 |
 
-P30–P53 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, and P53's `2,000 FFY/s per ready Silo charge` are explicitly provisional balance data to benchmark before V1 release rather than unresolved mechanics.
+P30–P54 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, and P53's `2,000 FFY/s per ready Silo charge` are explicitly provisional balance data to benchmark before V1 release rather than unresolved mechanics.
 
 ---
 
@@ -149,9 +150,15 @@ No additive negative-cost clamp is required.
 
 P18 checks the attacking **source cell**. A lane qualifies if that source lies in at least one self/fixed-teammate Fort area. Multiple qualifying Forts do not multiply P18.
 
-### S6 — P19 contact count
+### S6 — P19 current contact count
 
-P19 counts distinct other factions, not disconnected Contact components. Unless later revised, `other faction` is literal and may include a fixed teammate.
+P19 counts **distinct currently active other factions with current Territorial Contact**, not disconnected Contact components and not historical contacts.
+
+A faction stops contributing when the Territorial Contact disappears or that actor is no longer an active territorial faction. If contact later reappears while the actor is active, it contributes again.
+
+`Other faction` remains literal and may include a fixed teammate. It also explicitly includes an active **Minor Faction** from `MINOR_FACTIONS.md`. One Minor Faction counts once regardless of how many disconnected contact components exist.
+
+The possibility of very large early-game P19 bonuses from simultaneously contacting many Minor Factions is intentional. The catalogue cost is therefore provisionally **8 points** rather than 7, while the bonus remains allowed to decay naturally as Minor Factions disappear and active contact count falls.
 
 ### S7 — P25 blast area
 
@@ -187,7 +194,7 @@ P29 adds owned Warships as valid strategic-weapon launch platforms from their cu
 
 Baseline Open Fufu controller rule: when launch origin matters, the strategic-weapon command identifies the chosen legal launcher. The engine never silently chooses among multiple Silos/Warships.
 
-Under the canonical structure-level rules, a P29 Warship's effective Silo level equals `max(1, Warship rank)`. Ordinary rank-3 Warships may reach Hydrogen legality; P22 can make a rank-5 MIRV-capable Warship possible.
+Under the canonical Warship-rank rules in `NAVAL_AND_STRATEGIC_WEAPONS.md`, a P29 Warship's effective Silo level equals `max(1, Warship rank)`. Ordinary rank-3 Warships may reach Hydrogen legality; P22 can make a rank-5 MIRV-capable Warship possible.
 
 ### S13 — P30 pirate conversion
 
@@ -220,9 +227,15 @@ These trade drawbacks can be avoided by declining to invest in trade, which is w
 
 Owned active Ports project a substantially larger repair zone; Warships inside receive strong repair without docking and may continue normal operation. Overlapping Ports do not multiply the same repair effect in one tick.
 
+The ordinary baseline Port repair radii/rates are now pinned in `NAVAL_AND_STRATEGIC_WEAPONS.md`. P31's additional expansion/strength coefficients remain balance-tuning data until separately pinned.
+
 ### S16 — P32 armored Port-launched Transports
 
-The controller must select an owned active Port as the Transport source. Ordinary shoreline/non-Port embarkation is unavailable. The Transport is health-bearing/armored and may survive interception that would destroy a baseline fragile Transport. Exact health/repair interaction remains tuning work.
+The controller must select an owned active Port as the Transport source. Ordinary shoreline/non-Port embarkation is unavailable.
+
+The Transport has **500 HP** under the accepted provisional V1 baseline and is therefore health-bearing/armored rather than a fragile one-hit baseline Transport. Under an unmodified 250-damage Warship shell, a fresh P32 Transport requires two successful shells to destroy.
+
+Because it is health-bearing, an owned P32 Transport may receive ordinary eligible Port repair. P32 + P12 remains legal and produces a 500-HP Port-only Transport moving at 12.5 cells/s before other modifiers.
 
 ### S17 — P33 train-stop Population
 
@@ -274,7 +287,11 @@ On a successful capture of one of the trait-holder's automatically defended popu
 
 ### S24 — P39 split Strategic Spawn
 
-The faction submits two influence areas, each 50% of ordinary **area** (about 70.71% ordinary radius for circles), then one exact origin in each. Final Initial Territory after modifiers is divided approximately equally between the two footprints. Starting Population remains one global pool; there are no local Population stores. Origins are ordered primary/secondary for deterministic singular start-state grants.
+The faction submits two influence areas, each 50% of ordinary **area**, then one exact origin in each. Under the accepted ordinary 400-cell circular influence radius, each split region uses `dx² + dy² <= 80,000`, equivalent to about **282.84 cells radius**.
+
+Final Initial Territory after modifiers is divided approximately equally between the two footprints. Starting Population remains one global pool; there are no local Population stores. Origins are ordered primary/secondary for deterministic singular start-state grants.
+
+Exact-origin spacing/fallback and footprint construction are defined in `STRATEGIC_SPAWN.md`. P39 + P54 is legal: each split quota uses P54 star geometry rather than duplicating the full Initial-Territory quota.
 
 ### S25 — P40 giant SAM shield
 
@@ -509,6 +526,23 @@ This is the intended nuclear/Fallout expansion inversion: ordinary land is painf
 
 N18's `0.50×` is a structural post-multiplier. Ordinary terrain-capture/settlement Echo bonuses and terrain multipliers still calculate normally, then N18 halves the resulting progress on non-Fallout targets. P36 remains an independent Population-cost transformation.
 
+### S40 — P54 star-shaped Initial Territory
+
+P54 changes only generated **starting-footprint geometry**. It is not a positive capture-speed modifier.
+
+Each Initial-Territory footprint uses the canonical eight-point star geometry from `STRATEGIC_SPAWN.md`:
+
+- 8 outward points / 16 alternating vertices;
+- fixed deterministic map-axis orientation;
+- approximately `3:1` outer-tip radius to inner-valley radius;
+- the same final population-bearing Initial-Territory quota the faction would otherwise receive.
+
+The star's much larger boundary/contact surface may allow many more neutral cells to be engaged simultaneously under ordinary neutral-expansion rules. This emergent opening-speed advantage is the purpose of the trait.
+
+P54 does not alter Starting Population, Capacity per cell, neutral-settlement Population cost, capture/settlement progress coefficients, or later territorial growth geometry.
+
+P39 + P54 is legal. P39 still splits final Initial Territory between two exact origins; each split quota is generated as its own smaller star rather than duplicating the full quota.
+
 ---
 
 ## Catalogue coverage decisions
@@ -519,7 +553,7 @@ Simple Starting Population modification is intentionally kept out of the Origin 
 
 ### Neutral expansion is covered structurally
 
-P36 changes neutral-settlement Population efficiency, while N18 now supplies an Origin-scale structural acquisition-speed drawback that distinguishes ordinary versus Fallout terrain. Generic positive capture-speed tuning remains Echo territory.
+P36 changes neutral-settlement Population efficiency, N18 supplies an Origin-scale structural acquisition-speed drawback that distinguishes ordinary versus Fallout terrain, and P54 changes only initial boundary geometry so ordinary expansion can engage more cells at once. Generic positive capture-speed tuning remains Echo territory.
 
 ### Alternate passive economies are Origin territory
 
@@ -566,6 +600,7 @@ Potentially strong but valid combinations include:
 - P34 + N09 for conquest-only industrialization;
 - P35 + P16 for creating and later efficiently reclaiming a Fallout perimeter;
 - P38 + P35 for an expensive elastic/scorched defensive doctrine;
+- **P39 + P54 for two smaller star-shaped starting footprints**;
 - **P43 + P44 for radioactive Heavy Artillery**;
 - P44 + P16 for a doctrine that can later reclaim its own radioactive territorial damage efficiently if the front advances;
 - P50 + P51 for reciprocal general-support Fort/Command fields, with cross-type pressure bonuses using the explicit diminishing-composition rule rather than additive stacking;
@@ -580,12 +615,12 @@ The exhaustive deployment gate must prove every builder-legal combination determ
 
 ## Current first Official Origin roster
 
-The accepted first roster is maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). The new P52/P53/N18 mechanics are public catalogue material and are **not yet silently inserted into an existing Official Origin**; any new/revised Official Origin using them must be authored explicitly in that registry.
+The accepted first roster is maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). P52/P53/N18 are now explicitly showcased by **O48 Humanity Has Declined** and **O49 Third Impact**; P54 is showcased by **O50 Lucky Star**. These remain ordinary public catalogue builds rather than creator-only mechanics.
 
 ---
 
 ## Next Origin work
 
-The expanded terrain/structure/Tank/economy world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning belongs in `ECHO_CATALOGUE.md`.
+The expanded terrain/structure/Tank/economy/world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning belongs in `ECHO_CATALOGUE.md`.
 
-Remaining Origin-side priorities are naming, balance/repricing, benchmark validation of balance-sensitive traits such as P33/P52/P53/N18, deciding which Official Origin(s) should showcase the new alternate-economy mechanics, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
+Remaining Origin-side priorities are final trait naming, balance/repricing, benchmark validation of balance-sensitive traits such as P19/P33/P52/P53/N18/P54, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
