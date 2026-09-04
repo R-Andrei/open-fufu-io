@@ -2,26 +2,27 @@
 
 ## Status and authority
 
-This document is the canonical **design/rationale companion** for Official-AI Origin-trait support.
+This document is the single canonical **rationale/strategic-intent companion** for Official-AI Origin-trait support.
 
-Concrete code-readable mappings live in the sharded design-time configuration set under:
+Exact code-readable mappings live only in:
 
-- `design/official-ai/origin-trait-support*.config.ts`;
-- `design/official-ai/origin-combination-support.config.ts` for the completed global synergy/suppression registry.
+- `design/official-ai/origin-trait-support.config.ts`
 
-Those `.config.ts` files are the source of truth for exact support entries, hook IDs, themes, affordances, cautions, synergy tags, combination support, and suppression rules.
+That file is authoritative for exact support modes, themes, affordances, cautions, synergy tags, hook IDs, additive combination support, and support-suppression rules.
 
-This document explains why mappings exist, their strategic philosophy, important exclusions/boundaries, and the completed catalogue-wide composition result. It intentionally does not duplicate full configuration objects.
+This document owns only:
 
-It remains subordinate to:
+- why a trait needs the kind of AI literacy it does;
+- the strategic philosophy a competent controller should be able to derive from it;
+- important semantic boundaries and non-obvious interactions.
 
-- `ORIGIN_TRAIT_CATALOGUE.md` for actual Origin mechanics;
-- `OFFICIAL_AI_ORIGIN_SUPPORT.md` for generic support/composition/character-adaptation architecture;
-- `OFFICIAL_AI_CONFIGURATION.md` for shared AI signal/goal/planner/profile vocabulary.
+It does **not** repeat complete configuration objects or gameplay arithmetic.
 
-Nothing here changes Origin mechanics. Numeric/mechanical truth remains in authoritative game rules and final `EffectiveRulesView`.
+Other authorities remain separate because they own different concerns:
 
----
+- `ORIGIN_TRAIT_CATALOGUE.md` — actual trait mechanics, costs/refunds, and gameplay semantics;
+- `OFFICIAL_AI_ORIGIN_SUPPORT.md` — reusable support/composition/adaptation contract;
+- `OFFICIAL_AI_CONFIGURATION.md` — shared AI signal/goal/planner/profile vocabulary.
 
 ## Progress
 
@@ -32,7 +33,7 @@ Drawbacks:         N01–N18 complete
 Global synergy/suppression sweep: complete
 ```
 
-The trait-support phase is closed for the current V1 catalogue. Future trait changes/additions must update both their individual support entry and the composition sweep.
+The current V1 trait-support phase is closed. Any later trait change must update the gameplay trait catalogue, this rationale when strategic intent changes, the canonical config mapping, and any affected combination/suppression cases in the same change.
 
 ---
 
@@ -40,504 +41,478 @@ The trait-support phase is closed for the current V1 catalogue. Future trait cha
 
 ## P01 — Domain Expansion
 
-Strategic Spawn reasons from the larger real footprint rather than assuming baseline size.
+Strategic Spawn must reason from the larger real starting footprint rather than assume baseline size. More starting geography is positional opportunity, not an automatic mandate to create more fronts.
 
 **Strategic philosophy:** begin with more geography and exploit the positional head start.
 
 ## P02 — The Era of Humans
 
-The widened Population-utilization sweet spot makes demographic recovery more forgiving. Shared economy/forecast reasoning uses the actual effective growth function.
+The wider Population-utilization sweet spot makes demographic recovery and sustained growth more forgiving. Shared economy/forecast reasoning should use the actual effective growth function rather than a trait-specific demographic brain.
 
 **Strategic philosophy:** sustain growth across a broader Population-utilization range.
 
 ## P03 — Imagine Breaker
 
-Enemy Fort defensive pressure matters less to this faction. The trait does not itself mandate attacking Forts.
+Enemy Fort defensive pressure constrains this faction less than normal. That makes prepared positions easier to challenge without implying that Forts should always be attacked.
 
 **Strategic philosophy:** static Fort defense is less capable of dictating where the faction may fight.
 
 ## P04 — Level 0
 
-Counter-response effectiveness no longer follows the ordinary response-side imbalance curve. Shared counter-response mechanics expose the actual exchange.
+Counter-response effectiveness no longer follows the ordinary response-side imbalance curve. The controller must judge the actual exchange rather than assume vanilla rewards for numerical overcommitment.
 
 **Strategic philosophy:** counter effectively without needing numerical overcommitment to gain response efficiency.
 
 ## P05 — Big Shot
 
-Capturing hostile structures becomes simultaneously conquest, capability denial, and immediate FFY generation.
+Capturing hostile structures becomes conquest, capability denial, and immediate FFY generation at once. This cross-domain consequence must be visible to target selection and forecasting.
 
 **Strategic philosophy:** conquest can finance further conquest.
 
 ## P06 — See You, Space Cowboy
 
-Trade Ships move faster without changing role; shared economic reasoning consumes actual throughput.
+Trade Ships move faster without changing their fundamental role. Shared economic reasoning should turn the real travel-time improvement into higher trade throughput.
 
 **Strategic philosophy:** faster trade cycles increase the value of trade-oriented development.
 
 ## P07 — Galaxy Express 999
 
-The Factory/Train economy produces more ordinary Train traffic.
+The Factory/Train economy produces more ordinary Train traffic. This should increase the value of productive rail networks without creating a separate Train-control doctrine.
 
 **Strategic philosophy:** increase industrial-network throughput.
 
 ## P08 — Tea Time
 
-War no longer halves ordinary trade yield.
+War no longer suppresses ordinary trade yield. The faction can maintain commerce through conflict, but the mechanic does not itself make initiating wars desirable.
 
 **Strategic philosophy:** war and commerce need not be mutually exclusive.
 
 ## P09 — Wall Maria
 
-Forts become broader, stronger, and cheaper.
+Forts become broader, stronger, and cheaper. The ordinary infrastructure/territory stack should see the actual improved Fort values rather than receiving a bespoke Fort doctrine.
 
 **Strategic philosophy:** static defensive investment buys more protection for less FFY.
 
 ## P10 — Scorpion's Tail
 
-Faster strategic warheads reduce physical interception opportunity and established the reusable `REDUCE_INTERCEPTION_WINDOW` affordance.
+Faster strategic warheads compress the physical opportunity available for interception. This is delivery reliability, not a change to interception rules themselves.
 
-**Strategic philosophy:** compress the defender's interception window.
+**Strategic philosophy:** reduce the defender's interception window.
 
 ## P11 — Level Upper
 
-Peak Population thresholds permanently unlock free-SAM ownership/build slots; support values future unlock progress.
+Peak Population thresholds permanently unlock free-SAM ownership/build slots. AI must value progress toward future unlocks as well as the completed defense network.
 
-**Strategic philosophy:** convert demographic growth into a progressively broader strategic-defense network.
+**Strategic philosophy:** convert demographic growth into progressively broader strategic defense.
 
 ## P12 — Somewhere Not Here
 
-Transport speed improves without changing Transport role.
+Transport speed improves without changing Transport role. Shared amphibious reasoning should recognize shorter transit, lower exposure duration, and more viable distant operations.
 
 **Strategic philosophy:** shorten amphibious transit and make distant sea-borne operations more practical.
 
 ## P13 — Mountain Training Arc
 
-Mountains become unusually strong defensive ground.
+Mountains become unusually strong defensive ground. The bonus matters only when the geography itself is strategically useful.
 
 **Strategic philosophy:** use Mountain geography as efficient defensive terrain.
 
 ## P14 — 60 Billion Double Dollars
 
-FFY events located on Desert are more valuable.
+Located FFY events on Desert become more valuable. Economy and geography should combine naturally rather than producing a hard-coded preference for Desert everywhere.
 
-**Strategic philosophy:** turn Desert geography into an unusually profitable economic surface.
+**Strategic philosophy:** turn useful Desert geography into an unusually profitable economic surface.
 
 ## P15 — The High Ground
 
-Highlands become stronger offensive staging ground.
+Highlands become stronger offensive staging ground. The controller should exploit them when fighting, not seek conflict merely because a Highland bonus exists.
 
 **Strategic philosophy:** acquire and exploit Highlands for offensive pressure.
 
 ## P16 — Poison Taster
 
-Ordinary Fallout acquisition resistance is ignored.
+Ordinary Fallout acquisition resistance is ignored. Territorial reasoning should use the real capture progress and recognize that contaminated terrain is relatively easier for this faction to consume.
 
 **Strategic philosophy:** Fallout does not slow territorial acquisition.
 
 ## P17 — Ten Billion Percent
 
-Upgrade cost improves as owned structure count rises, creating a sequencing problem between construction now and modernization later.
+Upgrade cost improves as owned structure count rises, creating a sequencing problem between construction now and modernization later. This is a genuine long-horizon infrastructure optimization relationship.
 
 **Strategic philosophy:** broaden the infrastructure base to compound into cheaper modernization.
 
 ## P18 — The Best Defense
 
-Fort-covered attacking source cells gain additional offensive pressure.
+Fort-covered attacking source cells gain offensive support, so Fort placement can prepare future attacks as well as defense.
 
 **Strategic philosophy:** fortify the ground from which you intend to project force.
 
 ## P19 — The Weak Die First
 
-Current Territorial Contact count increases offensive pressure globally, making contact geometry strategically relevant beyond access alone.
+Current Territorial Contact count increases offensive pressure globally. Another contact may increase strength elsewhere while also creating another exposed border.
 
 **Strategic philosophy:** convert geopolitical exposure into offensive momentum without blindly maximizing fronts.
 
 ## P20 — A Miracle Is Merely a Miscalculation
 
-The faction starts with a free Missile Silo.
+The faction begins with strategic-launch infrastructure already present. Once granted, the Silo follows ordinary strategic-weapon planning.
 
-**Strategic philosophy:** exploit earlier access to strategic-launch infrastructure.
+**Strategic philosophy:** exploit earlier access to strategic-launch capability.
 
 ## P21 — Fun Things Are Fun
 
-The first purchase of each structure type must be affordable/legal but consumes no FFY, separating affordability from actual liquidity consumption.
+The first purchase of each structure type remains subject to affordability/legality but consumes no FFY. AI must distinguish having enough money to qualify from actually spending that money.
 
 **Strategic philosophy:** turn sufficient liquidity into unusually efficient first-time infrastructure.
 
 ## P22 — Limit Break
 
-Warships may rank beyond the ordinary ceiling.
+Warships may rank beyond the ordinary ceiling. The extra value appears over time, increasing the importance of veteran-ship preservation.
 
 **Strategic philosophy:** invest in veteran Warships with a higher long-run ceiling.
 
 ## P23 — Space Battleship Yamato
 
-The faction is limited to one stronger Warship, concentrating naval capability into one flagship.
+The faction is limited to one stronger Warship. Naval power therefore becomes concentrated into one globally important asset whose position and survival matter far more than an ordinary hull.
 
-**Strategic philosophy:** concentrate naval power into one elite asset whose position and survival matter globally.
+**Strategic philosophy:** concentrate naval power into one elite flagship.
 
 ## P24 — A King's Price
 
-FFY events inside Fort coverage gain extra yield.
+FFY events inside Fort coverage gain extra yield. Fort placement therefore affects economic geography as well as defense.
 
 **Strategic philosophy:** turn Fort coverage into protected higher-yield territory.
 
 ## P25 — EXPLOSION!
 
-Strategic-weapon access specializes around larger, more expensive Hydrogen Bombs while Atom Bomb and MIRV become unavailable.
+Strategic-weapon access specializes around larger, more expensive Hydrogen Bombs while Atom Bomb and MIRV access disappear. Ordinary weapon legality/cost/blast reasoning should operate on that specialized arsenal.
 
 **Strategic philosophy:** trade weapon variety for exceptional Hydrogen-strike area.
 
 ## P26 — Serious Punch
 
-MIRV becomes a single-use strategic opportunity whose successful use consumes no FFY but still requires ordinary affordability/legality.
+MIRV becomes a single-use strategic opportunity whose successful use consumes no FFY but still requires ordinary affordability and legality. Timing the irreplaceable opportunity is the strategic problem.
 
 **Strategic philosophy:** preserve and spend one decisive MIRV opportunity only when its value is exceptional.
 
 ## P27 — Only My Railgun
 
-SAM Launchers may attack ships.
+SAM Launchers may also attack ships. Coastal SAM placement becomes a cross-domain decision between strategic interception and naval denial.
 
 **Strategic philosophy:** make SAM infrastructure double as coastal area denial.
 
 ## P28 — Blood Devil
 
-Destroying hostile Transports transfers their carried Population to this faction.
+Destroying hostile Transports transfers their carried Population to this faction. Cargo-bearing invasion forces become potential demographic prizes without granting hidden cargo knowledge.
 
 **Strategic philosophy:** convert destroyed invasion Population into your own available force.
 
 ## P29 — The Kaiser
 
-Warships may act as mobile Missile Silo launch platforms.
+Warships may act as mobile Missile Silo launch platforms. Naval position, veterancy, survival, and strategic-weapon access become directly coupled.
 
 **Strategic philosophy:** turn veteran Warships into mobile strategic-launch infrastructure.
 
 ## P30 — The Conman
 
-Warships become fast, lucrative piracy platforms but lose ordinary naval gunfire against ships.
+Warships become faster, highly profitable piracy platforms but lose ordinary naval gunfire against ships. They must be understood as a transformed economic-raiding role, not ordinary combat Warships with better speed.
 
 **Strategic philosophy:** replace conventional naval battle with high-speed economic predation.
 
 ## P31 — Heart-Under-Blade
 
-Port repair fields become stronger operational sustain zones for Warships.
+Port repair fields become stronger operational sustain zones for Warships while ships remain active. Ports gain value as naval bases, fallback points, and sustained-combat anchors.
 
-**Strategic philosophy:** fight around prepared naval bases and sustain expensive Warships through repair coverage.
+**Strategic philosophy:** fight around prepared naval bases and preserve expensive Warships through repair coverage.
 
 ## P32 — Armored Titan
 
-Transports gain health but may embark only from owned active Ports.
+Transports gain real health but may embark only from owned active Ports. Amphibious strategy trades launch flexibility for survivability and infrastructure dependence.
 
-**Strategic philosophy:** trade launch flexibility for durable invasion shipping organized around Ports.
+**Strategic philosophy:** organize durable invasion shipping around Port infrastructure.
 
 ## P33 — Misaka Network
 
-Train-triggered City events generate Capacity-capped Population, scaling with City level.
+Train-triggered City events also replenish Population and scale with City level. Train/City network topology becomes a demographic engine as well as an economic network.
 
 **Strategic philosophy:** convert productive rail infrastructure into Population replenishment.
 
 ## P34 — Spoils of the Empire
 
-Conquered Factories operate at double ordinary effect.
+Conquered Factories operate better than ordinary domestic Factories. Provenance matters: hostile industry can become an unusually valuable conquest target.
 
 **Strategic philosophy:** seize enemy industry intact and make conquest outperform equivalent domestic production.
 
 ## P35 — It's a Matter of Visualization
 
-Deliberately relinquished cells become neutral Fallout.
+Deliberately relinquished cells become neutral Fallout. Retreat can therefore reshape geography and create temporary denial, at the cost of making your own future reacquisition less convenient.
 
 **Strategic philosophy:** weaponize retreat by trading ownership for temporary denial and positional distortion.
 
 ## P36 — Half-Priced Bento
 
-Neutral settlement costs half the ordinary Population.
+Neutral settlement costs half the ordinary Population. Shared expansion reasoning should simply use the lower real Population cost.
 
 **Strategic philosophy:** convert neutral geography into Capacity with unusually low Population expenditure.
 
 ## P37 — The City Mouse
 
-Amphibious embarkation costs more FFY, but successful landings create a permanent level-1 Fort.
+Amphibious embarkation costs more FFY, but a successful landing creates a permanent level-1 Fort. The landing should be valued as an immediately fortified beachhead, not merely newly captured coast.
 
 **Strategic philosophy:** pay more to invade, but make successful landings durable second fronts.
 
 ## P38 — Return by Death
 
-Automatic defenders survive when their defended cell is captured.
+Automatic defenders survive when their defended cell is captured. The controller can distinguish losing territory from losing the fighting Population attached to that territory.
 
 **Strategic philosophy:** preserve fighting Population even when ground is lost.
 
 ## P39 — Stereo Separation
 
-Strategic Spawn uses two half-area influence regions and two exact origins while Starting Population remains global.
+Strategic Spawn uses two half-area influence regions and two exact origins while Starting Population remains global. Spawn planning becomes a paired-position problem with coordination and isolation risk.
 
 **Strategic philosophy:** begin from two strategic footholds, trading coordination risk for broader access and multi-theater possibility.
 
 ## P40 — Barrier Magic
 
-SAMs become large-area, exactly-one-charge shields with slower recharge.
+SAMs become large-area, exactly-one-charge shields with slower recharge. Coverage is exceptional, throughput is poor, and wasting the lone charge can be strategically serious.
 
 **Strategic philosophy:** protect a large area with a sparse shield whose single charge must matter.
 
 ## P41 — Level 5
 
-A City purchase directly creates a level-5 City at the accepted cumulative-cost discount.
+A purchased City is immediately mature rather than entering the ordinary build/upgrade path. The decision combines high upfront liquidity with immediate high-level payoff.
 
 **Strategic philosophy:** concentrate City investment into one-step mature infrastructure.
 
 ## P42 — The Price of Empire
 
-Warships cost no FFY but permanently consume Available Population and have reduced range.
+Warships cost no FFY but permanently consume Available Population and have reduced range. Sea power is purchased with demographics instead of money.
 
-**Strategic philosophy:** convert Population into sea power, accepting demographic sacrifice and shorter reach.
+**Strategic philosophy:** convert Population into naval power, accepting demographic sacrifice and shorter reach.
 
 ## P43 — The Devil of the Rhine
 
-All Tanks become Heavy Artillery: slow, expensive, long-ranged, high-alpha, long-reload units unable to raid Trains.
+All Tanks become Heavy Artillery: slower, more expensive, long-ranged, high-alpha, long-reload units that cannot raid Trains. They require standoff literacy and must never be driven as vanilla Tanks.
 
-**Strategic philosophy:** replace mobile Tank pressure with standoff artillery built around range, timing, and positioning.
+**Strategic philosophy:** replace mobile Tank pressure with artillery built around range, timing, and positioning.
 
 ## P44 — Nobel Prize
 
-Successful armor Population attacks neutralize cells and apply Fallout.
+Successful armor Population attacks neutralize cells and apply Fallout. Firepower becomes territorial shaping, connectivity denial, and Capacity destruction as well as direct damage.
 
 **Strategic philosophy:** use armor fire to damage the strategic usefulness of enemy geography itself.
 
 ## P45 — Hidden Leaf Village
 
-Owned Forest interiors deny enemy tactical observation while direct boundary/manifested information remains minimally visible.
+Owned Forest interiors deny enemy tactical observation while necessary boundary/manifested information remains visible. Forest becomes concealed operational space rather than simply combat terrain.
 
-**Strategic philosophy:** use Forest as concealed operational space.
+**Strategic philosophy:** use Forest as protected staging space that denies the opponent information.
 
 ## P46 — Northern Lands
 
-Persistent structures may be built on owned Tundra while Tundra retains its other ordinary rules.
+Persistent structures may be built on owned Tundra while Tundra retains its other ordinary limitations. This creates genuinely new placement candidates on otherwise infrastructure-hostile terrain.
 
-**Strategic philosophy:** exploit normally infrastructure-hostile Tundra as strategic construction surface.
+**Strategic philosophy:** exploit Tundra as a strategic construction surface without pretending it becomes ordinary productive land.
 
 ## P47 — This Is Poison
 
-Enemy capture of this faction's Marsh cells inflicts additional Population loss on the captor.
+Enemy capture of this faction's Marsh cells inflicts additional Population loss on the captor. Selected Marsh territory can become an attritional trap and sometimes be worth trading.
 
-**Strategic philosophy:** make selected Marsh territory costly for enemies to take.
+**Strategic philosophy:** make Marsh conquest painful enough that some territorial losses become useful exchanges.
 
 ## P48 — Aqua's Blessing
 
-Owned Shallow Water becomes population-bearing Capacity while retaining unusual traversal/buildability rules.
+Owned Shallow Water contributes Population Capacity while retaining unusual traversal/buildability rules. It is demographic territory, not ordinary land.
 
 **Strategic philosophy:** expand Population Capacity through owned Shallow Water.
 
 ## P49 — Laughing Man
 
-Observation Posts stop granting own tactical observation and instead create enemy-intelligence blackout zones.
+Observation Posts stop granting own tactical observation and instead create enemy-intelligence blackout zones. Observation infrastructure becomes counterintelligence infrastructure.
 
-**Strategic philosophy:** use observation infrastructure to deny information rather than gather it.
+**Strategic philosophy:** deny information rather than gather it.
 
 ## P50 — Iserlohn Fortress
 
-Forts project offensive pressure equal to their normal defensive-pressure magnitude throughout coverage.
+Forts also project offensive pressure throughout their coverage. They become general force-support anchors rather than purely defensive infrastructure.
 
-**Strategic philosophy:** turn Fort coverage into general-purpose force support.
+**Strategic philosophy:** turn Fort coverage into general-purpose battle-space support.
 
 ## P51 — One Flag Beneath the Stars
 
-Command Posts also project defensive pressure equal to their ordinary offensive-pressure magnitude.
+Command Posts also project defensive pressure. Command coverage therefore contributes to protection as well as offensive support.
 
 **Strategic philosophy:** make Command coverage a two-way force-support network.
 
 ## P52 — Humanity Has Declined
 
-Unused Population Capacity generates passive FFY.
+Unused Population Capacity generates passive FFY. The gap between Capacity and Total Population becomes an economic state variable rather than merely unused growth room.
 
 **Strategic philosophy:** monetize underpopulation and make empty Capacity an economic asset.
 
 ## P53 — Money Is Everything
 
-Each ready charge on an owned active persistent Missile Silo generates passive FFY.
+Ready charges on persistent Missile Silos generate passive FFY. A ready charge is simultaneously strategic capability and productive capital, so firing it creates an economic opportunity cost until replenished.
 
-**Strategic philosophy:** turn strategic readiness into an income-producing stockpile whose charges are simultaneously weapons and economic assets.
+**Strategic philosophy:** balance the value of using strategic weapons against the income generated by keeping them ready.
 
 ## P54 — Starlight Breaker
 
-Initial Territory footprints use the accepted thin five-point star geometry instead of the ordinary compact shape while total area remains unchanged.
+Initial Territory uses a thin five-point star geometry while preserving the same quota. Spawn planning must judge the real reach, frontage, exposure, and corridors of that shape rather than a circular approximation.
 
-**Strategic philosophy:** trade compactness for long directional reach and unusual starting geometry.
+**Strategic philosophy:** trade compactness for directional reach and unusual starting geometry.
 
 ---
 
 # Negative / drawback traits
 
-Drawbacks receive full AI literacy. A competent controller should understand and adapt around them; low difficulty may adapt poorly, but should not repeatedly plan around mechanics the drawback makes impossible.
+Drawbacks receive full AI literacy. A low-difficulty controller may adapt badly, but it should not repeatedly plan around actions or effects the drawback makes impossible.
 
 ## N01 — The Lost Decade
 
 Cities contribute less Population Growth.
 
-**Strategic philosophy:** City-based demographic scaling is less efficient than normal.
+**Strategic consequence:** City-centered demographic scaling is less efficient.
 
 ## N02 — Flat Is Justice
 
 Plains provide reduced offensive pressure.
 
-**Strategic philosophy:** Plains are comparatively weak offensive staging ground.
+**Strategic consequence:** Plains are comparatively weak offensive staging ground.
 
 ## N03 — I Hate Sand
 
 Desert provides reduced defensive pressure.
 
-**Strategic philosophy:** Desert is comparatively poor defensive ground.
+**Strategic consequence:** Desert is comparatively poor defensive ground.
 
 ## N04 — Northern Expedition
 
-FFY events located on Mountain yield less.
+Located FFY events on Mountain yield less.
 
-**Strategic philosophy:** Mountain geography is economically inefficient for located FFY events.
+**Strategic consequence:** Mountain geography is economically inefficient for located FFY events.
 
 ## N05 — Curse of the Abyss
 
-Fallout cannot be captured at all, turning it into a possible hard territorial barrier rather than merely slow terrain.
+Fallout cannot be captured at all. Fallout can therefore become a hard ownership/route barrier rather than merely difficult terrain.
 
-**Strategic philosophy:** Fallout geometry can obstruct territorial plans until another actor/state change removes the barrier.
+**Strategic consequence:** plans that require owning Fallout are impossible until some other state change removes the barrier.
 
 ## N06 — No Second Season
 
-FFY cannot be spent to upgrade buildings.
+FFY cannot be spent to upgrade buildings. Upgrade illegality should remove ordinary paid-upgrade plans while leaving other legal development paths intact.
 
-**Strategic philosophy:** infrastructure development must rely on construction and non-FFY development paths rather than ordinary paid modernization.
+**Strategic consequence:** development must rely on construction and non-FFY development paths rather than ordinary paid modernization.
 
 ## N07 — One Piece
 
-The faction may own at most one of each structure type, making every structure-type slot globally scarce.
+The faction may own at most one of each structure type. Every structure-type slot becomes globally scarce, making placement and preservation unusually important.
 
-**Strategic philosophy:** concentrate each infrastructure role into one carefully chosen asset rather than a distributed network.
+**Strategic consequence:** concentrate each infrastructure role into one carefully chosen asset.
 
 ## N08 — It's Just Decoration
 
-Forts provide no defensive-pressure bonus. Other independently legal Fort roles can remain useful.
+Forts provide no ordinary defensive-pressure bonus. Other independently legal Fort roles can still remain useful.
 
-**Strategic philosophy:** Forts cannot be valued for their ordinary defensive-pressure function.
+**Strategic consequence:** do not value Forts for a defensive-pressure effect that no longer exists.
 
 ## N09 — Medieval Isekai
 
-Factories cannot be built, though legally acquired industry can still matter.
+Factories cannot be built, though legally acquired industry may still be owned and used.
 
-**Strategic philosophy:** domestic industrial development cannot rely on constructing Factories.
+**Strategic consequence:** domestic industrial development cannot rely on constructing Factories.
 
 ## N10 — Domain Contraction
 
-Fort coverage area is smaller.
+Fort coverage is smaller.
 
-**Strategic philosophy:** Fort influence is more spatially constrained.
+**Strategic consequence:** Fort influence is more spatially constrained.
 
 ## N11 — Absolute Territory
 
-FFY events located inside owned SAM Launcher coverage yield zero.
+Located FFY events inside owned SAM coverage yield zero. SAM placement therefore creates a direct defense-versus-economy geography tradeoff.
 
-**Strategic philosophy:** strategic-defense coverage can sterilize the economy beneath it, forcing defense-versus-income tradeoffs.
+**Strategic consequence:** strategic-defense coverage can sterilize the economy beneath it.
 
 ## N12 — Panzer Vor!
 
 Warships cannot be built.
 
-**Strategic philosophy:** naval strategy cannot assume access to self-built Warships.
+**Strategic consequence:** self-built Warship strategies and Warship-dependent positive support may become unreachable.
 
 ## N13 — Beach Episode Gone Wrong
 
 Half of Transport Population dies on landing.
 
-**Strategic philosophy:** amphibious landings require substantially more Population commitment for the same delivered force.
+**Strategic consequence:** amphibious landings require substantially more Population commitment for the same delivered force.
 
 ## N14 — To Them Words Are Merely a Means to Deceive
 
-First hostile capture of a Trade Ship voyage inflicts an FFY loss equal to its snapshotted ordinary owner-side value.
+The first hostile capture of a Trade voyage inflicts an additional owner-side FFY loss equal to the voyage's snapshotted ordinary value.
 
-**Strategic philosophy:** exposed commerce can turn hostile capture into a direct financial liability.
+**Strategic consequence:** exposed commerce can turn hostile capture into a direct financial liability.
 
 ## N15 — King's Ransom
 
-Transport embarkation costs an additional 500 FFY.
+Transport embarkation costs substantially more FFY.
 
-**Strategic philosophy:** every amphibious commitment carries a substantially higher liquidity cost.
+**Strategic consequence:** every amphibious commitment carries a higher liquidity cost.
 
 ## N16 — Insurance Fraud
 
-Successful uncaptured Trade voyages cost the owner their snapshotted value, while hostile capture returns that value once.
+Successful uncaptured Trade voyages cost the owner their snapshotted value, while hostile capture returns that value once. This deliberately inverts the normal interpretation of trade outcomes.
 
-**Strategic philosophy:** ordinary trade success becomes a liability, creating a deliberately inverted commerce model.
+**Strategic consequence:** ordinary trade success becomes a liability and hostile capture can be comparatively preferable.
 
 ## N17 — I Can Cut It
 
-Enemy structures that would ordinarily transfer on conquest are destroyed instead. Extended support must treat hostile infrastructure as something that can still be denied strategically, while not forecasting ownership, conquest FFY, or captured-Factory production that final mechanics no longer provide.
+Enemy structures that would ordinarily transfer on conquest are destroyed instead. Hostile infrastructure remains a denial target, but plans must not forecast captured ownership, conquest-spoils FFY, or conquered-Factory production that no longer occurs.
 
-**Strategic philosophy:** conquest razes enemy infrastructure instead of turning it into spoils.
+**Strategic consequence:** conquest razes enemy infrastructure instead of turning it into spoils.
 
 ## N18 — I Have No Enemies
 
-Final capture/settlement progress against non-Fallout targets is halved, while Fallout is exempt. This remains generic because territory planners should already compare actual effective progress by target state.
+Final acquisition progress against non-Fallout targets is halved while Fallout is exempt. Shared territorial reasoning should compare real progress by target state.
 
-`SETUP_TIME` records that ordinary territorial acquisition takes substantially longer; the Fallout exception can make contaminated land relatively less impaired than normal terrain without granting a special capture action.
-
-**Strategic philosophy:** conventional territorial acquisition is slow, making target-state and opportunity timing unusually important.
+**Strategic consequence:** conventional territorial acquisition takes more setup/time, making target state and opportunity timing unusually important.
 
 ---
 
-# Completed global synergy/suppression sweep
+# Catalogue-wide composition rationale
 
-The whole 72-trait catalogue was reviewed after individual mapping.
+## Additive combinations that need explicit reusable support
 
-## Explicit reusable combination support
+Most trait combinations are correctly handled by ordinary composition. Explicit combination support is reserved for cases where the pair creates a new planning loop or candidate semantics greater than simply adding two understood effects.
 
-The canonical combination registry currently closes these non-trivial strategies:
+The current V1 sweep identified:
 
-- `TRAIN_POPULATION_ENGINE_ACCELERATION` — P07 + P33;
-- `CONQUEST_FACTORY_SNOWBALL` — P05 + P34;
-- `CONQUEST_ONLY_INDUSTRY` — P34 + N09;
-- `REVERSIBLE_SCORCHED_EARTH` — P16 + P35;
-- `VETERAN_MOBILE_MIRV_PLATFORM` — P22 + P29;
-- `RADIOACTIVE_HEAVY_ARTILLERY` — P43 + P44;
-- `POPULATION_SCALED_GIANT_SAM_NETWORK` — P11 + P40;
-- `ELITE_SINGLE_FLAGSHIP_PROGRESSION` — P22 + P23;
-- `DUAL_GENERAL_SUPPORT_NETWORK` — P50 + P51;
-- `LAYERED_COUNTERINTELLIGENCE` — P45 + P49;
-- `SPLIT_STAR_START` — P39 + P54.
+- **P07 + P33:** increased Train throughput directly accelerates the Train-driven Population engine;
+- **P05 + P34:** structure-capture income and superior conquered Factories create a conquest/industry snowball;
+- **P34 + N09:** Factories cannot be built, making conquest the faction's route to industrial capacity;
+- **P16 + P35:** self-created Fallout buffers become comparatively easier for the creator to reacquire;
+- **P22 + P29:** the extended Warship rank ceiling enables exceptionally capable veteran mobile strategic launchers;
+- **P43 + P44:** Heavy Artillery applies radioactive territorial erosion from standoff range;
+- **P11 + P40:** Population-unlocked free SAM slots compose with giant single-charge shields into a sparse large-area network;
+- **P22 + P23:** one stronger flagship plus an extended rank ceiling creates a singular veteran-flagship progression strategy;
+- **P50 + P51:** Forts and Command Posts become complementary two-way support infrastructure;
+- **P45 + P49:** Forest concealment and Observation-post blackouts create layered counterintelligence geometry;
+- **P39 + P54:** both split starting footprints use star geometry, requiring paired star-spawn evaluation.
 
-These exist because the combination creates a strategic loop, planning problem, or transformed candidate semantics greater than simply adding two independently understood modifiers.
-
-Many strong combinations deliberately receive **no** explicit combination entry. Fort bonuses inherited by P37 landing-created Forts, faster P32 Transports, P53 income from a P20 starting Silo, P41/P33 high-level City interactions, and similar cases remain ordinary composition because the existing support hooks can read final effective mechanics correctly.
+Strong but straightforward arithmetic inheritance does **not** need its own combination entry. If final effective mechanics and existing support already produce the correct result, adding a named combination would only duplicate knowledge.
 
 ## Support suppression
 
-Legal trait combinations may neutralize other support without becoming illegal. Suppression applies only to AI semantic contributions before profile composition; it never changes mechanics or trait legality.
+Legal trait combinations can make another trait's **AI semantics** unreachable or exactly neutralized without making the gameplay combination illegal. Suppression removes only stale AI-support contributions before composition; it never alters actual mechanics or selected trait IDs.
 
-Canonical suppression cases currently include:
+The current V1 sweep identified:
 
-- P25 suppresses P26's MIRV support because MIRV is unavailable;
-- N05 suppresses P16 because Fallout cannot be captured at all;
-- N06 suppresses P17's paid-upgrade strategy;
-- N12 suppresses Warship-dependent support from P22/P23/P29/P30/P31/P42 when selected;
-- N17 suppresses P05/P34 capture-spoils support because structures are razed instead of transferred;
-- N14 + N16 suppresses N14's separate first-capture liability because the owner-side `-V + V` effects cancel exactly;
-- N06 suppresses P53's Silo-upgrade planning hook while leaving P53's base ready-charge economy intact.
+- P25 makes P26's MIRV support unreachable because MIRV access is removed;
+- N05 makes P16's Fallout-resistance bypass irrelevant because Fallout cannot be captured at all;
+- N06 makes P17's paid-upgrade strategy unreachable;
+- N12 makes Warship-dependent support from P22/P23/P29/P30/P31/P42 unreachable when no legal Warship source remains;
+- N17 removes P05/P34 capture-spoils semantics because structures are razed rather than transferred;
+- N14 + N16 exactly cancel N14's separate first-capture owner-side consequence;
+- N06 removes only P53's Silo-upgrade planning support while leaving its base ready-charge economy intact.
 
-Partial-effect cases remain active and rely on final effective rules rather than over-aggressive suppression. For example N08 removes ordinary Fort defense but does not erase other legal Fort roles from P18/P24/P37/P50; N09 prevents Factory construction but does not prevent conquered Factory use; N10 changes Fort geometry without removing Fort support.
-
-## Sweep result
-
-The generic support vocabulary remains sufficient. No new theme, caution, affordance, or synergy-tag literal was required beyond the earlier `REDUCE_INTERCEPTION_WINDOW` addition from P10.
-
-The one architectural extension required by the complete catalogue is the now-canonical **support-suppression layer before additive combination support**.
-
----
-
-## Batch completion summary
-
-```text
-Batch 1: P01–P10         complete
-Batch 2: P11–P20         complete
-Batch 3: P21–P30         complete
-Batch 4: P31–P40         complete
-Batch 5: P41–P50         complete
-Batch 6: P51–P54,N01–N06 complete
-Batch 7: N07–N16         complete
-Batch 8: N17–N18         complete
-Global composition sweep  complete
-```
+Exact suppression targets and hook IDs remain canonical only in `design/official-ai/origin-trait-support.config.ts`.
