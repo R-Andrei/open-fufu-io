@@ -474,7 +474,7 @@ Enemy structures that would ordinarily transfer on conquest are destroyed instea
 
 Final capture/settlement progress against non-Fallout targets is halved, while Fallout is exempt. This remains generic because territory planners should already compare actual effective progress by target state.
 
-`LONG_PAYBACK` records that ordinary territorial acquisition takes substantially longer; the Fallout exception can make contaminated land relatively less impaired than normal terrain without granting a special capture action.
+`SETUP_TIME` records that ordinary territorial acquisition takes substantially longer; the Fallout exception can make contaminated land relatively less impaired than normal terrain without granting a special capture action.
 
 **Strategic philosophy:** conventional territorial acquisition is slow, making target-state and opportunity timing unusually important.
 
