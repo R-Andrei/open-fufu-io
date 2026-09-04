@@ -201,7 +201,41 @@ Examples before modifiers:
 
 Long-distance trade is intentionally allowed to be substantially more lucrative in ideal uncontested conditions. Balance intervention should come from benchmark/playtest evidence; if the `150` coefficient or distance curve proves pathological, retune the value curve rather than suppressing world traffic through active-ship caps or distance-based spawn throttling.
 
-## 5.3 Successful ordinary voyage
+## 5.3 Deterministic destination selection
+
+Each active source Port chooses among its currently legal reachable **foreign** Ports using a deterministic **least-recently-selected** policy.
+
+For one source Port, track the last ordinary dispatch on which each otherwise eligible destination Port was selected. A destination never selected by that source Port is treated as older than every previously selected destination.
+
+At dispatch:
+
+```text
+eligibleDestinations
+= reachable active Ports whose owner != source owner
+
+destination
+= eligible destination least recently selected by this source Port
+```
+
+Ties—including the initial set of never-selected destinations—use a stable deterministic seeded order derived from rule-bearing match state and identities equivalent to `matchSeed + sourcePortId + destinationPortId`. The exact hash/RNG representation is implementation/versioning detail; the gameplay invariant is stable fair rotation rather than nearest/farthest optimization.
+
+Consequences:
+
+- distance has **no role** in destination selection;
+- the system does not repeatedly choose the nearest safe Port or the farthest highest-value Port merely because either maximizes one obvious metric;
+- a newly created/legal foreign Port has never been selected and therefore receives prompt service rather than waiting behind a long stale shuffle bag;
+- a formerly unavailable Port that becomes legal again naturally re-enters with its old last-selected age;
+- peaceful factions, fixed teammates, and factions currently at war are all foreign for destination eligibility when otherwise legally reachable; war modifies payout rather than disabling the route.
+
+The selected destination and planned route length are snapshotted at launch for the voyage/cargo contract.
+
+If the destination changes owner during flight but remains active, reachable, and foreign to the Trade Ship owner, the vessel continues to that physical Port. The destination owner's identity is not itself part of the source owner's payout.
+
+If the destination becomes invalid because it is destroyed/inactive, unreachable, or becomes owned by the Trade Ship's own faction, the ship reroutes using the same least-recently-selected policy among the currently legal foreign Ports. **Rerouting does not recompute the voyage's snapshotted raw cargo, planned-route value, or `Vowner`.**
+
+If no legal foreign Port remains during an ordinary uncaptured voyage, the Trade Ship returns to a reachable owned active Port and terminates with **no ordinary Trade FFY payout**. Captured-cargo stranding/retargeting remains governed separately by §6.
+
+## 5.4 Successful ordinary voyage
 
 On successful ordinary completion, the **source Trade Ship owner** receives the Naval/trade FFY event derived from that voyage.
 
@@ -219,7 +253,7 @@ This prevents an Industry-focused faction from gaining a second large passive ma
 
 The source-owner success value applies the source owner's eligible Naval/trade, All-FFY, source-side spatial, wartime, and other ordinary yield rules.
 
-## 5.4 External wartime trade
+## 5.5 External wartime trade
 
 External trade remains possible while at war.
 
@@ -411,10 +445,10 @@ The corresponding severe non-Fallout acquisition drawback is separately defined 
 
 # 10. Remaining FFY-economy questions
 
-The following remain open and should not be silently inferred from inherited OpenFront behavior:
+The following are no longer open design blockers but remain implementation/validation work:
 
-- final deterministic Trade Ship destination-selection/routing policy among legal foreign Ports;
-- exact retry behavior when a dispatch timer fires with no legal destination;
+- exact retry scheduling when a dispatch timer fires with no legal destination;
+- exact deterministic hash/RNG representation used for equal-age destination tie-breaking;
 - benchmark/playtest retuning of the provisional `20–30s`, `10 cells/s`, and `150 × route cells` Trade values;
 - accelerated simulation benchmarks comparing baseline passive income, optimized industry, maritime trade, piracy, P07/P33, Factory levels, and relevant Origin/Echo combinations;
 - benchmark/playtest retuning of the underpopulation and Silo-economy coefficients and their Origin point values.
