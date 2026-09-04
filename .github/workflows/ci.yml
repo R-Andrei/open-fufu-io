@@ -53,7 +53,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
-      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -79,7 +78,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
       - uses: actions/setup-node@v7
         with:
           node-version: "24"
@@ -113,6 +111,7 @@ jobs:
       - name: Apply approved naming and self-remove helper
         shell: bash
         run: |
+          sed -i 's/the V1 trait\/Official-Origin naming pass and former O35\/O36 duplicate cleanup are complete/the V1 trait\/Official-Origin naming pass and duplicate cleanup are complete/' .github/finalize_origin_names.py
           python .github/finalize_origin_names.py
           git fetch origin main
           git checkout origin/main -- .github/workflows/ci.yml
