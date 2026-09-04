@@ -2053,7 +2053,7 @@ Important rules:
 
 For deterministic singular start-state grants on a split-origin faction, origins are ordered primary/secondary and the grant uses the primary origin unless the grant defines a different public rule.
 
-The accepted ordinary influence radius, exact-origin spacing, deterministic collision fallback, simultaneous quota-limited footprint construction, five-second spawn immunity, and P54 star-footprint transformation are specified in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Low-level queue/hash/data-structure choices remain implementation/versioning details; these gameplay geometry rules are no longer open design questions.
+The accepted ordinary influence radius, exact-origin spacing, deterministic hook fallbacks, stable tie-hash domains/orderings, conflict resolution, simultaneous quota-limited multi-frontier footprint construction, fixed-point P54 star rasterization, diagnostics/replay binding, five-second spawn immunity, and resolver-version semantics are specified in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Implementation may choose equivalent internal data structures only where they preserve that canonical observable ordering and output; the resolver algorithm is no longer an open design question.
 
 ### 24A.22 Spawn modes and controller lifecycle
 
