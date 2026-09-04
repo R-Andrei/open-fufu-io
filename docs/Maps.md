@@ -12,7 +12,7 @@ Ordinary Open Fufu V1 maps compile to **exactly 4,800,000 raster cells**.
 - V1 does **not** support alternate gameplay map-resolution scales.
 - Map generation/validation must ensure the authored terrain composition can support the configured participant count and required starting footprints.
 
-This fixed physical resolution is intended to keep cell-space mechanics—movement speeds, structure radii, weapon/blast geometry, railway distances, spawn footprints, and similar rules—comparable across maps while still allowing maps to have very different terrain/population-capacity identities.
+This fixed physical resolution is intended to keep cell-space mechanics—movement speeds, structure radii, weapon/blast geometry, railway distances, spawn footprints, and similar rules—comparable across maps while still allowing maps to have very different terrain/population-capacity identities. The accepted Open Fufu Segment compilation contract is maintained in [`SEGMENTS.md`](./SEGMENTS.md).
 
 ## Inherited OpenFront tooling
 
@@ -26,4 +26,4 @@ See the MapGenerator README for information about
 - [Output files](../map-generator/README.md#output-files)
 - [Command line flags](../map-generator/README.md#command-line-flags)
 
-The inherited tooling may need adaptation so generated Open Fufu maps satisfy the fixed 4.8-million-cell contract and later Open Fufu Segment/terrain-generation requirements.
+The inherited tooling must be adapted so generated Open Fufu maps satisfy the fixed 4.8-million-cell contract and compile the accepted geography-first Segment layer from `SEGMENTS.md` into the versioned/map-hashed artifact.
