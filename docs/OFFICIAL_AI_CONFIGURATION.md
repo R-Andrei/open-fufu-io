@@ -4,29 +4,31 @@
 
 This document is the canonical V1 configuration contract for composing Open Fufu Official-AI controllers from the accepted architecture in [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md).
 
-It closes the previously-open general configuration-language work for signals, goals, Doctrine, arbitration, plan persistence, Expression, capability profiles, difficulty templates, and fidelity metadata. Per-character mappings remain future content work.
+It defines the shared Signals, forecasts, Goals, Doctrine vocabulary, arbitration, Plan lifecycle, Expression vocabulary, component profiles, difficulty templates, CharacterProfile shape, and fidelity metadata.
 
-The one remaining general architecture question before character mapping is the **Origin adaptation/support layer**: how an Official AI uses whichever allowed Official Origin it randomly receives without creating a bespoke character × Origin implementation matrix.
+Generic Origin support/adaptation is defined separately in [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md).
 
-Nothing in this document authorizes implementation.
+Individual trait mappings, named-Origin configurations, and concrete character profiles are content work and are intentionally not defined here.
+
+Nothing in this document authorizes gameplay implementation.
 
 ---
 
 ## 1. Configuration philosophy
 
-Official AI is creator-owned trusted TypeScript. Use typed declarative configuration where configuration is natural, plus small named trusted-code rules/hooks where genuine character reasoning cannot be represented honestly as data.
+Official AI is creator-owned trusted TypeScript.
 
-Do **not** build a second JSON/YAML behavior-programming language with arbitrary nested boolean expressions.
-
-Conceptually:
+Use:
 
 ```text
 shared typed components
-+ typed character configuration
-+ sparse named character hooks where necessary
++ typed declarative configuration where configuration is natural
++ sparse named trusted-code hooks where genuine reasoning/personality cannot be represented honestly as data
 ```
 
-Character-specific hooks remain versioned Official-AI implementation code and receive no gameplay privileges.
+Do **not** build a second JSON/YAML behavior-programming language with arbitrary nested conditions and homemade expression evaluation.
+
+Named hooks remain versioned Official-AI implementation code and receive no gameplay privileges.
 
 ---
 
@@ -40,7 +42,7 @@ type Urgency = "ROUTINE" | "IMPORTANT" | "URGENT" | "CRITICAL";
 type FactionRelation = "SELF" | "TEAMMATE" | "OPPONENT";
 ```
 
-Cross-domain signal tags:
+Cross-domain Signal tags:
 
 ```ts
 type SignalTag =
@@ -53,9 +55,9 @@ type SignalTag =
   | "SACRIFICE";
 ```
 
-Tags describe cross-cutting strategic circumstances Doctrine may care about. Domain identity such as naval/economic/armor belongs in typed kinds/domains rather than being duplicated as tags.
+Tags describe cross-cutting strategic circumstances. Domain identity belongs in typed Signal/Goal domains instead of being duplicated as tags.
 
-Controller-side subject references may include a derived strategic `REGION`:
+Controller-side subject references:
 
 ```ts
 type SubjectRef =
@@ -72,7 +74,7 @@ type SubjectRef =
   | { type: "GLOBAL" };
 ```
 
-`REGION` is an AI-side grouping/abstraction, not a new authoritative game-world object.
+`REGION` is an AI-side derived grouping/abstraction, not a new authoritative game-world object.
 
 ---
 
@@ -83,16 +85,20 @@ interface Signal {
   id: SignalId;
   kind: SignalKind;
   subject: SubjectRef;
+
   strength: number;   // integer 0..100
   confidence: number; // integer 0..100
+
   horizon: Horizon;
   tags: readonly SignalTag[];
 }
 ```
 
-`strength` is evaluator-domain significance, not universal goodness/desirability. `confidence` is certainty. A high-strength aggressive opportunity is never itself an instruction to attack.
+`strength` means significance **inside the evaluator's own domain**, not universal desirability.
 
-Broad score interpretation remains:
+`confidence` means certainty.
+
+Broad interpretation:
 
 ```text
 0..19   weak/minor
@@ -102,9 +108,9 @@ Broad score interpretation remains:
 80..100 exceptional/critical
 ```
 
-Evaluator pruning must preserve several kinds of finding rather than globally returning only the highest scores.
+Evaluator output must preserve useful diversity across Signal kinds rather than returning only the largest global scores.
 
-### 3.1 Territory signal kinds
+### 3.1 Territory Signal kinds
 
 ```text
 FREE_LAND_AVAILABLE
@@ -125,7 +131,7 @@ DISPOSABLE_TERRITORY
 GLOBAL_POSITION_VALUE
 ```
 
-### 3.2 Economy signal kinds
+### 3.2 Economy Signal kinds
 
 ```text
 LIQUIDITY_PRESSURE
@@ -142,7 +148,7 @@ ENEMY_ECONOMIC_ADVANTAGE
 ENEMY_ECONOMIC_VULNERABILITY
 ```
 
-### 3.3 Opponent-model signal kinds
+### 3.3 Opponent-model Signal kinds
 
 ```text
 AGGRESSION_TENDENCY
@@ -160,9 +166,9 @@ BEHAVIOR_SHIFT
 PREDICTABILITY
 ```
 
-These are beliefs inferred from legal observations; `confidence` is especially important.
+These are beliefs inferred from legitimate observations; `confidence` is especially important.
 
-### 3.4 Threat signal kinds
+### 3.4 Threat Signal kinds
 
 ```text
 ACTIVE_LAND_ATTACK
@@ -181,7 +187,7 @@ ALLY_COLLAPSE_THREAT
 ESCALATION_THREAT
 ```
 
-### 3.5 Opportunity signal kinds
+### 3.5 Opportunity Signal kinds
 
 ```text
 FREE_EXPANSION
@@ -209,9 +215,20 @@ ALLY_SUPPORT_WINDOW
 
 ---
 
-## 4. Forecast contract
+## 4. Minimal hypothetical candidate and Forecast contract
 
-Forecasting uses its own typed result rather than pretending every hypothetical consequence is an ordinary signal.
+A lightweight hypothetical candidate may be represented as:
+
+```ts
+interface Candidate {
+  id: CandidateId;
+  kind: string;
+  subject: SubjectRef;
+  tags: readonly SignalTag[];
+}
+```
+
+Forecasting uses a distinct typed result rather than pretending hypothetical consequences are ordinary Signals:
 
 ```ts
 type ForecastEffectKind =
@@ -236,7 +253,7 @@ interface ForecastEffect {
   kind: ForecastEffectKind;
   direction: ForecastDirection;
   subject?: SubjectRef;
-  magnitude: number;  // 0..100 domain-normalized
+  magnitude: number;  // 0..100, domain-normalized
   confidence: number; // 0..100
   horizon: Horizon;
 }
@@ -253,7 +270,7 @@ interface CandidateForecast {
 }
 ```
 
-Low-tier forecasting may return only `primary`; scenario forecasting may compare several plausible branches.
+Low-tier forecasting may return only `primary`. Scenario forecasting may produce several plausible response branches.
 
 ---
 
@@ -261,278 +278,338 @@ Low-tier forecasting may return only `primary`; scenario forecasting may compare
 
 ### 5.1 Goal domains
 
-```text
-TERRITORY
-ECONOMY
-INFRASTRUCTURE
-LAND_WAR
-DEFENSE
-COUNTER_RESPONSE
-ARMOR
-NAVAL
-AMPHIBIOUS
-STRATEGIC_WEAPONS
-OBSERVATION
-TEAM
+```ts
+type GoalDomain =
+  | "TERRITORY"
+  | "ECONOMY"
+  | "INFRASTRUCTURE"
+  | "LAND_WAR"
+  | "DEFENSE"
+  | "COUNTER_RESPONSE"
+  | "ARMOR"
+  | "NAVAL"
+  | "AMPHIBIOUS"
+  | "STRATEGIC_WEAPONS"
+  | "OBSERVATION"
+  | "TEAM";
 ```
 
 ### 5.2 Goal kinds
 
-```text
-SURVIVE
-STABILIZE
-EXPAND
-SECURE
-DEFEND
-WITHDRAW
-SACRIFICE
-DEVELOP
-PREPARE
-COUNTER
-REPEL
-RETALIATE
-PRESSURE
-RAID
-BREAKTHROUGH
-WEAKEN
-ELIMINATE
-CONTROL
-DENY
-ESTABLISH_BEACHHEAD
-STRIKE
-SUPPORT_ALLY
+```ts
+type GoalKind =
+  | "SURVIVE"
+  | "STABILIZE"
+  | "EXPAND"
+  | "SECURE"
+  | "DEFEND"
+  | "WITHDRAW"
+  | "SACRIFICE"
+  | "DEVELOP"
+  | "PREPARE"
+  | "COUNTER"
+  | "REPEL"
+  | "RETALIATE"
+  | "PRESSURE"
+  | "RAID"
+  | "BREAKTHROUGH"
+  | "WEAKEN"
+  | "ELIMINATE"
+  | "CONTROL"
+  | "DENY"
+  | "ESTABLISH_BEACHHEAD"
+  | "STRIKE"
+  | "SUPPORT_ALLY";
 ```
 
-Kind and domain compose instead of creating one literal for every combination. `DEVELOP + ECONOMY`, `CONTROL + NAVAL`, `RETALIATE + LAND_WAR`, and `STRIKE + STRATEGIC_WEAPONS` are ordinary examples.
+Kind and domain compose instead of creating one literal for every mechanical combination.
 
 ### 5.3 Goal motives
 
-```text
-SURVIVAL
-PRESERVATION
-SECURITY
-STABILITY
-GROWTH
-PROSPERITY
-EFFICIENCY
-PREPARATION
-POSITION
-ACCESS
-DENIAL
-INFORMATION
-LEVERAGE
-OPPORTUNISM
-RETALIATION
-PUNISHMENT
-DOMINANCE
-ELIMINATION
-ALLY_SUPPORT
-SPECTACLE
-CURIOSITY
+```ts
+type GoalMotive =
+  | "SURVIVAL"
+  | "PRESERVATION"
+  | "SECURITY"
+  | "STABILITY"
+  | "GROWTH"
+  | "PROSPERITY"
+  | "EFFICIENCY"
+  | "PREPARATION"
+  | "POSITION"
+  | "ACCESS"
+  | "DENIAL"
+  | "INFORMATION"
+  | "LEVERAGE"
+  | "OPPORTUNISM"
+  | "RETALIATION"
+  | "PUNISHMENT"
+  | "DOMINANCE"
+  | "ELIMINATION"
+  | "ALLY_SUPPORT"
+  | "SPECTACLE"
+  | "CURIOSITY";
 ```
 
-Motive explains *why* the same broad mechanical goal exists and is an important personality/fidelity surface.
+Motive explains **why** a mechanical Goal exists and is an important personality/fidelity surface.
 
 ### 5.4 Goal shape
 
 ```ts
 interface Goal {
   id: GoalId;
+
   kind: GoalKind;
   domain: GoalDomain;
   target: SubjectRef;
+
   motives: readonly GoalMotive[];
   tags: readonly SignalTag[];
+
   horizon: Horizon;
   urgency: Urgency;
   scale: StrategicScale;
+
   sourceSignalIds: readonly SignalId[];
+
   parentGoalId?: GoalId;
   dependencies?: readonly GoalId[];
 }
 ```
 
-Higher-capability controllers may retain broad parent goals while replacing subordinate goals/plans.
+Higher-capability controllers may retain broad parent Goals while replacing subordinate Goals/Plans.
 
 ---
 
 ## 6. Doctrine contract
 
-Doctrine judgments:
+Canonical judgments:
 
-```text
-FORBID
-IGNORE
-DISLIKE
-ACCEPT
-PREFER
-REQUIRE
+```ts
+type DoctrineJudgment =
+  | "FORBID"
+  | "IGNORE"
+  | "DISLIKE"
+  | "ACCEPT"
+  | "PREFER"
+  | "REQUIRE";
 ```
 
-These are semantic decisions, not six positions on one numeric slider.
+Semantics:
 
-- `FORBID` — do not voluntarily pursue this behavior.
-- `IGNORE` — it does not independently justify a goal.
-- `DISLIKE` — allowed but requires stronger justification.
-- `ACCEPT` — no doctrine preference.
-- `PREFER` — actively favored when context is reasonable.
-- `REQUIRE` — when its trigger applies, a legal meaningful response must survive into candidate-goal arbitration; it does not mean immediate suicidal execution.
+- `FORBID` — do not voluntarily pursue this behavior;
+- `IGNORE` — does not independently justify a Goal;
+- `DISLIKE` — legal but requires stronger justification;
+- `ACCEPT` — no Doctrine preference;
+- `PREFER` — actively favored when context is reasonable;
+- `REQUIRE` — when the trigger applies, a legal meaningful response must survive into candidate-Goal arbitration; this does **not** mean immediate suicidal execution.
 
 Strategic resources:
 
-```text
-POPULATION
-FFY
-TERRITORY
-INFRASTRUCTURE
-ARMOR
-NAVAL_ASSETS
-STRATEGIC_WEAPON_CHARGES
-ALLY_POSITION
+```ts
+type StrategicResource =
+  | "POPULATION"
+  | "FFY"
+  | "TERRITORY"
+  | "INFRASTRUCTURE"
+  | "ARMOR"
+  | "NAVAL_ASSETS"
+  | "STRATEGIC_WEAPON_CHARGES"
+  | "ALLY_POSITION";
 ```
 
 Resource attitudes:
 
-```text
-PROTECT
-CONSERVE
-TRADE
-SPEND
-BURN
+```ts
+type ResourceAttitude =
+  | "PROTECT"
+  | "CONSERVE"
+  | "TRADE"
+  | "SPEND"
+  | "BURN";
 ```
 
-These range from requiring extraordinary justification for loss (`PROTECT`) through ordinary strategic exchange (`TRADE`) to aggressive expenditure for fitting objectives (`BURN`).
-
-Conceptually:
+Conceptual shape:
 
 ```ts
 interface DoctrineProfile {
   defaultJudgment: DoctrineJudgment;
+
   goalKinds?: Partial<Record<GoalKind, DoctrineJudgment>>;
   domains?: Partial<Record<GoalDomain, DoctrineJudgment>>;
   motives?: Partial<Record<GoalMotive, DoctrineJudgment>>;
   tags?: Partial<Record<SignalTag, DoctrineJudgment>>;
-  resourceAttitudes: Partial<Record<StrategicResource, ResourceAttitude>>;
+
+  resourceAttitudes: Partial<
+    Record<StrategicResource, ResourceAttitude>
+  >;
+
   conditionalRules?: readonly DoctrineRuleId[];
   customHooks?: readonly DoctrineHookId[];
 }
 ```
 
-Named rules/hooks are trusted creator-owned code, not a new player-facing scripting language.
+---
+
+## 7. Goal generation
+
+Canonical shared recipe sets:
+
+```ts
+type GoalRuleSetId =
+  | "CORE_SURVIVAL"
+  | "CORE_EXPANSION"
+  | "CORE_ECONOMY"
+  | "CORE_INFRASTRUCTURE"
+  | "CORE_DEFENSE"
+  | "CORE_COUNTER_RESPONSE"
+  | "CORE_LAND_WAR"
+  | "CORE_ARMOR"
+  | "CORE_NAVAL"
+  | "CORE_AMPHIBIOUS"
+  | "CORE_STRATEGIC_WEAPONS"
+  | "CORE_OBSERVATION"
+  | "CORE_TEAM_SUPPORT";
+```
+
+Conceptual profile:
+
+```ts
+interface GoalGeneratorProfile {
+  ruleSets: readonly GoalRuleSetId[];
+  customRules?: readonly GoalRuleId[];
+}
+```
+
+Shared recipes translate legitimate evaluator findings into plausible Goals. Character-specific rules are allowed when the character genuinely interprets circumstances differently.
+
+Generating no new Goal and continuing current Plans is always valid.
 
 ---
 
-## 7. Goal generation and arbitration
+## 8. Arbitration
 
-Shared goal-recipe sets may be roughly equivalent to:
+Canonical vocabulary:
 
-```text
-CORE_SURVIVAL
-CORE_EXPANSION
-CORE_ECONOMY
-CORE_INFRASTRUCTURE
-CORE_DEFENSE
-CORE_COUNTER_RESPONSE
-CORE_LAND_WAR
-CORE_ARMOR
-CORE_NAVAL
-CORE_AMPHIBIOUS
-CORE_STRATEGIC_WEAPONS
-CORE_OBSERVATION
-CORE_TEAM_SUPPORT
+```ts
+type IntentTier =
+  | "PRIMARY"
+  | "SECONDARY"
+  | "BACKGROUND";
+
+type GoalDisposition =
+  | "ACTIVATE"
+  | "DEFER"
+  | "REJECT";
+
+type ResourcePosture =
+  | "PRESERVE"
+  | "CAUTIOUS"
+  | "BALANCED"
+  | "COMMIT"
+  | "ALL_IN";
 ```
 
-Ordinary shared recipes translate evaluator findings into plausible candidate goals. Character-specific named rules are allowed where the character genuinely interprets circumstances differently.
+Arbiter capability:
 
-Arbitration vocabulary:
-
-```text
-IntentTier:
-PRIMARY | SECONDARY | BACKGROUND
-
-GoalDisposition:
-ACTIVATE | DEFER | REJECT
-
-ResourcePosture:
-PRESERVE | CAUTIOUS | BALANCED | COMMIT | ALL_IN
+```ts
+type ArbiterKind =
+  | "SIMPLE_PRIORITY"
+  | "CONTEXTUAL"
+  | "STRATEGIC_PORTFOLIO";
 ```
 
-These separately describe whether a goal is pursued, how much strategic attention it has, and how aggressively resources may be committed.
-
-Arbiter capability kinds:
-
-```text
-SIMPLE_PRIORITY
-CONTEXTUAL
-STRATEGIC_PORTFOLIO
-```
-
-- `SIMPLE_PRIORITY` mainly uses a fixed hierarchy and few simultaneous concerns.
-- `CONTEXTUAL` handles current pressure, opportunity cost, reserves, several simultaneous goals, and deferment.
-- `STRATEGIC_PORTFOLIO` handles dependencies, contingencies, deliberate sacrifice, multiple theaters, future resource needs, and coordinated objectives.
-
-Conceptually:
+- `SIMPLE_PRIORITY` — mostly fixed hierarchy and few simultaneous concerns;
+- `CONTEXTUAL` — current pressure, opportunity cost, reserves, several simultaneous Goals, deferment;
+- `STRATEGIC_PORTFOLIO` — dependencies, contingencies, sacrifice, multiple theaters, future resources, coordinated objectives.
 
 ```ts
 interface ArbiterProfile {
   kind: ArbiterKind;
+
   maxPrimary: number;
   maxSecondary: number;
   maxBackground: number;
+
   defaultResourcePosture: ResourcePosture;
+
   customRules?: readonly ArbiterRuleId[];
   customHooks?: readonly ArbiterHookId[];
 }
 ```
 
-These goal counts are cognitive/strategic attention budgets, not simulation action limits.
+These maxima are cognitive/strategic attention budgets, not simulation action limits.
 
 ---
 
-## 8. Plan candidates and Expression
+## 9. PlanCandidates and Expression
 
 ```ts
 interface PlanCandidate {
   id: CandidateId;
   goalId: GoalId;
   domain: GoalDomain;
+
   viable: boolean;
-  domainQuality: number; // 0..100; comparable only among alternatives for this goal/planner
+
+  // Comparable only among candidate solutions to the same Goal/planner.
+  domainQuality: number; // integer 0..100
+
   traits: readonly SolutionTrait[];
   forecast?: CandidateForecast;
+
   implementation: OpaquePlanSpec;
 }
 ```
 
-`domainQuality` is never a universal strategic utility score. The Arbiter compares goals; a domain planner compares alternative solutions to one goal.
+`domainQuality` is never universal strategic utility. The Arbiter compares Goals; a domain planner compares alternatives for one Goal.
 
-Expression preference:
+### 9.1 Expression preference and leeway
 
-```text
-AVOID | LIKE | STRONGLY_LIKE | SIGNATURE
+```ts
+type ExpressionPreference =
+  | "AVOID"
+  | "LIKE"
+  | "STRONGLY_LIKE"
+  | "SIGNATURE";
+
+type ExpressionLeeway =
+  | "STRICT"
+  | "NARROW"
+  | "MODERATE"
+  | "WIDE"
+  | "SIGNATURE";
 ```
 
-Expression leeway:
+V1 leeway from the planner's best viable candidate:
 
 ```text
-STRICT | NARROW | MODERATE | WIDE | SIGNATURE
+STRICT      0 domain-quality points
+NARROW      5
+MODERATE   12
+WIDE       20
+SIGNATURE  35
 ```
 
-Initial V1 interpretation of how far below the planner's best candidate Expression may choose:
+Expression may never resurrect a non-viable candidate.
 
-```text
-STRICT     0 domain-quality points
-NARROW     5
-MODERATE  12
-WIDE      20
-SIGNATURE 35
+```ts
+interface ExpressionRule {
+  trait: SolutionTrait;
+  preference: ExpressionPreference;
+  leeway?: ExpressionLeeway;
+}
+
+interface ExpressionProfile {
+  defaultLeeway: ExpressionLeeway;
+  rules: readonly ExpressionRule[];
+  hooks?: readonly ExpressionHookId[];
+}
 ```
 
-These thresholds are versioned tuning semantics. Expression can never resurrect a candidate the planner marks non-viable.
+Sparse bespoke Expression hooks may augment or rank candidates but may not issue actions directly, bypass legality/viability, read hidden information, change mechanics, or grant reasoning sophistication beyond the planner.
 
-This is the accepted mechanism for coherent character suboptimality: Yui may choose a somewhat less efficient heart-like rail network because it remains a viable network, but she does not choose a catastrophically dysfunctional layout merely because it resembles a heart.
-
-### 8.1 Reusable SolutionTraits
+### 9.2 Reusable SolutionTraits
 
 Infrastructure:
 
@@ -663,89 +740,80 @@ NEAR_OPPONENT_SPAWN
 FAR_FROM_OPPONENT_SPAWN
 ```
 
-### 8.2 Sparse bespoke Expression hooks
-
-Allowed phases:
-
-```text
-AUGMENT_CANDIDATES
-RANK_CANDIDATES
-```
-
-An augment hook may propose another legal candidate for an already-active goal (for example `YUI_HEART_RAIL`); the ordinary planner still evaluates viability/quality. A rank hook may recognize a signature property not worth generalizing into the shared motif catalogue.
-
-Expression hooks may not issue game commands directly, read hidden state, bypass planner legality/viability, change mechanics, or grant reasoning capability the selected planner does not possess.
-
 ---
 
-## 9. Goal/plan lifecycle and persistence
+## 10. Goal/Plan lifecycle and persistence
 
 Goal state:
 
-```text
-CANDIDATE
-ACTIVE
-DEFERRED
-SATISFIED
-DROPPED
+```ts
+type GoalState =
+  | "CANDIDATE"
+  | "ACTIVE"
+  | "DEFERRED"
+  | "SATISFIED"
+  | "DROPPED";
 ```
 
 Plan state:
 
-```text
-ACTIVE
-PAUSED
-SUCCEEDED
-FAILED
-ABANDONED
-REPLACED
+```ts
+type PlanState =
+  | "ACTIVE"
+  | "PAUSED"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "ABANDONED"
+  | "REPLACED";
 ```
 
 Progress:
 
-```text
-ADVANCING
-STALLED
-REGRESSING
-BLOCKED
+```ts
+type PlanProgress =
+  | "ADVANCING"
+  | "STALLED"
+  | "REGRESSING"
+  | "BLOCKED";
 ```
 
-Persistence decisions:
+Persistence decision:
 
-```text
-CONTINUE
-ESCALATE
-REDUCE
-PAUSE
-RESUME
-REPLAN
-ABANDON
-COMPLETE
+```ts
+type PersistenceDecision =
+  | "CONTINUE"
+  | "ESCALATE"
+  | "REDUCE"
+  | "PAUSE"
+  | "RESUME"
+  | "REPLAN"
+  | "ABANDON"
+  | "COMPLETE";
 ```
 
-`REPLAN` preserves the strategic Goal while replacing the current execution solution.
+`REPLAN` retains the strategic Goal while replacing its current execution solution.
 
-Persistence capability kinds:
+Persistence capability:
 
-```text
-REACTIVE
-CONTEXTUAL
-STRATEGIC
+```ts
+type PersistencePolicyKind =
+  | "REACTIVE"
+  | "CONTEXTUAL"
+  | "STRATEGIC";
 ```
 
 Temperament:
 
-```text
-VOLATILE
-FLEXIBLE
-STEADY
-STUBBORN
-OBSESSIVE
+```ts
+type PersistenceTemperament =
+  | "VOLATILE"
+  | "FLEXIBLE"
+  | "STEADY"
+  | "STUBBORN"
+  | "OBSESSIVE";
 ```
 
 Capability and temperament are independent.
-
-Conceptually:
 
 ```ts
 interface PersistenceProfile {
@@ -758,45 +826,47 @@ interface PersistenceProfile {
 
 ---
 
-## 10. Concrete component-profile IDs
+## 11. Evaluator and planner profiles
 
-Evaluator profile IDs:
-
-```text
-territory: LOCAL | OPERATIONAL | STRATEGIC_GEOMETRY
-economy: BUDGET | RETURN_AWARE | STRATEGIC
-opponent: NONE | BEHAVIOR_HISTORY | ADAPTIVE
-forecast: IMMEDIATE | SHORT_HORIZON | SCENARIO
-threat: IMMEDIATE | OPERATIONAL | STRATEGIC_PREDICTIVE
-opportunity: OBVIOUS | OPERATIONAL | STRATEGIC
+```ts
+interface EvaluatorProfile {
+  territory: "LOCAL" | "OPERATIONAL" | "STRATEGIC_GEOMETRY";
+  economy: "BUDGET" | "RETURN_AWARE" | "STRATEGIC";
+  opponent: "NONE" | "BEHAVIOR_HISTORY" | "ADAPTIVE";
+  forecast: "IMMEDIATE" | "SHORT_HORIZON" | "SCENARIO";
+  threat: "IMMEDIATE" | "OPERATIONAL" | "STRATEGIC_PREDICTIVE";
+  opportunity: "OBVIOUS" | "OPERATIONAL" | "STRATEGIC";
+}
 ```
 
-Planner profile IDs:
-
-```text
-expansion: NEAREST | TERRAIN_AWARE | STRATEGIC
-landWar: DIRECT | OPERATIONAL | MULTI_FRONT_STRATEGIC
-defense: EVEN | VALUE_AWARE | PREDICTIVE
-counterResponse: SIMPLE | EXCHANGE_AWARE | STRATEGIC
-retreat: EMERGENCY | DEFENSIBLE | STRATEGIC_SACRIFICE
-spending: BASIC | PRIORITY | OPPORTUNITY_COST
-infrastructure: USEFUL | NETWORK_AWARE | STRATEGIC_OPTIMIZER
-upgrade: AFFORDABLE | VALUE | STRATEGIC_TIMING
-armor: LOCAL | OPERATIONAL | STRATEGIC
-naval: LOCAL | SEA_CONTROL | STRATEGIC
-amphibious: BASIC | OPPORTUNITY | STRATEGIC
-strategicWeapons: OBVIOUS_TARGET | OPERATIONAL | STRATEGIC
-observation: COVERAGE | THREAT_FOCUSED | STRATEGIC_INFORMATION
-team: BASIC | OBJECTIVE | STRATEGIC
-spawn: SAFE | TERRAIN_AWARE | STRATEGIC
-spawnReconsider: STATIC | THREAT_AWARE | ADVERSARIAL
+```ts
+interface PlannerProfile {
+  expansion: "NEAREST" | "TERRAIN_AWARE" | "STRATEGIC";
+  landWar: "DIRECT" | "OPERATIONAL" | "MULTI_FRONT_STRATEGIC";
+  defense: "EVEN" | "VALUE_AWARE" | "PREDICTIVE";
+  counterResponse: "SIMPLE" | "EXCHANGE_AWARE" | "STRATEGIC";
+  retreat: "EMERGENCY" | "DEFENSIBLE" | "STRATEGIC_SACRIFICE";
+  spending: "BASIC" | "PRIORITY" | "OPPORTUNITY_COST";
+  infrastructure: "USEFUL" | "NETWORK_AWARE" | "STRATEGIC_OPTIMIZER";
+  upgrade: "AFFORDABLE" | "VALUE" | "STRATEGIC_TIMING";
+  armor: "LOCAL" | "OPERATIONAL" | "STRATEGIC";
+  naval: "LOCAL" | "SEA_CONTROL" | "STRATEGIC";
+  amphibious: "BASIC" | "OPPORTUNITY" | "STRATEGIC";
+  strategicWeapons: "OBVIOUS_TARGET" | "OPERATIONAL" | "STRATEGIC";
+  observation: "COVERAGE" | "THREAT_FOCUSED" | "STRATEGIC_INFORMATION";
+  team: "BASIC" | "OBJECTIVE" | "STRATEGIC";
+  spawn: "SAFE" | "TERRAIN_AWARE" | "STRATEGIC";
+  spawnReconsider: "STATIC" | "THREAT_AWARE" | "ADVERSARIAL";
+}
 ```
 
-Difficulty does not mechanically select a component tier. Characters may have specialist strengths and weaknesses.
+Difficulty does not mechanically select component tiers. Character profiles may have specialist strengths and weaknesses.
 
 ---
 
-## 11. Difficulty templates
+## 12. Difficulty templates
+
+Difficulty templates describe normal capability expectations, not rigid component locks.
 
 ### Difficulty 0 — Baseline
 
@@ -806,156 +876,166 @@ Difficulty does not mechanically select a component tier. Characters may have sp
 - `SIMPLE_PRIORITY` Arbiter;
 - roughly one Primary and one Background concern;
 - `REACTIVE` persistence;
-- plays the whole game coherently but does not meaningfully strategize.
+- complete but intentionally unsophisticated game play.
 
 ### Difficulty 1
 
 - mostly low-tier components;
-- simple `NOW` plus limited `SOON` reasoning;
-- one Primary, roughly one Secondary and one Background concern;
-- characterful preferences can exist despite low strategic sophistication.
+- `NOW` plus limited `SOON` reasoning;
+- roughly one Primary, one Secondary, one Background concern;
+- characterful preferences may be strong despite low strategic sophistication.
 
 ### Difficulty 2
 
-- selected mid-tier evaluators/planners, especially in character specialties;
+- selected mid-tier evaluators/planners, especially in specialties;
 - short-horizon forecasting in important domains;
-- optional/simple behavior-history modeling;
+- optional/simple BehaviorHistory modeling;
 - `CONTEXTUAL` arbitration/persistence;
-- roughly one Primary, two Secondary and one/two Background concerns.
+- roughly one Primary, two Secondary, one/two Background concerns.
 
 ### Difficulty 3
 
 - broadly operational reasoning;
-- behavior-history opponent modeling;
-- short-horizon forecasting;
+- BehaviorHistory opponent model;
+- ShortHorizon forecasting;
 - operational planners across relevant domains;
 - contextual multi-goal management;
-- selective later-horizon reasoning.
+- selective `LATER` reasoning.
 
 ### Difficulty 4
 
-- strategic geometry/economy/threat/opportunity in major domains;
-- adaptive opponent modeling;
-- scenario forecasting;
+- strategic reasoning in major domains;
+- Adaptive opponent model;
+- Scenario forecasting;
 - high-tier major planners;
-- `STRATEGIC_PORTFOLIO` arbitration and strategic persistence;
-- intentional sacrifice, multi-theater coordination, preparation, and third-party exploitation.
+- `STRATEGIC_PORTFOLIO` arbitration;
+- strategic persistence;
+- intentional sacrifice, multi-theater coordination, preparation, third-party exploitation.
 
 ### Difficulty 5
 
 - strongest broad use of the same architecture, not a cheat tier;
 - strategic evaluators/planners across domains;
-- broad scenario reasoning and adaptive opponent modeling;
-- multiple simultaneous major objectives and dependencies;
-- deliberate forcing moves, third-party reactions, global positional planning, and stronger cross-domain coordination.
+- broad Scenario reasoning and Adaptive opponent modeling;
+- multiple simultaneous major objectives/dependencies;
+- deliberate forcing moves, third-party reactions, global positional planning, stronger cross-domain coordination.
 
-The D4→D5 distinction is especially breadth/coordination depth rather than a magical extra mechanics layer.
+D4→D5 is especially a breadth/coordination distinction rather than a magical additional mechanics layer.
 
 ---
 
-## 12. CharacterProfile and fidelity
+## 13. Fidelity contract
 
-Conceptually:
+Canonical generic axes:
+
+```ts
+type FidelityAxis =
+  | "HOSTILITY_INITIATION"
+  | "RETALIATION"
+  | "POPULATION_PRESERVATION"
+  | "TERRITORIAL_RISK"
+  | "WITHDRAWAL"
+  | "SACRIFICE"
+  | "PLAN_PERSISTENCE"
+  | "OPPORTUNISM"
+  | "ECONOMIC_INVESTMENT"
+  | "INFRASTRUCTURE_EFFICIENCY"
+  | "ALLY_SUPPORT"
+  | "WEAK_TARGET_PREFERENCE"
+  | "STRONG_TARGET_PREFERENCE"
+  | "NAVAL_USAGE"
+  | "STRATEGIC_WEAPON_USAGE"
+  | "EXPRESSION_SIGNATURE";
+```
+
+Expectation:
+
+```ts
+type FidelityExpectation =
+  | "VERY_LOW"
+  | "LOW"
+  | "NORMAL"
+  | "HIGH"
+  | "VERY_HIGH";
+```
+
+```ts
+interface FidelityRule {
+  axis: FidelityAxis;
+  expectation: FidelityExpectation;
+}
+
+interface FidelityProfile {
+  rules: readonly FidelityRule[];
+  customChecks?: readonly FidelityCheckId[];
+}
+```
+
+Fidelity metadata is benchmark/test input, not controller decision input.
+
+Capability and fidelity remain separate measurements.
+
+---
+
+## 14. CharacterProfile
+
+Canonical conceptual shape:
 
 ```ts
 interface CharacterProfile {
   id: CharacterProfileId;
+
   evaluators: EvaluatorProfile;
   planners: PlannerProfile;
+
   doctrine: DoctrineProfile;
   goalGenerator: GoalGeneratorProfile;
   arbiter: ArbiterProfile;
   persistence: PersistenceProfile;
   expression: ExpressionProfile;
-  hooks?: {
-    doctrine?: readonly DoctrineHookId[];
-    goals?: readonly GoalRuleId[];
-    arbitration?: readonly ArbiterHookId[];
-    persistence?: readonly PersistenceHookId[];
-    expression?: readonly ExpressionHookId[];
-  };
+
+  originAdaptation: OriginAdaptationProfile;
+
   fidelity: FidelityProfile;
 }
 ```
 
-Difficulty remains preset metadata/source-of-truth rather than being copied into `CharacterProfile`.
+`OriginAdaptationProfile` is defined in `OFFICIAL_AI_ORIGIN_SUPPORT.md`.
 
-Display identity, source work, allowed Origins, art, quotes, reward-facing metadata, Origin mechanics, Echo mechanics, and loadout content are not part of the intelligence profile.
+Difficulty remains Official-AI preset metadata/source-of-truth and is not duplicated into `CharacterProfile`.
 
-Representative fidelity axes:
-
-```text
-HOSTILITY_INITIATION
-RETALIATION
-POPULATION_PRESERVATION
-TERRITORIAL_RISK
-WITHDRAWAL
-SACRIFICE
-PLAN_PERSISTENCE
-OPPORTUNISM
-ECONOMIC_INVESTMENT
-INFRASTRUCTURE_EFFICIENCY
-ALLY_SUPPORT
-WEAK_TARGET_PREFERENCE
-STRONG_TARGET_PREFERENCE
-NAVAL_USAGE
-STRATEGIC_WEAPON_USAGE
-EXPRESSION_SIGNATURE
-```
-
-Expectations:
-
-```text
-VERY_LOW | LOW | NORMAL | HIGH | VERY_HIGH
-```
-
-Character-specific deterministic checks may supplement generic axes. Fidelity metadata is benchmark/test input, not controller decision input. Capability and fidelity remain separate measurements.
+Display identity, source-work metadata, allowed-Origin pools, presentation, quotes, Echo rewards, Origin mechanics, Echo mechanics, and loadout content are not part of the intelligence profile.
 
 ---
 
-## 13. Allowed-Origin selection — accepted hard rule
+## 15. Allowed-Origin selection
 
-Every character preset has an authored **set of allowed Official Origins** chosen because those Origins fit the character fantasy and can plausibly be supported by that controller.
+Every character preset has an authored set of allowed Official Origins.
 
-For V1, after human controller/Origin/Echo choices lock, the match seed selects **uniformly at random from that allowed set** before Strategic Spawn.
+After human controller/Origin/Echo choices lock, the match seed selects **uniformly at random** from that set before Strategic Spawn.
 
 There are:
 
-- **no per-Origin weights**;
-- **no map-conditioned Origin selection**;
-- **no character-controller logic choosing among its allowed Origins**.
+- no Origin weights;
+- no map-conditioned Origin selection;
+- no character-controller Origin selection.
 
-This is deliberate anti-counter-picking design. A player must not be able to infer that a known character will deterministically pick one particular Origin on a particular map and build an effectively AFK hard counter around that prediction.
+The selected Origin is revealed before Strategic Spawn under ordinary transparency rules.
 
-The selected Origin is still revealed mechanically before Strategic Spawn under the ordinary transparency rules. The uncertainty is only pre-lock selection, not hidden gameplay information.
-
-Random selection does not excuse poor Origin use: every preset must use every Origin in its allowed pool coherently and recognizably.
+The AI must then use that Origin coherently through the canonical Origin-support/adaptation architecture.
 
 ---
 
-## 14. Remaining design item — Origin adaptation/support
+## 16. Content mapping and closure
 
-The AI needs Origin-specific strategic knowledge after its Origin is selected. This may include understanding:
+The shared configuration language is now closed enough for concrete content mapping.
 
-- changed starting-state/spawn rules;
-- altered terrain incentives;
-- transformed structures/units;
-- strategic-weapon access or launcher transformations;
-- economic/growth tradeoffs;
-- unusual defensive/offensive mechanics;
-- explicit disadvantages that should change ordinary planning;
-- synergies that require Origin-specific candidates.
+Concrete canonical content is authored separately in this order:
 
-The remaining architecture task is to decide how this Origin knowledge plugs into the accepted character controller without either:
+1. every deployed Origin trait's AI support configuration, including explicit combination support;
+2. every Official Origin's composed/Origin-specific configuration;
+3. Baseline AI and every character's concrete CharacterProfile, including Origin adaptation and fidelity expectations.
 
-```text
-character × Origin bespoke implementations everywhere
-```
+For reviewability these mappings are authored in batches of ten with a consistency check after each batch.
 
-or:
-
-```text
-one generic modifier sheet that knows the numbers but not how to exploit transformative Origin mechanics
-```
-
-The likely direction is reusable Origin-support logic that contributes Origin-specific reasoning/candidates while remaining subordinate to the character's Doctrine, Arbiter, persistence, and Expression identity. This Origin-support layer is not yet accepted and should be settled before per-character mapping begins.
+New shared literals should not be added casually during content mapping. If a concrete trait/Origin/character truly exposes a missing generic concept, the generic contract must be explicitly amended and prior mappings re-audited for consistency.
