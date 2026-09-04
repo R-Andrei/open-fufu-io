@@ -4,13 +4,9 @@
 
 This document is the canonical **design/rationale companion** for Official-AI Origin-trait support.
 
-Concrete code-readable trait mappings live in the sharded design-time configuration set:
+Concrete code-readable mappings live in the sharded design-time configuration set under `design/official-ai/origin-trait-support*.config.ts`. Those `.config.ts` files are the source of truth for exact support entries, hook IDs, themes, affordances, cautions, synergy tags, and future `OriginCombinationSupport` entries.
 
-- [`../design/official-ai/origin-trait-support.config.ts`](../design/official-ai/origin-trait-support.config.ts)
-- [`../design/official-ai/origin-trait-support.p41-p50.config.ts`](../design/official-ai/origin-trait-support.p41-p50.config.ts)
-- future `origin-trait-support*.config.ts` shards as the catalogue grows.
-
-The `.config.ts` files are the source of truth for exact trait-support entries, hook IDs, themes, affordances, cautions, synergy tags, and future `OriginCombinationSupport` entries. This document explains **why** mappings exist, their strategic philosophy, important exclusions/boundaries, and likely future synergy questions. It should not duplicate the complete configuration objects.
+This document explains **why** mappings exist, their strategic philosophy, important exclusions/boundaries, and future synergy questions. It intentionally does not duplicate full configuration objects.
 
 It remains subordinate to:
 
@@ -18,439 +14,467 @@ It remains subordinate to:
 - `OFFICIAL_AI_ORIGIN_SUPPORT.md` for generic support vocabulary, composition rules, hook boundaries, and character-adaptation architecture;
 - `OFFICIAL_AI_CONFIGURATION.md` for shared AI signal/goal/planner/profile vocabulary.
 
-Nothing here changes Origin mechanics. Numeric mechanical truth remains in the authoritative game/rules documents and final effective rules.
+Nothing here changes Origin mechanics. Numeric/mechanical truth remains in authoritative game rules and the final `EffectiveRulesView`.
 
 ---
 
 ## Progress
 
 ```text
-Configured traits: 50 / 72
-Current range:      P01–P50
-Remaining:          P51–P54, N01–N18
+Configured traits: 70 / 72
+Current range:      P01–P54, N01–N16
+Remaining:          N17–N18
 ```
 
-No explicit Origin-combination support is closed yet. Cross-trait interactions are deliberately retained for the global synergy sweep after all individual trait mappings exist.
+No explicit Origin-combination support is closed yet. Cross-trait relationships are retained for the mandatory global synergy/suppression sweep after all individual traits are mapped.
 
 ---
 
-# P01 — Domain Expansion
+# Positive traits
 
-P01 changes the real starting footprint size without creating a new action form. Strategic Spawn should reason about the actual final footprint rather than assume the ordinary baseline. A somewhat larger footprint does not inherently imply another theater or overextension; those are map-dependent consequences for normal geography reasoning.
+## P01 — Domain Expansion
+
+P01 changes the real starting footprint size without creating a new action form. Strategic Spawn should reason from the actual final footprint rather than assume the ordinary baseline.
 
 **Strategic philosophy:** begin with more geography and exploit the positional head start.
 
----
+## P02 — The Era of Humans
 
-# P02 — The Era of Humans
+The widened Population-utilization sweet spot makes demographic recovery more forgiving. Shared economy/forecast reasoning should use the actual effective growth function rather than a trait-specific demographic model.
 
-The widened Population-utilization sweet spot makes Population recovery and sustained demographic efficiency more forgiving. Shared economy/forecast reasoning should use the faction's actual effective growth function rather than inventing a trait-specific demographic planner.
+**Strategic philosophy:** sustain growth across a broader Population-utilization range.
 
-**Strategic philosophy:** a wider demographic sweet spot rewards sustained growth and recoverable Population management.
+## P03 — Imagine Breaker
 
----
+Enemy Fort defensive pressure matters less to this faction. Ordinary combat/territory reasoning should consume the effective pressure result; the trait does not itself mandate attacking Forts.
 
-# P03 — Imagine Breaker
+**Strategic philosophy:** static Fort defense is less capable of dictating where the faction may fight.
 
-P03 makes enemy Fort-supported positions materially less capable of dictating attack geometry against this faction. It does not tell the controller to attack Forts or start wars; Doctrine and arbitration retain that responsibility.
+## P04 — Level 0
 
-**Strategic philosophy:** enemy static Fort pressure is less able to constrain where the faction can attack.
+Counter-response effectiveness no longer follows the ordinary response-side imbalance curve. Shared counter-response mechanics should expose the actual exchange rather than relying on vanilla numerical assumptions.
 
----
+**Strategic philosophy:** counter effectively without needing numerical overcommitment to gain response efficiency.
 
-# P04 — Level 0
+## P05 — Big Shot
 
-P04 particularly helps relatively small counter-responses because the response side no longer suffers the ordinary numerical-imbalance penalty. Conversely, massively overcommitting no longer earns the normal response-side overmatch bonus. Shared counter-response mechanics should expose the actual exchange result.
+Capturing hostile structures becomes simultaneously conquest, capability denial, and immediate FFY generation. Extended support therefore teaches Opportunity/Forecast/LandWar reasoning about the conquest-economy consequence while leaving payout arithmetic authoritative.
 
-**Strategic philosophy:** counter effectively without needing numerical overcommitment to win the response-side efficiency curve.
+**Strategic philosophy:** conquest can finance further conquest.
 
----
+## P06 — See You, Space Cowboy
 
-# P05 — Big Shot
+Trade Ships move faster without changing their role. Shared economy/infrastructure reasoning should consume actual travel timing and resulting throughput.
 
-P05 creates a genuine cross-domain relationship: capturing hostile infrastructure is simultaneously conquest, enemy-capability denial, and immediate FFY generation. Reusable support therefore teaches Opportunity/Forecast/LandWar reasoning about the extra conquest-economy consequence while leaving payout arithmetic to authoritative mechanics.
+**Strategic philosophy:** faster trade cycles increase the value of trade-oriented development.
 
-**Strategic philosophy:** conquest can finance further conquest; hostile infrastructure is simultaneously military, territorial, and liquid economic value.
+## P07 — Galaxy Express 999
 
----
+The Factory/Train economy produces more ordinary Train traffic. If AI cannot value this, the generic Factory/Train model is deficient rather than P07 needing a bespoke brain.
 
-# P06 — See You, Space Cowboy
+**Strategic philosophy:** increase industrial-network throughput.
 
-P06 increases ordinary trade throughput without turning Trade Ships into a combat-control system. Trade remains semantically distinct from military naval strategy, and shared economy/infrastructure reasoning should consume the actual travel timing.
+## P08 — Tea Time
 
-**Strategic philosophy:** faster trade cycles increase the value and throughput of trade-oriented development.
-
----
-
-# P07 — Galaxy Express 999
-
-P07 increases Factory/Train economic throughput without transforming Train control. If shared AI cannot value additional Train throughput, that is a generic Factory/Train-model weakness rather than a reason for a P07-only planner. P33 is an obvious later synergy partner.
-
-**Strategic philosophy:** Factories and the infrastructure they feed generate more economic throughput.
-
----
-
-# P08 — Tea Time
-
-P08 preserves full trade value during war. It makes commerce more durable through conflict but does not imply that initiating war is desirable. P06 + P08 remains an obvious compositional trade synergy for the later sweep.
+War no longer halves ordinary trade yield. This preserves commerce through conflict but does not imply that starting war is desirable.
 
 **Strategic philosophy:** war and commerce need not be mutually exclusive.
 
----
+## P09 — Wall Maria
 
-# P09 — Wall Maria
-
-P09 is a multi-axis improvement to ordinary Fort investment: broader coverage, stronger defense, and lower cost. Shared Infrastructure/Defense/Territory reasoning should already see those effective values; better Forts do not mandate turtling.
+Forts become broader, stronger, and cheaper. Shared Infrastructure/Defense/Territory reasoning should already see all effective values.
 
 **Strategic philosophy:** static defensive investment buys more protection for less FFY.
 
----
+## P10 — Scorpion's Tail
 
-# P10 — Scorpion's Tail
+Faster strategic warheads reduce the physical opportunity for interception. This established the reusable `REDUCE_INTERCEPTION_WINDOW` affordance.
 
-P10 established the reusable `REDUCE_INTERCEPTION_WINDOW` affordance. Strategic-weapon forecasting should already reason from actual projectile speed, physical path, SAM coverage, and interception opportunity regardless of the modifier source.
+**Strategic philosophy:** deliver strategic weapons faster and compress the defender's interception window.
 
-**Strategic philosophy:** deliver strategic weapons faster and reduce the defender's physical interception opportunity.
+## P11 — Level Upper
 
----
+Peak Population thresholds permanently unlock free-SAM ownership/build slots. Extended support is needed chiefly to value progress toward future unlocks before the SAM exists.
 
-# P11 — Level Upper
+**Strategic philosophy:** convert demographic growth into a progressively broader strategic-defense network.
 
-P11 couples peak Population thresholds to permanent free-SAM ownership/build slots. Extended support is needed chiefly so the AI can value progress toward the next permanent unlock before the SAM exists and then value the resulting no-FFY interception network.
+## P12 — Somewhere Not Here
 
-**Strategic philosophy:** demographic growth permanently converts into broader strategic defense.
+Transport speed improves without changing Transport role. Shared amphibious reasoning should use real transit time, exposure, and arrival timing.
 
----
+**Strategic philosophy:** shorten amphibious transit and make distant sea-borne operations more practical.
 
-# P12 — Somewhere Not Here
+## P13 — Mountain Training Arc
 
-P12 improves Transport transit speed without changing landing rules, capacity, or survivability. Shared amphibious reasoning should use the real speed when evaluating travel time, interception exposure, and distant second-front feasibility.
+Mountains become unusually strong defensive ground. `TERRAIN_DEPENDENCE` records that useful Mountain access controls the trait's value.
 
-**Strategic philosophy:** shorten amphibious transit so distant sea-borne operations can arrive before conditions change.
+**Strategic philosophy:** use Mountain geography as efficient defensive terrain.
 
----
+## P14 — 60 Billion Double Dollars
 
-# P13 — Mountain Training Arc
-
-P13 makes Mountains unusually strong defensive ground. `TERRAIN_DEPENDENCE` is deliberate because the trait requires useful Mountain geography, but the AI should not occupy strategically worthless Mountains merely because the bonus exists.
-
-**Strategic philosophy:** use Mountain geography as unusually efficient defensive terrain.
-
----
-
-# P14 — 60 Billion Double Dollars
-
-P14 makes FFY events located on Desert more valuable. Generic Economy/Territory reasoning should combine actual event-yield mechanics with Desert geography rather than receive a special Desert-money brain.
+FFY events located on Desert are more valuable. Generic Economy/Territory reasoning should combine actual event yield with Desert geography.
 
 **Strategic philosophy:** turn Desert geography into an unusually profitable economic surface.
 
----
+## P15 — The High Ground
 
-# P15 — The High Ground
+Highlands become stronger offensive staging ground. The trait improves positional options without itself creating an aggression mandate.
 
-P15 strengthens offensive pressure from Highlands. The implication is positional rather than a blanket aggression mandate: when the faction intends to fight, Highland control can improve staging and breakthrough geometry.
+**Strategic philosophy:** acquire and exploit Highlands for offensive pressure.
 
-**Strategic philosophy:** acquire and exploit Highlands as offensive staging ground.
+## P16 — Poison Taster
 
----
+Ordinary Fallout acquisition resistance is ignored for this faction. Shared territorial reasoning simply uses the real effective capture progress.
 
-# P16 — Poison Taster
+**Strategic philosophy:** Fallout does not slow territorial acquisition.
 
-P16 removes ordinary Fallout acquisition resistance for this faction without changing unrelated Fallout semantics. Ordinary expansion/war reasoning should simply see the faction's actual capture progress.
+## P17 — Ten Billion Percent
 
-**Strategic philosophy:** Fallout-contaminated territory does not slow this faction's territorial acquisition.
+Upgrade cost improves as owned structure count rises, creating a real sequencing problem between building more infrastructure now and upgrading later. Extended Spending/Upgrade support compares those timing choices.
 
----
+**Strategic philosophy:** broaden the infrastructure base to compound into cheaper modernization.
 
-# P17 — Ten Billion Percent
+## P18 — The Best Defense
 
-P17 creates a sequencing relationship because upgrade cost improves as owned structure count rises. Extended support lets Economy/Forecast/Spending/Upgrade reasoning compare upgrading now against expanding the structure base first and modernizing later. It must not encourage junk construction without ordinary utility/cost justification.
-
-**Strategic philosophy:** a broader infrastructure base compounds into progressively cheaper future modernization.
-
----
-
-# P18 — The Best Defense
-
-P18 turns Fort coverage into offensive staging support when attacking source cells lie inside qualifying Fort areas. Extended support therefore teaches LandWar and Infrastructure reasoning that Fort placement can have future offensive value as well as ordinary defensive value.
+Fort-covered attacking source cells gain additional offensive pressure. Extended support therefore values Fort geometry as offensive staging as well as defense.
 
 **Strategic philosophy:** fortify the ground from which you intend to project force.
 
----
+## P19 — The Weak Die First
 
-# P19 — The Weak Die First
+Current Territorial Contact count increases offensive pressure globally. Creating another border may therefore add strength elsewhere but can also create dangerous front exposure.
 
-P19 converts current Territorial Contact count into global offensive pressure. Creating another border can therefore increase offense elsewhere, but chasing contact count can create dangerous front exposure; `SPLIT_FRONT_RISK` is intentional.
+**Strategic philosophy:** convert geopolitical exposure into offensive momentum without blindly maximizing fronts.
 
-**Strategic philosophy:** convert geopolitical exposure into offensive momentum without blindly maximizing the number of fronts.
+## P20 — A Miracle Is Merely a Miscalculation
 
----
+The faction starts with a free Missile Silo. Once present it is ordinary launch infrastructure governed by normal strategic-weapon planning.
 
-# P20 — A Miracle Is Merely a Miscalculation
+**Strategic philosophy:** exploit earlier access to strategic-launch infrastructure.
 
-P20 grants a free starting Missile Silo. Once present, it is ordinary launch infrastructure governed by normal weapon level gates, visibility, defense, and strategic-weapon planning.
+## P21 — Fun Things Are Fun
 
-**Strategic philosophy:** begin with strategic-launch infrastructure already established and exploit earlier weapon access.
+The first purchase of each structure type must be affordable/legal but consumes no FFY. Extended support distinguishes affordability from actual liquidity consumption and values remaining first-purchase opportunities.
 
----
+**Strategic philosophy:** turn sufficient liquidity into unusually efficient first-time infrastructure.
 
-# P21 — Fun Things Are Fun
+## P22 — Limit Break
 
-P21 distinguishes affordability from consumption: the first purchase of each structure type must still be affordable/legal, but successful purchase consumes no FFY. Extended support tracks remaining first-purchase opportunities and values preserved liquidity without encouraging useless one-of-everything construction.
+Warships may rank beyond the ordinary ceiling. The value is delayed and favors preserving veteran ships; ordinary naval reasoning still handles rank mechanics.
 
-**Strategic philosophy:** turn sufficient liquidity into unusually efficient first-time infrastructure without exhausting the stockpile.
+**Strategic philosophy:** invest in veteran Warships with a higher long-run ceiling.
 
----
+## P23 — Space Battleship Yamato
 
-# P22 — Limit Break
+The faction is limited to one stronger Warship. Extended support handles concentrated fleet power, theater allocation, and the strategic cost of losing the flagship.
 
-P22 raises the Warship rank ceiling without changing how rank is earned. Its value is delayed and therefore legitimately carries `REQUIRES_VETERANCY`; preserving experienced ships becomes more valuable. P22 + P29 is an important future synergy because rank can expand mobile-launch capability.
+**Strategic philosophy:** concentrate naval power into one elite flagship.
 
-**Strategic philosophy:** invest in veteran Warships that can continue scaling beyond the ordinary ceiling.
+## P24 — A King's Price
 
----
+FFY events inside Fort coverage gain extra yield, making Fort placement economic geography as well as defensive geometry.
 
-# P23 — Space Battleship Yamato
+**Strategic philosophy:** turn Fort coverage into protected higher-yield territory.
 
-P23 concentrates naval power into one improved flagship. Extended support is required because the one-Warship cap creates theater-allocation and catastrophic-loss considerations that are not equivalent to simple stat bonuses.
+## P25 — EXPLOSION!
 
-**Strategic philosophy:** concentrate naval power into one elite flagship and make its positioning, preservation, and commitment count.
+Strategic-weapon access specializes around larger, more expensive Hydrogen Bombs while Atom Bomb and MIRV become unavailable. Ordinary legality/cost/blast reasoning is sufficient.
 
----
+**Strategic philosophy:** trade weapon variety for exceptional Hydrogen-strike area.
 
-# P24 — A King's Price
+## P26 — Serious Punch
 
-P24 makes Fort coverage an economic geography: FFY events occurring inside it are more valuable. Infrastructure placement therefore acquires cross-domain economic value as well as defense.
+MIRV becomes a single-use strategic opportunity whose successful use consumes no FFY but still requires ordinary affordability/legality. Extended support handles liquidity reservation and one-shot timing.
 
-**Strategic philosophy:** turn strategically placed Fort coverage into protected, higher-yield economic territory.
+**Strategic philosophy:** preserve and spend one decisive MIRV opportunity only when its value is exceptional.
 
----
+## P27 — Only My Railgun
 
-# P25 — EXPLOSION!
+SAM Launchers may attack ships, making coastal SAM placement a cross-domain defense problem. Extended support values both strategic interception and anti-ship denial.
 
-P25 specializes strategic weapons around larger, more expensive Hydrogen Bombs while removing Atom Bomb and MIRV access. Because legality, cost, blast geometry, and Water-Nuke interaction are all surfaced by ordinary mechanics, the trait remains generic.
+**Strategic philosophy:** make SAM infrastructure double as coastal area denial.
 
-**Strategic philosophy:** trade weapon variety for fewer, larger, more expensive Hydrogen strikes with exceptional area impact.
+## P28 — Blood Devil
 
----
+Destroying hostile Transports transfers their carried Population to this faction. Extended support values cargo-dependent Population gain without granting hidden cargo information.
 
-# P26 — Serious Punch
+**Strategic philosophy:** convert destroyed invasion Population into your own available force.
 
-P26 turns MIRV access into a singular strategic resource: one legal use, still requiring ordinary affordability/launcher conditions, but consuming no FFY on success. Extended support handles both liquidity reservation and the timing value of an irreplaceable one-shot opportunity.
+## P29 — The Kaiser
 
-**Strategic philosophy:** preserve the conditions for one decisive MIRV use and spend the unique opportunity only when its value is exceptional.
+Warships may act as mobile Missile Silo launch platforms. Naval position, veterancy, launcher access, and strategic-weapon timing therefore become directly coupled.
 
----
+**Strategic philosophy:** turn veteran Warships into mobile strategic-launch infrastructure.
 
-# P27 — Only My Railgun
+## P30 — The Conman
 
-P27 lets SAM Launchers attack ships, making coastal SAM placement a cross-domain defense problem. Extended support teaches Threat/Opportunity/Infrastructure/Defense reasoning about anti-ship coverage without turning the SAM into a naval unit.
-
-**Strategic philosophy:** make strategic-interception infrastructure double as coastal area denial.
-
----
-
-# P28 — Blood Devil
-
-P28 turns destroyed enemy Transports into Population prizes because carried Population is transferred rather than merely removed. Extended support values cargo-dependent gains without granting hidden cargo information beyond the legal observation model.
-
-**Strategic philosophy:** punish amphibious commitment by converting destroyed invasion Population into your own available force.
-
----
-
-# P29 — The Kaiser
-
-P29 turns sufficiently ranked Warships into mobile Missile Silo launchers. This couples naval position, Warship survival/veterancy, launcher level gates, and strategic-weapon timing, so both Naval and StrategicWeapon planners need explicit support.
-
-**Strategic philosophy:** use veteran naval assets as mobile strategic-launch infrastructure.
-
----
-
-# P30 — The Conman
-
-P30 transforms Warships from line combatants into fast piracy platforms: piracy is much more profitable, but ordinary ship-to-ship gunfire is unavailable. Extended support therefore changes legal role assumptions, target valuation, and threat handling rather than merely applying a speed bonus.
+Warships become fast, lucrative piracy platforms but lose ordinary naval gunfire against ships. Extended support must understand the transformed role rather than treat this as a speed bonus.
 
 **Strategic philosophy:** replace conventional naval battle with high-speed economic predation.
 
----
+## P31 — Heart-Under-Blade
 
-# P31 — Heart-Under-Blade
+Port repair fields become stronger operational sustain zones and Warships may remain active while benefiting. Naval/Retreat/Infrastructure reasoning should value Ports as fleet anchors.
 
-P31 makes active Port repair fields stronger operational fleet-support zones and allows Warships to remain active while receiving the improved repair. Naval/Retreat/Infrastructure reasoning should therefore value repair coverage as sustain, fallback, and fleet-base geometry.
+**Strategic philosophy:** fight around prepared naval bases and sustain expensive Warships through repair coverage.
 
-**Strategic philosophy:** fight around prepared naval bases and preserve expensive Warships through sustained operational repair.
+## P32 — Armored Titan
 
----
+Transports gain health but may embark only from owned active Ports. Extended support handles both the new survivability model and the new launch-node dependency.
 
-# P32 — Armored Titan
+**Strategic philosophy:** trade launch flexibility for durable invasion shipping organized around Ports.
 
-P32 gives Transports health but makes owned active Ports mandatory embarkation nodes. Extended support must understand both the new survivability model and the new launch-geometry dependency.
+## P33 — Misaka Network
 
-**Strategic philosophy:** trade launch flexibility for durable invasion shipping organized around Port infrastructure.
+Train-triggered City events generate Capacity-capped Population, scaling with City level. Infrastructure and Upgrade planning therefore treat Train–City topology as a demographic engine.
 
----
+**Strategic philosophy:** convert productive rail infrastructure into Population replenishment.
 
-# P33 — Misaka Network
+## P34 — Spoils of the Empire
 
-P33 makes Train-triggered City events generate Capacity-capped Population in addition to ordinary economic effects, with output scaling by City level. Infrastructure and Upgrade planners therefore need to understand Train–City topology as a demographic engine. P07 is an obvious synergy partner.
+Conquered Factories operate at double ordinary effect. Extended support makes hostile Factory provenance strategically relevant when valuing attack targets.
 
-**Strategic philosophy:** convert a productive Train-and-City network into Population replenishment.
+**Strategic philosophy:** seize enemy industry intact and make conquest outperform equivalent domestic production.
 
----
+## P35 — It's a Matter of Visualization
 
-# P34 — Spoils of the Empire
+Deliberately relinquished cells become neutral Fallout. Retreat can therefore shape geography and deny space, while `SELF_GEOMETRY_RISK` captures the danger of contaminating territory the faction later wants back.
 
-P34 makes conquered Factories operate at double ordinary effect. Hostile Factories can therefore be worth more to this faction than equivalent domestic industry, so Opportunity/Forecast/LandWar reasoning needs provenance-sensitive target value.
+**Strategic philosophy:** weaponize retreat by trading ownership for temporary denial and positional distortion.
 
-**Strategic philosophy:** seize enemy industry intact and turn conquest into superior productive capacity.
+## P36 — Half-Priced Bento
 
----
+Neutral settlement costs half the ordinary Population. Shared Expansion/Economy reasoning should simply consume the effective settlement cost.
 
-# P35 — It's a Matter of Visualization
+**Strategic philosophy:** convert neutral geography into Capacity with unusually low Population expenditure.
 
-P35 turns deliberate relinquishment into territorial shaping because abandoned cells become neutral Fallout until recaptured. Retreat planning may therefore create contaminated buffers or distorted corridors, while `SELF_GEOMETRY_RISK` captures the danger of poisoning ground the faction later wants back.
+## P37 — The City Mouse
 
-**Strategic philosophy:** weaponize retreat by trading immediate ownership for temporary area denial and positional distortion.
+Amphibious embarkation costs more FFY, but successful landings create a permanent level-1 Fort. Extended support evaluates the landing as an immediately fortified beachhead.
 
----
+**Strategic philosophy:** pay more to invade, but make successful landings durable second fronts.
 
-# P36 — Half-Priced Bento
+## P38 — Return by Death
 
-P36 simply halves neutral settlement Population cost. The normal Expansion/Economy stack can read that effective cost directly, leaving more Population available for defense, offense, growth, or further expansion.
+Automatic defenders survive when their defended cell is captured. Forecast/Defense/Retreat reasoning can therefore value elastic defense and territorial trading without assuming Population loss accompanies every lost defended cell.
 
-**Strategic philosophy:** convert neutral geography into owned Capacity with unusually low Population expenditure.
+**Strategic philosophy:** preserve fighting Population even when ground is lost.
 
----
+## P39 — Stereo Separation
 
-# P37 — The City Mouse
+Strategic Spawn uses two half-area influence regions and two exact origins while Starting Population remains global. Spawn planning must generate/evaluate legal pairs rather than one point.
 
-P37 makes amphibious embarkation more expensive but grants a permanent level-1 Fort after successful landing. Extended support therefore evaluates a landing as an immediately fortified beachhead rather than only as captured coastal territory.
+**Strategic philosophy:** begin from two strategic footholds, trading coordination risk for broader access and multi-theater possibility.
 
-**Strategic philosophy:** pay more to invade, but make successful landings harder to uproot and better able to sustain a second front.
+## P40 — Barrier Magic
 
----
+SAMs become large-area, exactly-one-charge shields with slower recharge. Extended support tracks charge state, broad coverage, poor throughput, and bait risk.
 
-# P38 — Return by Death
+**Strategic philosophy:** protect a large area with a sparse shield whose single charge must matter.
 
-P38 lets automatic defenders survive the capture of defended cells. Forecast/Defense/Retreat reasoning can therefore distinguish losing territory from losing both territory and its defender, enabling much stronger elastic-defense possibilities without requiring the character to embrace them.
+## P41 — Level 5
 
-**Strategic philosophy:** preserve the fighting population even when ground is lost.
+A City purchase directly creates a level-5 City at the accepted cumulative-cost discount. Extended support handles high upfront liquidity and immediate mature-City payoff rather than treating this as a normal level-1 build.
 
----
+**Strategic philosophy:** concentrate City investment into one-step mature infrastructure.
 
-# P39 — Stereo Separation
+## P42 — The Price of Empire
 
-P39 structurally changes Strategic Spawn to two half-area influence regions and two exact origins while retaining one global Starting-Population pool. Spawn planning therefore must generate and compare legal pairs rather than a single point and must later account for split-core opportunity and exposure.
+Warships cost no FFY but permanently consume Available Population and have reduced range. Spending/Naval reasoning must treat this as cross-resource conversion rather than a free ship.
 
-**Strategic philosophy:** begin from two strategic footholds, accepting coordination risk for broader access and multi-theater possibility.
+**Strategic philosophy:** convert Population into sea power, accepting demographic sacrifice and shorter reach.
 
----
+## P43 — The Devil of the Rhine
 
-# P40 — Barrier Magic
+All Tanks become Heavy Artillery: slow, expensive, long-ranged, high-alpha, long-reload units unable to raid Trains. Extended Armor support is mandatory so they are not used as vanilla Tanks.
 
-P40 turns ordinary SAM progression into a large-area, exactly-one-charge shield with slower recharge. Extended support must track charge state, broad coverage, poor throughput, and bait risk rather than treating the larger radius as an unconditional upgrade.
+**Strategic philosophy:** replace mobile Tank pressure with standoff artillery built around range, timing, and positioning.
 
-**Strategic philosophy:** protect a very large area with a sparse interception shield whose single charge must matter.
+## P44 — Nobel Prize
 
----
+Successful armor Population attacks neutralize cells and apply Fallout, turning firepower into territorial shaping. Extended support values Capacity denial, connectivity cuts, area denial, and self-geometry risk.
 
-# P41 — Level 5
+**Strategic philosophy:** use armor fire to damage the strategic usefulness of enemy geography itself.
 
-P41 changes a City purchase into an immediate level-5 City at a discounted fraction of the cumulative ordinary build-and-upgrade cost. This is more than a scalar discount: one build action now delivers the full high-level City result immediately, so Infrastructure/Spending/Forecast reasoning must understand both the high upfront liquidity requirement and the immediate completed-level payoff.
+## P45 — Hidden Leaf Village
 
-The support must consume authoritative City costs, levels, build legality, and resulting mechanics rather than reproducing the cumulative-cost formula. P17 and any upgrade-restriction drawback are important later synergy partners.
+Owned Forest interiors deny enemy tactical observation while boundary/manifested information remains minimally visible. Extended support values concealment as staging/protection rather than a combat scalar.
 
-**Strategic philosophy:** concentrate City investment into expensive one-step purchases that immediately deliver mature growth infrastructure.
+**Strategic philosophy:** use Forest as concealed operational space.
 
----
+## P46 — Northern Lands
 
-# P42 — The Price of Empire
+Persistent structures may be built on owned Tundra while Tundra retains its other ordinary rules. Extended Infrastructure support must generate and value these newly legal placement candidates.
 
-P42 replaces Warship FFY purchase cost with a permanent 2,000 Available-Population sacrifice and also shortens Warship attack range. This is a true cross-resource substitution: Spending/Naval reasoning must compare military sea power against demographic strength rather than treating the ship as “free.”
+**Strategic philosophy:** exploit normally infrastructure-hostile Tundra as strategic construction surface.
 
-Extended support therefore forecasts the permanent Population loss, exposes the altered purchase semantics, and evaluates the shorter-range Warship role. `EXPENSIVE_FAILURE` reflects the irrecoverable Population committed when a purchased Warship is later lost.
+## P47 — This Is Poison
 
-**Strategic philosophy:** build sea power by permanently converting Population into Warships, accepting demographic sacrifice and shorter reach in exchange for zero-FFY fleet acquisition.
+Enemy capture of this faction's Marsh cells inflicts additional Population loss on the captor. Extended Defense/Retreat support can treat Marsh loss as an attritional exchange rather than pure territorial defeat.
 
----
+**Strategic philosophy:** make selected Marsh territory costly for enemies to take.
 
-# P43 — The Devil of the Rhine
+## P48 — Aqua's Blessing
 
-P43 fully transforms Tanks into Heavy Artillery. The unit is slower and more expensive, fires very high-damage anti-armor and Population shots at long range on a long reload, cannot raid Trains, and can fire across terrain barriers it cannot itself traverse. Treating it as an ordinary Tank with adjusted stats would produce nonsensical behavior.
+Owned Shallow Water becomes population-bearing Capacity while retaining its unusual traversal/buildability rules. Extended support values it as demographic territory without pretending it is normal land.
 
-Extended Armor support therefore teaches standoff positioning, reload vulnerability, target selection, inability to Train-raid, and the distinction between projectile reach and movement reach. Higher planner tiers may use the same literacy for siege support, breakthrough timing, or more sophisticated force shaping.
+**Strategic philosophy:** expand Population Capacity through owned Shallow Water.
 
-**Strategic philosophy:** replace mobile Tank pressure with slow, high-alpha standoff artillery that dominates through range, positioning, and timing rather than close maneuver.
+## P49 — Laughing Man
 
----
+Observation Posts stop granting own tactical observation and instead create enemy-intelligence blackout zones. The Observation planner must therefore be transformed from coverage planning into counterintelligence placement.
 
-# P44 — Nobel Prize
+**Strategic philosophy:** use observation infrastructure to deny information rather than gather it.
 
-P44 makes successful Tank/Heavy-Artillery Population attacks neutralize enemy population-bearing cells and apply Fallout. This turns armor fire into territorial shaping, not merely damage, so the AI must recognize area denial, connectivity cuts, Capacity denial, and the possibility of damaging geography it might later want to own.
+## P50 — Iserlohn Fortress
 
-Extended Territory/Opportunity/Forecast/Armor support models these consequences from authoritative attack geometry. P43 is an obvious synergy partner because Heavy Artillery can apply the same effect from much longer range and across a much larger affected-cell budget.
+Forts project offensive pressure equal to their normal defensive-pressure magnitude throughout their coverage. Extended support values Forts as general offensive/defensive support anchors.
 
-**Strategic philosophy:** use armor attacks to destroy the strategic usefulness and connectivity of enemy territory, not merely its Population.
+**Strategic philosophy:** turn Fort coverage into general-purpose force support.
 
----
+## P51 — One Flag Beneath the Stars
 
-# P45 — Hidden Leaf Village
+Command Posts also project defensive pressure equal to their ordinary offensive-pressure magnitude. Their placement therefore acquires a genuine defensive role in addition to command/offensive support.
 
-P45 conceals the interior of owned Forest from enemy tactical observation while leaving exposed boundary information and directly manifested hostile state minimally visible. This is a counterintelligence/positioning mechanic whose value depends on Forest geography, not an ordinary combat scalar.
+**Strategic philosophy:** make Command coverage a two-way force-support network rather than purely offensive infrastructure.
 
-Extended support lets Territory/Defense/LandWar reasoning value Forest as concealed staging/protection and Forecast reasoning understand when actions will expose previously hidden state. The existing `GAIN_INFORMATION_ADVANTAGE` affordance is used in the relative sense: the faction gains an information advantage by denying the opponent equivalent visibility.
+## P52 — Humanity Has Declined
 
-**Strategic philosophy:** use owned Forest as concealed operational space, forcing opponents to reason with less information until activity becomes directly relevant.
+Unused Population Capacity generates passive FFY, creating a direct economic value for the gap between Capacity and Total Population. Extended support must value expansion, Population expenditure, and recovery partly through their effect on that gap without blindly suppressing growth.
 
----
+**Strategic philosophy:** monetize underpopulation and make empty Capacity an economic asset.
 
-# P46 — Northern Lands
+## P53 — Money Is Everything
 
-P46 allows persistent structures on owned Tundra while leaving Tundra's ordinary zero-Capacity, spawn, terrain-combat, acquisition, and movement semantics intact. This creates genuinely new infrastructure-placement candidates rather than changing structure strength.
+Each ready charge on an owned active persistent Missile Silo generates substantial passive FFY. Extended support must value Silo construction/upgrades and the income opportunity cost of firing a ready charge; P29 mobile launchers explicitly do not qualify.
 
-Extended Infrastructure support therefore generates legal Tundra build candidates and evaluates whether otherwise low-economic terrain creates useful defensive, positional, coastal, observation, or strategic-weapon geometry. `TERRAIN_DEPENDENCE` reflects that the additional placement freedom matters only where useful Tundra exists.
+**Strategic philosophy:** turn strategic-weapon readiness into an economic stockpile whose charges are simultaneously weapons and income-producing assets.
 
-**Strategic philosophy:** exploit normally infrastructure-hostile Tundra as a new strategic construction surface without pretending it becomes ordinary productive land.
+## P54 — Starlight Breaker
 
----
+Initial Territory footprints use the accepted thin five-point star geometry instead of the ordinary compact shape while total area remains unchanged. Spawn support must evaluate the changed border exposure, reach, corridors, and self-geometry rather than only origin-point quality.
 
-# P47 — This Is Poison
-
-P47 charges the capturing enemy an additional Population loss whenever one of this faction's Marsh cells is successfully captured. Marsh territory can therefore become an attritional trap whose loss hurts the attacker more than ordinary geography would suggest.
-
-Extended Forecast/Defense/Retreat support can value Marsh as territory that is sometimes worth contesting, trading, or allowing an opponent to take when the resulting Population tax improves the wider position. Character Doctrine decides whether to deliberately lean into sacrificial use.
-
-**Strategic philosophy:** make Marsh conquest painful enough that selected territorial losses can become attritional exchanges rather than pure defeat.
+**Strategic philosophy:** trade compactness for long directional reach and unusual starting geometry.
 
 ---
 
-# P48 — Aqua's Blessing
+# Negative / drawback traits
 
-P48 makes owned Shallow Water population-bearing and grants +1 Population Capacity per cell while retaining all other Shallow-Water movement/buildability rules. The result is unusual Capacity geography: water can support Population without becoming normal land or infrastructure space.
+Drawbacks still receive full AI literacy. A competent controller should understand the constraint and adapt around it; low difficulty may adapt poorly, but it should not repeatedly plan around mechanics that the drawback makes impossible.
 
-Extended Territory/Economy/Forecast/Expansion support therefore values Shallow Water as Capacity-bearing territory while preserving its traversal/build restrictions. `TERRAIN_DEPENDENCE` is necessary because map water distribution directly controls the trait's strategic ceiling.
+## N01 — The Lost Decade
 
-**Strategic philosophy:** turn owned Shallow Water into demographic territory, expanding Capacity through geography that remains operationally unlike land.
+Cities contribute less Population Growth. This is a surfaced scalar reduction, so shared Economy/Forecast reasoning should simply use the effective growth value.
 
----
+**Strategic philosophy:** City-based demographic scaling is less efficient than normal.
 
-# P49 — Laughing Man
+## N02 — Flat Is Justice
 
-P49 replaces the normal information role of Observation Posts. They no longer grant tactical observation; their completed-level radius instead becomes an enemy-intelligence blackout that conceals this faction's units, structures, and manifested operational state inside it.
+Plains provide reduced offensive pressure. Ordinary terrain-aware combat reasoning should use the effective pressure result.
 
-This requires a transformed Observation planner, not a normal coverage planner with different numbers. Extended support must understand the loss of own observation benefit, generate blackout-oriented placements, value protected assets/staging areas, and forecast what remains concealed or becomes exposed. `GAIN_INFORMATION_ADVANTAGE` again describes the relative advantage created by denying the opponent information.
+**Strategic philosophy:** Plains are comparatively weak offensive staging ground.
 
-**Strategic philosophy:** use Observation infrastructure as counterintelligence cover rather than reconnaissance, creating zones where the opponent knows less about your actual operational state.
+## N03 — I Hate Sand
 
----
+Desert provides reduced defensive pressure. Ordinary terrain-aware defense reasoning should use the effective pressure result.
 
-# P50 — Iserlohn Fortress
+**Strategic philosophy:** Desert is comparatively poor defensive ground.
 
-P50 makes Forts project offensive pressure equal to their ordinary defensive-pressure magnitude across existing Fort coverage. Unlike P18's source-cell-specific doubled offensive lane rule, P50 turns the Fort's whole coverage area into general offensive support geometry.
+## N04 — Northern Expedition
 
-Extended Opportunity/Forecast/LandWar/Infrastructure support therefore values Fort placement as simultaneous defense and broad attack support without converting Forts into a mandate to initiate war. P09, P18, P24, and P37 are especially important later synergy partners because they all alter the value or creation of the same Fort system.
+FFY events located on Mountain yield less. Generic economy/territory reasoning should treat Mountain economic events as lower-value without needing a bespoke planner.
 
-**Strategic philosophy:** turn Forts into general-purpose command anchors that support both holding ground and projecting force across their coverage.
+**Strategic philosophy:** Mountain geography is economically inefficient for located FFY events.
+
+## N05 — Curse of the Abyss
+
+Fallout cannot be captured at all. Extended support is necessary because Fallout can become a hard ownership/route barrier rather than merely slower terrain; plans that require taking Fallout must be recognized as impossible.
+
+**Strategic philosophy:** Fallout geometry can permanently obstruct territorial plans until another actor/state change removes the barrier.
+
+## N06 — No Second Season
+
+FFY cannot be spent to upgrade buildings. Upgrade illegality is authoritative and should naturally remove upgrade actions from ordinary planners.
+
+The global synergy/suppression sweep must explicitly verify interactions such as P17+N06 so the composed strategic profile does not advertise upgrade strategies that final effective rules make impossible.
+
+**Strategic philosophy:** infrastructure development must rely on construction and non-FFY upgrade paths rather than ordinary paid modernization.
+
+## N07 — One Piece
+
+The faction may own at most one of each structure type. This is more than an ordinary build cap: every structure type becomes a scarce strategic slot whose location and survival matter across the whole map.
+
+Extended Infrastructure/Spending support therefore evaluates placement opportunity cost, competing theaters, and the loss risk of singular infrastructure. The cap itself remains authoritative game legality.
+
+**Strategic philosophy:** concentrate each infrastructure role into one carefully chosen asset rather than a distributed network.
+
+## N08 — It's Just Decoration
+
+Forts provide no defensive-pressure bonus. This remains generic because shared reasoning should consume the Fort's actual effective outputs; a Fort may still retain other value from base mechanics or positive traits.
+
+This is a key suppression-sweep case for P09/P18/P24/P37/P50: loss of ordinary defense must not erase other independently legal Fort roles.
+
+**Strategic philosophy:** Forts cannot be valued for their ordinary defensive-pressure function.
+
+## N09 — Medieval Isekai
+
+Factories cannot be built. The restriction is ordinary authoritative legality; planners should simply stop generating self-built Factory plans rather than requiring a bespoke anti-Factory controller.
+
+Captured or otherwise legally obtained industry must still be evaluated according to final effective rules, so the global sweep must distinguish “cannot build” from “cannot own/use.”
+
+**Strategic philosophy:** domestic industrial development cannot rely on constructing Factories.
+
+## N10 — Domain Contraction
+
+Fort coverage area is smaller. This is a generic surfaced geometry modifier; every Fort-dependent planner should consume the reduced real coverage rather than assume vanilla radius/area.
+
+**Strategic philosophy:** Fort influence is more spatially constrained.
+
+## N11 — Absolute Territory
+
+FFY events located inside owned SAM Launcher coverage yield zero. This creates a genuine cross-domain conflict between strategic defense geometry and economic-event geography.
+
+Extended Economy/Forecast/Infrastructure/Defense support therefore prices the economic exclusion zone when placing SAMs or valuing defended regions instead of blindly maximizing coverage.
+
+**Strategic philosophy:** strategic-defense coverage can sterilize the economy beneath it, forcing deliberate defense-versus-income tradeoffs.
+
+## N12 — Panzer Vor!
+
+Warships cannot be built. This is authoritative build legality and therefore GENERIC: Naval planning should not repeatedly propose impossible purchases.
+
+The global suppression sweep must remove or deactivate Warship-dependent strategic semantics from positive traits when the final effective rules leave the faction with no legal way to obtain the required Warship capability.
+
+**Strategic philosophy:** naval strategy cannot assume access to self-built Warships.
+
+## N13 — Beach Episode Gone Wrong
+
+Half of Transport Population dies on landing. This remains generic because ordinary amphibious forecasting should use the actual delivered Population after all effective landing mechanics rather than the nominal embarked amount.
+
+If the shared planner cannot do that, it is a generic amphibious-model defect rather than a reason for N13-specific strategy code.
+
+**Strategic philosophy:** amphibious landings require substantially more Population commitment for the same delivered force.
+
+## N14 — To Them Words Are Merely a Means to Deceive
+
+The first hostile capture of a Trade Ship voyage inflicts an FFY loss equal to that voyage's snapshotted ordinary owner-side success value. Capture risk therefore carries an additional economic penalty beyond loss of normal trade benefit.
+
+Extended Economy/Threat/Forecast support makes trade-network value risk-adjusted without granting hidden information about future capture.
+
+**Strategic philosophy:** exposed commerce can turn hostile capture into a direct financial liability.
+
+## N15 — King's Ransom
+
+Transport embarkation costs an additional 500 FFY. This is a generic surfaced cost modifier; amphibious planning should use the real effective embarkation cost.
+
+**Strategic philosophy:** every amphibious commitment carries a substantially higher liquidity cost.
+
+## N16 — Insurance Fraud
+
+Ordinary successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value, while hostile capture instead returns that value once. This inverts the normal economic interpretation of Trade Ship outcomes and therefore requires explicit support.
+
+Extended Economy/Opportunity/Forecast/Infrastructure reasoning must understand that a nominally successful voyage can be economically harmful while capture can be comparatively preferable. It must still obey normal legality, observation, and character Doctrine; the support does not automatically order sacrificial shipping.
+
+**Strategic philosophy:** ordinary trade success becomes a liability, creating an intentionally perverse commerce model where hostile capture can be the less harmful outcome.
 
 ---
 
@@ -458,24 +482,46 @@ Extended Opportunity/Forecast/LandWar/Infrastructure support therefore values Fo
 
 ### Batch 1 — P01–P10
 
-Nine are generic mechanics-aware cases; only P05 requires extended support. P10 added the reusable `REDUCE_INTERCEPTION_WINDOW` affordance.
+Nine GENERIC; P05 EXTENDED. P10 added `REDUCE_INTERCEPTION_WINDOW`.
 
 ### Batch 2 — P11–P20
 
-P11, P17, P18, and P19 are extended because they create threshold, sequencing, cross-domain geometry, or contact-count relationships. The rest are generic.
+P11, P17, P18, P19 EXTENDED; the remainder GENERIC.
 
 ### Batch 3 — P21–P30
 
-P21, P23, P24, P26, P27, P28, P29, and P30 are extended because they create sequencing, role transformation, one-shot timing, cross-domain economics, or mobile-launch semantics. P22 and P25 remain generic.
+P21, P23, P24, P26–P30 EXTENDED; P22 and P25 GENERIC.
 
 ### Batch 4 — P31–P40
 
-P31–P35 and P37–P40 are extended; P36 is generic. Important future combinations include P07+P33, P05+P34, P16+P35, the Fort family, P11/P27/P40 SAM interactions, and P12/P32/P37 Transport interactions.
+P31–P35 and P37–P40 EXTENDED; P36 GENERIC.
 
 ### Batch 5 — P41–P50
 
-All ten require extended support. This is expected: the batch is dominated by role transformations, cross-resource purchases, transformed information systems, terrain-reclassification/buildability changes, and infrastructure whose strategic role changes rather than simple exposed scalar modifiers.
+All ten EXTENDED because the batch is dominated by role transformations, cross-resource purchases, information changes, terrain reclassification, and transformed infrastructure roles.
 
-No new generic support literal is required. P45 and P49 both fit the existing `INFORMATION` theme, `GAIN_INFORMATION_ADVANTAGE` affordance, and `OBSERVATION` synergy vocabulary; their much more specific counterintelligence semantics remain in typed support hooks rather than expanding the global enum catalogue prematurely.
+### Batch 6 — P51–P54 + N01–N06
 
-No explicit `OriginCombinationSupport` entry is closed yet. Especially important candidates retained for the mandatory post-trait sweep now include P17+P41, P43+P44, P45/P49 information-denial interactions, P46 with terrain-sensitive structure mechanics, P48 with Population-growth mechanics, and P09/P18/P24/P37/P50 Fort combinations.
+P51–P54 and N05 EXTENDED; N01–N04 and N06 GENERIC. This batch exposed the first explicit **support-suppression** audit requirement: effective-rule prohibitions such as N06 can make positive-trait strategic semantics impossible even though both trait support entries remain individually valid.
+
+### Batch 7 — N07–N16
+
+N07, N11, N14, and N16 are EXTENDED. N08–N10, N12, N13, and N15 are GENERIC because their restrictions/modifiers should already be represented by final legality, geometry, cost, or outcome values.
+
+No new generic support literal was required. This batch strengthens the mandatory post-trait suppression audit: N08, N09, and N12 can partially or wholly deactivate the practical value of positive Fort, Factory, or Warship support without necessarily making those positive trait definitions themselves invalid.
+
+---
+
+## Mandatory post-trait global sweep
+
+After N17–N18 are mapped, perform one whole-catalogue pass covering both **synergy** and **suppression**.
+
+The sweep must distinguish:
+
+- additive synergy where two independently useful traits create a larger combined opportunity;
+- emergent synergy requiring explicit `OriginCombinationSupport`;
+- partial suppression where a drawback removes one use of a positive trait but leaves others valid;
+- total suppression where final effective rules make a support affordance/hook mechanically unreachable;
+- transformed interactions where the same mechanic remains legal but changes enough that composed support needs an explicit combination hook.
+
+Important candidates already recorded include P07+P33, P05+P34, P17+P41, P17+N06, P22+P29, P43+P44, P45+P49, P16/P35/N05 Fallout relationships, P11/P27/P40 SAM relationships, P12/P32/P37/N13/N15 Transport relationships, the P09/P18/P24/P37/P50/N08/N10 Fort family, and Warship-positive traits against N12.
