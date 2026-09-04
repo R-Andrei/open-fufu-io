@@ -25,9 +25,9 @@ Nothing here changes Origin mechanics. Numeric mechanical truth remains in the a
 ## Progress
 
 ```text
-Configured traits: 20 / 72
-Current range:      P01–P20
-Remaining:          P21–P54, N01–N18
+Configured traits: 30 / 72
+Current range:      P01–P30
+Remaining:          P31–P54, N01–N18
 ```
 
 No explicit Origin-combination support is closed yet. Cross-trait interactions are deliberately retained for the global synergy sweep after all individual trait mappings exist.
@@ -270,6 +270,128 @@ The granted Silo creates obvious future relationships with P10 and later weapon/
 
 ---
 
+# P21 — Fun Things Are Fun
+
+P21 creates a sequencing and liquidity effect rather than a simple structure discount. The first purchase of every structure type must still pass ordinary affordability and legality, but a successful qualifying purchase consumes no FFY. The controller therefore needs to distinguish **having enough FFY to unlock the purchase** from **actually spending that FFY**.
+
+Extended support tracks which first-purchase opportunities remain and lets Spending/Infrastructure reasoning value the preserved liquidity. `HIGH_LIQUIDITY_NEED` is intentional: a faction may need to accumulate a large balance to qualify for a purchase even though the balance survives afterward.
+
+The trait should encourage useful infrastructure diversification when appropriate, not blind construction of one copy of everything merely because the first copy is free to consume.
+
+**Strategic philosophy:** turn sufficient liquidity into unusually efficient first-time infrastructure without actually exhausting the stockpile.
+
+---
+
+# P22 — Limit Break
+
+P22 raises the Warship rank ceiling without changing how Warships gain XP or how rank bonuses work. Shared naval reasoning should already use actual current/max rank and effective combat stats, so the trait itself remains generic.
+
+The strategic value is delayed and therefore legitimately carries `REQUIRES_VETERANCY`: a newly built Warship has not yet realized the benefit. Preserving experienced ships becomes more valuable because their long-run ceiling is higher.
+
+P22 and P29 are an especially important synergy-sweep pair because higher Warship rank can expand the effective Silo level of P29 mobile launchers.
+
+**Strategic philosophy:** invest in veteran Warships that can continue scaling beyond the ordinary fleet ceiling.
+
+---
+
+# P23 — Space Battleship Yamato
+
+P23 is more than three ordinary Warship stat bonuses because the faction may own only one Warship. Naval capability becomes concentrated into one stronger, faster, longer-ranged flagship that must be allocated between competing theaters rather than multiplied into a fleet.
+
+Extended support therefore teaches Naval planning about the one-Warship cap, the strategic cost of losing the flagship, and the need to compare redeployment between theaters. `EXPENSIVE_FAILURE` describes concentrated strategic capability rather than a hidden increase to purchase price.
+
+The support should not make the flagship timid by default; character adaptation decides whether it is preserved carefully, used as a decisive spearhead, or risked aggressively.
+
+**Strategic philosophy:** concentrate naval power into one elite flagship and make its positioning, preservation, and commitment count.
+
+---
+
+# P24 — A King's Price
+
+P24 makes Fort coverage an economic geography as well as a defensive geometry: qualifying FFY events inside Fort areas are more valuable. This creates a real cross-domain relationship between infrastructure placement and economic-event locations that is not captured by simply reading a cheaper/more-expensive structure number.
+
+Extended support therefore lets Economy/Forecast reasoning value the location condition and lets Infrastructure planning consider economic coverage alongside ordinary defensive use. `INFRASTRUCTURE_DEPENDENCE` records that the bonus requires useful Fort coverage; it does not mean Fort-building is always correct.
+
+P09, P18, and P50 are natural global-synergy-sweep partners because they change the value or purpose of the same Fort geometry.
+
+**Strategic philosophy:** turn strategically placed Fort coverage into protected, higher-yield economic territory.
+
+---
+
+# P25 — EXPLOSION!
+
+P25 specializes the faction's strategic-weapon portfolio around Hydrogen Bombs: Atom Bomb and MIRV are unavailable, while Hydrogen Bombs become larger and more expensive. All three changes are explicitly surfaced by ordinary weapon legality, blast geometry, and cost mechanics.
+
+The trait therefore remains generic. A competent StrategicWeaponPlanner should already understand that only Hydrogen Bomb plans are legal and evaluate their true cost/area. `HIGH_UPFRONT_COST` captures the heavier commitment, while `SPECIALIZATION` captures the loss of cheaper/smaller and MIRV alternatives.
+
+With Water Nukes enabled, the larger Hydrogen footprint also enlarges the terrain-conversion core through the same canonical geometry, so ordinary strategic-weapon forecasting must use the actual ruleset result rather than a P25-specific terrain simulator.
+
+**Strategic philosophy:** abandon weapon variety in favor of fewer, larger, more expensive Hydrogen strikes with exceptional area impact.
+
+---
+
+# P26 — Serious Punch
+
+P26 turns MIRV access into a singular strategic resource. The faction must satisfy ordinary MIRV affordability and launcher legality, but the one permitted successful use consumes no FFY. This creates both a **liquidity reservation problem** and a **one-shot timing problem** that ordinary cost-aware planning alone does not express well.
+
+Extended support therefore lets StrategicWeapon/Spending reasoning preserve enough liquidity to make MIRV legal, recognize that the eventual successful purchase does not consume the stockpile, and value the fact that the one permitted MIRV opportunity cannot simply be repeated later.
+
+`EXPENSIVE_FAILURE` is strategic rather than monetary: committing the unique MIRV opportunity at a poor time or into a highly interceptable situation can waste an irreplaceable capability.
+
+**Strategic philosophy:** accumulate the right conditions for one decisive MIRV use, then spend the unique opportunity when its strategic value is exceptional.
+
+---
+
+# P27 — Only My Railgun
+
+P27 transforms SAM placement into a cross-domain defensive problem because SAM Launchers may also attack ships. The structure remains a SAM rather than becoming a Warship, but coastal/littoral coverage can now deny hostile naval movement and protect valuable shore assets.
+
+Extended support teaches Threat/Opportunity reasoning to include hostile ships in relevant SAM coverage and lets Infrastructure/Defense planning value coastal SAM locations for both ordinary interception and anti-ship denial.
+
+`COAST_DEPENDENCE` applies to the *additional anti-ship value*, not to the SAM's ordinary strategic-projectile role away from water.
+
+**Strategic philosophy:** turn the strategic-interception network into coastal area denial against hostile shipping as well.
+
+---
+
+# P28 — Blood Devil
+
+P28 changes the strategic value of destroying enemy Transports because their carried Population is transferred rather than merely removed with the Transport. A Transport can therefore become a large Population prize whose value depends on its actual committed cargo.
+
+Extended support lets Opportunity/Forecast/Naval reasoning account for that cargo-dependent gain when choosing patrol areas and evaluating Transport targets. It does not bypass ordinary observation: the controller may only reason from whatever Transport/cargo information the legal tactical-information rules actually expose.
+
+The ordinary autonomous Warship target order already values hostile Transports highly; P28 support exists so the broader strategy understands *why and how much* a successful interception can change Population balance.
+
+**Strategic philosophy:** punish amphibious commitment by converting destroyed enemy invasion Population into your own available force.
+
+---
+
+# P29 — The Kaiser
+
+P29 turns sufficiently ranked Warships into mobile Missile Silo launch platforms. This couples naval positioning, Warship survival/veterancy, weapon level gates, launch geometry, and strategic-weapon timing in a way that cannot be represented as a simple Warship stat modifier.
+
+Extended support therefore teaches StrategicWeapon planning that Warships are legal launchers at their current cells and teaches Naval planning that a Warship's location can be valuable for launch access in addition to ordinary naval combat. Exposure of a launcher-Warship also matters more than exposure of an ordinary ship.
+
+`REQUIRES_VETERANCY` reflects rank-based effective Silo access. P22 is a particularly important synergy-sweep partner because its rank-5 ceiling can eventually make a P29 Warship MIRV-capable.
+
+**Strategic philosophy:** use veteran naval assets as mobile strategic-launch infrastructure, turning sea position into weapon projection.
+
+---
+
+# P30 — The Conman
+
+P30 changes the Warship's role rather than merely making it faster: piracy yield is tripled and speed increases sharply, but naval gunfire against ships is removed while Trade Ship pursuit/capture remains. A P30 Warship should therefore not be reasoned about as an ordinary line combatant with better movement.
+
+Extended support teaches Naval planning the transformed legal role, identifies profitable piracy routes/targets, forecasts the increased FFY return, and treats hostile combat Warships as threats the pirate ship cannot simply duel with ordinary naval gunfire.
+
+The lack of a generic caution literal for “cannot perform ordinary peer naval combat” is intentional here. The planner-support semantics can model the hard capability restriction directly rather than forcing it into an inaccurate caution label.
+
+Likely synergy partners include Trade Ship/economy modifiers and Warship transformations; these remain for the global sweep.
+
+**Strategic philosophy:** replace conventional naval combat with high-speed economic predation—avoid the battle line, hunt commerce, and make piracy pay.
+
+---
+
 ## Batch 1 consistency notes — P01–P10
 
 Nine of the first ten traits are ordinary mechanics-aware support cases. P05 is the only one that needs reusable extended evaluator/planner support because it creates a cross-domain conquest-to-economy relationship that ordinary scalar reasoning would not necessarily capture.
@@ -285,3 +407,13 @@ P11, P17, P18, and P19 require extended support because they create cross-domain
 This batch does **not** require another expansion of the generic support vocabulary. Existing themes, affordances, cautions, and synergy tags are sufficient; where an interaction is too specific for the current synergy-tag vocabulary, the later global sweep can match exact trait IDs rather than adding one-off literals prematurely.
 
 No explicit `OriginCombinationSupport` entry is closed yet.
+
+---
+
+## Batch 3 consistency notes — P21–P30
+
+P21, P23, P24, P26, P27, P28, P29, and P30 require extended support because they introduce sequencing, role transformation, cross-domain geometry/economy coupling, one-shot resource timing, cargo-dependent rewards, or mobile-launch semantics. P22 and P25 remain generic mechanics-aware cases.
+
+Despite the high extended-support ratio, this batch still fits the existing generic support vocabulary. Several very specific concepts are better expressed through typed support hooks than by expanding the global enum catalogue with one-off affordances/cautions.
+
+No explicit `OriginCombinationSupport` entry is closed yet. Important candidates retained for the later global sweep include P22+P29, Fort-centric P09/P18/P24/P50 relationships, and several strategic-weapon/naval combinations.
