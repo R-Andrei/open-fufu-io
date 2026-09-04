@@ -4,7 +4,7 @@
 
 This file is the **provisional working catalogue for Origin traits**, not a competing game-design contract.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Echo identity/acquisition/reward semantics are recorded in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
+The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical migration/implementation authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The accepted first Official Origin roster is recorded in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). Concrete terrain/structure/Tank data is recorded in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Detailed FFY economy semantics are recorded in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). Echo identity/acquisition/reward semantics are recorded in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -89,8 +89,10 @@ Unless explicitly marked otherwise in the canonical design, costs/refunds and ex
 | P49 | **X** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
 | P50 | **X** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
 | P51 | **X** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
+| P52 | **X** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
+| P53 | **X** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
 
-P30–P51 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level` coefficient is likewise explicitly provisional balance data to benchmark before V1 release rather than an unresolved mechanic.
+P30–P53 numerical costs remain especially balance-sensitive, though the underlying mechanics are accepted as the provisional V1 catalogue baseline. P33's `20 × City level`, P52's `/250` empty-Capacity coefficient, and P53's `2,000 FFY/s per ready Silo charge` are explicitly provisional balance data to benchmark before V1 release rather than unresolved mechanics.
 
 ---
 
@@ -115,6 +117,7 @@ P30–P51 numerical costs remain especially balance-sensitive, though the underl
 | N15 | **X** | `+500 FFY` Transport embarkation cost | -5 |
 | N16 | **X** | Successful uncaptured Trade Ship voyages cost the owner their snapshotted voyage value; hostile capture instead returns that value once | -6 |
 | N17 | **X** | Enemy structures you would ordinarily capture are destroyed instead of transferred to you | -4 |
+| N18 | **X** | Final capture/settlement progress against **non-Fallout** target cells is multiplied by `0.50`; Fallout targets are exempt from this drawback | -8 |
 
 ---
 
@@ -132,7 +135,7 @@ Desert is a real V1 terrain/map input. Its accepted provisional baseline is reco
 
 ### S3 — structure-capture FFY
 
-Ordinary structure capture does not inherently award FFY. P05 creates the alternate rule and uses the captured structure's cell as the located military/conquest FFY event.
+Ordinary structure capture does not inherently award FFY. P05 creates the alternate rule and uses the captured structure's cell as the located military/conquest FFY event. Its provisional base payout is `10%` of the captured structure's canonical cumulative completed-level FFY value as specified in `FFY_ECONOMY.md`.
 
 ### S4 — P17 compounding
 
@@ -174,7 +177,9 @@ P04 fixes only response-side counter-response effectiveness at `1.0`. Attack-sid
 
 An FFY event may carry an optional location cell when it has a meaningful world-space location. Spatial modifiers inspect that location; genuinely global/non-spatial rewards do not receive spatial modifiers.
 
-Examples include captured-structure cell, rewarding train-station cell, and receiving Trade Ship Port cell. One effect qualifies once even if overlapping multiple areas of the same type; distinct independent modifiers may combine normally.
+Examples include captured-structure cell, rewarding Train-station cell, and receiving Trade Ship Port cell. One effect qualifies once even if overlapping multiple areas of the same type; distinct independent modifiers may combine normally.
+
+The ordinary universal passive FFY floor and P52/P53 passive-origin sources are non-spatial and therefore cannot inherit Desert/Fort/SAM/location modifiers merely because the faction happens to own such geography.
 
 ### S12 — P29 nuclear Warships and launcher choice
 
@@ -188,6 +193,8 @@ Under the canonical structure-level rules, a P29 Warship's effective Silo level 
 
 P30 is a role conversion: very fast piracy vessels with `3×` piracy payout, but no naval gunfire against ships. Trade Ship pursuit/capture remains. The intended tradeoff is economic raiding in exchange for conventional naval-combat and Transport-interception capability.
 
+Captured Trade cargo must be physically delivered before piracy pays, as specified in `FFY_ECONOMY.md`.
+
 ### S14 — snapshotted Trade-voyage value; N14 and N16
 
 Every Trade Ship voyage has one deterministic **ordinary owner-side success value** snapshotted at launch. Effects that refer to the economic value of that voyage use this same snapshot rather than recomputing value from later rerouting, capture, or distance traveled after launch.
@@ -197,14 +204,13 @@ For N14:
 - a successful uncaptured voyage remains ordinary;
 - on the **first hostile capture** of that voyage, subtract exactly the snapshotted owner-side success value from the original owner's current FFY balance;
 - later recaptures/transfers of the same ship do not trigger N14 again;
-- captor-side piracy/capture rewards and destination-side rewards remain governed by their ordinary rules unless another effect changes them.
+- captor-side piracy/capture rewards remain governed by their ordinary rules unless another effect changes them.
 
 For N16:
 
 - successful uncaptured voyage: original owner loses that same snapshotted value instead of receiving the ordinary owner-side Trade Ship reward;
 - first hostile capture: original owner gains that snapshotted value once;
-- captor may still receive ordinary piracy reward;
-- destination-side rewards for other factions are not automatically removed.
+- captor may still receive ordinary piracy reward.
 
 If N14 and N16 are selected together, their original-owner first-capture effects cancel (`-V + V = 0`) without a special-case incompatibility. An uncaptured voyage still follows N16 and costs the owner `V`.
 
@@ -240,6 +246,8 @@ The coefficient is intentionally balance-sensitive. Before V1 release, accelerat
 
 Only Factories acquired by conquest receive `2×` effect. Built/granted Factories are ordinary. P34 intentionally does not include N09; P34 + N09 is therefore the legal conquest-only industrial build.
 
+For ordinary Train FFY, `2× Factory effect` multiplies the conquered Factory's current level-specific Train-event base value from `FFY_ECONOMY.md`.
+
 ### S19 — P35 scorched-earth Fallout
 
 Only **deliberate relinquishment** creates this Fallout; ordinary enemy capture does not. It creates no nuke casualty event. Trait-created Fallout remains while neutral and clears on the next successful capture. Ordinary Fallout resistance applies while neutral unless another rule changes it.
@@ -251,6 +259,8 @@ N17 destroys structures the trait-holder would have captured. It does not destro
 ### S21 — P36 half-cost neutral settlement
 
 Baseline neutral settlement costs one Population per successfully acquired population-bearing neutral cell. P36 changes the cost to `0.5` and uses faction-level deterministic residual accounting. Residual debt survives ending/recreating expansion operations and is match/replay state.
+
+P36 changes **Population cost**, not acquisition speed. It therefore composes independently with N18's non-Fallout progress multiplier.
 
 ### S22 — P37 fortified amphibious landings
 
@@ -419,6 +429,86 @@ Each Factory maintains its own deterministic count of **normal primary Train dis
 
 The bonus Train does not occupy or delay the Factory's primary-Train slot. Its route/service targets are generated independently and deterministically. Train destruction does not reset the per-Factory dispatch sequence.
 
+### S37 — P52 underpopulation economy
+
+P52 adds a global non-spatial passive FFY source:
+
+```text
+emptyCapacity = max(0, PopulationCapacity - TotalPopulation)
+P52BonusFFYPerSecond = emptyCapacity / 250
+```
+
+It is additive to the ordinary universal `1,000 FFY/s` floor. It is not an assignment of Population to workers/economy and consumes no Population.
+
+The source is eligible for ordinary **All-FFY** yield modifiers but not Industrial, Naval/trade, Military/conquest, terrain-location, Fort-area, SAM-area, or other location/source-specific modifiers.
+
+If Total Population exceeds Capacity, P52 contributes zero rather than negative income. Deterministic fixed-point/residual accounting may be used so income changes smoothly rather than jumping only when empty Capacity crosses multiples of 250.
+
+P52 intentionally creates strange incentives: acquiring more Capacity can increase FFY, while later filling that Capacity with Population reduces the bonus. P02's wider efficient Population-utilization band may synergize strongly with P52; that combination is legal and should be benchmarked rather than prohibited.
+
+### S38 — P53 strategic-stockpile economy
+
+P53 adds a global non-spatial passive FFY source:
+
+```text
+readyPersistentSiloCharges
+= sum of currently ready launch charges across owned active persistent Missile Silo structures
+
+P53BonusFFYPerSecond
+= 2,000 × readyPersistentSiloCharges
+```
+
+Only charges belonging to actual persistent **Missile Silo structures** count. Warships acting as launch platforms under P29 do not contribute P53 income.
+
+The source is eligible for ordinary **All-FFY** yield modifiers but not Industrial, Naval/trade, Military/conquest, or spatial FFY modifiers.
+
+Expending a Silo charge immediately removes that charge's income contribution until the charge becomes ready again. This creates a real guns-versus-butter tension, but temporary cooldown income loss is **not** treated as the doctrine's defining drawback.
+
+P20's free starting level-1 Missile Silo is an ordinary owned active persistent Silo after spawn and therefore contributes one ready charge to P53 whenever that charge is ready. P53 + P20 is legal; its strength is controlled by ordinary point/refund constraints and benchmark balance rather than a hidden incompatibility.
+
+### S39 — N18 non-Fallout acquisition penalty
+
+N18 reuses the existing typed capture/settlement-progress system; it does not create a second acquisition mechanic.
+
+For any target cell **without** a Fallout overlay, after ordinary pressure resolution and ordinary terrain/Echo/other acquisition-speed rules are calculated:
+
+```text
+finalCaptureOrSettlementProgress
+*= 0.50
+```
+
+N18 applies to both:
+
+- neutral settlement/acquisition; and
+- hostile territorial capture.
+
+It does **not** alter:
+
+- offensive/defensive pressure itself;
+- capture-coupled Population casualties;
+- neutral-settlement Population cost;
+- terrain identity;
+- movement;
+- structure legality.
+
+If the target cell has Fallout, N18 does not apply at all. The ordinary Fallout acquisition-resistance multiplier still applies unless another rule such as P16 removes it.
+
+Therefore, ignoring terrain-specific differences:
+
+```text
+N18 only:
+non-Fallout acquisition = 0.50×
+Fallout acquisition     = ordinary Fallout 0.50×
+
+N18 + P16:
+non-Fallout acquisition = 0.50×
+Fallout acquisition     = 1.00×
+```
+
+This is the intended nuclear/Fallout expansion inversion: ordinary land is painfully slow while Fallout becomes relatively privileged terrain.
+
+N18's `0.50×` is a structural post-multiplier. Ordinary terrain-capture/settlement Echo bonuses and terrain multipliers still calculate normally, then N18 halves the resulting progress on non-Fallout targets. P36 remains an independent Population-cost transformation.
+
 ---
 
 ## Catalogue coverage decisions
@@ -427,9 +517,13 @@ The bonus Train does not occupy or delay the Factory's primary-Train slot. Its r
 
 Simple Starting Population modification is intentionally kept out of the Origin catalogue; it is numerical build tuning and belongs in the V1 Echo modifier pool unless a future Origin changes it structurally.
 
-### Neutral expansion is now covered
+### Neutral expansion is covered structurally
 
-P36 provides an Origin-worthy neutral-expansion mechanic by changing Population efficiency rather than adding generic expansion pressure.
+P36 changes neutral-settlement Population efficiency, while N18 now supplies an Origin-scale structural acquisition-speed drawback that distinguishes ordinary versus Fallout terrain. Generic positive capture-speed tuning remains Echo territory.
+
+### Alternate passive economies are Origin territory
+
+The ordinary game keeps a simple flat universal FFY floor. P52 and P53 deliberately create unusual passive-economy identities from underpopulation and strategic stockpiles; they are Origin-scale rule changes rather than generic Echo percentage axes.
 
 ### Recon / visibility
 
@@ -437,7 +531,7 @@ Observation Posts establish the baseline structure-driven tactical observation m
 
 ### Expanded terrain/structure coverage
 
-The newly accepted terrain and support-structure library now has Origin-level coverage through P45–P51 without introducing bespoke controller APIs or one-off territorial/network systems. Deep Water remains covered indirectly through the broader naval Origin ecosystem, while Impassable remains deliberate hard map topology rather than an Origin-transformable terrain class.
+The accepted terrain/support/economy library now has Origin-level coverage without introducing bespoke controller APIs or hidden incompatibility systems. Deep Water remains covered indirectly through the broader naval Origin ecosystem, while Impassable remains deliberate hard map topology rather than an Origin-transformable terrain class.
 
 ---
 
@@ -453,6 +547,7 @@ Examples:
 - P26 + P25 (MIRV boon plus MIRV prohibition);
 - P35 + N05 (creates Fallout the faction itself cannot capture);
 - P44 + N05 (radioactive Tank/Artillery attacks create neutral Fallout the faction itself cannot later capture);
+- **N18 + N05** (ordinary non-Fallout acquisition is halved and Fallout cannot be captured at all — severe but legal);
 - N14 + N16 (first hostile capture has net-zero FFY effect for the original owner because `-V + V` cancels; an uncaptured N16 voyage still costs `V`);
 - N17 + P05/P34 (destroys the structure before capture-dependent rewards can apply);
 - P37 + N15 (Transport cost becomes 750 FFY);
@@ -467,13 +562,17 @@ Potentially strong but valid combinations include:
 - P23 + P42 for one powerful Warship whose purchase resource is Population but whose final stats combine both modifiers;
 - P31 + P23 for a single strong Warship supported by forward Port repair zones;
 - P32 + P12 for fast armored Port-launched Transports;
-- P33 + P07 for increased train traffic feeding City Population;
+- P33 + P07 for increased Train traffic feeding City Population;
 - P34 + N09 for conquest-only industrialization;
 - P35 + P16 for creating and later efficiently reclaiming a Fallout perimeter;
 - P38 + P35 for an expensive elastic/scorched defensive doctrine;
 - **P43 + P44 for radioactive Heavy Artillery**;
 - P44 + P16 for a doctrine that can later reclaim its own radioactive territorial damage efficiently if the front advances;
-- P50 + P51 for reciprocal general-support Fort/Command fields, with cross-type pressure bonuses using the explicit diminishing-composition rule rather than additive stacking.
+- P50 + P51 for reciprocal general-support Fort/Command fields, with cross-type pressure bonuses using the explicit diminishing-composition rule rather than additive stacking;
+- **P52 + P02** for a low-utilization demographic/economic state that can remain near peak growth across a wider band;
+- **P53 + P20** for an immediate ready-Silo passive-income start, if financed by sufficient legal drawbacks;
+- **P53 + P16 + N18** as the core legal nuclear-expansion spine: Silo-stockpile economy, full-speed Fallout acquisition, and half-speed ordinary acquisition;
+- P53 + P35/P44 + P16 + N18 for even stronger self-created-Fallout doctrines where point limits permit the exact build.
 
 The exhaustive deployment gate must prove every builder-legal combination deterministic and engine-safe; these notes never become hidden incompatibilities.
 
@@ -481,22 +580,12 @@ The exhaustive deployment gate must prove every builder-legal combination determ
 
 ## Current first Official Origin roster
 
-The accepted first roster is maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md):
-
-1. O01 — **Last Bastion** (temporary name): extreme Fort/Mountain defense and defender preservation, weak power projection.
-2. O02 — **Golden City** (temporary name): concentrated one-of-each infrastructure and trade wealth.
-3. O03 — **Rail-Demographic Origin** (temporary name): Population utilization plus train/City circulation.
-4. O04 — **Spoils of Empire** (temporary name): conquest FFY and stolen industrial capacity.
-5. O05 — **Iron Tide** (temporary name): armored, fast, self-fortifying amphibious invasion without Warships.
-6. O06 — **Gemini** (temporary name): two strategic spawn origins/territorial blobs with one global resource pool.
-7. O07 — **Corsair State** (temporary name): piracy/trade economy whose Warships are raiders rather than battle-fleet ships.
-
-Their current mechanical builds are the accepted first Official roster; display names are expected to change later.
+The accepted first roster is maintained in [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md). The new P52/P53/N18 mechanics are public catalogue material and are **not yet silently inserted into an existing Official Origin**; any new/revised Official Origin using them must be authored explicitly in that registry.
 
 ---
 
 ## Next Origin work
 
-The expanded terrain/structure/Tank world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning now belongs in `ECHO_CATALOGUE.md`; this catalogue should not describe that work as an unperformed expansion.
+The expanded terrain/structure/Tank/economy world-system pass now has provisional Origin coverage, and the corresponding Echo pool has already been expanded to the accepted **93 concrete stat+scope keys**. Echo identity/acquisition/reward tuning belongs in `ECHO_CATALOGUE.md`.
 
-Remaining Origin-side priorities are naming, balance/repricing, benchmark validation of balance-sensitive traits such as P33, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
+Remaining Origin-side priorities are naming, balance/repricing, benchmark validation of balance-sensitive traits such as P33/P52/P53/N18, deciding which Official Origin(s) should showcase the new alternate-economy mechanics, and exhaustive legal-combination validation rather than further trait proliferation for its own sake.
