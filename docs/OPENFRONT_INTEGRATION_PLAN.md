@@ -121,7 +121,7 @@ Origins and Echoes modify the explicit rule-bearing configuration consumed by th
 | Exhaustive Origin-catalogue combination deployment gate | **New** |
 | Open Fufu Echo identity catalogue/owned rolls/Echo Sets/rewards/pending settlement/Gacha Store | **New** |
 | Deterministic Echo generated-name grammar/configuration | **New; small versioned character-pool/stat-token/descriptor configuration, no quote corpus required** |
-| Open Fufu-owned SQLite persistence | **New / Adapt surrounding session infrastructure** |
+| Open Fufu-owned SQLite persistence | **New; include pre-provisioned external identities and opaque server-side sessions** |
 
 ---
 
@@ -1431,37 +1431,46 @@ Identity-defining exceptions such as changing/removing the ordinary wartime trad
 
 ---
 
-## 20. Authentication and identity — Accepted V1 direction
+## 20. Authentication, identity, sessions, and external provisioning — Accepted V1
 
-Open Fufu owns an internal user identity independent of a single provider.
+Implement the canonical contract in [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md).
 
-V1 ordinary login uses **Discord OAuth2**:
+The core responsibility split is closed:
 
 ```text
-Discord identity
-    ↓
-Open Fufu OAuth callback
-    ↓
-internal OpenFufuUser
-    ↓
-Open Fufu session
-    ↓
-API / WebSocket
+external authority decides admission
+        ↓ generic integration API
+pre-provisioned provider-qualified identity in Open Fufu
+
+browser proves identity through configured provider adapter
+        ↓
+Open Fufu checks its own linked identity
+        ↓
+internal user + Open Fufu session
 ```
 
-Do not use Discord's raw ID as the universal primary key for game data.
+Open Fufu must remain blind to **why** an identity was provisioned. Do not import Fufubox users, Fufu Control roles, Foof permissions, firewall grants, approval reasons, or another product's authorization model into game state. Fufubox/Fufu Control/Foof may be current provisioners, but Open Fufu does not call them during normal login and must remain movable to another host without them.
 
-A later Fufubox/fufu-control challenge credential may link to the same internal user rather than creating a separate account universe.
+V1 browser identity proof uses a replaceable provider-adapter boundary with one production adapter: **Discord OAuth2 Authorization Code flow**, stable numeric Discord user ID, random `state`, PKCE/S256, server-side exchange, and short-lived transient OAuth state. A successful OAuth callback never auto-creates a player: `(provider, provider_subject)` must already exist and be active in `linked_identities` or access is denied.
 
-Discord is used for login/session establishment or refresh, not every match tick/message; live matches must survive a Discord outage.
+V1 machine provisioning is the deliberately small generic surface:
 
-Match processes receive only internal game-facing identity/configuration data, never Discord access tokens.
+```text
+POST /api/integration/v1/identities/provision
+POST /api/integration/v1/identities/revoke
+```
 
-Foof uses a scoped service/API credential rather than database access.
+Provision is idempotent; a first provision creates the local user/link, reprovisioning a revoked identity restores the same local account, and revoke disables that login path plus active sessions without deleting game progression/history. External systems never write Open Fufu SQLite directly.
 
-Exact cookie/session encoding, CSRF handling, expiry/refresh policy, and optional later Fufubox linking mechanics remain implementation work.
+Authenticate integration callers with one or more named Open-Fufu-owned opaque 256-bit bearer credentials supplied from private runtime secret configuration. Browser sessions cannot call the integration surface. V1 does not need a Fufu-style service-role database merely for these two endpoints.
 
----
+V1 browser sessions are opaque 256-bit random tokens stored only as SHA-256 verifiers in SQLite. Use the production cookie `__Host-openfufu_session` with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and a **30-day absolute TTL**. Do not preserve the inherited refresh-cookie → 15-minute JWT chain, browser bearer-token storage, or `persistentID` development fallback.
+
+Authenticated browser mutations use the session cookie plus same-origin/Origin checks and `X-Open-Fufu-CSRF`; the CSRF value may be HMAC-derived from the raw session token with a dedicated server secret. V1 exposes no credentialed cross-origin browser API.
+
+WebSocket upgrade authenticates from the Open Fufu session cookie plus Origin validation, then binds the internal user/session identity for later message authorization. Do not put JWTs, Discord tokens, or session tokens in WebSocket query strings.
+
+Match processes receive only internal game-facing participant identity/configuration and never Discord tokens, browser cookies, integration credentials, external roles, or admission-policy data. Existing sessions and running matches do not depend on Discord/Fufu/Foof availability after session establishment.
 
 ## 21. Persistence — Accepted V1 SQLite baseline
 
@@ -1522,7 +1531,7 @@ The live installation consumes the structured runtime/private records defined by
 
 ### V1 relational schema — Accepted
 
-The initial V1 persistence model is **16 core tables**. Internal relational keys use SQLite integer primary keys where applicable; externally surfaced entities use random NanoID-style `public_id` values. Published/version-bound historical records are immutable where stated below.
+The initial V1 persistence model is **17 core tables**. Internal relational keys use SQLite integer primary keys where applicable; externally surfaced entities use random NanoID-style `public_id` values. Published/version-bound historical records are immutable where stated below.
 
 #### 1. `schema_migrations`
 
@@ -1554,11 +1563,12 @@ provider             TEXT NOT NULL
 provider_subject     TEXT NOT NULL
 user_id              INTEGER NOT NULL REFERENCES users(id)
 created_at_ms        INTEGER NOT NULL
+revoked_at_ms        INTEGER
 
 PRIMARY KEY(provider, provider_subject)
 ```
 
-Session-cookie transport/expiry/CSRF details remain part of the later auth pass; they are not grounds to keep the persistence schema itself open.
+The row is retained across revocation so re-provisioning the same provider/subject restores the same local Open Fufu user rather than creating a duplicate account. Active login requires `revoked_at_ms IS NULL`. Admission rationale/policy is deliberately not stored here; see `AUTH_AND_IDENTITY.md`.
 
 #### 4. `controller_projects`
 
@@ -1806,6 +1816,23 @@ Do not archive controller-memory snapshots, verbose controller logs/debug overla
 
 Do not put multi-megabyte replay/debug payloads into SQLite BLOBs merely because SQLite can store them.
 
+#### 17. `sessions`
+
+V1 browser sessions are local Open Fufu operational state. Store only a verifier of the high-entropy cookie token:
+
+```text
+id                   INTEGER PRIMARY KEY
+user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
+token_sha256         BLOB NOT NULL UNIQUE CHECK(length(token_sha256) = 32)
+created_at_ms        INTEGER NOT NULL
+expires_at_ms        INTEGER NOT NULL
+revoked_at_ms        INTEGER
+```
+
+The browser holds the raw 256-bit random token in the `__Host-openfufu_session` HttpOnly cookie. SQLite never needs the plaintext token. Expired/revoked session rows may be removed by ordinary cleanup and are not permanent account history.
+
+Integration/provisioner bearer credentials remain private deployment secrets rather than relational user/session rows in V1.
+
 ### Accepted indexes
 
 Add indexes for the known V1 query patterns rather than shotgun-indexing every foreign key before measurements justify it:
@@ -1818,6 +1845,8 @@ reward_settlements(user_id, status, created_at_ms)
 matches(ended_at_ms DESC)
 match_factions(user_id, match_id)
 replays(expires_at_ms)
+sessions(user_id, expires_at_ms)
+sessions(expires_at_ms)
 ```
 
 ### Retention and backups — Accepted V1 baseline
@@ -2286,8 +2315,8 @@ Do not conflate code licensing with permission to reuse inherited `proprietary/`
 11. OFFICIAL PVE AI PRESETS + MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
     + REWARD-ENTITY / ECHO ROLL-POOL SETTLEMENT
        ↓
-12. SQLITE / DISCORD AUTH / ECHO OWNED-ROLL+ECHO-SET
-    + MIDDLE-FINGERS+PAID-PITY+PENDING-SETTLEMENT STATE / FOOF API
+12. SQLITE / EXTERNAL-IDENTITY PROVISIONING API / DISCORD PROVIDER ADAPTER / OPAQUE SESSIONS
+    + ECHO OWNED-ROLL+ECHO-SET / MIDDLE-FINGERS+PAID-PITY+PENDING-SETTLEMENT STATE / GAME API
        ↓
 13. ECHO GENERATED-NAMING CONFIG + GENERATOR
     (shape character pools, stat-token dictionary, polarity-aware descriptors, grammar/versioning)
@@ -2344,14 +2373,14 @@ Most V1 gameplay mechanics and the controller-runtime/persistence architecture n
 5. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
 6. **Real Fufubox performance capacity** after a representative authoritative simulation and controller runtime exist.
 7. **Controller-runtime benchmarking/hardening** — implement and measure the accepted `isolated-vm` worker-process baseline, enforce the accepted V1 limits, and retune them only if representative Fufubox evidence justifies an explicit versioned change. QuickJS testing is contingency work only if `isolated-vm` produces a concrete operational reason to investigate replacement.
-8. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 16-table schema/index set, idempotent transactional settlements, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
-9. **Exact Discord/session/auth transport details** including cookies/expiry/CSRF and optional later Fufubox credential linking.
+8. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 17-table schema/index set, idempotent transactional settlements, opaque-session persistence/cleanup, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
+9. **Authentication/integration implementation** — implement the closed `AUTH_AND_IDENTITY.md` contract: generic provision/revoke endpoints and integration credentials, Discord provider adapter, pre-provisioned identity lookup/revocation, opaque 30-day sessions, CSRF/Origin enforcement, WebSocket session binding, and security/integration tests. Admission policy and Fufubox/Fufu/Foof coupling are explicitly outside Open Fufu.
 10. **Post-implementation balance validation/retuning** of accepted provisional values across Population growth, combat/capture, FFY, Train/Trade economies, Origin traits, spawn geometry, terrain/structures, mobile/naval units, and strategic weapons. This is validation work, not an unanswered pre-implementation mechanics list.
 11. **Detailed lobby/UI/UX implementation polish**, including controller authoring/debug surfaces, Origin creator/preset presentation, spawn visualization, expanded terrain/structure/unit displays, Echoes/Gacha presentation, and match/replay diagnostics.
 12. **Replacement asset creation and final proprietary-directory removal.**
 13. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
 14. **Strategic Spawn implementation/validation** — implement the now-closed `STRATEGIC_SPAWN.md` V1 resolver contract, including hook defaults, stable deterministic tie hashing, conflict components, nearest fallback, simultaneous footprint queues, replay/diagnostic encoding, version binding, and adversarial map validation.
 15. **Segment compiler implementation/validation** — implement the now-closed geography-first `SEGMENTS.md` compiler and map-artifact representation, then inspect representative generated maps for useful strategic segmentation without turning the soft 4,096-cell target into a hard geometry constraint.
-The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV plus default-OFF Water-Nuke geometry (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
+The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), authentication/identity/session/provisioning contract (`AUTH_AND_IDENTITY.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV plus default-OFF Water-Nuke geometry (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
