@@ -1,22 +1,19 @@
 name: Temporary docs sync
 
 on:
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [docs/cleanup-stale-design-todos]
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
   sync-docs:
-    if: github.event.pull_request.head.ref == 'docs/cleanup-stale-design-todos'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: docs/cleanup-stale-design-todos
           fetch-depth: 0
 
       - name: Remove stale resolved design TODOs
@@ -47,8 +44,6 @@ jobs:
                   raise SystemExit(f'expected one section match for {label}, got {count}')
               return updated
 
-          # OPEN_FUFU_DESIGN.md — replace the now-stale FFY overview with the
-          # accepted baseline and point detailed mechanics to the dedicated registry.
           design = replace_section(
               design,
               '## 20. FFY economy and trade',
@@ -150,8 +145,6 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
               'design invariant 78',
           )
 
-          # OPENFRONT_INTEGRATION_PLAN.md — sync the subsystem table and replace
-          # the stale open-question ledger with only genuinely open implementation/content work.
           integration = replace_once(
               integration,
               '| Passive worker gold | **Remove** |',
@@ -203,4 +196,4 @@ These remaining questions should be resolved by updating these same canonical do
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/OPEN_FUFU_DESIGN.md docs/OPENFRONT_INTEGRATION_PLAN.md .github/workflows/docs-sync-temp.yml
           git commit -m "docs: remove stale resolved design TODOs"
-          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+          git push origin HEAD:docs/cleanup-stale-design-todos
