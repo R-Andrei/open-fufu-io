@@ -1,12 +1,20 @@
-# Open Fufu — Minor Factions
+# Open Fufu — Minor Factions / Goons
 
 ## Status and authority
 
-This file is the **canonical detailed V1 appendix for non-major territorial actors** currently referred to mechanically as **Minor Factions**.
+This file is the **canonical detailed V1 appendix for non-major territorial actors** referred to mechanically as **Minor Factions** and player-facing as **Goons**.
 
-The inherited OpenFront implementation calls this class of simple bot actor a `Tribe`. **`Tribe` is not the intended Open Fufu player-facing name.** The final public label remains deliberately open and should be replaced with an anime/gacha-flavored term rather than silently carrying the inherited vocabulary into the UI.
+The inherited OpenFront implementation calls this class of simple bot actor a `Tribe`. Open Fufu does **not** surface `Tribe` as the player-facing term.
 
-Until that naming pass, **Minor Faction** is the canonical neutral mechanical term used by design/API documentation.
+Canonical terminology:
+
+```text
+mechanical / API / design class: Minor Faction / MinorFaction
+player-facing singular:           Goon
+player-facing plural:             Goons
+```
+
+The intentionally silly public label does not imply that Goons are literally subordinates or henchmen of another faction. They are independent minor territorial actors. The word is used in the broad familiar sense of low-level disposable background opposition, with the modern internet double meaning fitting Open Fufu's tone.
 
 [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains authoritative for ordinary Population, territory, capture, defense, victory, and reward rules. [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) defines the accepted exact-origin spacing and starting-footprint geometry used here where applicable. [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) defines Origin traits such as P19.
 
@@ -35,13 +43,13 @@ Major Factions may use, as allowed by mode/ruleset:
 - PvE opponent/reward semantics;
 - Major-Faction victory/defeat participation.
 
-## 1.2 Minor Faction
+## 1.2 Minor Faction / Goon
 
-A Minor Faction is a deliberately primitive territorial Population actor used to populate the world with independent early-game resistance/opportunity.
+A Minor Faction—surfaced to players as a **Goon**—is a deliberately primitive territorial Population actor used to populate the world with independent early-game resistance/opportunity.
 
 It uses ordinary territorial mechanics but does **not** become a smaller copy of a full human/Official-AI economy.
 
-A Minor Faction has:
+A Goon has:
 
 - territory;
 - one global Population pool;
@@ -69,24 +77,24 @@ It has **no**:
 - full Official-AI controller/personality/difficulty package;
 - PvE difficulty reward.
 
-The intent is not to make Minor Factions weak through a secret global combat debuff. Their weakness comes from small starting scale and deliberately limited decision/system access.
+The intent is not to make Goons weak through a secret global combat debuff. Their weakness comes from small starting scale and deliberately limited decision/system access.
 
 ---
 
-# 2. Ordinary Minor-Faction density
+# 2. Ordinary Goon density
 
-Ordinary V1 matches derive the default Minor-Faction count from **population-bearing map cells**:
+Ordinary V1 matches derive the default Minor-Faction/Goon count from **population-bearing map cells**:
 
 ```text
 minorFactionCount
 = floor(populationBearingMapCells / 20,000)
 ```
 
-Because each Minor Faction uses the ordinary vanilla **1,000 population-bearing-cell** Initial Territory baseline, this gives Minor Factions approximately **5% of population-bearing land at match start** before placement/topology constraints.
+Because each Goon uses the ordinary vanilla **1,000 population-bearing-cell** Initial Territory baseline, this gives Goons approximately **5% of population-bearing land at match start** before placement/topology constraints.
 
 Examples:
 
-| Population-bearing map cells | Default Minor Factions | Approx. initial Minor-owned population-bearing land |
+| Population-bearing map cells | Default Goons | Approx. initial Goon-owned population-bearing land |
 | ---: | ---: | ---: |
 | 500,000 | 25 | 25,000 = 5% |
 | 1,000,000 | 50 | 50,000 = 5% |
@@ -98,13 +106,13 @@ Fixed benchmark/scenario rulesets may explicitly disable or override Minor-Facti
 
 ---
 
-# 3. Minor-Faction starting state and placement
+# 3. Goon starting state and placement
 
-Minor Factions are generated/placed **before Strategic Spawn Phase 1**.
+Goons are generated/placed **before Strategic Spawn Phase 1**.
 
 Their visible starting territories therefore form part of the public geography that Major-Faction controllers may deliberately seek, avoid, surround, or use when choosing broad influence regions.
 
-Baseline per Minor Faction:
+Baseline per Goon:
 
 ```text
 Initial Territory = 1,000 population-bearing cells
@@ -113,9 +121,9 @@ Starting Population = 500
 
 Their starting Population therefore follows the same ordinary vanilla 50%-of-Initial-Territory relationship as a Major Faction with no starting-state modifiers.
 
-Minor-Faction exact origins/starting seeds use the accepted **50-cell foreign-origin spacing** from `STRATEGIC_SPAWN.md` against other Minor Factions and Major-Faction resolved origins.
+Goon exact origins/starting seeds use the accepted **50-cell foreign-origin spacing** from `STRATEGIC_SPAWN.md` against other Goons and Major-Faction resolved origins.
 
-Their generated starting footprint uses the ordinary compact starting-footprint rules rather than any Origin transformation; Minor Factions have no Origins.
+Their generated starting footprint uses the ordinary compact starting-footprint rules rather than any Origin transformation; Goons have no Origins.
 
 Placement is deterministic and match-seeded. Map/ruleset validation should ensure the derived default count can be legally placed on the intended map. A pathological map-placement failure is handled by deterministic safe degradation/logging rather than nondeterministic retry order.
 
@@ -123,7 +131,7 @@ Placement is deterministic and match-seeded. Map/ruleset validation should ensur
 
 # 4. Territorial mechanics
 
-Minor Factions participate in the same physical territorial system as Major Factions.
+Goons participate in the same physical territorial system as Major Factions.
 
 Their cells:
 
@@ -135,17 +143,17 @@ Their cells:
 - may receive one automatic defender per threatened owned population-bearing cell when Population is available;
 - lose Population/Capacity through ordinary defended capture, nuclear effects, Fallout-related ownership loss, and other universal territorial mechanics.
 
-There is no special `Minor Faction cells take double capture damage` or similar hidden shortcut.
+There is no special `Goon cells take double capture damage` or similar hidden shortcut.
 
-If a Minor Faction captures a persistent structure that would ordinarily transfer ownership, the structure is **destroyed instead of becoming functional Minor-Faction infrastructure**. This preserves the intended territorial-only actor class and adapts the useful inherited behavior where simple tribe bots dispose of acquired structures.
+If a Goon captures a persistent structure that would ordinarily transfer ownership, the structure is **destroyed instead of becoming functional Goon infrastructure**. This preserves the intended territorial-only actor class and adapts the useful inherited behavior where simple tribe bots dispose of acquired structures.
 
-A Minor Faction cannot deliberately construct replacement infrastructure afterward.
+A Goon cannot deliberately construct replacement infrastructure afterward.
 
 ---
 
 # 5. P19 Territorial Contact interaction
 
-P19 explicitly **does count Minor Factions**.
+P19 explicitly **does count Goons / Minor Factions**.
 
 The trait remains:
 
@@ -157,19 +165,19 @@ with current Territorial Contact
 
 The count is current, not historical. Touching a faction at some earlier point does not permanently retain a bonus after the Territorial Contact disappears or that faction stops being an active territorial actor.
 
-A currently active Minor Faction with current Territorial Contact counts exactly once, regardless of how many disconnected Contact components exist between the two actors.
+A currently active Goon with current Territorial Contact counts exactly once, regardless of how many disconnected Contact components exist between the two actors.
 
-Therefore an early-game faction simultaneously bordering many Minor Factions can receive a very large P19 bonus. This is intentional emergent synergy rather than an interaction to suppress. The bonus naturally tends to shrink as Minor Factions are absorbed/eliminated and the number of active neighboring actors falls.
+Therefore an early-game faction simultaneously bordering many Goons can receive a very large P19 bonus. This is intentional emergent synergy rather than an interaction to suppress. The bonus naturally tends to shrink as Goons are absorbed/eliminated and the number of active neighboring actors falls.
 
-P19's catalogue cost is provisionally repriced from **7 to 8 Origin points** to recognize the larger early-game contact ecology while preserving this intended interaction.
+P19's catalogue cost is provisionally **8 Origin points** to recognize the larger early-game contact ecology while preserving this intended interaction.
 
-The existing literal `other faction` semantics otherwise remain; this document does not add a Minor-Faction exclusion.
+The existing literal `other faction` semantics otherwise remain; this document does not add a Goon exclusion.
 
 ---
 
 # 6. Engine-owned behavior
 
-Minor-Faction strategy remains intentionally tiny and deterministic. This is **not** part of the postponed Official-AI controller-design project.
+Goon strategy remains intentionally tiny and deterministic. This is **not** part of the postponed Official-AI controller-design project.
 
 Baseline decision cadence:
 
@@ -177,7 +185,7 @@ Baseline decision cadence:
 one territorial decision opportunity every 5 seconds
 ```
 
-Each Minor Faction receives a deterministic match-seeded phase offset so hundreds of Minor Factions do not all make their decisions on the same simulation tick.
+Each Goon receives a deterministic match-seeded phase offset so hundreds of Goons do not all make their decisions on the same simulation tick.
 
 Behavioral direction:
 
@@ -185,7 +193,7 @@ Behavioral direction:
 2. otherwise choose one currently adjacent hostile territorial actor using deterministic simple ordering/seeded tie-breaking and launch a simple Population-based territorial attack;
 3. use ordinary Population availability/commitment legality rather than free phantom forces.
 
-Minor Factions do **not**:
+Goons do **not**:
 
 - build or upgrade infrastructure;
 - use FFY;
@@ -204,54 +212,61 @@ Exact simple commitment percentage/rule may be implementation/benchmark tuned. T
 
 # 7. Rewards and progression
 
-Minor Factions are **not qualifying PvE reward opponents**.
+Goons are **not qualifying PvE reward opponents**.
 
 Therefore:
 
 ```text
-Minor Faction defeated → 0 Echo rolls
-Minor Faction difficulty → none
-Minor Faction special-AI reward → none
-Minor Faction Origin → none
-Minor Faction Echo loadout → none
+Goon defeated → 0 Echo rolls
+Goon difficulty → none
+Goon special-AI reward → none
+Goon Origin → none
+Goon Echo loadout → none
 ```
 
-Destroying/conquering a Minor Faction may still be strategically valuable because its territory/Capacity/geography become available through ordinary conquest. There is simply no meta-progression reward layered on top.
+Destroying/conquering a Goon may still be strategically valuable because its territory/Capacity/geography become available through ordinary conquest. There is simply no meta-progression reward layered on top.
 
-A Minor Faction never counts as an Official AI preset and never acquires a difficulty merely because it is engine-controlled.
+A Goon never counts as an Official AI preset and never acquires a difficulty merely because it is engine-controlled.
 
 ---
 
 # 8. Victory participation
 
-Minor-Faction-owned cells remain real owned/conquerable territory and therefore matter for ordinary territory-percentage calculations while they exist.
+Goon-owned cells remain real owned/conquerable territory and therefore matter for ordinary territory-percentage calculations while they exist.
 
-However, Minor Factions are **not Major-Faction victory participants** and do not block the separate victory route based on all opposing Major Factions being defeated/capitulated.
+However, Goons are **not Major-Faction victory participants** and do not block the separate victory route based on all opposing Major Factions being defeated/capitulated.
 
 Consequences:
 
-- if one Major Faction/team remains after all other Major opposition is gone, surviving scattered Minor Factions do not force a mandatory global cleanup campaign before that Major side can win through the all-Major-opposition-defeated condition;
-- a Major side may still interact with/conquer Minor territory normally before that point;
-- Minor Factions themselves cannot satisfy a Major-Faction victory condition or become the winner of the match.
+- if one Major Faction/team remains after all other Major opposition is gone, surviving scattered Goons do not force a mandatory global cleanup campaign before that Major side can win through the all-Major-opposition-defeated condition;
+- a Major side may still interact with/conquer Goon territory normally before that point;
+- Goons themselves cannot satisfy a Major-Faction victory condition or become the winner of the match.
 
-If Minor Factions eliminate the final remaining Major faction/team, the Major side has lost; the game does not crown a Minor Faction as a progression-bearing winner.
+If Goons eliminate the final remaining Major faction/team, the Major side has lost; the game does not crown a Goon as a progression-bearing winner.
 
 ---
 
-# 9. Naming status
+# 9. Naming
 
-`Minor Faction` is a mechanical/documentation term, not the intended final flavor label.
+The public flavor term is:
 
-The inherited word **Tribe** should not be surfaced in Open Fufu's final player UI merely because the inherited code uses `TribeExecution` / `TribeSpawner` internally during migration.
+```text
+Goon / Goons
+```
 
-The final public term should be:
+The internal/mechanical class remains **Minor Faction / `MinorFaction`** so code, save schemas, and design prose are not forced to use a joke-facing label.
 
-- short enough to appear frequently in map/UI text;
-- clearly understood as a small generic world actor rather than an Official AI character;
-- compatible with dozens/hundreds of generated instances;
-- thematically anime/gacha-flavored rather than historical/anthropological `Tribe` terminology.
+The inherited word **Tribe** should not be surfaced in Open Fufu's final player UI merely because inherited migration code uses `TribeExecution` / `TribeSpawner` internally.
 
-Choosing that public label remains open content work and does not block the mechanical class defined here.
+Intended UI examples include:
+
+```text
+Nearby Goons: 7
+Goon defeated
+Territorial Contact: 4 Goons
+```
+
+Generated individual Goons may still receive map-appropriate/generated faction names; `Goon` describes their actor class rather than requiring every map label literally to be `Goon #37`.
 
 ---
 
@@ -260,12 +275,12 @@ Choosing that public label remains open content work and does not block the mech
 Before V1 release, accelerated tests should cover at least:
 
 - derived counts on representative maps;
-- deterministic placement of dozens/hundreds of Minor Factions;
+- deterministic placement of dozens/hundreds of Goons;
 - 50-cell origin spacing against each other and later Major spawns;
 - ordinary Population growth/automatic defense/capture with no hidden modifiers;
-- structure destruction on Minor capture;
-- P19 with 0, 1, many, disappearing, and reappearing current Minor-Faction contacts;
+- structure destruction on Goon capture;
+- P19 with 0, 1, many, disappearing, and reappearing current Goon contacts;
 - large early-game P19 bonuses without permanent historical-contact retention;
-- no Echo/difficulty/reward contribution from Minor defeats;
-- Major victory with surviving Minor Factions;
+- no Echo/difficulty/reward contribution from Goon defeats;
+- Major victory with surviving Goons;
 - deterministic decision phase offsets and stable replays with hundreds of Minor actors.
