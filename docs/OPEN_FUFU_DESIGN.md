@@ -179,16 +179,19 @@ A match must bind every rule-bearing input needed to define what that match mean
 
 Changing a combat formula, controller API, AI preset, Origin trait, Echo identity catalogue, Echo acquisition/roll rule, spawn resolver, or map later must not silently change historical matches.
 
-Replay/debug tooling should eventually expose:
+### 4.1 Minimal archival replay — Accepted V1
 
-- deterministic replay;
-- committed controller decision/event logs;
-- optional controller debug logs;
-- action/rejection/failure history;
-- Population/FFY/territory histories;
-- relevant operation/contact histories;
-- controller runtime/CPU/resource-budget information;
-- post-match summaries.
+The canonical archival replay is a **minimal deterministic simulation-input/action record**, not a periodic dump of the 4.8-million-cell world state.
+
+A replay binds the exact versioned match inputs above plus the authoritative Strategic Spawn record and the accepted simulation-affecting game-facing input stream in deterministic tick/order form. Playback re-runs the deterministic simulation from the beginning using those committed inputs; it does **not** need to re-execute player controller code or reconstruct private controller thought state.
+
+The archival replay does not contain periodic full-state seek checkpoints. V1 seeking/late-position playback fast-forwards the deterministic simulation from match start, optionally without rendering intermediate frames. This keeps replay storage minimal; V1 does not trade large checkpoint storage for instant arbitrary seeking.
+
+The canonical replay should not archive controller-memory snapshots, controller debug overlays, verbose controller logs, rejected no-effect proposals, browser render frames, or redundant per-tick copies of derived simulation state. Detailed controller diagnostics remain a separate short-retention debugging artifact. Post-match metadata/results remain in SQLite even after an ordinary replay file expires.
+
+Strategic Spawn stores its small semantic submissions/resolved outputs plus the final resolved starting footprint representation required by `STRATEGIC_SPAWN.md`. During normal play, only committed simulation-affecting inputs need to drive archival replay. Deterministic integrity hashes may be recorded cheaply for validation without turning the replay into state snapshots.
+
+Replay files remain compressed external artifacts (`.ofr.zst`) rather than SQLite BLOBs. Ordinary replay retention is 90 days; pinned/benchmark replays may be retained indefinitely as specified by the persistence contract.
 
 ---
 
@@ -284,22 +287,15 @@ Cadence is deterministic and expressed in simulation ticks, not wall-clock time.
 
 ### 6.3 Persistent per-match controller memory
 
-Each player controller has explicit deterministic **per-match persistent memory**. It is private, transactionally committed with successful decisions, rolled back on failure/rejection, deterministically serializable, size-limited, not shared between matches, and provides no external I/O.
+Each player controller has explicit deterministic **per-match persistent memory**. The exact V1 codec/lifecycle is defined by [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md).
 
-The allowed data model is approximately JSON-like:
+The public memory shape is the existing JSON-like root object from `ControllerApi.ts`. V1 canonicalizes it to compact UTF-8 JSON with recursively sorted object keys, finite numbers only, array order preserved, and a hard **131,072-byte** canonical uncompressed limit. Unsupported/exotic values, cycles, sparse holes, and non-finite numbers are invalid.
 
-```text
-null
-boolean
-finite number
-string
-arrays
-plain structured objects
-```
+Returned memory is whole-object replacement, not deep merge. Omitting `memory` preserves the prior committed value. Memory begins as `{}` for every new match, flows through Strategic Spawn into normal `decide()` callbacks, is private to that controller/faction, and never persists between matches.
 
-Controllers must not rely on mutable module/global runtime state surviving between invocations. Only explicit controller memory is guaranteed writable persistence.
+A structurally valid callback may commit valid new memory even when one or more ordinary game-facing actions/directives are rejected by deterministic gameplay validation. Runtime faults, malformed whole output, invalid memory, or memory-limit violations discard that invocation's proposed memory and preserve the previous successfully committed memory.
 
-Accepted V1 memory limit: **128 KiB serialized per faction per match**.
+Controllers must not rely on mutable module/global runtime state surviving between invocations. Only this explicit memory is guaranteed writable persistence.
 
 ### 6.4 Decision-as-set semantics
 
@@ -323,9 +319,13 @@ Certification rejects syntax/type/compile errors, runtime exceptions, timeout/me
 
 ### 7.2 Transactional execution
 
-Each invocation is all-or-nothing over controller memory mutations, persistent operation/directive changes, and proposed game actions. No partial decision cycle is applied.
+Controller callback validity and game-state mutation validity are deliberately separated.
 
-Population commitment changes from one valid decision take effect **immediately at that decision commit**. There is no Deployment/Redeployment delay system in V1.
+A successful callback must first produce one structurally valid output; any returned memory must pass the canonical codec/quota. Valid returned memory then commits according to `CONTROLLER_MEMORY.md` even if later ordinary gameplay validation rejects a proposed action.
+
+Game-facing persistent directive changes and one-shot commands are still validated against the immutable observation using their canonical transactional/final-desired-set semantics. The engine never silently normalizes an illegal game-state transaction merely to preserve part of it. Structured receipts report ordinary stale-state/legality rejection without turning that rejection into a controller runtime fault.
+
+Population commitment changes from one valid committed game-facing decision take effect **immediately at that decision commit**. There is no Deployment/Redeployment delay system in V1.
 
 ### 7.3 Structured gameplay failure
 
@@ -346,7 +346,7 @@ Ordinary game-state races should not require blanket `try/catch` logic.
 
 ### 7.4 Invalid decisions
 
-A complete invalid controller decision, such as simultaneous commitments exceeding legal Available Population, is rejected as a whole. The engine does not silently normalize or partially apply it.
+A complete invalid **game-facing mutation set**, such as simultaneous commitments exceeding legal Available Population, is rejected as a whole. The engine does not silently normalize or partially apply that mutation set. This does not roll back separately validated controller memory: valid memory from the same structurally valid callback remains committed under `CONTROLLER_MEMORY.md`.
 
 ### 7.5 Runtime failure behavior
 
@@ -444,11 +444,17 @@ Map validation must still prove that the authored terrain composition can suppor
 
 ### 9.3 Segments
 
-A Segment is an immutable deterministic strategic geographic region generated/compiled with the map. Every real map cell belongs to exactly one Segment, including ordinary land, water, and impassable terrain.
+A Segment is an immutable deterministic strategic geographic region generated/compiled with the map. The detailed accepted V1 generation and sizing contract is [`SEGMENTS.md`](./SEGMENTS.md).
 
-Segments are a query/index/strategy lens, **not a simulation bucket**. Segment borders have no intrinsic combat, capture, movement, or physical effect.
+Every real map cell belongs to exactly one Segment, including ordinary land, Shallow Water, Deep Water, and Impassable terrain. Every Segment is cardinally 4-connected: any member cell can reach every other member cell through north/south/east/west member-cell steps. Segment membership/IDs/adjacency do not change during a match, even if dynamic terrain/state changes later occur.
 
-Segment count is derived from map geography rather than from alternate map-resolution tiers. Major boundaries such as coasts, rivers, ridges, mountains, chokepoints, islands, and impassables should influence generation.
+Segments are a query/index/strategy lens, **not a simulation bucket**. Segment borders have no intrinsic combat, capture, movement, economy, visibility, or other physical effect.
+
+V1 targets roughly **4,096 cells per Segment only when geography offers no better boundary**. There is no hard minimum, maximum, aspect-ratio, or compactness rule. Geography and useful terrain/topology dominate size: coherent rivers/waterways, ridges, islands, passes, coasts, basins and similar features may produce very small, very large, extremely long/thin, or otherwise irregular Segments.
+
+The compiler preserves strategically meaningful features but may absorb meaningless isolated raster noise. Feature-significance heuristics are deterministic/versioned map-compiler parameters; final compiled Segment membership is part of the map artifact/hash and is never silently regenerated for historical maps.
+
+V1 exposes terrain summaries rather than semantic geographic tags such as `RIVER`, `RIDGE`, or `STRAIT`. Shallow Water/Deep Water and the existing terrain vocabulary must suffice for V1; geographic tags may be reconsidered in a future API version.
 
 ### 9.4 Contacts
 
@@ -2047,7 +2053,7 @@ Important rules:
 
 For deterministic singular start-state grants on a split-origin faction, origins are ordered primary/secondary and the grant uses the primary origin unless the grant defines a different public rule.
 
-The accepted ordinary influence radius, exact-origin spacing, deterministic collision fallback, simultaneous quota-limited footprint construction, five-second spawn immunity, and P54 star-footprint transformation are specified in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Low-level queue/hash/data-structure choices remain implementation/versioning details; these gameplay geometry rules are no longer open design questions.
+The accepted ordinary influence radius, exact-origin spacing, deterministic hook fallbacks, stable tie-hash domains/orderings, conflict resolution, simultaneous quota-limited multi-frontier footprint construction, fixed-point P54 star rasterization, diagnostics/replay binding, five-second spawn immunity, and resolver-version semantics are specified in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Implementation may choose equivalent internal data structures only where they preserve that canonical observable ordering and output; the resolver algorithm is no longer an open design question.
 
 ### 24A.22 Spawn modes and controller lifecycle
 
@@ -2072,8 +2078,6 @@ The following remain intentionally outside the settled design contract unless ot
 - future controller-API-version additions or non-semantic ergonomic polish after implementation pressure-testing; the current V1 TypeScript contract itself is already defined in `src/core/controller/ControllerApi.ts`;
 - later playtest repricing of provisional Origin-trait costs or future catalogue additions without reopening accepted mechanics;
 - exact wire protocol/session encoding and the remaining Discord/session/auth transport details;
-- exact deterministic controller-memory codec;
-- exact Segment generation/size heuristics within the accepted Segment ontology;
 - playtest retuning of accepted provisional terrain, structure, economy, Population, combat, mobile-unit, naval, strategic-weapon, spawn-geometry, Origin, and Echo balance values after representative implementation exists;
 - later benchmark-driven **versioned tuning** of the accepted controller runtime limits or worker-pool deployment settings; the V1 baseline values/architecture are not deferred;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura/responsive/touch polish;
@@ -2170,3 +2174,6 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 76. **Ordinary V1 Initial Territory is 1,000 population-bearing cells. Starting Population is 50% of final modified Initial Territory before explicit Starting-Population modifiers, so vanilla starts at 500/1,000.**
 77. **Ordinary Population base growth is exactly `0.05 × Capacity^0.75` Population/s, with piecewise-linear utilization anchors and a 40–60% maximum-efficiency band; P02 horizontally widens that band to 30–70%.**
 78. **Factory Trains use finite multi-stop closed service tours at a provisional 25 cells/s: one primary Train per Factory, up to five deterministic target stations per route-construction pass, every actual City/Port pass produces an event and 1.5s dwell with no hard event cap, the Factory waits 5s after return/destruction, P07 adds one bonus Train every fourth primary dispatch, P33 adds `20 × City level` Capacity-capped Population per qualifying City event, and the ordinary Factory-level Train-event FFY ladder is `10,000 / 11,250 / 12,500 / 13,750 / 15,000`.**
+79. **Controller memory uses the accepted canonical compact UTF-8 JSON whole-object replacement codec with a 128 KiB canonical-byte limit; valid memory may commit across ordinary gameplay rejection, while runtime/malformed-output faults preserve the previous committed memory.**
+80. **Segments are immutable map-compiled cardinally connected geography-first strategic regions with a soft ~4,096-cell target and no hard size/aspect-ratio/compactness limits; final membership is versioned in the map artifact, and V1 adds no semantic geographic tags.**
+81. **Canonical archival replays are minimal compressed deterministic input/action records with no periodic full-state seek checkpoints; playback fast-forwards the deterministic simulation from match start and does not require re-executing player controllers or persisting controller memory/debug state.**

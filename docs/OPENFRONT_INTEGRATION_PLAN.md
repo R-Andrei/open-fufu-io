@@ -297,6 +297,16 @@ Later pool-size or recycling tuning based on measured Fufubox load is ordinary d
 
 Controllers at the same decision tick or the same simultaneous spawn phase may execute concurrently against immutable snapshots of the same canonical pre-state. Completion order must not create gameplay advantage; results are collected and committed/resolved deterministically.
 
+
+### 5.5 Controller-memory codec and lifecycle — Accepted V1
+
+Implement the exact controller-memory contract from [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md): canonical compact UTF-8 JSON; recursively sorted object keys; finite JSON values only; whole-object replacement; **131,072 canonical uncompressed bytes** maximum; no cross-match persistence.
+
+The trusted runtime state is the canonical serialized representation, not a mutable JavaScript object surviving inside a worker/isolate. Decode a fresh immutable projection for each callback; validate/canonicalize returned memory before accepting it.
+
+Once a callback/output/memory is structurally valid, valid returned memory commits independently of later ordinary gameplay legality rejection. Runtime faults, malformed whole outputs, invalid memory, and memory/quota violations discard all newly proposed output and preserve the previous successfully committed memory/directives. Spawn hooks use the same memory lifecycle and carry successfully committed memory forward into the first normal decision.
+
+Do not write controller memory to SQLite every decision and do not include controller-memory snapshots in the canonical archival replay.
 ---
 
 ## 6. Tick, decision, and Execution model — Accepted
@@ -305,7 +315,7 @@ Retain the deterministic Execution pattern rather than replacing it wholesale.
 
 Open Fufu distinguishes lifecycle/admin commands, pre-match spawn lifecycle decisions, controller strategic decisions, and simulation state transitions.
 
-A normal controller invocation operates transactionally against one immutable legal observation. On success, memory/directive/action changes commit together. On failure, temporary output is discarded.
+A normal controller invocation operates against one immutable legal observation. Callback/output/memory validity is resolved first: valid controller memory may commit independently. Game-facing directive/action mutations then retain their transactional final-desired-set validation. Ordinary gameplay rejection does not roll back valid memory; a runtime/malformed-output fault discards all newly proposed output.
 
 Population commitment changes take effect immediately on successful decision commit; no land Deployment/Redeployment queue exists.
 
@@ -585,7 +595,7 @@ Required invariants:
 - footprint generation and collision/tie-breaking are deterministic/versioned;
 - singular granted starting structures/effects use a public deterministic primary-origin rule unless the granting mechanic specifies otherwise.
 
-Exact growth geometry, collision/fallback algorithm, ordinary influence-area radius, minimum separation rules, base Initial Territory and starting Population values remain implementation/tuning details.
+Strategic Spawn's ordinary radius, spacing, controller-hook fallbacks, conflict graph/priority, nearest legal displacement, simultaneous footprint growth, star rasterization, diagnostics, replay encoding, and resolver-version rules are now accepted in `STRATEGIC_SPAWN.md`. Remaining work is implementation/validation against that specification rather than choosing those algorithms during coding.
 
 ---
 
@@ -593,11 +603,24 @@ Exact growth geometry, collision/fallback algorithm, ordinary influence-area rad
 
 Retain/adapt the current dense integer `TileRef`/typed-array map substrate, compact terrain/state storage, deterministic adjacency, ownership mutation, water/pathfinding, authored map compilation/loading, impassables, and map-scale optimized iteration.
 
-### 7.1 Segment layer
+### 7.1 Segment layer — Accepted V1 generation contract
 
-Add compact immutable Segment identity for every real map cell, including water and impassable terrain, plus immutable Segment metadata/adjacency. Segments remain query/strategy indexes rather than physical simulation buckets.
+Add compact immutable Segment identity for every real map cell, including water and impassable terrain, plus immutable membership/adjacency and efficient runtime factual summaries.
 
-Dynamic terrain changes such as nuke-created Fallout/Deep Water do not regenerate Segment identity.
+Implement [`SEGMENTS.md`](./SEGMENTS.md) as the source of truth:
+
+- each Segment is cardinally 4-connected;
+- geography/terrain/topology coherence outranks size;
+- **~4,096 cells is a soft target only**, with no hard minimum/maximum/aspect-ratio/compactness constraint;
+- meaningful narrow/irregular features may remain correspondingly narrow/irregular;
+- large featureless regions use deterministic geography-aware balanced subdivision toward the target;
+- meaningless raster fragments may be absorbed deterministically without erasing useful geographic features;
+- no match seed participates;
+- stable IDs are assigned by smallest member `CellId` order;
+- compiled membership + `segmentGeneratorVersion` are part of the map artifact/hash and are never regenerated under a newer algorithm for an old map version;
+- V1 exposes existing terrain summaries and does not require semantic `RIVER`/`RIDGE`/`STRAIT` geographic tags.
+
+Dynamic terrain/state changes such as Fallout/Deep-Water conversion do not regenerate Segment membership. Runtime terrain summaries may change over the fixed membership.
 
 A temporary amphibious defensive state must not masquerade as a terrain type. The accepted fortified-landing design uses a real granted Fort instead, so terrain remains geography rather than short-lived tactical status.
 
@@ -1777,6 +1800,12 @@ Ordinary file layout:
 data/replays/YYYY/MM/<match-public-id>.ofr.zst
 ```
 
+The canonical V1 replay payload is intentionally **minimal**. It stores the exact versioned match bindings, authoritative Strategic Spawn record, and the committed simulation-affecting game-facing input/action stream needed to replay the deterministic simulation from match start. It does not periodically serialize the 4.8-million-cell world for seeking.
+
+Replay playback/seek therefore fast-forwards simulation from tick zero (without needing to render intermediate frames). V1 has no periodic full-state seek checkpoints in the archival `.ofr.zst` format.
+
+Do not archive controller-memory snapshots, verbose controller logs/debug overlays, rejected no-effect proposals, browser render frames, or redundant per-tick derived state in the canonical replay. Detailed controller logs remain separate short-retention artifacts. Playback does not need to re-execute player controller code because committed game-facing outputs are already recorded.
+
 Do not put multi-megabyte replay/debug payloads into SQLite BLOBs merely because SQLite can store them.
 
 ### Accepted indexes
@@ -2310,21 +2339,23 @@ If a future audit finding does not map to this plan, update this same document r
 
 Most V1 gameplay mechanics and the controller-runtime/persistence architecture now have accepted implementation baselines. The remaining work below is implementation, content, validation, transport detail, or later benchmark-driven tuning rather than a reason to relabel closed architecture as TBD:
 
-1. **Controller API runtime wiring/certification** — the V1 TypeScript contract is now defined in `src/core/controller/ControllerApi.ts`; remaining work is implementing the immutable observation projection, validated directive/command adapter, sandbox bridge, certification harness, and later non-semantic ergonomic polish.
+1. **Controller API runtime wiring/certification** — the V1 TypeScript contract and controller-memory codec/lifecycle are now defined; remaining work is implementing the immutable observation projection, canonical memory adapter, validated directive/command adapter, sandbox bridge, certification harness, and later non-semantic ergonomic polish.
 2. **Origin content maintenance** — future additions/revisions and playtest repricing remain possible under the same builder/catalogue rules; the V1 trait/Official-Origin naming pass and duplicate cleanup are complete.
-3. **Echo visual/UI implementation** — implement the visual recipe renderer, card motion/effects, responsive/touch behavior, collection UI, reward settlement presentation, and other presentation work around the already-settled Echo mechanics/naming content.
-4. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
-5. **Real Fufubox performance capacity** after a representative authoritative simulation and controller runtime exist.
-6. **Controller-runtime benchmarking/hardening** — implement and measure the accepted `isolated-vm` worker-process baseline, enforce the accepted V1 limits, and retune them only if representative Fufubox evidence justifies an explicit versioned change. QuickJS testing is contingency work only if `isolated-vm` produces a concrete operational reason to investigate replacement.
-7. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 16-table schema/index set, idempotent transactional settlements, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
-8. **Exact Discord/session/auth transport details** including cookies/expiry/CSRF and optional later Fufubox credential linking.
-9. **Post-implementation balance validation/retuning** of accepted provisional values across Population growth, combat/capture, FFY, Train/Trade economies, Origin traits, spawn geometry, terrain/structures, mobile/naval units, and strategic weapons. This is validation work, not an unanswered pre-implementation mechanics list.
-10. **Detailed lobby/UI/UX implementation polish**, including controller authoring/debug surfaces, Origin creator/preset presentation, spawn visualization, expanded terrain/structure/unit displays, Echoes/Gacha presentation, and match/replay diagnostics.
-11. **Replacement asset creation and final proprietary-directory removal.**
-12. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
-13. **Low-level implementation/versioning details for the settled Strategic Spawn resolver** — exact queue/data-structure/hash representation, map-validation diagnostics, and replay/version encoding. The 400-cell influence radius, 50-cell foreign-origin spacing, deterministic collision fallback, quota-limited footprint rules, P39 split profile, P54 star profile, and five-second immunity are already settled gameplay rules in `STRATEGIC_SPAWN.md`.
-14. **Optional ruleset minutiae not yet pinned**, especially water-nuke conversion geometry.
+3. **Official AI controller implementation/benchmarking** — implement the actual character-specific strategic controllers described by `OFFICIAL_AI_PRESETS.md`, verify every preset operates coherently across its allowed Origin pool, then benchmark/playtest against the provisional difficulty targets and retune controller strength or target labels without adding simulation cheats.
+4. **Echo visual/UI implementation** — implement the visual recipe renderer, card motion/effects, responsive/touch behavior, collection UI, reward settlement presentation, and other presentation work around the already-settled Echo mechanics/naming content.
+5. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
+6. **Real Fufubox performance capacity** after a representative authoritative simulation and controller runtime exist.
+7. **Controller-runtime benchmarking/hardening** — implement and measure the accepted `isolated-vm` worker-process baseline, enforce the accepted V1 limits, and retune them only if representative Fufubox evidence justifies an explicit versioned change. QuickJS testing is contingency work only if `isolated-vm` produces a concrete operational reason to investigate replacement.
+8. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 16-table schema/index set, idempotent transactional settlements, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
+9. **Exact Discord/session/auth transport details** including cookies/expiry/CSRF and optional later Fufubox credential linking.
+10. **Post-implementation balance validation/retuning** of accepted provisional values across Population growth, combat/capture, FFY, Train/Trade economies, Origin traits, spawn geometry, terrain/structures, mobile/naval units, and strategic weapons. This is validation work, not an unanswered pre-implementation mechanics list.
+11. **Detailed lobby/UI/UX implementation polish**, including controller authoring/debug surfaces, Origin creator/preset presentation, spawn visualization, expanded terrain/structure/unit displays, Echoes/Gacha presentation, and match/replay diagnostics.
+12. **Replacement asset creation and final proprietary-directory removal.**
+13. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
+14. **Strategic Spawn implementation/validation** — implement the now-closed `STRATEGIC_SPAWN.md` V1 resolver contract, including hook defaults, stable deterministic tie hashing, conflict components, nearest fallback, simultaneous footprint queues, replay/diagnostic encoding, version binding, and adversarial map validation.
+15. **Segment compiler implementation/validation** — implement the now-closed geography-first `SEGMENTS.md` compiler and map-artifact representation, then inspect representative generated maps for useful strategic segmentation without turning the soft 4,096-cell target into a hard geometry constraint.
+16. **Optional ruleset minutiae not yet pinned**, especially water-nuke conversion geometry.
 
-The following are no longer open design questions and must be implemented from their canonical appendices rather than re-derived from inherited OpenFront behavior: the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), Strategic Spawn geometry (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV data (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
+The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV data (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
