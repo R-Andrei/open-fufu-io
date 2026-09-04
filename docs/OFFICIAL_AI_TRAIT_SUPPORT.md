@@ -25,9 +25,9 @@ Nothing here changes Origin mechanics. Numeric mechanical truth remains in the a
 ## Progress
 
 ```text
-Configured traits: 10 / 72
-Current range:      P01–P10
-Remaining:          P11–P54, N01–N18
+Configured traits: 20 / 72
+Current range:      P01–P20
+Remaining:          P21–P54, N01–N18
 ```
 
 No explicit Origin-combination support is closed yet. Cross-trait interactions are deliberately retained for the global synergy sweep after all individual trait mappings exist.
@@ -144,10 +144,144 @@ Its interactions with later Silo, launcher, and strategic-weapon traits remain c
 
 ---
 
-## Batch 1 consistency notes
+# P11 — Level Upper
 
-Nine of the first ten traits are ordinary mechanics-aware support cases. P05 is the only one that currently needs reusable extended evaluator/planner support because it creates a cross-domain conquest-to-economy relationship that ordinary scalar reasoning would not necessarily capture.
+P11 couples two otherwise separate systems: reaching new **peak Total Population** thresholds permanently unlocks additional SAM ownership/build slots, while those SAMs cost no FFY. Once a slot exists, ordinary Infrastructure/Defense reasoning can understand a free legal SAM. The non-obvious part is valuing progress toward the *next permanent unlock* before it exists.
 
-That ratio is intentional: Origin support should not become a bespoke adapter catalogue for every surfaced modifier.
+Reusable support therefore exposes the next threshold as a legitimate future opportunity/forecast consequence and lets Infrastructure planning understand the resulting no-FFY interception-network expansion. The hook must not invent Population growth or threshold arithmetic; authoritative mechanics supply the actual next unlock state.
+
+`INTERCEPT_OVER_LARGE_AREA` here means that repeated free SAM unlocks make broad interception coverage unusually accessible, not that each individual SAM receives P40-style giant range.
+
+Likely synergy partners include Population-growth traits and later SAM transformations, especially P40.
+
+**Strategic philosophy:** demographic growth permanently converts into a progressively broader strategic-defense network.
+
+---
+
+# P12 — Somewhere Not Here
+
+P12 improves Transport movement without changing Transport control, landing rules, capacity, or survivability. Shared amphibious reasoning should therefore use the real effective transit speed when evaluating travel time, interception exposure, and whether a distant landing/second front is practical.
+
+The trait is deliberately tagged around amphibious play rather than broad Warship strategy: faster Transports improve force projection from sea to land but do not make Warships themselves stronger.
+
+Likely combination partners include P32 armored Port-launched Transports, P37 fortified landings, and Transport drawbacks.
+
+**Strategic philosophy:** shorten amphibious transit and make distant sea-borne operations easier to execute before conditions change.
+
+---
+
+# P13 — Mountain Training Arc
+
+P13 makes Mountains substantially stronger defensive positions. This remains a generic effective-pressure modifier: Territory, Defense, Retreat, and LandWar reasoning should already use the faction's real terrain-adjusted defensive pressure.
+
+`TERRAIN_DEPENDENCE` is intentional here because the trait's strategic value genuinely depends on access to Mountain geography; the caution describes a conditional support requirement, not a hidden penalty.
+
+The AI should prefer Mountains when they are strategically useful without becoming compelled to occupy worthless or disconnected Mountain cells merely because the bonus exists.
+
+**Strategic philosophy:** use Mountain geography as unusually efficient defensive ground.
+
+---
+
+# P14 — 60 Billion Double Dollars
+
+P14 makes FFY events located on Desert more valuable. Generic Economy/Territory reasoning should combine the actual event-yield modifier with the map's ordinary Desert economics rather than receiving a bespoke Desert-money planner.
+
+The trait changes the strategic value of acquiring, retaining, and placing economically productive activity on Desert, while remaining conditional on relevant Desert geography. `TERRAIN_DEPENDENCE` therefore applies.
+
+Potential combinations with other economic-event amplifiers or Desert-sensitive mechanics are deferred to the global synergy sweep.
+
+**Strategic philosophy:** turn Desert geography into an unusually profitable economic surface.
+
+---
+
+# P15 — The High Ground
+
+P15 makes Highland source positions materially stronger for offensive pressure. The normal combat and territory stack already has enough information to value that pressure change; no trait-specific attack engine is required.
+
+The strategic implication is positional rather than a blanket aggression mandate: when the faction intends to fight, Highland control can create better attack lanes and breakthrough opportunities. Character Doctrine still decides whether such fighting is desirable.
+
+`TERRAIN_DEPENDENCE` records that the trait needs useful Highland access to express its value.
+
+**Strategic philosophy:** acquire and exploit Highland positions as offensive staging ground.
+
+---
+
+# P16 — Poison Taster
+
+P16 removes the ordinary Fallout acquisition-resistance penalty for this faction. It does not change what Fallout is, make Fallout harmless in unrelated systems, or create a new capture action; ordinary expansion/war reasoning simply sees the faction's true effective capture progress.
+
+The support intentionally does not invent a special “Fallout terrain” affordance because Fallout remains a persistent overlay/state rather than base terrain. The `FALLOUT` synergy tag is enough to make later Fallout-producing or Fallout-restricting interactions visible during the global sweep.
+
+**Strategic philosophy:** Fallout-contaminated territory does not slow this faction's territorial acquisition.
+
+---
+
+# P17 — Ten Billion Percent
+
+P17 is not merely “upgrades are cheaper.” The upgrade multiplier improves as the faction owns more structures, which creates a real sequencing relationship between **building additional structures now** and **upgrading infrastructure later**.
+
+Current upgrade affordability remains generic mechanics-aware reasoning. Extended support exists so Economy/Forecast/Spending/Upgrade reasoning can recognize future compounding and compare plans such as “upgrade immediately” versus “expand the structure base first, then perform a cheaper upgrade program.”
+
+The support must not blindly encourage junk construction to farm discounts: structure cost, utility, timing, and opportunity cost still pass through ordinary planners and character arbitration.
+
+P17 is an obvious global-synergy-sweep partner for upgrade restrictions such as N06 and high-level structure mechanics such as P41.
+
+**Strategic philosophy:** a broader infrastructure base compounds into progressively cheaper future modernization.
+
+---
+
+# P18 — The Best Defense
+
+P18 makes Fort coverage an **offensive staging resource**: qualifying engagement lanes receive the bonus when their attacking source cell lies inside a self/fixed-teammate Fort area. That positional condition is strategically richer than a flat offense scalar.
+
+Extended support therefore teaches Opportunity/LandWar reasoning to notice Fort-covered attack origins and Infrastructure planning to recognize that Fort placement may support future offense as well as ordinary defense.
+
+The mechanic does not imply that every Fort should be placed aggressively or that the character should start wars. It adds offensive value to Fort geometry once ordinary strategic intent makes that value relevant.
+
+P09 and later Fort-centered traits are important synergy-sweep partners.
+
+**Strategic philosophy:** fortify the ground from which you intend to project force, turning defensive infrastructure into attack support.
+
+---
+
+# P19 — The Weak Die First
+
+P19 globally increases offensive pressure according to the number of distinct active other factions currently in Territorial Contact, including Minor Factions and even a fixed teammate where the literal rule applies. This creates an unusual positional incentive: **contact geometry itself can alter the faction's offensive strength elsewhere**.
+
+Extended support is required because ordinary expansion reasoning would normally treat creating another border only as access/exposure. With P19 it must also understand the global offensive consequence of gaining or losing a qualifying contact.
+
+`SPLIT_FRONT_RISK` remains important: pursuing additional contacts merely for the bonus can create strategically dangerous exposure, and higher-tier controllers should weigh the bonus against that cost rather than maximizing contact count blindly.
+
+Minor-Faction-heavy starts and future contact-changing mechanics should receive particular attention during the global synergy sweep.
+
+**Strategic philosophy:** broad territorial contact converts geopolitical exposure into offensive momentum, but chasing that momentum can create too many fronts.
+
+---
+
+# P20 — A Miracle Is Merely a Miscalculation
+
+P20 grants a free Missile Silo at match start. Once present, the structure is an ordinary visible launcher governed by the same level gates, costs, visibility, defense, and strategic-weapon planning as any other Silo.
+
+The trait therefore remains generic: the AI must notice and use the starting asset, but there is no new action form or hidden relationship requiring a bespoke planner. Strategic-weapon affordability and timing remain ordinary planning problems.
+
+The granted Silo creates obvious future relationships with P10 and later weapon/launcher traits, but those are deferred to the global synergy sweep unless their combined behavior proves more than additive.
+
+**Strategic philosophy:** begin the match with strategic-launch infrastructure already established and plan around the earlier access it creates.
+
+---
+
+## Batch 1 consistency notes — P01–P10
+
+Nine of the first ten traits are ordinary mechanics-aware support cases. P05 is the only one that needs reusable extended evaluator/planner support because it creates a cross-domain conquest-to-economy relationship that ordinary scalar reasoning would not necessarily capture.
 
 The first ten traits currently require no explicit combination-support definition. Potential relationships are retained for the mandatory post-trait global synergy sweep rather than being prematurely encoded batch by batch.
+
+---
+
+## Batch 2 consistency notes — P11–P20
+
+P11, P17, P18, and P19 require extended support because they create cross-domain or geometry-dependent strategic relationships that are not adequately represented by merely reading a current scalar value. P12–P16 and P20 remain generic mechanics-aware cases.
+
+This batch does **not** require another expansion of the generic support vocabulary. Existing themes, affordances, cautions, and synergy tags are sufficient; where an interaction is too specific for the current synergy-tag vocabulary, the later global sweep can match exact trait IDs rather than adding one-off literals prematurely.
+
+No explicit `OriginCombinationSupport` entry is closed yet.
