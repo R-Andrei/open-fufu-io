@@ -346,7 +346,7 @@ Ordinary game-state races should not require blanket `try/catch` logic.
 
 ### 7.4 Invalid decisions
 
-A complete invalid controller decision, such as simultaneous commitments exceeding legal Available Population, is rejected as a whole. The engine does not silently normalize or partially apply it.
+A complete invalid **game-facing mutation set**, such as simultaneous commitments exceeding legal Available Population, is rejected as a whole. The engine does not silently normalize or partially apply that mutation set. This does not roll back separately validated controller memory: valid memory from the same structurally valid callback remains committed under `CONTROLLER_MEMORY.md`.
 
 ### 7.5 Runtime failure behavior
 

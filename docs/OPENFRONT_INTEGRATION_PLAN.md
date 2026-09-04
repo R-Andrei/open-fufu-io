@@ -315,7 +315,7 @@ Retain the deterministic Execution pattern rather than replacing it wholesale.
 
 Open Fufu distinguishes lifecycle/admin commands, pre-match spawn lifecycle decisions, controller strategic decisions, and simulation state transitions.
 
-A normal controller invocation operates transactionally against one immutable legal observation. On success, memory/directive/action changes commit together. On failure, temporary output is discarded.
+A normal controller invocation operates against one immutable legal observation. Callback/output/memory validity is resolved first: valid controller memory may commit independently. Game-facing directive/action mutations then retain their transactional final-desired-set validation. Ordinary gameplay rejection does not roll back valid memory; a runtime/malformed-output fault discards all newly proposed output.
 
 Population commitment changes take effect immediately on successful decision commit; no land Deployment/Redeployment queue exists.
 
