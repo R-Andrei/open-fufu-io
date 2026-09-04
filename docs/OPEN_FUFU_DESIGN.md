@@ -1008,17 +1008,15 @@ Open Fufu retains **Water Nukes** as an optional V1 ruleset mode. The mode is **
 
 When enabled, the **fully affected inner blast zone** of each resolved strategic-weapon explosion permanently converts eligible terrain to **Deep Water**. The irregular outer blast annulus retains the ordinary nuclear result: affected owned population-bearing land becomes neutral and receives Fallout while preserving its underlying terrain.
 
-The canonical V1 conversion radii therefore reuse the already accepted weapon geometry rather than introducing a second water-nuke radius table:
-
 | Weapon | Permanent Deep-Water core | Ordinary neutral/Fallout fringe |
 | --- | ---: | ---: |
 | Atom Bomb | `0–12` cells | `12–30` cells |
 | Hydrogen Bomb | `0–80` cells | `80–100` cells |
 | MIRV warhead | `0–12` cells | `12–18` cells |
 
-A modifier that changes ordinary blast geometry changes the water-conversion geometry through that same surfaced rule. In particular, P25's `+50% Hydrogen Bomb blast area` scales the existing Hydrogen geometry; it does not receive a separate hidden water-nuke multiplier.
+These radii reuse the already accepted ordinary weapon geometry. A surfaced modifier that changes ordinary blast geometry changes the water-conversion geometry through that same rule; P25's Hydrogen `+50% blast area` receives no separate hidden water-nuke multiplier.
 
-Inside a water-nuke core, terrain conversion is:
+Inside a water-nuke core:
 
 ```text
 ordinary land   → Deep Water
@@ -1027,17 +1025,17 @@ Deep Water      → Deep Water / unchanged
 Impassable      → unchanged
 ```
 
-Owned-cell Population casualties, Capacity loss, structure/unit destruction, and other ordinary nuclear-hit consequences resolve before the terrain conversion. A cell converted to Deep Water is unowned, non-population-bearing, non-buildable, and no longer ordinary conquerable territory. It carries no Fallout overlay after conversion.
+Ordinary nuclear ownership/Population/Capacity/unit/structure consequences resolve before terrain conversion. Converted cells are unowned, non-population-bearing, non-buildable, removed from ordinary conquerable territory, and carry no Fallout overlay.
 
-Overlapping water-nuke explosions apply conversion to the **union of all eligible inner-core cells**; weapon/warhead processing order cannot change the final terrain result.
+Overlapping water-nuke explosions convert the **union of eligible inner-core cells**; processing order cannot change the final terrain result.
 
-Conversion immediately affects ordinary topology and rules that depend on terrain: conquerable-territory denominator, Population Capacity, movement/pathing, naval connectivity, coastline/shoreline geometry, and future build/traversal legality. New Deep Water is real Deep Water; a nuclear-cut canal or newly created coast is therefore mechanically real.
+Converted Deep Water immediately changes ordinary movement/pathing, naval connectivity, coast/shore geometry, Population Capacity, future build/traversal legality, and the conquerable-territory denominator. Nuclear-created canals and coasts are real gameplay geography.
 
-Segment identity remains immutable even when a Segment's cells change terrain, and no runtime Segment regeneration occurs. Controllers observe the changed terrain through ordinary cell/Segment terrain views and may read the mode through the versioned public ruleset (`RulesView`). No separate V1 geographic-tag system is introduced.
+Segment identity remains immutable and Segments are not regenerated at runtime. Controllers observe changed terrain normally and may read the enabled mode through versioned `RulesView` values. V1 adds no separate geographic-tag system.
 
-Water Nukes intentionally receive no hidden anti-cheese exception. If a lobby enables the mode, permanently deleting land, shrinking the victory denominator, creating canals, isolating territory, or reshaping coastlines are legitimate consequences of that optional ruleset.
+Water Nukes intentionally receive no hidden anti-cheese exception. If enabled by the lobby, erasing land, shrinking the victory denominator, cutting canals, isolating territory, and reshaping coastlines are legitimate consequences.
 
-A City does not create extra Population casualties merely because it is a City; Cities modify growth, not Capacity/current-Population-per-cell semantics. Physical units, transports, structures, fleets, and offensive forces actually affected by the weapon may take their own explicit local damage in addition to the terrain-linked Population rule.
+A City does not create extra Population casualties merely because it is a City. Physical units, transports, structures, fleets, and offensive forces actually affected by the weapon may take their own explicit local damage in addition to the terrain-linked Population rule.
 
 ---
 

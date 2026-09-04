@@ -1230,21 +1230,13 @@ Do **not** blindly inherit OpenFront's exact current fallout coefficient; use th
 
 Retain Water Nukes as a **default-OFF optional V1 ruleset** and implement the canonical geometry from `NAVAL_AND_STRATEGIC_WEAPONS.md` / `OPEN_FUFU_DESIGN.md` rather than inheriting unspecified OpenFront terrain destruction.
 
-For every Atom, Hydrogen, or individual MIRV-warhead explosion, the ordinary **fully affected inner blast zone** is also the permanent Deep-Water conversion core. The irregular outer blast annulus keeps standard neutralization + Fallout behavior. The accepted core/fringe radii are therefore Atom `12 / 30`, Hydrogen `80 / 100`, and MIRV warhead `12 / 18`, with ordinary surfaced blast-geometry modifiers (including P25) applying consistently.
+For every Atom, Hydrogen, or individual MIRV-warhead explosion, the ordinary **fully affected inner blast zone** is also the permanent Deep-Water conversion core. The irregular outer blast annulus keeps standard neutralization + Fallout behavior. Accepted core/fringe radii are Atom `12 / 30`, Hydrogen `80 / 100`, and MIRV warhead `12 / 18`, with surfaced blast-geometry modifiers applying consistently.
 
 Eligible land and Shallow Water in the core become Deep Water after ordinary nuclear casualty/destruction resolution; existing Deep Water remains Deep Water and Impassable terrain is unchanged. Converted cells are unowned, non-population-bearing, non-buildable, excluded from ordinary conquerable territory, and carry no Fallout overlay. Overlapping cores resolve as a deterministic union.
 
-The terrain mutation must immediately update authoritative traversal/pathing, naval connectivity, coast/shore classification, Capacity, and victory-denominator behavior. Segment IDs remain immutable and the runtime does not regenerate Segments. `RulesView` exposes the versioned ruleset flag/value needed for controllers to know Water Nukes are enabled.
+Terrain mutation immediately updates traversal/pathing, naval connectivity, coast/shore classification, Capacity, and victory-denominator behavior. Segment IDs remain immutable and the runtime does not regenerate Segments. `RulesView` exposes the versioned ruleset value needed for controllers to know Water Nukes are enabled.
 
-There is no hidden anti-cheese exception: with the option enabled, canal-cutting, coastline reshaping, land deletion, isolation, and denominator reduction are legitimate ruleset consequences.
-
-The owned-cell Population casualty and Capacity-loss event still applies to destroyed owned population-bearing land before/through conversion.
-
-Cities do not add extra Population casualties; they affect growth, not Capacity.
-
-Physical units, fleets, transports, structures, or offensive forces directly hit by the weapon may take their own explicit local damage in addition to the terrain-linked rule.
-
-Exact weapon radii, physical-unit lethality, and final MIRV power numbers remain tuning/translation work.
+There is no hidden anti-cheese exception: canal-cutting, coastline reshaping, land deletion, isolation, and denominator reduction are legitimate consequences when the option is enabled.
 
 ---
 
