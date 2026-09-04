@@ -117,7 +117,7 @@ Open Fufu service
    `- browser viewer/editor/debugger
 ```
 
-Foof may own Discord-facing commands, identity handoff, lobby/match initiation, controller/Origin/Echo-loadout selection where useful, links into browser surfaces, and result/reward presentation.
+Foof may own Discord-facing commands, optional calls to Open Fufu's generic integration/game APIs, lobby/match initiation, controller/Origin/Echo-loadout selection where useful, links into browser surfaces, and result/reward presentation.
 
 Foof must not:
 
@@ -126,6 +126,8 @@ Foof must not:
 - manipulate Open Fufu persistence directly as a substitute for the game API.
 
 Open Fufu should remain independently coherent if Foof is absent.
+
+Authentication, local account linkage, sessions, and the external identity-provisioning boundary are defined canonically in [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md). Open Fufu authenticates identities but does **not** decide admission policy: external systems may provision/revoke provider-qualified identities through a generic integration API, while normal browser login checks only the resulting local identity mapping. Open Fufu has no runtime-login dependency on Fufubox, Fufu Control, or Foof.
 
 ### 2.1 Licensing and attribution
 
@@ -2098,7 +2100,7 @@ The following remain intentionally outside the settled design contract unless ot
 
 - future controller-API-version additions or non-semantic ergonomic polish after implementation pressure-testing; the current V1 TypeScript contract itself is already defined in `src/core/controller/ControllerApi.ts`;
 - later playtest repricing of provisional Origin-trait costs or future catalogue additions without reopening accepted mechanics;
-- exact wire protocol/session encoding and the remaining Discord/session/auth transport details;
+- implementation of the settled `AUTH_AND_IDENTITY.md` contract, including the Discord identity-provider adapter, opaque server-side sessions, CSRF/origin checks, generic integration provisioning endpoints/credentials, and security tests;
 - playtest retuning of accepted provisional terrain, structure, economy, Population, combat, mobile-unit, naval, strategic-weapon, spawn-geometry, Origin, and Echo balance values after representative implementation exists;
 - later benchmark-driven **versioned tuning** of the accepted controller runtime limits or worker-pool deployment settings; the V1 baseline values/architecture are not deferred;
 - exact Echo visual recipe/rendering implementation and final card-motion/glow/aura/responsive/touch polish;
@@ -2108,7 +2110,7 @@ The following remain intentionally outside the settled design contract unless ot
 - detailed lobby/UI implementation outside the settled gameplay/content concepts;
 - supply/logistics connectivity as a separate system.
 
-The concrete V1 controller API, sandbox/runtime budgets, worker-pool baseline, SQLite schema/index/backup/retention model, and the detailed gameplay values previously tracked as open are now accepted specifications. Their remaining work is implementation, validation, and later evidence-driven tuning rather than architecture selection.
+The concrete V1 controller API, sandbox/runtime budgets, worker-pool baseline, SQLite schema/index/backup/retention model, authentication/identity/session/provisioning contract, and the detailed gameplay values previously tracked as open are now accepted specifications. Their remaining work is implementation, validation, and later evidence-driven tuning rather than architecture selection.
 
 Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
 
@@ -2197,3 +2199,4 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 79. **Controller memory uses the accepted canonical compact UTF-8 JSON whole-object replacement codec with a 128 KiB canonical-byte limit; valid memory may commit across ordinary gameplay rejection, while runtime/malformed-output faults preserve the previous committed memory.**
 80. **Segments are immutable map-compiled cardinally connected geography-first strategic regions with a soft ~4,096-cell target and no hard size/aspect-ratio/compactness limits; final membership is versioned in the map artifact, and V1 adds no semantic geographic tags.**
 81. **Canonical archival replays are minimal compressed deterministic input/action records with no periodic full-state seek checkpoints; playback fast-forwards the deterministic simulation from match start and does not require re-executing player controllers or persisting controller memory/debug state.**
+82. **Open Fufu authenticates only pre-provisioned external identities: admission policy lives outside the game behind the generic integration boundary, successful OAuth never auto-registers a player, V1 uses opaque server-side sessions, and normal login has no runtime dependency on Fufubox, Fufu Control, or Foof.**

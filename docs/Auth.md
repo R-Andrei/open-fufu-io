@@ -1,6 +1,6 @@
 # Authentication & Authorization Flow
 
-> **Open Fufu status:** This documents the inherited/current OpenFront authentication flow only. It is **not** the target Open Fufu auth design. Open Fufu's accepted V1 direction is Discord OAuth2 → internal Open Fufu user → Open Fufu session, as recorded in [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). The target game contract is [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). If this file conflicts with the canonical Open Fufu documents, the canonical documents win.
+> **Open Fufu status:** This documents the inherited/current OpenFront authentication flow only. It is **not** the target Open Fufu auth design. The accepted target is [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md): external systems provision/revoke provider-qualified identities through a generic integration boundary; V1 browser login proves Discord identity and accepts it only when that local identity is already active; Open Fufu then uses an opaque server-side session. Open Fufu does not reproduce external admission policy and has no normal-login dependency on Fufubox, Fufu Control, or Foof. The canonical design and integration plan take precedence over the inherited flow below.
 
 ## Token Management
 
