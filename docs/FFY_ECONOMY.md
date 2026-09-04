@@ -12,21 +12,31 @@ Nothing in this file authorizes gameplay implementation.
 
 ---
 
-# 1. V1 economy direction
+# 1. V1 economy baseline
 
 FFY is Open Fufu's primary in-match currency.
 
-The ordinary V1 economy should remain recognizably descended from OpenFront. In particular, the baseline game does **not** add a controller mechanic that explicitly assigns Population to an `economy` bucket in exchange for FFY. A universal bootstrap income mechanism is still required because a faction must eventually be able to reach productive City/Port/Factory infrastructure without already owning productive infrastructure; the exact bootstrap rule/rate remains open.
+The ordinary V1 economy remains recognizably descended from OpenFront. In particular, the baseline game does **not** add a controller mechanic that explicitly assigns Population to an `economy` bucket in exchange for FFY.
 
-The provisional ordinary starting balance is:
+The provisional ordinary starting balance and universal passive floor are:
 
 ```text
-Starting FFY = 50,000
+Starting FFY = 25,000
+Baseline passive FFY income = 1,000 FFY / second
 ```
 
-This intentionally permits an immediate level-1 Fort purchase but does not permit immediate City, Port, Factory, Tank, Warship, Silo, or SAM spam under the current structure/unit prices.
+The passive source is deliberately flat: it does not scale with Population, Population Capacity, territory, Cities, Factories, Ports, structures, military units, or player/controller allocation. It exists as a bootstrap and small universal economic floor so every faction can eventually reach productive infrastructure without already owning productive infrastructure.
 
-The intended early-game pacing is that neutral expansion and Population management dominate first, while deciding when/how to begin developing FFY income remains a meaningful transition rather than an automatic opening building queue.
+The passive source is a **global/non-spatial general FFY source**. Ordinary All-FFY modifiers may affect it; Industrial, Naval/trade, Military/conquest, terrain-location, Fort-area, SAM-area, and other source/location-specific modifiers do not apply unless an explicit future rule says otherwise.
+
+At the current structure prices, 25,000 Starting FFY cannot immediately purchase a level-1 Fort or other persistent structure. With no other income/modifier, the ordinary 1,000 FFY/s floor reaches 50,000 after 25 seconds, 100,000 after 75 seconds total match time, and 150,000 after 125 seconds total match time.
+
+The intended early-game pacing is therefore:
+
+- neutral expansion and Population management dominate immediately;
+- the player cannot instantly place an offensive/defensive Fort at match start merely because of Starting FFY;
+- saving for the first infrastructure purchase remains a real timing decision;
+- developed Train/Trade/Origin economies should eventually dwarf the flat baseline.
 
 ---
 
@@ -98,9 +108,24 @@ The physical event rule remains intentionally permissive:
 - repeated eligible passes during the same finite tour count again;
 - there is no hard economic-event cap per Train tour.
 
-Exact recipient semantics for externally owned Train stations remain part of the current FFY-economy discussion and are not silently inferred from inherited OpenFront behavior.
+## 4.1 Train-event recipient ownership
 
-## 4.1 Train interception / land piracy
+The ordinary Train FFY event belongs to the **Train owner**.
+
+```text
+Fufu Train passes Fufu City/Port
+→ Fufu receives the Train FFY event
+
+Fufu Train passes Tanya City/Port
+→ Fufu receives the Train FFY event
+→ Tanya receives no automatic FFY merely for owning the station
+```
+
+A foreign station still matters because it is physical rail-network geography and may make an external Train event eligible; it does not passively grant the station owner a second economy funded by another faction's rail specialization.
+
+If the qualifying station is externally owned and the Train owner is currently `atWar` with that station owner, the Train owner's external-trade payout receives the ordinary wartime `0.50×` multiplier unless P08 restores the holder's wartime trade multiplier to `1.00×`.
+
+## 4.2 Train interception / land piracy
 
 For its next eligible paying stop, a Train carries a snapshotted **pending base cargo value** equal to the originating Factory-level Train value above.
 
@@ -115,7 +140,45 @@ If a hostile Tank successfully intercepts the Train before that payout:
 
 ---
 
-# 5. Trade Ship ordinary cargo value
+# 5. Trade Ship ordinary traffic and cargo
+
+## 5.1 Baseline speed and dispatch cadence
+
+The provisional ordinary Trade Ship speed is:
+
+```text
+10 water cells / second
+```
+
+P06's accepted `+25% Trade Ship speed` therefore produces `12.5 cells/second` before any other legal modifier.
+
+Every active Port with at least one legal reachable foreign Trade destination maintains its **own independent deterministic dispatch timer**.
+
+For the initial dispatch after the Port becomes active and after every successful dispatch, the next ordinary dispatch delay is a deterministic match-RNG value in:
+
+```text
+20–30 seconds
+mean target: 25 seconds
+```
+
+The exact integer/fixed-point sampling convention and keyed deterministic RNG identity are implementation/versioning details; the gameplay invariant is an independent deterministic roughly-25-second Port cadence.
+
+Ordinary dispatch frequency is **not throttled by**:
+
+- how many Trade Ships that Port already has in flight;
+- how many Trade Ships the faction already owns;
+- how many Trade Ships exist globally;
+- route length;
+- previous-voyage completion time;
+- Port level.
+
+Long voyages naturally create more simultaneous shipping traffic because ships remain physically in flight longer. They are also naturally more exposed to Warship interception for longer. V1 does not add a second route-length penalty by reducing their launch frequency.
+
+If no legal foreign destination exists when a dispatch would occur, no ship is created; the Port continues/retries under the deterministic dispatch policy rather than creating an invalid voyage. Exact retry scheduling is implementation detail so long as it cannot be exploited to manufacture extra dispatches when a destination appears.
+
+Port level's canonical identity remains naval repair radius/rate; inherited OpenFront Port-level Trade-Ship-frequency scaling is not part of ordinary V1.
+
+## 5.2 Raw cargo value
 
 The provisional ordinary Trade Ship cargo formula is:
 
@@ -136,15 +199,27 @@ Examples before modifiers:
 | 1,500 cells | 225,000 FFY |
 | 2,000 cells | 300,000 FFY |
 
-## 5.1 Successful ordinary voyage
+Long-distance trade is intentionally allowed to be substantially more lucrative in ideal uncontested conditions. Balance intervention should come from benchmark/playtest evidence; if the `150` coefficient or distance curve proves pathological, retune the value curve rather than suppressing world traffic through active-ship caps or distance-based spawn throttling.
+
+## 5.3 Successful ordinary voyage
 
 On successful ordinary completion, the **source Trade Ship owner** receives the Naval/trade FFY event derived from that voyage.
 
-The destination Port owner receives **no automatic FFY simply for being selected as the destination**. This avoids a faction passively gaining a second major economy merely because another faction specialized heavily into maritime trade and repeatedly sends ships to it.
+The destination Port owner receives **no automatic FFY simply for being selected as the destination**.
 
-The source-owner success value applies the source owner's eligible Naval/trade, All-FFY, spatial, wartime, and other ordinary yield rules.
+Conceptually:
 
-## 5.2 External wartime trade
+```text
+Fufu Trade Ship reaches Tanya Port
+→ Fufu receives the Trade FFY event
+→ Tanya receives no automatic Trade FFY
+```
+
+This prevents an Industry-focused faction from gaining a second large passive maritime economy merely because a Trade-specialized opponent repeatedly sends ships to its Ports.
+
+The source-owner success value applies the source owner's eligible Naval/trade, All-FFY, source-side spatial, wartime, and other ordinary yield rules.
+
+## 5.4 External wartime trade
 
 External trade remains possible while at war.
 
@@ -160,34 +235,68 @@ P08 changes the trait-holder's own wartime trade multiplier to:
 1.00×
 ```
 
-The wartime rule applies to external maritime trade and to external rail trade where an FFY payout is otherwise earned. It does not by itself create a payout for the foreign destination/station owner.
-
-## 5.3 Traffic constraint already settled
-
-V1 Trade Ship traffic must **not** be controlled through:
-
-- a hard active-Trade-Ship cap per Port;
-- a hard active-Trade-Ship cap per faction;
-- a global active-Trade-Ship cap used as ordinary economic throttling;
-- a route-length rule that deliberately slows launch frequency merely because the destination is farther away.
-
-Longer voyages are already more exposed to hostile Warship interception because each ship remains physically vulnerable for longer. The traffic model should not add a second route-length penalty by making long routes launch fewer ships as well.
-
-The exact independent per-Port spawn/dispatch cadence remains open. A roughly 20–30-second ordinary cadence is a current design direction, not yet an accepted exact constant.
-
-Port level's canonical identity remains naval repair radius/rate; no Port-level Trade-Ship-frequency progression is accepted merely because inherited OpenFront had one.
+The wartime rule applies to the earning vehicle owner's external maritime and external rail Trade events. It does not create or modify a nonexistent destination/station-owner payout.
 
 ---
 
-# 6. Trade Ship capture and piracy
+# 6. Trade Ship capture, recapture, and piracy
 
 Hostile capture does **not** immediately mint piracy FFY.
 
-A captured Trade Ship/cargo remains a physical object in the world. Piracy income is realized only after the captured vessel/cargo is successfully delivered to a legal owned active Port of the current hostile holder according to the final captured-ship routing rules.
+A Trade Ship carries one physical cargo object/value through its voyage. There can be at most **one terminal cargo payout** from that cargo.
 
-The exact ordinary piracy payout multiple/base remains open in the current FFY pass; P30's accepted `3× piracy FFY` transformation will apply to the eventual ordinary piracy event.
+## 6.1 Capture prerequisite
 
-## 6.1 Snapshotted owner-side success value; N14/N16
+A hostile Warship may capture a Trade Ship only when the Warship's faction currently has at least one **reachable owned active Port** on the relevant water network/component to which captured cargo can legally be delivered.
+
+If that prerequisite is not met, ordinary capture is unavailable; other legal destruction/combat rules remain whatever the Warship's current doctrine permits.
+
+## 6.2 First hostile capture converts the voyage into captured cargo
+
+On the first hostile capture:
+
+- the original ordinary source-to-destination commercial completion is spoiled/canceled;
+- the cargo remains physically aboard the captured vessel;
+- no piracy FFY is paid immediately;
+- N14/N16 first-hostile-capture effects resolve from their already snapshotted owner-side value;
+- subsequent recaptures do not retrigger those first-hostile-capture owner effects.
+
+After first hostile capture, the vessel/cargo is routed toward a legal reachable owned active Port of its **current holder**.
+
+If the current delivery Port becomes invalid, captured cargo retargets another legal reachable owned active Port. If none exists, the vessel/cargo remains physically in play without paying out and may later resume delivery if a legal Port becomes available, be recaptured, or be destroyed. Cargo never teleports into an FFY balance.
+
+## 6.3 Terminal captured-cargo payout
+
+When captured cargo is successfully delivered to a legal owned active Port of the current holder:
+
+```text
+base captured-cargo value = original rawCargo
+```
+
+If the final delivering holder is hostile to the original owner, this is a **Naval/trade piracy FFY event** for that holder. The holder applies its own eligible Naval/trade, All-FFY, Port/location, and explicit piracy modifiers. P30 applies its accepted `3× piracy FFY` multiplier here.
+
+If the original owner recaptures its own spoiled cargo and successfully brings it to an owned active Port, it may recover the same one cargo value as a Naval/trade recovery event, but P30's hostile-piracy multiplier does not apply merely because the cargo was once captured.
+
+Examples:
+
+```text
+1,000-cell original voyage
+rawCargo = 150,000
+
+ordinary uncaptured completion:
+original owner gets the ordinary 150,000-base Trade event
+
+hostile capture + successful hostile delivery:
+original ordinary completion = 0
+final hostile holder gets a 150,000-base piracy event
+
+P30 hostile holder:
+150,000 × 3 = 450,000 structural piracy base before ordinary yield modifiers
+```
+
+If the cargo changes hands repeatedly, only the faction that ultimately completes a legal captured-cargo delivery receives the terminal cargo payout. If the vessel/cargo is destroyed first, the cargo pays `0`.
+
+## 6.4 Snapshotted owner-side success value; N14/N16
 
 For every launched ordinary Trade voyage, define:
 
@@ -195,7 +304,7 @@ For every launched ordinary Trade voyage, define:
 Vowner = the FFY amount the source owner would receive if that snapshotted voyage completed successfully under the launch-time rules/state
 ```
 
-`Vowner` is snapshotted at launch and is not recomputed from later rerouting, later distance, or subsequent capture movement.
+`Vowner` is snapshotted at launch and is not recomputed from later rerouting, later distance, capture ownership, or capture-delivery movement.
 
 N14 uses exactly that value:
 
@@ -206,7 +315,7 @@ first hostile capture
 
 N16 uses the same canonical snapshot under its already accepted success/capture inversion rules.
 
-Later recaptures/transfers do not retrigger N14/N16's first-hostile-capture owner-side effects.
+Later recaptures/transfers of the same cargo do not retrigger N14/N16's first-hostile-capture owner-side effects.
 
 ---
 
@@ -255,16 +364,48 @@ This intentionally avoids arbitrary/last-hit-sensitive kill stealing. Conquest v
 
 ---
 
-# 9. Future Origin-economy design hooks — accepted direction, not deployed traits
+# 9. Origin-specific passive-economy hooks
 
-Two future Origin-economy directions are intentionally preserved for later catalogue work:
+The deployed/public definitions and point values for Origin traits live in `ORIGIN_TRAIT_CATALOGUE.md`. Two accepted provisional economic hooks intentionally create strange alternate economies rather than replacing the ordinary universal 1,000-FFY/s floor.
 
-1. **Underpopulation / empty-Capacity economy** — passive income derived from some explicit measure related to the gap between Population Capacity and current Population, creating a deliberately strange incentive to operate a large underpopulated state.
-2. **Strategic-stockpile / Silo economy** — income derived from Missile Silos, ready strategic capacity, or a related nuclear-stockpile state.
+## 9.1 Underpopulation / empty-Capacity income
 
-These are **not yet catalogue traits** and have no accepted point values/formulas.
+The corresponding Origin trait uses:
 
-The Silo/nuclear direction must receive a real strategic downside that pushes the faction away from ordinary fast territorial expansion. Merely losing income while Silo charges are briefly on cooldown is not a sufficient drawback because firing the arsenal is already an overwhelmingly favorable exchange in many situations. A future nuclear-expansion Origin may combine strong Silo-linked economy with severely impaired ordinary acquisition and unusually strong Fallout-based expansion, creating a weak/awkward early game that can transition into a doomsday-style late game if it survives.
+```text
+emptyCapacity = max(0, PopulationCapacity - TotalPopulation)
+bonusFFYPerSecond = emptyCapacity / 250
+```
+
+This is a global/non-spatial general FFY source. It rewards operating a large underpopulated state and naturally weakens as Population fills the available Capacity. It produces no negative income when Total Population exceeds Capacity.
+
+Examples before All-FFY modifiers:
+
+| Empty Capacity | Bonus FFY/s |
+| ---: | ---: |
+| 500 | 2 |
+| 12,500 | 50 |
+| 50,000 | 200 |
+| 500,000 | 2,000 |
+| 1,000,000 | 4,000 |
+| 2,000,000 | 8,000 |
+
+Deterministic fixed-point/residual accounting may be used internally so the formula need not quantize strategic state into coarse 250-Population steps.
+
+## 9.2 Strategic-stockpile / Silo income
+
+The corresponding Origin trait counts **ready launch charges on owned active persistent Missile Silo structures only**:
+
+```text
+bonusFFYPerSecond
+= 2,000 × readyPersistentSiloCharges
+```
+
+Warships that become strategic-weapon launch platforms through P29 do not count as persistent Missile Silo structures for this income source.
+
+This is a global/non-spatial general FFY source. Expending a Silo charge immediately removes that charge's contribution until the charge is ready again. The temporary income loss while firing is an internal guns-versus-butter tension, **not** the defining downside of the intended nuclear-expansion doctrine.
+
+The corresponding severe non-Fallout acquisition drawback is separately defined in the Origin catalogue so it can compose legally with P16, P35, P44, P20, and other public traits rather than being hidden inside one bespoke Official Origin.
 
 ---
 
@@ -272,10 +413,8 @@ The Silo/nuclear direction must receive a real strategic downside that pushes th
 
 The following remain open and should not be silently inferred from inherited OpenFront behavior:
 
-- universal V1 FFY bootstrap source/rate beyond the accepted 50,000 starting balance;
-- exact Trade Ship independent per-Port spawn/dispatch cadence;
-- exact Trade Ship speed if changed from inherited behavior;
-- exact ordinary piracy payout/base and recapture/delivery edge cases;
-- exact Train-event recipient semantics when a Train passes a station owned by another faction;
-- final Trade Ship destination-selection/routing policy and destination disappearance/ownership-change handling;
-- accelerated simulation benchmarks comparing optimized industry, maritime trade, piracy, P07/P33, Factory levels, and relevant Origin/Echo combinations.
+- final deterministic Trade Ship destination-selection/routing policy among legal foreign Ports;
+- exact retry behavior when a dispatch timer fires with no legal destination;
+- benchmark/playtest retuning of the provisional `20–30s`, `10 cells/s`, and `150 × route cells` Trade values;
+- accelerated simulation benchmarks comparing baseline passive income, optimized industry, maritime trade, piracy, P07/P33, Factory levels, and relevant Origin/Echo combinations;
+- benchmark/playtest retuning of the underpopulation and Silo-economy coefficients and their Origin point values.
