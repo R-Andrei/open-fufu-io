@@ -1149,17 +1149,15 @@ The authoritative server enforces these information boundaries; browser-only hid
 
 ## 20. FFY economy and trade
 
-FFY is the primary in-match currency and is **not** passive `Population → money per second` income.
+FFY is the primary in-match currency. Ordinary V1 begins with **25,000 FFY** and has a flat, non-spatial universal income floor of **1,000 FFY/s**. This baseline is independent of Population, territory, Cities, Factories, and explicit worker allocation: Open Fufu does not use passive `Population → money` taxation/assignment.
 
-It is generated through explicit world/economic events such as trade ship success/capture, trains/station economics, configured territorial/objective captures, piracy/capture, hostile structure capture, faction elimination, and future explicit economic events.
+Developed FFY income comes primarily from explicit physical/economic events such as Train station service, Trade Ship voyages, piracy/captured cargo, and surfaced conquest/economy mechanics. Population committed to warfare does not secretly reduce FFY through an unstated labor penalty.
 
-Population committed to warfare does not secretly reduce FFY through an unstated labor penalty.
-
-Trade with enemies remains possible. Default wartime economic penalty direction is **50%**, subject to explicit modifiers.
+Detailed FFY/Trade/Train values and event semantics are canonical in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). Trade with enemies remains mechanically possible where route/relationship legality otherwise permits it; wartime external trade uses the accepted **0.50×** earning-side multiplier unless an explicit modifier such as P08 overrides it.
 
 ### 20.1 Broad FFY modifier surfaces
 
-For modifier design, FFY should expose a **small set of broad economic source families** rather than turning every individual FFY event into a separate build-stat axis. Exact final naming belongs to implementation, but the intended shape is roughly:
+For modifier design, FFY exposes a **small set of broad economic source families** rather than turning every individual FFY event into a separate build-stat axis. The accepted V1 family shape is roughly:
 
 - generic/overall FFY;
 - military/conquest FFY;
@@ -1167,6 +1165,8 @@ For modifier design, FFY should expose a **small set of broad economic source fa
 - industrial FFY.
 
 Individual events still retain their precise event identity internally for simulation, replay, and debugging. Origin/Echo modifiers normally target the broad economic family relevant to that event rather than a large catalogue of hyper-granular event-specific multipliers.
+
+The universal `1,000 FFY/s` floor and explicit global passive Origin-income sources are non-spatial. Spatial FFY modifiers do not apply merely because the faction owns qualifying geography somewhere.
 
 Explicit identity-defining rule exceptions may still exist as curated Origin traits. For example, an Origin may explicitly alter or remove the ordinary wartime trade penalty. Such exceptions are authored mechanics, not arbitrary player formulas.
 
@@ -1196,9 +1196,13 @@ This rule is independent of whether the station was one of the route generator's
 
 Every paying station event imposes a **1.5-second dwell**, exactly 15 simulation ticks at the accepted 10 Hz baseline, before the Train continues. There is no hard per-tour economic-event cap. Travel distance plus station dwell plus the one-primary-Train/return/turnaround cycle provide natural throughput costs while preserving the reward for dense, well-designed rail networks.
 
-Factory level does **not** increase ordinary Train count. It scales the configured industrial/train FFY event value through the canonical `100/110/120/130/140%` L1→L5 progression in `TERRAIN_AND_STRUCTURES.md`.
+Factory level does **not** increase ordinary Train count. The accepted provisional L1→L5 ordinary Train-event base values are:
 
-The exact ordinary **FFY amount/formula** for City/Port Train events remains part of the broader FFY-economy pass alongside Trade Ship and other event payouts. Train route mechanics, stop/event semantics, speed, dwell, occupancy, turnaround, P07 quantity behavior, and P33 Population behavior are no longer blocked on that payout value.
+```text
+10,000 / 11,250 / 12,500 / 13,750 / 15,000 FFY
+```
+
+The physical service rules, payout ownership/modifier semantics, and broader FFY economy are specified in `FFY_ECONOMY.md`; the route mechanics, stop/event semantics, speed, dwell, occupancy, turnaround, P07 quantity behavior, P33 Population behavior, and level-specific base payouts are no longer open design questions.
 
 #### P07 — +25% Trains
 
@@ -1997,7 +2001,7 @@ Important rules:
 
 For deterministic singular start-state grants on a split-origin faction, origins are ordered primary/secondary and the grant uses the primary origin unless the grant defines a different public rule.
 
-Exact compact-growth geometry, tie-breaking, minimum legal origin separation, fallback movement of colliding origins, and influence-area radius/shape remain implementation/tuning details so long as the invariants above hold. The V1 base Initial Territory and Starting-Population relationship themselves are no longer TBD.
+The accepted ordinary influence radius, exact-origin spacing, deterministic collision fallback, simultaneous quota-limited footprint construction, five-second spawn immunity, and P54 star-footprint transformation are specified in [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md). Low-level queue/hash/data-structure choices remain implementation/versioning details; these gameplay geometry rules are no longer open design questions.
 
 ### 24A.22 Spawn modes and controller lifecycle
 
@@ -2020,29 +2024,23 @@ A controller is not required to implement spawn-specific logic. Missing, malform
 The following remain intentionally outside the settled design contract unless otherwise stated above:
 
 - exact final TypeScript API names/types and ergonomic naming after prototype pressure-testing, including spawn-hook names/types;
-- exact Origin Point budget, trait-count cap, maximum drawback refund, final player-facing trait names/IDs, and final balancing of provisional Origin-trait point costs;
-- later wording/reference cleanup and balance iteration for the provisional Official Origin roster in `OFFICIAL_ORIGINS.md`;
-- exact strategic-spawn ordinary influence radius/shape, exact-origin collision resolver, and compact-footprint growth/tie-breaking algorithm, including low-level implementation details for the accepted split-origin profile;
+- final player-facing Origin trait names/IDs, Official-Origin wording/reference cleanup, and later playtest repricing of provisional trait costs without reopening accepted mechanics;
 - exact sandbox hardening/resource-budget values;
-- exact SQLite schema and retention policy;
+- exact SQLite schema/index/backup/retention details;
 - exact wire protocol/session encoding;
-- exact deterministic memory codec;
-- exact controller query/materialization/debug-output limits;
-- exact capture-progress coefficients beyond the accepted terrain-specific provisional multipliers;
-- exact counter-response casualty/rate coefficients;
-- exact Segment size heuristics;
-- playtest retuning of the accepted provisional terrain/Fallout values in `TERRAIN_AND_STRUCTURES.md`;
-- exact FFY payouts and final broad FFY-source naming, including the eventual stronger Factory/Train-event baseline and the exact ordinary City/Port Train event value;
-- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura polish, including responsive/touch accessibility behavior, subject to the settled stable identity components + roll-dependent naming/quality treatment;
-- playtest retuning of versioned Echo balance values such as the `50/35/15` shape mix, magnitude weight curve, quality thresholds, Middle Fingers salvage amounts, Gacha prices, or 50-pull power-12 Lucky+ pity if real play gives a reason, without reopening the stable-identity architecture;
+- exact deterministic controller-memory codec;
+- exact controller query/materialization/debug-output/action/directive limits;
+- exact Segment generation/size heuristics within the accepted Segment ontology;
+- playtest retuning of accepted provisional terrain, structure, economy, Population, combat, mobile-unit, naval, strategic-weapon, spawn-geometry, Origin, and Echo balance values after representative implementation exists;
+- exact Echo visual recipe/rendering implementation and final card-motion/glow/aura/responsive/touch polish;
 - executable/property-test implementation for Echo distribution, scoring, generated naming, Middle Fingers accounting, rewards, pending settlement, Pareto resolution, saved-set propagation, and Gacha pity;
 - authored anime dialogue/catchphrase/reference curation for Origin traits and Official Origins; V1 Echoes deliberately do not depend on an anime quote/subtitle corpus;
-- playtest retuning of the accepted provisional structure costs, build/upgrade times, radii, level effects, Tank/Heavy-Artillery numbers, Train speed/dwell/turnaround/P33 coefficient, and mobile-unit construction times in `TERRAIN_AND_STRUCTURES.md`;
-- exact MIRV nerf values/warhead count beyond the settled level-5 access gate and moderate-power-reduction direction;
-- exact Trade Ship numerical translation where not already specified;
-- final Train/Tank pursuit/interception balance after implementing the settled Train route/service model; the mechanics themselves are settled, but the provisional 25-cells/s Train speed and related combat numbers remain benchmark/playtestable;
-- detailed lobby/UI implementation outside the settled Echo collection/reward-card concepts;
+- final Tank/Train pursuit/interception feel after implementing the settled physical Train and armored-unit rules;
+- optional water-nuke conversion geometry and other explicitly optional ruleset minutiae not already pinned;
+- detailed lobby/UI implementation outside the settled gameplay/content concepts;
 - supply/logistics connectivity as a separate system.
+
+The concrete provisional gameplay values previously listed here as open—Origin builder limits, Population growth/utilization, capture pacing, counter-response coefficients, FFY baselines, Train service/payouts, Strategic Spawn geometry, Initial Territory/Starting Population, Warship/Transport values, and Atom/Hydrogen/MIRV values—are now recorded in their canonical detailed registries and are implementation baselines rather than unanswered design placeholders.
 
 Supply is explicitly deferred from V1. Do not introduce hidden supply roots, path-distance logistics, or supply penalties under another name.
 
@@ -2084,7 +2082,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 32. **The eight canonical V1 persistent structures—City, Fort, Port, Factory, Missile Silo, SAM Launcher, Observation Post, Command Post—are upgradeable from level 1 through a hard maximum of level 5.**
 33. **City levels increase Growth, Fort levels increase defense/coverage, Factory levels increase industrial FFY and armored-unit repair capacity, Port levels increase repair capability, SAM levels increase normal range/charges, Silo levels increase charges/weapon access, Observation Post levels increase observation radius, and Command Post levels increase source-offense support/coverage.**
 34. **Missile Silo level 1 unlocks Atom Bomb, level 3 unlocks Hydrogen Bomb, and level 5 unlocks MIRV. Free/granted weapons do not bypass launcher legality.**
-35. **MIRVs remain powerful but receive a moderate inherited-power reduction in addition to the level-5 access gate.**
+35. **MIRV requires a level-5-equivalent launcher and uses the accepted static 50m FFY baseline, up to 250 independently resolving small warheads over the canonical 750-cell distribution radius; detailed projectile/interception values live in `NAVAL_AND_STRATEGIC_WEAPONS.md`.**
 36. **Where a Warship is granted Missile-Silo capability, its effective Silo level equals Warship rank with a minimum of 1.**
 37. **Transport embarkation begins at 0 FFY and explicit Transport-cost trait modifiers stack additively.**
 38. **The accepted fortified-landing trait adds +250 FFY and grants a permanent level-1 Fort only after a successful landing.**
@@ -2107,7 +2105,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 55. **Derived controller helpers never leak information outside the controller's legal observation projection.**
 56. **Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals.**
 57. **Controller debugging/visual annotations are private, bounded, deterministic output and never simulation input.**
-58. **FFY is event-driven, not passive Population taxation, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
+58. **Ordinary FFY has a flat non-Population universal 1,000 FFY/s floor plus explicit event-driven economic sources; it is not passive Population taxation/assignment, and build-facing FFY modifiers prefer broad source families over hyper-granular event-specific knobs.**
 59. **FFA is truly competitive among non-team factions; fixed teams are the only formal alliance relationship.**
 60. **Zero population-bearing territory after tick resolution means immediate defeat.**
 61. **Capitulated/resigned factions stop growth and decision-making, remove mobile/offensive active behavior, but retain territory and surviving passive Population defense until conquered.**
@@ -2116,7 +2114,7 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 64. **Historical matches bind exact rule-bearing versions.**
 65. **Ordinary Strategic Spawn uses two simultaneous broad-choice rounds with a reveal between them, followed by simultaneous exact-origin choice; broad influence areas may overlap and are not territorial reservations.**
 66. **A public spawn-profile modifier may change one ordinary area/origin into the accepted two-half-area/two-origin profile without changing the phase/reveal fairness model.**
-67. **Initial territory is generated deterministically as compact footprint(s) around the exact spawn origin(s) and should preserve each faction's legal Initial Territory quota whenever the map can support it.**
+67. **Initial territory is generated deterministically around exact spawn origin(s), ordinarily as compact footprint(s) but with explicit public geometry transformations such as P54; every legal profile preserves the faction's Initial Territory quota whenever the map can support it.**
 68. **Random and Fixed spawn modes remain supported alongside Strategic Spawn.**
 69. **One canonical design document governs the target; one canonical integration plan governs the migration; `TERRAIN_AND_STRUCTURES.md` is the canonical detailed data appendix for accepted terrain/structure/Tank values.**
 70. **Tundra and Shallow Water are conquerable but non-population-bearing; Tundra is unbuildable and Shallow Water is an unbuildable land-operation/naval crossing terrain.**
@@ -2127,4 +2125,4 @@ Supply is explicitly deferred from V1. Do not introduce hidden supply roots, pat
 75. **Ordinary V1 maps have exactly 4,800,000 raster cells; population-bearing-cell count is map-dependent and alternate gameplay resolution scales are not supported.**
 76. **Ordinary V1 Initial Territory is 1,000 population-bearing cells. Starting Population is 50% of final modified Initial Territory before explicit Starting-Population modifiers, so vanilla starts at 500/1,000.**
 77. **Ordinary Population base growth is exactly `0.05 × Capacity^0.75` Population/s, with piecewise-linear utilization anchors and a 40–60% maximum-efficiency band; P02 horizontally widens that band to 30–70%.**
-78. **Factory Trains use finite multi-stop closed service tours at a provisional 25 cells/s: one primary Train per Factory, up to five deterministic target stations per route-construction pass, every actual City/Port pass produces an event and 1.5s dwell with no hard event cap, the Factory waits 5s after return/destruction, P07 adds one bonus Train every fourth primary dispatch, and P33 adds `20 × City level` Capacity-capped Population per qualifying City event. Ordinary Train FFY event values remain part of the broader FFY-economy tuning pass.**
+78. **Factory Trains use finite multi-stop closed service tours at a provisional 25 cells/s: one primary Train per Factory, up to five deterministic target stations per route-construction pass, every actual City/Port pass produces an event and 1.5s dwell with no hard event cap, the Factory waits 5s after return/destruction, P07 adds one bonus Train every fourth primary dispatch, P33 adds `20 × City level` Capacity-capped Population per qualifying City event, and the ordinary Factory-level Train-event FFY ladder is `10,000 / 11,250 / 12,500 / 13,750 / 15,000`.**
