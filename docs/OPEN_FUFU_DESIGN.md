@@ -1149,35 +1149,84 @@ The authoritative server enforces these information boundaries; browser-only hid
 
 ## 20. FFY economy and trade
 
-FFY is the primary in-match currency. Ordinary V1 begins with **25,000 FFY** and has a flat, non-spatial universal income floor of **1,000 FFY/s**. This baseline is deliberately independent of Population, territory, Cities, Factories, or explicit worker allocation: Open Fufu does not use passive `Population → money` taxation/assignment.
+FFY is the primary in-match currency. Ordinary V1 begins with **25,000 FFY** and has a flat, non-spatial universal income floor of **1,000 FFY/s**. This baseline is independent of Population, territory, Cities, Factories, and explicit worker allocation: Open Fufu does not use passive `Population → money` taxation/assignment.
 
 Developed FFY income comes primarily from explicit physical/economic events such as Train station service, Trade Ship voyages, piracy/captured cargo, and surfaced conquest/economy mechanics. Population committed to warfare does not secretly reduce FFY through an unstated labor penalty.
 
-Detailed V1 FFY semantics and provisional values are canonical in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md), including:
-
-- the `25,000` starting balance and `1,000 FFY/s` universal floor;
-- the Factory-level Train-event ladder (`10,000 / 11,250 / 12,500 / 13,750 / 15,000 FFY`);
-- sender/Train-owner-only ordinary economic payouts rather than automatic destination-owner rewards;
-- Trade Ship raw cargo value of `150 × planned water-route cells`;
-- deterministic independent Port dispatches in the accepted `20–30s` cadence with no active-ship or route-length throttle;
-- `0.50×` wartime external trade for the earning faction unless an explicit rule such as P08 overrides it;
-- physical captured-cargo delivery before piracy pays;
-- no universal FFY bounty for ordinary faction elimination;
-- broad additive FFY-yield modifier families and explicit separation between positive yield modifiers and costs/losses.
-
-Trade with enemies remains mechanically possible where route/relationship legality otherwise permits it; war changes the earning faction's external-trade yield rather than gifting an automatic reward to the destination faction.
+Detailed FFY/Trade/Train values and event semantics are canonical in [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). Trade with enemies remains mechanically possible where route/relationship legality otherwise permits it; wartime external trade uses the accepted **0.50×** earning-side multiplier unless an explicit modifier such as P08 overrides it.
 
 ### 20.1 Broad FFY modifier surfaces
 
-Build-facing FFY modifiers use broad source families rather than one stat for every event. The canonical families are equivalent to:
+For modifier design, FFY exposes a **small set of broad economic source families** rather than turning every individual FFY event into a separate build-stat axis. The accepted V1 family shape is roughly:
 
-- generic/all FFY;
+- generic/overall FFY;
 - military/conquest FFY;
 - naval/trade FFY;
-- industrial FFY;
-- explicit spatial/location modifiers where a real event has a meaningful world-space location.
+- industrial FFY.
 
-The universal passive FFY floor and explicitly global passive Origin sources are non-spatial. Spatial modifiers do not apply merely because the faction owns qualifying geography somewhere.
+Individual events still retain their precise event identity internally for simulation, replay, and debugging. Origin/Echo modifiers normally target the broad economic family relevant to that event rather than a large catalogue of hyper-granular event-specific multipliers.
+
+The universal `1,000 FFY/s` floor and explicit global passive Origin-income sources are non-spatial. Spatial FFY modifiers do not apply merely because the faction owns qualifying geography somewhere.
+
+Explicit identity-defining rule exceptions may still exist as curated Origin traits. For example, an Origin may explicitly alter or remove the ordinary wartime trade penalty. Such exceptions are authored mechanics, not arbitrary player formulas.
+
+The Origin and Echo catalogues should be curated so a narrow Echo does not trivially erase the defining drawback that makes an Origin strategically distinct. This is a catalogue-design responsibility, not a hidden Origin/Echo incompatibility rule.
+
+### 20.2 Canonical V1 Train service
+
+Open Fufu keeps the inherited idea of physical rail networks and station-triggered economic events but replaces OpenFront's independent random Train spawning and station-hop routing with a deterministic finite **multi-stop Factory service tour**.
+
+The design goal is deliberately permissive: coherent/deep rail webs and high-density optimized circuits should be economically valuable. The game does **not** impose a hidden hard stop cap merely to suppress clever layouts. A controller that arranges an unusually efficient circuit through many Cities/Ports is allowed to profit from that optimization unless real benchmark/playtest evidence shows pathological/game-breaking behavior.
+
+Baseline service rules:
+
+- **Train speed:** `25 rail cells/second`.
+- **Primary Train occupancy:** each Factory supports at most **one active primary Train** at a time.
+- A Factory may dispatch its next primary Train only after the prior primary Train **returns to its originating Factory or is destroyed**, then waits a **5-second turnaround**.
+- A normal primary dispatch selects **up to five distinct connected eligible City/Port stations** as route-construction targets. Five is a **target count, not a payout/event cap**. If fewer than five eligible stations are connected, use the available set.
+- Target selection uses a deterministic rotating/shuffled service queue so large connected rail networks are not permanently reduced to their nearest few stations.
+- Route ordering/pathing then minimizes **expected travel time** for a finite closed tour starting and ending at the originating Factory and visiting all selected targets. With uniform rail speed this reduces to shortest physical rail distance between service points.
+- The route generator does not intentionally add arbitrary loops solely to farm events; however, retracing produced naturally by the actual rail topology is legal.
+
+The economic trigger is intentionally simple and physical:
+
+> **Whenever a Train physically reaches/passes through an eligible City or Port station along its finite service route, that station triggers its ordinary Train FFY event.**
+
+This rule is independent of whether the station was one of the route generator's selected targets. Incidental stations count. If the finite route physically reaches the same eligible station multiple times, **every qualifying pass triggers another event**.
+
+Every paying station event imposes a **1.5-second dwell**, exactly 15 simulation ticks at the accepted 10 Hz baseline, before the Train continues. There is no hard per-tour economic-event cap. Travel distance plus station dwell plus the one-primary-Train/return/turnaround cycle provide natural throughput costs while preserving the reward for dense, well-designed rail networks.
+
+Factory level does **not** increase ordinary Train count. The accepted provisional L1→L5 ordinary Train-event base values are:
+
+```text
+10,000 / 11,250 / 12,500 / 13,750 / 15,000 FFY
+```
+
+The physical service rules, payout ownership/modifier semantics, and broader FFY economy are specified in `FFY_ECONOMY.md`; the route mechanics, stop/event semantics, speed, dwell, occupancy, turnaround, P07 quantity behavior, P33 Population behavior, and level-specific base payouts are no longer open design questions.
+
+#### P07 — +25% Trains
+
+P07 modifies dispatch quantity rather than Train speed. Each Factory tracks its own normal primary dispatch count. **Every fourth normal primary dispatch simultaneously launches one additional bonus Train** using the same ordinary route-generation/service rules.
+
+Thus four normal dispatch cycles yield four primary Trains plus one bonus Train: exactly `+25%` Train count over the sequence. The bonus Train has an independently generated deterministic route and does **not** occupy or delay the Factory's primary Train slot. Destruction does not reset the per-Factory sequence.
+
+#### P33 — rail-demographic City events
+
+Whenever a Train-triggered ordinary economic event occurs at a City owned by the P33 trait-holder, that City also grants:
+
+```text
+20 × completed City level
+```
+
+Available Population to its owner, Capacity-capped. The provisional L1→L5 event values are therefore:
+
+```text
+20 / 40 / 60 / 80 / 100 Population
+```
+
+P33 follows the same physical-event rule as ordinary Train economics: incidental City passes count, and repeated qualifying passes through the same City during one finite route trigger P33 again. Port events do not generate P33 Population.
+
+Before V1 release, accelerated benchmark simulations should compare optimized rail-demographic strategies—including dense circuits, many Factories, P07/P33, and high City levels—against strong ordinary Population-growth/economic strategies across representative maps and game stages. Hyper-optimized rail being meaningfully stronger is acceptable; retuning is intended for pathological/game-breaking scaling, not for eliminating the reward for clever railway design.
 
 ---
 

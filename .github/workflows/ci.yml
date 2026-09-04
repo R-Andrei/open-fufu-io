@@ -8,33 +8,9 @@ on:
   push:
     branches: [main]
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
-  docs-sync:
-    name: 🧹 One-shot docs sync
-    if: github.event_name == 'pull_request' && github.head_ref == 'docs/cleanup-stale-design-todos'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout PR branch
-        uses: actions/checkout@v7
-        with:
-          ref: docs/cleanup-stale-design-todos
-          fetch-depth: 0
-      - name: Restore retained Train design while cleaning stale wording
-        shell: bash
-        run: |
-          git fetch origin main
-          python .github/docs_sync_restore_train_temp.py
-          git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/docs_sync_restore_train_temp.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "docs: preserve settled Train design during cleanup"
-          git push origin HEAD:docs/cleanup-stale-design-todos
-
   build:
     name: 🏗️ Build
     runs-on: ubuntu-latest
