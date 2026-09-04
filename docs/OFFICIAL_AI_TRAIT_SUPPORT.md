@@ -25,9 +25,9 @@ Nothing here changes Origin mechanics. Numeric mechanical truth remains in the a
 ## Progress
 
 ```text
-Configured traits: 30 / 72
-Current range:      P01–P30
-Remaining:          P31–P54, N01–N18
+Configured traits: 40 / 72
+Current range:      P01–P40
+Remaining:          P41–P54, N01–N18
 ```
 
 No explicit Origin-combination support is closed yet. Cross-trait interactions are deliberately retained for the global synergy sweep after all individual trait mappings exist.
@@ -392,6 +392,128 @@ Likely synergy partners include Trade Ship/economy modifiers and Warship transfo
 
 ---
 
+# P31 — Heart-Under-Blade
+
+P31 turns owned active Port repair fields into stronger operational fleet-support zones. The important strategic change is not merely a larger repair number: Warships may remain active while benefiting from the enhanced field, so Port geometry can support sustained fighting, safer fallback positions, and repeated re-engagement.
+
+Extended support therefore lets Naval/Forecast reasoning value fighting near repair coverage, Retreat reasoning value reachable repair refuges, and Infrastructure reasoning value Ports partly as fleet-support infrastructure. `INFRASTRUCTURE_DEPENDENCE` and `COAST_DEPENDENCE` describe the fact that this extra sustain exists only where useful Port geometry can be established.
+
+The support must still use authoritative completed-level Port radius/rate values and strongest-applicable-field rules rather than reimplementing repair arithmetic.
+
+**Strategic philosophy:** fight around prepared naval bases, preserve expensive Warships through sustained operational repair, and turn Ports into anchors for sea power.
+
+---
+
+# P32 — Armored Titan
+
+P32 changes both Transport survivability and legal embarkation geometry: Transports gain a persistent health pool but may embark only from owned active Ports. This is a role transformation, not a simple durability scalar.
+
+Extended support teaches Amphibious planning to treat Ports as mandatory launch nodes, to forecast actual shell survivability rather than ordinary one-hit fragility, and to compare routes/landings using the resulting interception risk. Infrastructure planning also gains legitimate value for Port access because without active Ports the faction cannot originate Transport operations at all.
+
+The support intentionally remains centered on amphibious play rather than broad Warship strategy; armored Transports are still Transports, not line combatants.
+
+**Strategic philosophy:** trade launch flexibility for durable invasion shipping, organizing amphibious operations around protected Port infrastructure.
+
+---
+
+# P33 — Misaka Network
+
+P33 converts Train-triggered City economic events into direct Population generation as well as ordinary economic activity. The amount scales with completed City level and is Capacity-capped, creating a cross-domain relationship between Train routing, City development, infrastructure topology, and demographic recovery.
+
+Extended support lets Economy/Forecast reasoning recognize the Population engine, Infrastructure planning value Factory–City network activity beyond FFY alone, and Upgrade planning understand that higher City levels increase the Population generated per qualifying event.
+
+The support must not duplicate Train route construction or event arithmetic. It should consume the actual event cadence and completed City level from authoritative mechanics.
+
+P07 is an obvious global-synergy-sweep partner because additional Train dispatches can create more qualifying events.
+
+**Strategic philosophy:** turn a productive Train-and-City network into a demographic engine that converts infrastructure activity into Population replenishment.
+
+---
+
+# P34 — Spoils of the Empire
+
+P34 distinguishes conquered Factories from self-built Factories: while owned, captured Factories operate at double ordinary effect. That provenance-dependent value means hostile Factory targets can be strategically worth more to this faction than an equivalent Factory it constructs itself.
+
+Extended support therefore lets Opportunity/Forecast/LandWar reasoning recognize the additional long-term production value of capturing and retaining enemy Factories. The support does not create an aggression mandate; Doctrine still determines whether conquest is acceptable and the planner must still price the military cost of reaching the Factory.
+
+P05 is an important synergy-sweep partner because the same captured structure can potentially provide immediate conquest FFY and superior ongoing Factory output.
+
+**Strategic philosophy:** treat enemy industry as a prize to be seized intact—conquest can acquire productive capacity better than equivalent domestic construction.
+
+---
+
+# P35 — It's a Matter of Visualization
+
+P35 turns deliberate relinquishment into a territorial-shaping tool: relinquished cells become neutral Fallout until the next successful capture. Ordinary retreat/relinquish can therefore create contaminated buffers, slow reacquisition, distort corridors, or make selected territory temporarily less attractive to an advancing enemy.
+
+Extended support lets Territory/Opportunity/Forecast reasoning value the resulting Fallout geometry and lets Retreat planning generate/evaluate relinquishment patterns for denial rather than treating every relinquished cell as pure loss.
+
+`REQUIRES_GIVING_GROUND` and `SELF_GEOMETRY_RISK` are both intentional. The mechanic requires surrendering owned territory to create the effect, and badly chosen Fallout can also make the faction's own later movement/acquisition geometry less convenient.
+
+P16 and Fallout-specific drawbacks are obvious global-synergy-sweep partners.
+
+**Strategic philosophy:** weaponize retreat by poisoning selected ground, trading immediate ownership for temporary area denial and positional distortion.
+
+---
+
+# P36 — Half-Priced Bento
+
+P36 simply halves the Population settlement cost of neutral population-bearing cells using the authoritative residual-accounting rule. It does not create a new expansion action or new target class, so ordinary Expansion/Economy reasoning can use the actual settlement cost directly.
+
+The strategic result is nevertheless important: neutral expansion consumes less of the Population pool, leaving more Population available for defense, offense, or continued growth. This supports `EXPAND_CHEAPLY`, `EXPAND_WITH_LOW_POPULATION`, and `PRESERVE_FORCE` without requiring a bespoke planner.
+
+**Strategic philosophy:** convert neutral geography into owned Capacity with unusually low Population expenditure.
+
+---
+
+# P37 — The City Mouse
+
+P37 makes amphibious commitment more expensive up front but causes every successful landing to establish a permanent level-1 Fort at the landing location. This changes a landing from merely opening a hostile coast into creating an immediately fortified beachhead once ownership is successfully established.
+
+Extended support lets Opportunity/Forecast/Amphibious reasoning value the granted Fort as part of the landing result rather than evaluating only the target cells and committed Population. `HIGH_UPFRONT_COST`, `EXPENSIVE_FAILURE`, and `COAST_DEPENDENCE` reflect the extra embarkation cost and the fact that failed invasion attempts can lose both the strategic opportunity and the additional FFY commitment.
+
+P09, P18, P24, and later Fort-support traits are important synergy-sweep partners because the automatically created Fort inherits ordinary Fort mechanics and their explicit modifiers.
+
+**Strategic philosophy:** pay more to invade, but make successful landings immediately harder to uproot and more capable of supporting a durable second front.
+
+---
+
+# P38 — Return by Death
+
+P38 changes the cost of losing automatically defended territory: when such a defended cell is captured, its automatic defender survives and remains/returns Available instead of being lost with the cell. This makes selected territorial losses substantially less destructive to the Population pool.
+
+Extended support lets Forecast/Defense/Retreat reasoning distinguish between losing territory and losing both territory *and* its defender. Higher-capability controllers may exploit this for elastic defense, deliberate low-value territorial trades, or baiting an opponent into overextension while preserving Population.
+
+The trait does not require retreating or losing cells, so `REQUIRES_GIVING_GROUND` is deliberately absent. Character Doctrine determines whether a controller actually embraces territorial sacrifice.
+
+**Strategic philosophy:** preserve the fighting population even when ground is lost, making elastic defense and territorial trading far less costly.
+
+---
+
+# P39 — Stereo Separation
+
+P39 structurally replaces ordinary Strategic Spawn with two half-area influence regions and two exact origins, splitting final Initial Territory between two footprints while retaining one global Starting-Population pool. This is a fundamentally different spawn candidate shape and therefore requires explicit SpawnPlanner support.
+
+Extended support teaches Spawn planning to generate and compare legal *pairs* of influence/origin choices and teaches post-spawn Territory/Threat reasoning to understand the opportunities and risks created by disconnected starting cores. `DISTRIBUTE_START` and `MULTI_THEATER_ACCESS` capture the upside; `SPLIT_FRONT_RISK` and `ISOLATED_CORE_RISK` capture the corresponding structural exposure.
+
+The support must use the canonical Strategic Spawn resolver for exact area, conflict, footprint, and replay behavior rather than implementing its own split-spawn legality.
+
+**Strategic philosophy:** begin from two separate strategic footholds, accepting harder defense and coordination in exchange for broader access, redundancy, and multi-theater possibility.
+
+---
+
+# P40 — Barrier Magic
+
+P40 turns ordinary multi-charge SAM progression into a giant single-charge shield: larger coverage, exactly one charge at every level, and slower recharge. The strategic issue is therefore not simply “better SAM range”; the defense becomes broader but much easier to exhaust or bait before recharge.
+
+Extended support teaches Threat/Forecast reasoning to track the one-charge defensive state and lets Infrastructure/Defense planning value placement for broad interception coverage while respecting poor throughput. `LOW_THROUGHPUT`, `BAITABLE_DEFENSE`, and `LONG_RELOAD` capture the core tradeoff rather than pretending the extra range is an unconditional upgrade.
+
+P11 and P27 are obvious synergy-sweep partners because they alter SAM quantity/access and target role respectively.
+
+**Strategic philosophy:** protect a very large area with a powerful but sparse interception shield whose single charge must matter.
+
+---
+
 ## Batch 1 consistency notes — P01–P10
 
 Nine of the first ten traits are ordinary mechanics-aware support cases. P05 is the only one that needs reusable extended evaluator/planner support because it creates a cross-domain conquest-to-economy relationship that ordinary scalar reasoning would not necessarily capture.
@@ -417,3 +539,13 @@ P21, P23, P24, P26, P27, P28, P29, and P30 require extended support because they
 Despite the high extended-support ratio, this batch still fits the existing generic support vocabulary. Several very specific concepts are better expressed through typed support hooks than by expanding the global enum catalogue with one-off affordances/cautions.
 
 No explicit `OriginCombinationSupport` entry is closed yet. Important candidates retained for the later global sweep include P22+P29, Fort-centric P09/P18/P24/P50 relationships, and several strategic-weapon/naval combinations.
+
+---
+
+## Batch 4 consistency notes — P31–P40
+
+P31–P35 and P37–P40 require extended support because they introduce infrastructure-conditioned operational sustain, role-transformed Transport logistics, cross-domain Train-to-Population conversion, provenance-sensitive conquered industry, deliberate Fallout shaping, fortified landing results, defender-survival semantics, split-spawn candidate geometry, or single-charge interception behavior. P36 remains the only purely generic mechanics-aware trait in this batch.
+
+The batch fits the existing generic vocabulary without adding new themes, affordances, cautions, or synergy tags. Several especially important relationships are retained for the global sweep: P07+P33, P05+P34, P16+P35, P09/P18/P24/P37/P50 Fort interactions, P11+P40, P27+P40, and P12/P32/P37 Transport combinations.
+
+No explicit `OriginCombinationSupport` entry is closed yet.
