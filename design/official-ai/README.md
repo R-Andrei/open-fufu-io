@@ -1,31 +1,45 @@
 # Official AI design-time configuration
 
-This directory owns **code-readable concrete Official-AI configuration authored during the design phase**.
+This directory owns the **code-readable concrete Official-AI configuration authored during the design phase**.
 
-It is intentionally outside runtime `src/` until Official-AI implementation begins. Files here should be valid TypeScript and should migrate cleanly into runtime configuration/registries later, but their presence does **not** authorize or imply implementation.
+It is intentionally outside runtime `src/` until Official-AI implementation begins. Files here should remain valid TypeScript and migrate cleanly into runtime configuration/registries later, but their presence does **not** authorize or imply gameplay implementation.
 
-Ownership split:
+## Canonical ownership
+
+Keep one canonical configuration file per concern:
+
+```text
+origin-trait-support.config.ts
+  all OriginTraitSupport mappings
+  all additive OriginCombinationSupport mappings
+  all OriginSupportSuppression rules
+
+origin-configurations.config.ts
+  all named Official-Origin AI configurations
+  profile assertions / required reusable support
+  rare named-Origin support when genuinely necessary
+
+character-configurations.config.ts
+  future Difficulty-0 Baseline and all character CharacterProfile mappings
+```
+
+Do **not** create batch/range shards such as `*.p41-p50.config.ts` merely to make incremental authoring easier. Batches are a review process; accepted entries are appended to the canonical file. Internal constants/grouping inside one file are fine for readability.
+
+A separate configuration file requires a real runtime/loading, generation, ownership, or lifecycle boundary. File length alone is not a reason to split the catalogue.
+
+## Documentation/configuration boundary
 
 ```text
 docs/OFFICIAL_AI_*.md
   architecture, contracts, rationale, strategic philosophy, boundaries
 
 design/official-ai/*.config.ts
-  exact concrete mappings and definitions
+  exact concrete AI mappings and registered support-hook identities
 ```
 
-Concrete sources:
+Gameplay mechanics remain authoritative in the canonical gameplay/rules documents. These configuration files must not duplicate mechanical arithmetic that belongs to `EffectiveRulesView` or other game-rule sources of truth.
 
-- `origin-trait-support*.config.ts` — exact `OriginTraitSupport` mappings, sharded by stable trait-ID range;
-- `origin-combination-support.config.ts` — exact reusable additive `OriginCombinationSupport` entries plus support-suppression rules discovered by the global trait sweep;
-- `origin-configurations*.config.ts` — exact named-Official-Origin AI configurations, profile assertions, required combination support, and rare Origin-specific support;
-- `character-configurations*.config.ts` — future Baseline and character `CharacterProfile` mappings.
-
-All shards together form one canonical design-time configuration catalogue. Trait IDs and Origin IDs must appear exactly once in their respective configuration shard sets. Shard order has no semantic meaning, and the implementation phase may consolidate/re-export the shards behind runtime registries without changing their authored semantics.
-
-The authoritative game mechanics remain in the canonical gameplay documents/rules. These configuration files must not duplicate mechanical arithmetic that belongs to `EffectiveRulesView` or other game-rule sources of truth.
-
-Origin composition order is:
+## Origin composition order
 
 ```text
 selected trait support
@@ -36,6 +50,8 @@ selected trait support
   → OriginStrategicProfile
 ```
 
-Support suppression changes only AI semantic metadata made impossible or exactly neutralized by the selected effective trait combination. It never changes gameplay mechanics.
+Support suppression changes only AI semantic metadata made impossible or exactly neutralized by the selected effective trait combination. It never changes gameplay mechanics or trait legality.
 
-During the current design pass, configuration is authored/reviewed in batches of ten. Markdown rationale may be updated alongside each accepted batch, but the `.config.ts` files are the source of truth for exact mapping values.
+## Review batching
+
+Traits, Origins, and characters may still be authored/reviewed in batches of ten. That batching must not create permanent repository fragments. The checked-in tree should always converge back to the canonical files above.
