@@ -2,25 +2,22 @@
 
 ## Status and authority
 
-This document is the canonical **design/rationale companion** for named Official-Origin AI configuration.
+This document is the single canonical **rationale/strategic-intent companion** for named Official-Origin AI configuration.
 
-Concrete code-readable mappings live under:
+Exact code-readable mappings live only in:
 
-- `design/official-ai/origin-configurations*.config.ts`
+- `design/official-ai/origin-configurations.config.ts`
 
-Those `.config.ts` files are authoritative for exact AI-facing Origin configuration. `OFFICIAL_ORIGINS.md` remains authoritative for the actual Origin roster, trait membership, names, and gameplay content. `OFFICIAL_AI_ORIGIN_SUPPORT.md` remains authoritative for composition semantics.
+That configuration file is authoritative for exact AI-facing Origin mappings, required reusable combination-support IDs, profile assertions, validation focuses, and any rare named-Origin-specific support.
 
-A named Origin configuration does **not** duplicate its whole derived `OriginStrategicProfile`. Instead it records:
+Other authorities remain separate because they own different concerns:
 
-- the canonical trait IDs expected from `OFFICIAL_ORIGINS.md`;
-- required reusable combination-support IDs;
-- any genuinely Origin-specific support, normally `null`;
-- partial golden profile assertions used to catch composition regressions;
-- validation focuses for accelerated AI tests.
+- `OFFICIAL_ORIGINS.md` — actual Official Origin roster, names, trait membership, and gameplay content;
+- `ORIGIN_TRAIT_CATALOGUE.md` — actual trait mechanics/costs;
+- `OFFICIAL_AI_ORIGIN_SUPPORT.md` — generic support composition/suppression/adaptation semantics;
+- `OFFICIAL_AI_TRAIT_SUPPORT.md` — trait-level AI strategic rationale.
 
-The complete strategic profile is derived from trait support, suppression, combination support, and final effective rules.
-
----
+A named-Origin configuration does **not** duplicate the entire derived `OriginStrategicProfile`. The complete profile is derived from the Origin's canonical trait membership, trait support, support suppression, additive combination support, final effective rules, and only then any genuinely necessary named-Origin support.
 
 ## Progress
 
@@ -30,81 +27,81 @@ Current canonical roster range: O08–O17 (first 10 in library/UI order)
 Remaining Official Origins: 39
 ```
 
-O35 is retired; the canonical roster contains 49 active Official Origins.
+O35 is retired; the canonical roster currently contains 49 active Official Origins.
 
 ---
 
-## First 10 Official Origins
+# Configured Official Origins
 
-### O08 — Business as Usual
+## O08 — Business as Usual
 
-Near-vanilla generalist support. Faster Trade Ships and improved Forts compose normally; no special combination or named-Origin hook is required.
+Faster Trade Ships and improved Forts compose normally. No special combination or named-Origin support is necessary.
 
 **AI identity:** reliable trade throughput plus broadly useful defensive infrastructure without forcing a specialist strategy.
 
-### O09 — Head Start
+## O09 — Head Start
 
-Larger Initial Territory and faster trade are paired with weaker City growth. The AI should exploit the stronger opening without pretending the long-term demographic penalty does not exist.
+Larger Initial Territory and faster trade are paired with weaker City growth. The controller should exploit the stronger opening without forgetting the weaker long-term demographic contribution.
 
 **AI identity:** convert an early geographic/trade lead into position before weaker City growth matters.
 
-### O10 — Home Field Advantage
+## O10 — Home Field Advantage
 
-Fort improvements, Mountain defense, Highland offense, and Plains-offense weakness produce a terrain-sensitive prepared-position Origin. Normal terrain/Fort reasoning is sufficient; no explicit combination hook is necessary.
+Improved Forts, Mountain defense, Highland offense, and weaker Plains offense create a terrain-sensitive prepared-position Origin. Normal terrain/Fort reasoning already composes the pieces correctly.
 
 **AI identity:** choose where to fight carefully and make prepared/high-ground geography do more of the work.
 
-### O11 — Light Music Club
+## O11 — Light Music Club
 
-Fast Trade Ships, full wartime trade value, and extra Train throughput create a resilient mixed commerce/rail economy, offset by weaker City growth. The combination remains ordinary additive composition.
+Fast Trade Ships, full wartime trade value, and increased Train throughput create a resilient mixed commerce/rail economy, offset by weaker City growth.
 
 **AI identity:** maintain high economic throughput even while conflict disrupts less specialized economies.
 
-### O12 — One Punch
+## O12 — One Punch
 
-P23 and P22 activate `ELITE_SINGLE_FLAGSHIP_PROGRESSION`. The one-Warship cap and extended rank ceiling create a genuinely combined strategy centered on one increasingly valuable veteran flagship.
+The one-Warship cap and extended Warship rank ceiling create a genuine combined strategy: a single increasingly valuable veteran flagship. This uses reusable trait-combination support rather than named-Origin code.
 
 **AI identity:** preserve, position, and grow one elite naval asset rather than distribute power across a fleet.
 
-### O13 — Bomb Girl
+## O13 — Bomb Girl
 
-A single transformative trait defines the whole Origin: only Hydrogen Bombs remain available, with larger blast area and higher cost. No named-Origin support is required.
+The Origin is defined by Hydrogen-only strategic-weapon specialization with larger blast area and higher cost. The single trait's support already describes the strategic problem.
 
-**AI identity:** accept strategic-weapon specialization and commit only when an oversized Hydrogen strike justifies the price.
+**AI identity:** commit only when an oversized Hydrogen strike justifies its price.
 
-### O14 — Bocchi Time
+## O14 — Bocchi Time
 
-P39 alone structurally replaces ordinary Strategic Spawn with two half-area regions and two origins. Its trait support already contains the required pair-generation/evaluation behavior.
+The split-start trait replaces ordinary Strategic Spawn with two half-area regions and two origins. Trait support already owns pair generation/evaluation, so no named-Origin support is necessary.
 
 **AI identity:** use two starting footholds coherently while respecting split-front and isolated-core risk.
 
-### O15 — Kessoku Band
+## O15 — Kessoku Band
 
-P50 and P51 activate `DUAL_GENERAL_SUPPORT_NETWORK`. Forts support offense while Command Posts support defense, making both structures complementary general-support anchors.
+Forts also support offense while Command Posts also support defense. Their reusable combination support treats them as complementary general-support infrastructure.
 
-**AI identity:** build a positional infrastructure network where defensive and offensive support roles overlap rather than remain siloed.
+**AI identity:** build a positional support network in which offensive and defensive infrastructure roles overlap.
 
-### O16 — The Art of Surviving
+## O16 — The Art of Surviving
 
-P38 alone defines the Origin. Automatic defenders survive loss of defended cells, enabling Population-preserving territorial trades and elastic defense when the character/controller is capable and willing to exploit them.
+Automatic defenders survive loss of defended cells. The Origin's trait support already exposes Population-preserving territorial trade and elastic-defense possibilities.
 
 **AI identity:** value survival of fighting Population separately from ownership of every individual cell.
 
-### O17 — Section 9
+## O17 — Section 9
 
-P49 and P45 activate `LAYERED_COUNTERINTELLIGENCE`, while N02 weakens straightforward Plains offense. Observation Posts become blackout infrastructure and Forest interiors provide a second concealment layer.
+Observation Posts become blackout infrastructure while owned Forest interiors provide another concealment layer; Plains offense is weaker. Reusable combination support handles the layered counterintelligence geometry.
 
-**AI identity:** shape operations around information denial and concealed staging rather than assuming conventional observation/control geometry.
+**AI identity:** shape operations around information denial and concealed staging rather than conventional observation/control geometry.
 
 ---
 
-## Batch consistency result
+## First-batch consistency result
 
-All ten Origins compose successfully from the completed trait-support catalogue.
+All ten configured Origins compose successfully from the completed trait-support catalogue.
 
-- **3/10** require reusable combination support: O12, O15, O17.
-- **0/10** require a named-Origin-specific support hook.
-- **0/10** trigger a support-suppression rule.
-- all ten have explicit profile assertions and validation focuses in the code-readable config.
+- 3/10 need reusable **trait-combination** support: O12, O15, O17;
+- 0/10 need named-Origin-specific support;
+- 0/10 trigger a support-suppression rule;
+- all ten have code-readable profile assertions and validation focuses in the canonical Origin config.
 
-This is the desired architecture: named-Origin exceptions remain rare because reusable trait/combination support carries most of the strategic literacy.
+This is the intended architecture: named-Origin exceptions stay rare because reusable trait and combination support carry most mechanical literacy.
