@@ -294,6 +294,275 @@ export const OFFICIAL_AI_ORIGIN_TRAIT_SUPPORT = [
     signalSupport: [],
     plannerSupport: [],
   },
+  {
+    traitId: "P21",
+    mode: "EXTENDED",
+    themes: ["INFRASTRUCTURE", "ECONOMIC_COMPOUNDING", "SPECIALIZATION"],
+    affordances: [],
+    cautions: ["HIGH_LIQUIDITY_NEED"],
+    synergyTags: ["ECONOMY"],
+    signalSupport: [
+      {
+        evaluator: "ECONOMY",
+        hookId: "P21_FIRST_PURCHASE_SAVINGS_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P21_FIRST_PURCHASE_LIQUIDITY_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "SPENDING",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P21_FIRST_PURCHASE_OPPORTUNITY_COST",
+      },
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P21_FIRST_PURCHASE_STRUCTURE_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P22",
+    mode: "GENERIC",
+    themes: ["NAVAL_PROJECTION", "SPECIALIZATION", "FORCE_PRESERVATION"],
+    affordances: ["PROJECT_FROM_SEA"],
+    cautions: ["REQUIRES_VETERANCY"],
+    synergyTags: ["NAVAL", "WARSHIP"],
+    signalSupport: [],
+    plannerSupport: [],
+  },
+  {
+    traitId: "P23",
+    mode: "EXTENDED",
+    themes: ["NAVAL_PROJECTION", "SPECIALIZATION", "FORCE_PRESERVATION", "DECISIVE_FORCE"],
+    affordances: ["PROJECT_FROM_SEA", "FIGHT_FROM_RANGE", "PRESERVE_FORCE"],
+    cautions: ["EXPENSIVE_FAILURE"],
+    synergyTags: ["NAVAL", "WARSHIP"],
+    signalSupport: [
+      {
+        evaluator: "THREAT",
+        hookId: "P23_FLAGSHIP_LOSS_THREAT",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "NAVAL",
+        phase: "ENRICH_INPUT",
+        hookId: "P23_SINGLE_WARSHIP_CAP_SEMANTICS",
+      },
+      {
+        domain: "NAVAL",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P23_FLAGSHIP_THEATER_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P24",
+    mode: "EXTENDED",
+    themes: ["FORTIFICATION", "ECONOMIC_COMPOUNDING", "INFRASTRUCTURE", "POSITIONAL_CONTROL"],
+    affordances: ["SCALE_ECONOMY"],
+    cautions: ["INFRASTRUCTURE_DEPENDENCE"],
+    synergyTags: ["ECONOMY", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "ECONOMY",
+        hookId: "P24_FORT_AREA_EVENT_YIELD",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P24_FORT_ECONOMY_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P24_ECONOMIC_FORT_PLACEMENT_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P25",
+    mode: "GENERIC",
+    themes: ["DECISIVE_FORCE", "ESCALATION", "DETERRENCE", "SPECIALIZATION", "TERRITORIAL_SHAPING"],
+    affordances: ["DENY_AREA", "SHAPE_TERRITORY", "FORCE_ENEMY_RESPONSE"],
+    cautions: ["HIGH_UPFRONT_COST"],
+    synergyTags: ["STRATEGIC_WEAPON"],
+    signalSupport: [],
+    plannerSupport: [],
+  },
+  {
+    traitId: "P26",
+    mode: "EXTENDED",
+    themes: ["DECISIVE_FORCE", "ESCALATION", "DETERRENCE", "SPECIALIZATION"],
+    affordances: ["FORCE_ENEMY_RESPONSE", "SHAPE_TERRITORY"],
+    cautions: ["HIGH_LIQUIDITY_NEED", "EXPENSIVE_FAILURE"],
+    synergyTags: ["STRATEGIC_WEAPON"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P26_ONE_SHOT_MIRV_OPPORTUNITY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P26_MIRV_RESERVATION_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "STRATEGIC_WEAPONS",
+        phase: "ENRICH_INPUT",
+        hookId: "P26_SINGLE_USE_MIRV_SEMANTICS",
+      },
+      {
+        domain: "STRATEGIC_WEAPONS",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P26_ONE_SHOT_MIRV_VALUE",
+      },
+      {
+        domain: "SPENDING",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P26_MIRV_LIQUIDITY_RESERVE_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P27",
+    mode: "EXTENDED",
+    themes: ["FORTIFICATION", "POSITIONAL_CONTROL", "NAVAL_PROJECTION", "SPECIALIZATION"],
+    affordances: ["DENY_AREA", "PROTECT_HIGH_VALUE_ASSET"],
+    cautions: ["COAST_DEPENDENCE"],
+    synergyTags: ["SAM_INTERCEPTION", "NAVAL", "DEFENSE"],
+    signalSupport: [
+      {
+        evaluator: "THREAT",
+        hookId: "P27_SAM_ANTI_SHIP_COVERAGE",
+      },
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P27_SHIP_DENIAL_OPPORTUNITY",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "INFRASTRUCTURE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P27_COASTAL_SAM_PLACEMENT_VALUE",
+      },
+      {
+        domain: "DEFENSE",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P27_ANTI_SHIP_SAM_DEFENSE_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P28",
+    mode: "EXTENDED",
+    themes: ["RAIDING", "ATTRITION", "GROWTH", "NAVAL_PROJECTION"],
+    affordances: [],
+    cautions: [],
+    synergyTags: ["NAVAL", "AMPHIBIOUS_LANDING"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P28_TRANSPORT_POPULATION_BOUNTY",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P28_CAPTURED_POPULATION_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "NAVAL",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P28_TRANSPORT_TARGET_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P29",
+    mode: "EXTENDED",
+    themes: ["NAVAL_PROJECTION", "DETERRENCE", "ESCALATION", "MOBILITY", "SPECIALIZATION"],
+    affordances: ["LAUNCH_FROM_MOBILE_PLATFORM", "PROJECT_FROM_SEA"],
+    cautions: ["REQUIRES_VETERANCY", "EXPENSIVE_FAILURE"],
+    synergyTags: ["WARSHIP", "NAVAL", "MISSILE_LAUNCHER", "STRATEGIC_WEAPON"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P29_MOBILE_LAUNCH_POSITION_OPPORTUNITY",
+      },
+      {
+        evaluator: "THREAT",
+        hookId: "P29_LAUNCHER_WARSHIP_EXPOSURE",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P29_MOBILE_LAUNCH_PATH_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "NAVAL",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P29_LAUNCHER_WARSHIP_POSITION_VALUE",
+      },
+      {
+        domain: "STRATEGIC_WEAPONS",
+        phase: "ENRICH_INPUT",
+        hookId: "P29_WARSHIP_LAUNCHER_SEMANTICS",
+      },
+      {
+        domain: "STRATEGIC_WEAPONS",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P29_MOBILE_LAUNCH_PLATFORM_VALUE",
+      },
+    ],
+  },
+  {
+    traitId: "P30",
+    mode: "EXTENDED",
+    themes: ["RAIDING", "MOBILITY", "NAVAL_PROJECTION", "ECONOMIC_COMPOUNDING", "SPECIALIZATION"],
+    affordances: ["SCALE_ECONOMY"],
+    cautions: [],
+    synergyTags: ["WARSHIP", "NAVAL", "TRADE_ECONOMY", "ECONOMY"],
+    signalSupport: [
+      {
+        evaluator: "OPPORTUNITY",
+        hookId: "P30_PIRACY_TARGET_OPPORTUNITY",
+      },
+      {
+        evaluator: "THREAT",
+        hookId: "P30_HOSTILE_WARSHIP_THREAT",
+      },
+      {
+        evaluator: "FORECAST",
+        hookId: "P30_PIRACY_FFY_FORECAST",
+      },
+    ],
+    plannerSupport: [
+      {
+        domain: "NAVAL",
+        phase: "ENRICH_INPUT",
+        hookId: "P30_PIRACY_ONLY_WARSHIP_SEMANTICS",
+      },
+      {
+        domain: "NAVAL",
+        phase: "AUGMENT_CANDIDATES",
+        hookId: "P30_FAST_PIRACY_PATROLS",
+      },
+      {
+        domain: "NAVAL",
+        phase: "EVALUATE_CANDIDATES",
+        hookId: "P30_PIRACY_ROUTE_VALUE",
+      },
+    ],
+  },
 ] as const;
 
 export const OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT = [] as const;
