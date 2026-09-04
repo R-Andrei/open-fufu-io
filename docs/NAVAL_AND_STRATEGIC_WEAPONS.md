@@ -84,7 +84,32 @@ A later reconquest restores ordinary Capacity from ownership but grants no free 
 
 A persistent structure or mobile unit whose physical cell lies inside the resolved blast footprint is destroyed unless an explicit mechanic makes it immune. Carried Population aboard a destroyed Transport is resolved as Transport destruction, not as an extra per-cell nuclear casualty.
 
-Optional water-nuke rules remain a separate ruleset mode and may permanently convert affected land to Deep Water under their existing explicit semantics.
+## 1.6 Optional Water Nukes — Accepted V1
+
+Water Nukes are a **default-OFF optional V1 ruleset**. When enabled, the fully affected inner blast zone of every resolved strategic-weapon explosion is also a permanent Deep-Water conversion core; the irregular outer annulus keeps ordinary neutralization + Fallout.
+
+| Weapon | Deep-Water core | Ordinary Fallout fringe |
+| --- | ---: | ---: |
+| Atom Bomb | **0–12** | **12–30** |
+| Hydrogen Bomb | **0–80** | **80–100** |
+| MIRV warhead | **0–12** | **12–18** |
+
+These are the ordinary accepted blast radii reused directly. Water Nukes do not define a second hidden radius. Any surfaced modifier to blast geometry therefore changes both ordinary and water-nuke geometry consistently; P25's Hydrogen `+50% blast area` is the canonical example.
+
+For each eligible cell inside the resolved core, apply ordinary nuclear ownership/Population/Capacity/unit/structure consequences first, then convert terrain:
+
+```text
+ordinary land   → Deep Water
+Shallow Water   → Deep Water
+Deep Water      → unchanged Deep Water
+Impassable      → unchanged
+```
+
+A converted cell is unowned, non-population-bearing, non-buildable, removed from the ordinary conquerable-territory denominator, and has no Fallout overlay. Overlapping explosion cores use the deterministic union of eligible core cells; warhead order cannot alter the result.
+
+The resulting Deep Water participates immediately in ordinary naval connectivity, pathing/traversal, coast/shore derivation, Capacity and victory calculations. Nuclear-created canals and coasts are therefore real gameplay geography. Segment membership remains the map-compiled immutable Segment identity even if terrain inside that Segment changes.
+
+The ruleset intentionally provides no anti-cheese protection against terrain destruction. If enabled by the lobby, using strategic weapons to erase land, cut canals, isolate territory, reshape coasts, or reduce the remaining conquerable-land denominator is legal behavior under that ruleset.
 
 ---
 
