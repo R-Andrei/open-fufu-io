@@ -1226,19 +1226,17 @@ Open Fufu standard nuclear semantics are therefore:
 
 Do **not** blindly inherit OpenFront's exact current fallout coefficient; use the accepted provisional Fallout/base-terrain data from the canonical registry and keep future retuning versioned.
 
-### 15.4 Optional water-nuke mode
+### 15.4 Optional water-nuke mode — Accepted V1
 
-Retain OpenFront's `waterNukes` concept as an optional ruleset mode.
+Retain Water Nukes as a **default-OFF optional V1 ruleset** and implement the canonical geometry from `NAVAL_AND_STRATEGIC_WEAPONS.md` / `OPEN_FUFU_DESIGN.md` rather than inheriting unspecified OpenFront terrain destruction.
 
-When enabled, affected land may be converted to **Deep Water** rather than ordinary Fallout. Converted Deep Water is non-population-bearing and no longer ordinary conquerable territory, so the current victory denominator shrinks accordingly. Segment identity remains unchanged.
+For every Atom, Hydrogen, or individual MIRV-warhead explosion, the ordinary **fully affected inner blast zone** is also the permanent Deep-Water conversion core. The irregular outer blast annulus keeps standard neutralization + Fallout behavior. Accepted core/fringe radii are Atom `12 / 30`, Hydrogen `80 / 100`, and MIRV warhead `12 / 18`, with surfaced blast-geometry modifiers applying consistently.
 
-The owned-cell Population casualty and Capacity-loss event still applies to destroyed owned population-bearing land before/through conversion.
+Eligible land and Shallow Water in the core become Deep Water after ordinary nuclear casualty/destruction resolution; existing Deep Water remains Deep Water and Impassable terrain is unchanged. Converted cells are unowned, non-population-bearing, non-buildable, excluded from ordinary conquerable territory, and carry no Fallout overlay. Overlapping cores resolve as a deterministic union.
 
-Cities do not add extra Population casualties; they affect growth, not Capacity.
+Terrain mutation immediately updates traversal/pathing, naval connectivity, coast/shore classification, Capacity, and victory-denominator behavior. Segment IDs remain immutable and the runtime does not regenerate Segments. `RulesView` exposes the versioned ruleset value needed for controllers to know Water Nukes are enabled.
 
-Physical units, fleets, transports, structures, or offensive forces directly hit by the weapon may take their own explicit local damage in addition to the terrain-linked rule.
-
-Exact weapon radii, physical-unit lethality, and final MIRV power numbers remain tuning/translation work.
+There is no hidden anti-cheese exception: canal-cutting, coastline reshaping, land deletion, isolation, and denominator reduction are legitimate consequences when the option is enabled.
 
 ---
 
@@ -2354,8 +2352,6 @@ Most V1 gameplay mechanics and the controller-runtime/persistence architecture n
 13. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
 14. **Strategic Spawn implementation/validation** — implement the now-closed `STRATEGIC_SPAWN.md` V1 resolver contract, including hook defaults, stable deterministic tie hashing, conflict components, nearest fallback, simultaneous footprint queues, replay/diagnostic encoding, version binding, and adversarial map validation.
 15. **Segment compiler implementation/validation** — implement the now-closed geography-first `SEGMENTS.md` compiler and map-artifact representation, then inspect representative generated maps for useful strategic segmentation without turning the soft 4,096-cell target into a hard geometry constraint.
-16. **Optional ruleset minutiae not yet pinned**, especially water-nuke conversion geometry.
-
-The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV data (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
+The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV plus default-OFF Water-Nuke geometry (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
 
 These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
