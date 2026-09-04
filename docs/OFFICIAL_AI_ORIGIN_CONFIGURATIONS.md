@@ -22,9 +22,9 @@ A named-Origin configuration does **not** duplicate the entire derived `OriginSt
 ## Progress
 
 ```text
-Configured Official Origins: 10 / 49
-Current canonical roster range: O08–O17 (first 10 in library/UI order)
-Remaining Official Origins: 39
+Configured Official Origins: 20 / 49
+Current canonical roster coverage: first 20 in library/UI order
+Remaining Official Origins: 29
 ```
 
 O35 is retired; the canonical roster currently contains 49 active Official Origins.
@@ -95,13 +95,112 @@ Observation Posts become blackout infrastructure while owned Forest interiors pr
 
 ---
 
-## First-batch consistency result
+## O01 — A True Warrior Needs No Sword
 
-All ten configured Origins compose successfully from the completed trait-support catalogue.
+Elastic automatic defense, improved Forts, and Mountain defense all reinforce Population-preserving territorial resistance. Weaker Plains offense and lethal amphibious attrition make projection substantially less attractive, but those drawbacks remain ordinary effective-mechanics literacy rather than requiring bespoke Origin logic.
+
+The controller should not interpret the Origin as “never lose territory.” P38 specifically makes selective territorial loss more tolerable because the automatic defender survives, so a capable character may still trade ground when that preserves Population or creates a better defensive shape.
+
+**AI identity:** preserve fighting Population behind strong prepared terrain and Forts, accepting that overseas and exposed-terrain projection is poor.
+
+## O18 — What Is a True Warrior?
+
+P38 defender survival combines naturally with P04's stable response-side counter-response and Mountain defense. The result strongly rewards defending reactively and efficiently without requiring a new combined mechanic: each support component already sees final effective exchange and terrain values.
+
+N13 makes amphibious projection costly in delivered Population, so the Origin should normally prefer continental or already-established fronts unless a landing remains worthwhile after the real casualty forecast.
+
+**AI identity:** survive, counter efficiently, and make defensible terrain expensive to attack rather than chase aggressive projection.
+
+## O19 — The Magician
+
+Stable counter-response, full wartime trade value, and defender survival create a resilient reactive economy/defense package, while N07 makes every owned structure type a unique strategic asset.
+
+No new combination hook is necessary. N07's scarcity support already makes infrastructure placement/loss globally important, while ordinary trade and defensive support can reason around those unique assets.
+
+**AI identity:** remain economically functional under pressure, preserve forces, and extract maximum value from a tiny set of irreplaceably important infrastructure roles.
+
+## O20 — A War Worth Avoiding
+
+Full wartime trade, a broad Population-utilization growth window, free-FFY first purchases, and one-per-type infrastructure create a peaceful-development Origin with unusually efficient initial infrastructure establishment.
+
+P21 and N07 interact strongly, but do not require bespoke combination support: P21 already distinguishes legal affordability from actual zero-FFY consumption, while N07 already treats each structure-type slot as globally scarce. Their ordinary composition is sufficient for a planner to value the first-and-only purchase correctly.
+
+**AI identity:** build a compact, efficient economy that prefers growth and commerce but stays financially functional if conflict is imposed on it.
+
+## O21 — Iron-Blooded Vampire
+
+Defender survival and the broad Population-utilization growth profile reinforce continental persistence. N12 removes self-built Warships and N01 weakens City-driven growth, so the controller must not assume naval projection or ordinary City scaling will solve strategic problems.
+
+The generic `NO_WARSHIPS_SUPPRESSES_WARSHIP_DEPENDENT_SUPPORT` rule technically matches because N12 is present, but this Origin contains no Warship-dependent positive trait support to remove. The composed profile therefore loses no otherwise-active strategic contribution.
+
+**AI identity:** survive and regenerate on land, making territorial conquest costly while accepting weak conventional naval reach and weaker City growth.
+
+## O22 — Survival of the Fittest
+
+Contact-count offense, Fort-pressure bypass, and Highland offense produce an aggressive geography-sensitive Origin. P19 rewards contact but its support explicitly retains split-front risk; the AI must not blindly maximize the number of neighbors merely because each active contact raises offense.
+
+Reduced City growth and Mountain FFY further discourage treating all geography as equivalent. Highland attack staging can be excellent while Mountain-centered economic events are comparatively poor.
+
+**AI identity:** seek advantageous aggressive contact and break prepared positions, but distinguish useful exposure from strategically suicidal overextension.
+
+## O04 — Right of Conquest
+
+This is the batch's only Origin that activates explicit reusable combination support, and it activates two entries.
+
+`CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates at double effect. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
+
+Highland offense helps create acquisition opportunities while weaker Plains offense makes route/terrain selection matter. No named-Origin-specific support is needed because the reusable combination layer already captures both strategic loops.
+
+**AI identity:** fund expansion through conquest and seize enemy industrial capacity intact because domestic Factory construction is unavailable.
+
+## O23 — Woolong Hustle
+
+Conquest FFY, uninterrupted wartime trade value, and faster Trade Ships make both war and commerce potential profit engines. These systems remain independent enough that normal composition is sufficient; the AI can compare commercial and conquest opportunities through the shared economy/opportunity model.
+
+N13 makes amphibious landings Population-inefficient, preventing the economic incentives from implying reckless overseas conquest.
+
+**AI identity:** keep money moving through trade and opportunistic conquest while avoiding sea-borne commitments whose delivered Population does not justify the cost.
+
+## O24 — 203rd Mage Battalion
+
+Heavy Artillery replaces Tanks, Highland offense improves favorable staging, and P19 rewards broader active contact. Together they create a continental multi-front artillery doctrine without introducing a new transformed mechanic beyond P43 itself.
+
+The controller must still respect Heavy Artillery's low mobility, long reload, close-range vulnerability, and expensive failure. P19's contact bonus should therefore encourage useful theaters and pressure, not unsupported artillery spread across every possible border.
+
+N12 prevents Warship construction and N01 weakens City growth. As with O21, the generic no-Warships suppression rule has no positive Warship-dependent support to remove in this Origin.
+
+**AI identity:** use positional long-range artillery to exploit selected high-value fronts, growing stronger from useful contact without confusing more fronts with automatically better strategy.
+
+## O25 — If I Can Imagine It
+
+P03 reduces the value of enemy Fort defensive pressure while P43 supplies long-range Heavy Artillery and P15 rewards Highland offensive staging. These mechanics compose directly: artillery planners use final effective target/terrain values and can prefer standoff positions from which prepared defenses matter less.
+
+N12 removes self-built Warships and N01 weakens City growth. Again, no selected positive Warship support is present for the generic N12 suppression rule to remove.
+
+No dedicated P03+P43 combination hook is needed because neither trait creates a new candidate form when combined; P43 already generates artillery plans and the ordinary effective combat model already reflects the Fort-pressure bypass.
+
+**AI identity:** break prepared land positions from favorable terrain using Heavy Artillery while remaining fundamentally continental.
+
+---
+
+## Batch consistency results
+
+### First 10
+
+All first ten configured Origins compose successfully from the completed trait-support catalogue.
 
 - 3/10 need reusable **trait-combination** support: O12, O15, O17;
 - 0/10 need named-Origin-specific support;
-- 0/10 trigger a support-suppression rule;
-- all ten have code-readable profile assertions and validation focuses in the canonical Origin config.
+- 0/10 remove any support through suppression.
 
-This is the intended architecture: named-Origin exceptions stay rare because reusable trait and combination support carry most mechanical literacy.
+### Second 10
+
+All next ten configured Origins also compose successfully from the existing trait-support catalogue.
+
+- 1/10 needs reusable **trait-combination** support: O04;
+- O04 requires two already-existing reusable combination entries: `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`;
+- 0/10 need named-Origin-specific support;
+- O21, O24, and O25 contain N12, so the generic no-Warships suppression matcher applies, but none contains a Warship-dependent positive support entry; therefore **no otherwise-active support contribution is actually removed**;
+- no new shared strategic literal, trait hook, combination support, suppression rule, or named-Origin escape hatch was required.
+
+Across the first 20 Origins, named-Origin-specific support remains **0/20**. This is the intended architecture: named-Origin exceptions stay rare because reusable trait and combination support carry the mechanical literacy.
