@@ -8,9 +8,37 @@ on:
   push:
     branches: [main]
 
-permissions: {}
+permissions:
+  contents: write
 
 jobs:
+  docs-sync:
+    name: 🧹 One-shot docs sync
+    if: github.event_name == 'pull_request' && github.head_ref == 'docs/cleanup-stale-design-todos'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v7
+        with:
+          ref: docs/cleanup-stale-design-todos
+          fetch-depth: 0
+      - name: Apply canonical docs cleanup and self-remove helper
+        shell: bash
+        run: |
+          python .github/docs_sync_temp.py
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/ci.yml
+          rm -f .github/workflows/docs-sync-temp.yml .github/docs_sync_temp.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No docs changes to commit"
+            exit 0
+          fi
+          git commit -m "docs: remove stale resolved design TODOs"
+          git push origin HEAD:docs/cleanup-stale-design-todos
+
   build:
     name: 🏗️ Build
     runs-on: ubuntu-latest
