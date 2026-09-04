@@ -30,3 +30,5 @@ jobs:
           fi
           git commit -m "docs: close V1 auth and identity architecture"
           git push origin HEAD:docs/auth-identity-closure
+
+# Temporary branch-local documentation sync workflow.
