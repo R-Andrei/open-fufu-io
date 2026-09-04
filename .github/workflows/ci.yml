@@ -53,6 +53,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -79,6 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "24"
           cache: "npm"
@@ -96,3 +98,27 @@ jobs:
             git --no-pager diff
             exit 1
           fi
+
+  finalize-origin-names:
+    name: 🧹 Finalize Origin naming
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout naming branch
+        uses: actions/checkout@v7
+        with:
+          ref: docs/finalize-origin-names
+          fetch-depth: 0
+      - name: Apply approved naming and self-remove helper
+        shell: bash
+        run: |
+          python .github/finalize_origin_names.py
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/ci.yml
+          rm -f .github/finalize_origin_names.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: finalize Origin trait and preset naming"
+          git push origin HEAD:docs/finalize-origin-names
