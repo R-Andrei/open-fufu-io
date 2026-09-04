@@ -36,7 +36,7 @@ def replace_tail(text: str, start_heading: str, replacement: str, label: str) ->
 design = replace_section(
     design,
     "## 20. FFY economy and trade",
-    "## 21. Structures, units, and strategic weapons",
+    "## 21. Teams, hostility, defeat, capitulation, and victory",
     '''## 20. FFY economy and trade
 
 FFY is the primary in-match currency. Ordinary V1 begins with **25,000 FFY** and has a flat, non-spatial universal income floor of **1,000 FFY/s**. This baseline is deliberately independent of Population, territory, Cities, Factories, or explicit worker allocation: Open Fufu does not use passive `Population → money` taxation/assignment.
