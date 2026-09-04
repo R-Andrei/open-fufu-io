@@ -7,11 +7,13 @@ This document is the canonical design appendix for the **architecture of Open Fu
 It complements:
 
 - `OPEN_FUFU_DESIGN.md` for game/controller rules;
-- `OFFICIAL_AI_PRESETS.md` for the 20-character roster, difficulty targets, allowed Origin pools, and reward-facing preset identity;
+- `OFFICIAL_AI_CONFIGURATION.md` for the concrete shared Official-AI configuration vocabulary and object contracts;
+- `OFFICIAL_AI_ORIGIN_SUPPORT.md` for the generic Origin-trait support/composition/adaptation architecture;
+- `OFFICIAL_AI_PRESETS.md` for the character roster, difficulty targets, and allowed Origin pools;
 - `CONTROLLER_MEMORY.md` for persistent per-match controller memory;
 - the public `ControllerApi.ts` contract for legal observations and actions.
 
-Nothing in this document authorizes gameplay implementation. It defines the accepted architecture and current planning vocabulary. Exact final enum/literal catalogues for goals, doctrine motifs, expression motifs, plan states, and character configurations remain the next design pass and must not be inferred as closed merely from illustrative examples here.
+Nothing in this document authorizes gameplay implementation. It defines the accepted V1 Official-AI architecture. Trait-by-trait support mappings, Origin-level compositions, and character profiles are content/configuration work that must conform to this architecture.
 
 ---
 
@@ -19,24 +21,26 @@ Nothing in this document authorizes gameplay implementation. It defines the acce
 
 ### 1.1 Same game, same information
 
-Official AI may be trusted operational code, but it receives **no gameplay-information or mechanics privilege** over player controllers. Any reasoning an Official AI performs must be derivable from the ordinary legal controller observation/mechanics surface.
+Official AI may be trusted operational code but receives **no gameplay-information or mechanics privilege** over player controllers.
 
-No Official AI difficulty may come from:
+Official AI difficulty must not come from:
 
 - hidden Population/FFY bonuses or penalties;
 - hidden combat modifiers;
 - omniscience outside legal visibility;
-- special action primitives unavailable to player controllers;
-- arbitrary reaction delays;
+- special gameplay primitives unavailable to player controllers;
+- artificial reaction delays;
 - random forced stupidity.
 
-### 1.2 Difficulty is authored capability, validated empirically
+Official AI reasons from the same legal observations, public mechanics, surfaced Origin/Echo/ruleset effects, and controller-facing action model available to ordinary controllers.
 
-Difficulty `1..5` is a **target** for the implemented character controller. Benchmarking measures whether the implementation reaches that target; it does not casually redefine the character after the fact.
+### 1.2 Difficulty is an authored capability target
 
-If Reinhard is authored as Difficulty 5 but an early implementation performs below Bocchi, the default conclusion is that Reinhard needs improvement, not that Reinhard should simply be relabeled Difficulty 1.
+Difficulty is a creator-authored target for the implemented controller and is validated empirically.
 
-Difficulty should emerge primarily from:
+If a character authored as Difficulty 5 benchmarks below a Difficulty-2 character, the default response is to improve the Difficulty-5 implementation toward its target rather than casually relabeling the controller after the first result.
+
+Difficulty should emerge from:
 
 - reasoning sophistication;
 - planning horizon;
@@ -44,63 +48,88 @@ Difficulty should emerge primarily from:
 - multi-front/resource prioritization;
 - adaptation;
 - opponent modeling;
-- quality of domain planning;
-- character-specific limitations that produce coherent mistakes.
+- planner quality;
+- character-consistent limitations and mistakes.
 
-Low-difficulty controllers may make mistakes. The mistake should follow naturally from what the controller notices, understands, values, or prefers.
+Low-difficulty characters may make serious mistakes, but those mistakes should follow naturally from what they notice, understand, value, or prefer rather than a `chanceToDoSomethingStupid` mechanic.
 
-### 1.3 Difficulty 0 Baseline AI
+### 1.3 Difficulty-0 Baseline AI
 
-Open Fufu additionally has a **Difficulty 0 Baseline AI** which is not one of the 20 character presets.
+Open Fufu has a generic **Difficulty 0 Baseline AI** separate from the character roster.
 
 The Baseline AI is:
 
 - generic and intentionally unopinionated;
-- a minimal complete controller capable of playing the whole game coherently;
+- a minimal complete controller that can play the whole game;
 - roughly a more capable general-purpose relative of a Minor Faction/Goon controller;
 - the default first-match opponent;
-- the primary initial calibration zero for Official-AI capability benchmarking.
+- the initial fixed calibration reference for capability benchmarking.
 
-It should expand, defend obvious threats, build broadly useful infrastructure, use ordinary military systems simply, and attack obvious openings without sophisticated doctrine, prediction, or multi-stage planning.
+It should expand, defend obvious threats, build broadly useful infrastructure, use ordinary military systems simply, and exploit obvious openings without sophisticated doctrine, prediction, or long-horizon planning.
 
-### 1.4 Capability and personality are separate axes
+### 1.4 Capability, values, and execution style are separate
 
-A character is not a universal smart brain plus numeric personality sliders.
+A character is **not** a universal optimal brain plus numeric personality sliders.
 
 Conceptually:
 
 ```text
 character controller
 = capability profile
-+ values/doctrine
-+ execution style/expression
++ Doctrine / values
++ Goal generation
++ arbitration
 + persistence/replanning behavior
++ execution style / Expression
++ Origin adaptation
 ```
 
-Capability determines what the character can notice and what solutions it can conceive. Personality determines what the character cares about and which conceived solution feels appropriate to that character.
+Capability determines what the controller can perceive, infer, forecast, and conceive.
 
-### 1.5 Reuse aggressively; bespoke character code selectively
+Doctrine and arbitration determine what the character cares about.
 
-Open Fufu should not create one implementation of every reasoning category per character. That would produce hundreds of near-duplicate components.
+Expression determines how the character prefers to execute among sufficiently valid alternatives.
 
-Most information gathering, evaluation, and domain planning should come from a modest shared library. Character-specific code is most justified where identity is directly visible:
+Origin adaptation determines how the character interprets and exploits the mechanical toolbox produced by the randomly selected allowed Origin.
+
+### 1.5 Reuse aggressively; bespoke character logic selectively
+
+Open Fufu must not create one implementation of every reasoning category per character.
+
+Most information gathering, evaluation, forecasting, and domain planning should come from a modest reusable library.
+
+Character-specific code is most justified in:
 
 - Doctrine;
-- Goal generation rules;
+- Goal-generation exceptions;
 - Plan arbitration;
 - Plan persistence/reconsideration;
-- sparse domain-specific Expression preferences.
+- sparse domain-specific Expression hooks;
+- sparse Origin-adaptation hooks.
 
 ---
 
 ## 2. High-level pipeline
 
+The accepted conceptual pipeline is:
+
 ```text
+selected allowed Origin
+        ↓
+effective faction mechanics
+        ↓
+Origin trait support + combination support
+        ↓
+OriginStrategicProfile
+        ↓
 legal controller observation
         ↓
 shared substrate
         ↓
 reusable evaluators / forecasts
++ applicable Origin support
+        ↓
+Signals
         ↓
 character Doctrine
         ↓
@@ -108,175 +137,84 @@ GoalGenerator
         ↓
 PlanArbiter
         ↓
-active strategic goals
+active strategic Goals
         ↓
 reusable domain planners
++ applicable Origin planner support
         ↓
-candidate solutions
+PlanCandidates
         ↓
-character ExpressionProfile
+character Expression
++ character Origin adaptation
         ↓
-selected solution
+selected Plan
         ↓
 public controller directives / commands
-
-PlanPersistencePolicy spans the plan lifecycle and determines
-when active plans continue, escalate, reduce, pause, or end.
 ```
+
+`PlanPersistencePolicy` spans the Goal/Plan lifecycle and decides when plans continue, escalate, reduce, pause, replan, or end.
 
 This is a design decomposition, not a required class hierarchy.
 
 ---
 
-## 3. Shared non-intelligence substrate
+## 3. Shared non-personality substrate
 
-These components are mostly common across Official AI controllers and should not be treated as personality.
+These components should normally be shared across Official AI controllers:
 
-- **WorldIndex** — efficient indexes for factions, Segments, Contacts, structures, units, operations, and other ordinary observations.
-- **GeographyAnalyzer** — reusable topology/border/connectivity/terrain/coast/path facts.
-- **MechanicsEstimator** — safe use of public mechanics calculations and surfaced rules.
-- **HistoryTracker** — compact deterministic event/history retention in controller memory.
+- **WorldIndex** — indexes factions, Segments, Contacts, structures, units, operations, and other observations;
+- **GeographyAnalyzer** — reusable topology, border, connectivity, terrain, coast, and route facts;
+- **MechanicsEstimator** — safe use of public mechanics calculations and effective rules;
+- **HistoryTracker** — compact deterministic event/history retention in controller memory;
 - **VisibilityTracker** — distinguishes current observation from stale/unknown information.
 
-A character should not become “smarter” merely because its copy of a generic Segment lookup is implemented better.
+Information collection and basic state organization are specifically *not* intended to become one implementation per character.
 
 ---
 
-## 4. Shared evaluator vocabulary
+## 4. Evaluators return rich bounded findings, not answers
 
-Evaluators do **not** return one winner or one universal utility score. They return a bounded, diverse set of findings so character logic can decide what matters.
+Evaluators do not return one winner or universal utility score. They return a bounded, diverse set of structured findings using the shared `Signal` vocabulary from `OFFICIAL_AI_CONFIGURATION.md`.
 
-### 4.1 Shared signal shape
+`Signal.strength` expresses significance **within the evaluator's own domain**. It does not mean that the character should act on the signal.
 
-Current accepted semantic shape:
+`Signal.confidence` expresses certainty.
 
-```ts
-type Horizon = "NOW" | "SOON" | "LATER";
+Evaluator pruning must preserve diversity across signal kinds rather than globally returning only the largest scores. A peaceful character must still be able to see a modest peaceful-development opportunity even when the map contains stronger aggressive opportunities that the character would reject.
 
-type SignalTag =
-  | "PEACEFUL"
-  | "STARTS_HOSTILITY"
-  | "ESCALATES_HOSTILITY"
-  | "DEFENSIVE"
-  | "RETALIATORY"
-  | "ALLY_SUPPORT"
-  | "SACRIFICE";
-
-type SubjectRef =
-  | { type: "SELF" }
-  | { type: "FACTION"; id: FactionId }
-  | { type: "SEGMENT"; id: SegmentId }
-  | { type: "CONTACT"; id: string }
-  | { type: "STRUCTURE"; id: StructureId }
-  | { type: "UNIT"; id: UnitId }
-  | { type: "OPERATION"; id: OperationId }
-  | { type: "CELL"; id: CellId }
-  | { type: "CANDIDATE"; id: string }
-  | { type: "GLOBAL" };
-
-interface Signal {
-  kind: string;
-  subject: SubjectRef;
-  strength: number;   // integer 0..100
-  confidence: number; // integer 0..100
-  horizon?: Horizon;
-  tags?: readonly SignalTag[];
-}
-```
-
-The exact source-code representation may change during implementation, but the semantics above are accepted.
-
-### 4.2 Score meanings
-
-`strength` means how strongly the evaluator believes that finding matters **within that evaluator's domain**. It is not universal goodness/desirability.
-
-`confidence` describes certainty in the finding/inference.
-
-Broad internal scale:
-
-```text
-0..19   weak/minor
-20..39  modest
-40..59  meaningful
-60..79  strong
-80..100 exceptional/critical
-```
-
-No universal formula such as `strength × confidence × aggression` is part of the architecture. Character decisions remain authored reasoning chains.
-
-### 4.3 Output diversity
-
-Evaluator pruning must preserve multiple categories of useful findings. Do not simply sort every finding globally and return the highest scores, because that may remove all peaceful/economic choices before a peaceful character sees them.
-
-Conceptually:
-
-```text
-discover
-→ score
-→ group by kind
-→ retain several strongest per kind
-→ return diverse signal set
-```
-
-A provisional implementation target of roughly `<=24` findings per evaluator and `<=3` per kind was discussed, but those exact counts remain implementation tuning.
-
-### 4.4 Minimal hypothetical candidate
-
-Forecasting/planning may use a tiny candidate identity:
-
-```ts
-interface Candidate {
-  id: string;
-  kind: string;
-  subject: SubjectRef;
-  tags?: readonly SignalTag[];
-}
-```
-
-Examples include attack-region, build-Factory, withdraw-front, counter-operation, upgrade-Silo, or expand-region candidates. Final literal catalogues remain open.
-
----
-
-## 5. Evaluation component families
-
-Component tiers describe **reasoning sophistication**, not mandatory difficulty locks. Characters may be uneven: a Difficulty-2 character can have unusually strong defense while remaining weak elsewhere.
-
-### 5.1 TerritoryEvaluator
+### 4.1 TerritoryEvaluator
 
 Purpose: identify geographic/territorial properties without deciding whether the character should conquer, defend, or abandon them.
-
-Representative signal concepts include free land, Capacity value, terrain value, chokepoints, mobility corridors, coastal access, local exposure, strategic connectors/isolation, bad front topology, disposable territory, and global access value.
 
 **LocalTerritoryEvaluator (~D0–1)**
 
 - sees ownership, adjacency, nearby conquerable/free land, Capacity, and obvious accessibility;
-- broadly sees useful land as valuable real estate;
-- does not meaningfully reason about Mountain defense, Desert economic value, Forest combat effects, chokepoints, or border topology.
+- broadly treats useful land as valuable real estate;
+- does not meaningfully reason about Mountain defense, Desert economic value, Forest combat effects, chokepoints, or strategic border topology.
 
 **OperationalTerritoryEvaluator (~D2–3)**
 
-- understands terrain mechanics, capture difficulty, local chokepoints, movement barriers, coastlines, local border exposure, infrastructure access, and armor/naval accessibility;
-- may still acquire locally excellent territory that creates a strategically terrible global frontier.
+- understands terrain mechanics, capture difficulty, local chokepoints, movement barriers, coastlines, local exposure, infrastructure access, and armor/naval accessibility;
+- may still acquire locally excellent land that creates a strategically terrible global frontier.
 
 **StrategicGeometryEvaluator (~D4–5)**
 
-- reasons about future border shapes, front count/length, salients, theater connectivity, isolation, enemy access denial, deliberate sacrifice, long-term coastline/connectivity, and Water-Nuke topology when enabled.
+- reasons about future border shape, number/length of fronts, salients, theater connectivity, isolation, enemy access denial, deliberate sacrifice, long-term coastline/connectivity, and dynamic topology such as Water Nukes when enabled.
 
-### 5.2 EconomyEvaluator
-
-Purpose: describe economic position and consequences of spending/development without deciding what the character ultimately values.
+### 4.2 EconomyEvaluator
 
 **BudgetEconomyEvaluator (~D0–1)**
 
 - current FFY/income;
 - affordability;
-- basic saving and obvious productive infrastructure.
+- basic saving;
+- obvious productive infrastructure.
 
 **ReturnAwareEconomyEvaluator (~D2–3)**
 
 - rough ROI/payback;
-- new construction versus upgrades;
-- Factory/Train and Port/trade network value;
+- construction versus upgrades;
+- network value;
 - economy-versus-military tradeoffs.
 
 **StrategicEconomyEvaluator (~D4–5)**
@@ -286,46 +224,37 @@ Purpose: describe economic position and consequences of spending/development wit
 - network compounding;
 - military/economic sequencing;
 - enemy economic trajectory;
-- future strategic spending requirements.
+- future strategic spending needs.
 
-### 5.3 OpponentModel
-
-Purpose: infer behavioral tendencies only from legally observed history/state.
+### 4.3 OpponentModel
 
 **NoOpponentModel (~D0–1)**
 
-- understands current observable state but does not meaningfully infer stable behavior.
+- understands current visible state but does not meaningfully infer durable behavior.
 
 **BehaviorHistoryModel (~D2–3)**
 
-- remembers aggression, targeting, counter-response, withdrawal, building focus, overcommitment, and similar repeated behavior;
-- tends to extrapolate past behavior simply.
+- remembers aggression, targeting, counter-response, withdrawal, build focus, overcommitment, and other repeated behavior;
+- tends to extrapolate historical behavior simply.
 
 **AdaptiveOpponentModel (~D4–5)**
 
-- maintains/upgrades competing hypotheses;
-- notices strategy changes;
-- considers how an opponent may respond to the AI's own behavior;
-- may cautiously infer future capability interests from legitimate evidence, with uncertainty represented by confidence rather than fake omniscience.
+- maintains and updates competing hypotheses;
+- notices strategy shifts;
+- considers how opponents may react to the AI's own actions;
+- may form cautious future-capability hypotheses from legitimate evidence, with uncertainty represented explicitly rather than through omniscience.
 
-### 5.4 ForecastEngine
+### 4.4 ForecastEngine
 
-Purpose: estimate plausible consequences of a hypothetical candidate. It is not a hidden copy of the authoritative simulator and receives no future information.
+Forecasting is a bounded hypothetical reasoner, not a secret authoritative future simulator.
 
-**ImmediateConsequenceEstimator (~D0–1)**
+**ImmediateConsequenceEstimator (~D0–1)** — one direct consequence layer.
 
-- one direct consequence layer.
+**ShortHorizonForecaster (~D2–3)** — several likely near-term consequences, usually following the most obvious continuation.
 
-**ShortHorizonForecaster (~D2–3)**
+**ScenarioForecaster (~D4–5)** — several plausible response/future branches, including opponent and third-party reactions.
 
-- chains several likely near-term consequences and usually follows the most obvious continuation.
-
-**ScenarioForecaster (~D4–5)**
-
-- branches across multiple plausible responses/futures;
-- compares consequences under different opponent/third-party reactions.
-
-### 5.5 ThreatEvaluator
+### 4.5 ThreatEvaluator
 
 Purpose: identify plausible developments that can materially harm the faction. It does not decide how frightened the character should be or which response to choose.
 
@@ -335,7 +264,7 @@ Purpose: identify plausible developments that can materially harm the faction. I
 - hostile units or strategic effects presenting actual current/near-immediate danger;
 - obvious local force crises.
 
-Mere theoretical exposure is not enough. For example, an exposed Factory becomes an immediate threat finding only when some manifested hostile force/operation can actually endanger it in the immediate horizon.
+Mere theoretical exposure is insufficient. An exposed Factory, for example, becomes an immediate threat only when a manifested hostile force/operation can actually endanger it in the immediate horizon.
 
 **OperationalThreatEvaluator (~D2–3)**
 
@@ -354,24 +283,24 @@ Mere theoretical exposure is not enough. For example, an exposed Factory becomes
 - strategic isolation/encirclement;
 - compound threats.
 
-### 5.6 OpportunityEvaluator
+### 4.6 OpportunityEvaluator
 
-Purpose: surface exploitable or constructive opportunities without deciding which are morally/personally desirable.
+Purpose: surface exploitable or constructive opportunities without deciding which are personally desirable.
 
-It must surface peaceful/developmental opportunities as well as aggressive ones when both exist.
+It must surface peaceful/developmental opportunities as well as aggressive opportunities when both exist.
 
 **ObviousOpportunityEvaluator (~D0–1)**
 
-- nearby free expansion;
+- free nearby expansion;
 - obvious affordable development;
-- obviously weak current hostile target;
-- clearly undefended immediate target;
-- obvious defensive improvement.
+- obviously weak current hostile targets;
+- clearly undefended immediate targets;
+- obvious defensive improvements.
 
 **OperationalOpportunityEvaluator (~D2–3)**
 
 - distracted opponents;
-- favorable local frontage/superiority;
+- favorable frontage/local superiority;
 - infrastructure raids;
 - terrain advantages;
 - temporary naval/amphibious openings.
@@ -384,226 +313,122 @@ It must surface peaceful/developmental opportunities as well as aggressive ones 
 - economic timing;
 - territorial sacrifice;
 - topology gains;
-- overextension traps and other long-horizon positional openings.
-
-A high-strength aggressive opportunity never forces a peaceful Doctrine to use it.
+- deliberate overextension traps and other long-horizon positional openings.
 
 ---
 
-## 6. Character-sensitive strategic layer
+## 5. Character-sensitive strategic layer
 
-### 6.1 Doctrine
+### 5.1 Doctrine
 
 Doctrine answers:
 
 > What does this character fundamentally value, dislike, permit, require, or forbid?
 
-It interprets signals in character terms. It may veto classes of behavior, strongly prioritize others, distinguish defensive retaliation from opportunistic aggression, and encode character-specific values such as Population preservation, aversion to waste, desire for leverage, safety, spectacle, patience, etc.
+It interprets signals in character terms and may veto behavior, strongly prioritize other behavior, distinguish retaliation from opportunistic aggression, or express values such as preservation, leverage, safety, spectacle, patience, efficiency, etc.
 
-Doctrine should use reusable rule helpers where useful, but unique combinations/exceptions are intentionally allowed.
+Doctrine does not choose exact cells, attack widths, structure locations, or unit paths.
 
-Doctrine does **not** choose exact cells, attack widths, structure locations, or unit paths.
+### 5.2 GoalGenerator
 
-### 6.2 GoalGenerator
+GoalGenerator turns Signals + Doctrine + current Goals/Plans into multiple candidate strategic objectives.
 
-GoalGenerator turns signals + Doctrine + current plans into multiple candidate strategic objectives.
+It must allow **no new goal / continue current plan** as a valid outcome.
 
-Examples of broad goal families include survival, defending a region, expansion, economic development, infrastructure, weakening/retaliating against/eliminating a faction, ally support, securing position, withdrawal, naval control, beachheads, or strategic-weapon development.
+Shared Goal recipes are preferred. Character-specific Goal rules are appropriate when the character genuinely interprets circumstances differently.
 
-These examples are not yet a final `GoalKind` enum. The final goal literal catalogue is deliberately reserved for the next design pass.
+### 5.3 PlanArbiter
 
-Goal generation must allow **no new goal** / continue-current-plan as a valid outcome.
+PlanArbiter decides which candidate Goals receive strategic attention/resources now.
 
-### 6.3 PlanArbiter
+It is one of the primary personality surfaces.
 
-PlanArbiter decides which candidate goals receive attention/resources now.
+Lower-capability arbiters may use relatively fixed hierarchies and handle few simultaneous concerns. Higher-capability arbiters may coordinate several objectives, preserve reserves, reason about opportunity cost, make deliberate sacrifices, and manage dependencies/contingencies.
 
-This is a major personality surface. It should reason about competing objectives rather than simply sort by one score.
+### 5.4 PlanPersistencePolicy
 
-Lower-capability arbiters may use relatively fixed hierarchies and maintain few simultaneous goals. Higher-capability arbiters may coordinate several objectives, consider opportunity cost, preserve reserves, make deliberate sacrifices, and manage dependencies/contingencies.
+PlanPersistencePolicy governs when an active plan continues, escalates, reduces, pauses, resumes, replans, succeeds, or is abandoned.
 
-### 6.4 PlanPersistencePolicy
+This is where character-visible patience, stubbornness, sunk-cost behavior, opportunistic switching, de-escalation, and long-horizon commitment belong.
 
-PlanPersistencePolicy determines when an active plan continues, escalates, reduces, pauses, succeeds, fails, or is abandoned.
-
-This is where character-visible patience/stubbornness/adaptation belongs. Examples:
-
-- Askeladd may abandon a plan quickly when leverage disappears;
-- Power may persist too long because backing down is undesirable to her;
-- Yang may readily abandon a local objective while retaining a broader strategic intent;
-- Reinhard may keep a major strategic objective while rapidly replacing subordinate execution plans;
-- Thorfinn may end retaliation once the meaningful threat has genuinely ceased.
+A capable controller may retain a high-level Goal while discarding and replacing a failed subordinate Plan.
 
 ---
 
-## 7. Character ExpressionProfile — explicit personality in execution
+## 6. Expression — explicit authored personality in execution
 
-Doctrine explains **what/why** a character wants something. It is not enough to make the resulting play visibly characterful.
+Doctrine explains **what/why** a character wants something. That alone is insufficient for visible personality.
 
-Open Fufu therefore has a sparse character **ExpressionProfile** concept:
+`ExpressionProfile` answers:
 
-> When several sufficiently valid solutions exist, what kind of solution does this character prefer?
+> When several sufficiently valid solutions exist, what kind of solution feels like this character?
 
-This is the accepted “element X” that lets characters express actual authored personality inside shared domain planners.
+Domain planners first generate viable candidates. Expression then prefers among those candidates within the configured quality leeway.
 
-### 7.1 Planner first, expression second
+Capability determines what solutions can be conceived. Expression cannot invent a brilliant strategy that the selected planner is incapable of producing.
 
-Conceptually:
+Most Expression preferences should use reusable `SolutionTrait` motifs from `OFFICIAL_AI_CONFIGURATION.md`.
 
-```text
-active goal
-→ domain planner generates feasible candidate solutions
-→ reject solutions below basic competence/legality threshold
-→ ExpressionProfile prefers among viable candidates
-```
+Sparse bespoke character hooks are explicitly allowed where abstraction would be fake or wasteful—for example, a Yui infrastructure hook may propose a heart-like rail layout, after which the ordinary InfrastructurePlanner still evaluates whether that layout is viable and sufficiently functional.
 
-Capability determines what solutions can be conceived. Expression cannot invent a brilliant encirclement if the selected LandWarPlanner is incapable of producing one.
-
-### 7.2 Sparse and domain-specific
-
-Expression should not become one giant `doEverything()` character class. A character profile may define only the domains in which unusual style matters.
-
-Possible reusable motif families include:
-
-- infrastructure: symmetry, compactness, redundancy, raw efficiency, visually coherent/pleasant networks, protected/distributed placement;
-- warfare: decisive battle, raids, overwhelming force, low casualties, indirect approaches, retaliation, weak-target preference, spectacle;
-- territory: compact borders, natural barriers, isolation, coastlines, buffers, continuity;
-- economy: liquidity, long-term return, industrial networks, self-sufficiency, visible development, military spending;
-- naval/amphibious/spawn/strategic-weapon motifs where a character actually needs them.
-
-Most motifs should be reusable. Genuinely signature behavior may use small bespoke character hooks where abstraction would be fake or wasteful.
-
-### 7.3 Yui example
-
-A shared infrastructure planner might produce several economically adequate rail layouts. Yui's expression may prefer simple, coherent, symmetric/cute arrangements and recognize a heart-like route as especially appealing.
-
-She may therefore choose a heart-shaped layout that is somewhat less efficient than the best alternative while rejecting a catastrophically bad heart-shaped layout.
-
-The resulting weakness/personality is authored but natural: she prefers a valid charming solution, not a random bad action.
-
-### 7.4 Same goal, different expression
-
-For a shared goal such as weakening Tanya, one planner may generate direct assault, infrastructure raid, narrow breakthrough, and multi-front pressure candidates.
-
-- Askeladd may prefer the cheap/indirect/exploitative raid.
-- Reinhard may prefer the option that most decisively changes the global position.
-- Power may prefer the loud direct confrontation and overcommit.
-
-Same legal mechanics; same broad goal; visibly different characters.
+Expression may create natural character weaknesses. It may not bypass legality or deliberately resurrect non-viable plans.
 
 ---
 
-## 8. Reusable domain planners
+## 7. Reusable domain planners
 
-Domain planners should primarily encode competence, not personality styles that a competent planner should be able to choose situationally.
+Domain planner variants primarily encode **reasoning sophistication**, not rigid personality styles.
 
-Current planned families:
+A competent LandWarPlanner should be able to choose broad pressure or concentration depending on circumstance; those are candidate strategies, not separate planner classes.
 
-### ExpansionPlanner
+Accepted planner families:
 
-- `NearestExpansionPlanner` (~D0–1)
-- `TerrainAwareExpansionPlanner` (~D2–3)
-- `StrategicExpansionPlanner` (~D4–5)
+- **ExpansionPlanner** — `NEAREST` / `TERRAIN_AWARE` / `STRATEGIC`;
+- **LandWarPlanner** — `DIRECT` / `OPERATIONAL` / `MULTI_FRONT_STRATEGIC`;
+- **DefensePlanner** — `EVEN` / `VALUE_AWARE` / `PREDICTIVE`;
+- **CounterResponsePlanner** — `SIMPLE` / `EXCHANGE_AWARE` / `STRATEGIC`;
+- **RetreatPlanner** — `EMERGENCY` / `DEFENSIBLE` / `STRATEGIC_SACRIFICE`;
+- **SpendingPlanner** — `BASIC` / `PRIORITY` / `OPPORTUNITY_COST`;
+- **InfrastructurePlanner** — `USEFUL` / `NETWORK_AWARE` / `STRATEGIC_OPTIMIZER`;
+- **UpgradePlanner** — `AFFORDABLE` / `VALUE` / `STRATEGIC_TIMING`;
+- **ArmorPlanner** — `LOCAL` / `OPERATIONAL` / `STRATEGIC`;
+- **NavalPlanner** — `LOCAL` / `SEA_CONTROL` / `STRATEGIC`;
+- **AmphibiousPlanner** — `BASIC` / `OPPORTUNITY` / `STRATEGIC`;
+- **StrategicWeaponPlanner** — `OBVIOUS_TARGET` / `OPERATIONAL` / `STRATEGIC`;
+- **ObservationPlanner** — `COVERAGE` / `THREAT_FOCUSED` / `STRATEGIC_INFORMATION`;
+- **TeamCoordinator** — `BASIC` / `OBJECTIVE` / `STRATEGIC`;
+- **SpawnPlanner** — `SAFE` / `TERRAIN_AWARE` / `STRATEGIC`;
+- **SpawnReconsiderer** — `STATIC` / `THREAT_AWARE` / `ADVERSARIAL`.
 
-### LandWarPlanner
+These tiers are guidance, not difficulty locks. Character capability profiles may be uneven.
 
-- `DirectLandWarPlanner` (~D0–1)
-- `OperationalLandWarPlanner` (~D2–3)
-- `MultiFrontStrategicWarPlanner` (~D4–5)
+---
 
-A broad front versus concentrated attack is normally a decision produced by the planner, not a separate planner implementation.
+## 8. Origin selection and adaptation boundary
 
-### DefensePlanner
+Each character preset owns a curated set of allowed Official Origins.
 
-- `EvenDefensePlanner` (~D0–1)
-- `ValueAwareDefensePlanner` (~D2–3)
-- `PredictiveDefensePlanner` (~D4–5)
+After human controller/Origin/Echo choices lock, the match seed selects **uniformly at random** from the allowed set before Strategic Spawn.
 
-### CounterResponsePlanner
+There are no per-Origin weights, map-conditioned selection rules, or character-controller Origin-selection logic.
 
-- `SimpleCounterPlanner` (~D0–1)
-- `ExchangeAwareCounterPlanner` (~D2–3)
-- `StrategicCounterPlanner` (~D4–5)
+The selected Origin is revealed normally before Strategic Spawn.
 
-### RetreatPlanner
+The character must then use every Origin in its allowed pool coherently.
 
-- `EmergencyRetreatPlanner` (~D0–1)
-- `DefensibleWithdrawalPlanner` (~D2–3)
-- `StrategicSacrificePlanner` (~D4–5)
+The generic support/adaptation architecture is canonical in `OFFICIAL_AI_ORIGIN_SUPPORT.md`. Its central rule is:
 
-### SpendingPlanner
+> **Origin Trait Support teaches strategic literacy; character Origin Adaptation decides what that character does with the literacy.**
 
-- `BasicBudgetPlanner` (~D0–1)
-- `PriorityBudgetPlanner` (~D2–3)
-- `OpportunityCostPlanner` (~D4–5)
+Origin support may explain mechanics, strategic themes, affordances, cautions, synergy, evaluator implications, and planner requirements. It must not replace the character's Doctrine, Arbiter, Persistence, or Expression identity.
 
-### InfrastructurePlanner
-
-- `UsefulPlacementPlanner` (~D0–1)
-- `NetworkAwareInfrastructurePlanner` (~D2–3)
-- `StrategicInfrastructureOptimizer` (~D4–5)
-
-### UpgradePlanner
-
-- `AffordableUpgradePlanner` (~D0–1)
-- `ValueUpgradePlanner` (~D2–3)
-- `StrategicTimingUpgradePlanner` (~D4–5)
-
-### ArmorPlanner
-
-- `LocalArmorPlanner` (~D0–1)
-- `OperationalArmorPlanner` (~D2–3)
-- `StrategicArmorPlanner` (~D4–5)
-
-### NavalPlanner
-
-- `LocalNavalPlanner` (~D0–1)
-- `SeaControlPlanner` (~D2–3)
-- `StrategicNavalPlanner` (~D4–5)
-
-### AmphibiousPlanner
-
-- `BasicLandingPlanner` (~D1–2)
-- `OpportunityLandingPlanner` (~D2–3)
-- `StrategicAmphibiousPlanner` (~D4–5)
-
-### StrategicWeaponPlanner
-
-- `ObviousTargetWeaponPlanner` (~D1–2)
-- `OperationalWeaponPlanner` (~D2–4)
-- `StrategicWeaponPlanner` (~D4–5)
-
-### ObservationPlanner
-
-- `CoverageObservationPlanner` (~D0–1)
-- `ThreatFocusedObservationPlanner` (~D2–3)
-- `StrategicInformationPlanner` (~D4–5)
-
-### TeamCoordinator
-
-- `BasicTeamCoordinator` (~D0–1)
-- `ObjectiveTeamCoordinator` (~D2–3)
-- `StrategicTeamCoordinator` (~D4–5)
-
-### Strategic Spawn
-
-- `SafeSpawnPlanner` (~D0–1)
-- `TerrainAwareSpawnPlanner` (~D2–3)
-- `StrategicSpawnPlanner` (~D4–5)
-
-Reconsideration:
-
-- `StaticSpawnReconsiderer` (~D0–1)
-- `ThreatAwareSpawnReconsiderer` (~D2–3)
-- `AdversarialSpawnReconsiderer` (~D4–5)
-
-The difficulty ranges are design guidance, not restrictions. A character may be unusually good or bad in one domain.
+Character Origin adaptation may interpret the same Origin differently, but it cannot alter the Origin's mechanics, bypass legality, or grant reasoning sophistication beyond the selected evaluator/planner capability.
 
 ---
 
 ## 9. Unsupported/non-V1 AI domains
 
-Do not invent major AI component families for mechanics that V1 does not actually support.
+Do not invent major AI component families for mechanics that V1 does not support.
 
 Not currently separate V1 controller domains:
 
@@ -611,10 +436,8 @@ Not currently separate V1 controller domains:
 - supply/logistics systems that do not exist;
 - manual passive-defender quantity allocation;
 - frame-by-frame RTS micro;
-- privileged Train/Trade-Ship route micromanagement when routing is game-owned;
+- privileged Train/Trade-Ship route micromanagement where routing is simulation-owned;
 - hidden-information oracle reasoning.
-
-If game mechanics/API later add such systems, the taxonomy can expand explicitly.
 
 ---
 
@@ -626,13 +449,13 @@ Capability and thematic fidelity are separate measurements.
 
 Question:
 
-> How strong is this controller at winning the game?
+> How strong is this controller at winning?
 
-Use deterministic batches across varied maps, seeds, Origins, opponents, and eventually teams/FFA. Relevant metrics may include win rate/rating, survival/placement, economy/territorial efficiency, performance by map/Origin/opponent style, and other game-relevant outcomes.
+Use deterministic batches across varied maps, seeds, Origins, opponents, and eventually teams/FFA.
 
-The Difficulty 0 Baseline AI is the first fixed reference opponent. Later benchmarking should expand beyond baseline-only matches.
+Relevant metrics may include win rate/rating, survival/placement, economy/territorial efficiency, and performance by map/Origin/opponent style.
 
-Difficulty is an authored target; measured results drive controller tuning toward that target.
+Difficulty is an authored target; measured results drive tuning toward that target.
 
 ### 10.2 Thematic/fidelity benchmark
 
@@ -640,52 +463,53 @@ Question:
 
 > Does this implementation behave like the authored character fantasy?
 
-This is preset-specific and independent of capability. A very strong controller can be a bad Reinhard; a perfectly recognizable Power can still be strategically mediocre.
+This is preset-specific and independent of capability.
 
-Fidelity metrics may inspect character-specific behavior such as aggression initiation, retaliation, ally support, sacrifice/withdrawal behavior, infrastructure choices, risk posture, persistence, and other doctrine/expression invariants.
+A strong controller may be a poor characterization; a recognizably characterful controller may still be strategically weak.
+
+Fidelity expectations and character-specific checks are defined through `FidelityProfile` in `OFFICIAL_AI_CONFIGURATION.md`.
 
 Never collapse capability and fidelity into one score.
 
+### 10.3 Origin-support correctness
+
+Origin support receives a third, distinct correctness test category:
+
+> Does the controller understand the mechanical toolbox it rolled well enough to operate it coherently at its authored capability level?
+
+This tests transformed mechanics, planner legality, spawn behavior, and Origin-specific candidate generation. It is neither a capability rating nor a character-fidelity score.
+
 ---
 
-## 11. Difficulty and reward relationship
+## 11. Difficulty and rewards
 
-Official character presets retain Difficulty targets `1..5`. Baseline AI is Difficulty `0`.
+Character presets use Difficulty `1..5`; Baseline AI uses Difficulty `0`.
 
-Difficulty does not change the ordinary qualifying-opponent reward. Reward accounting is conceptually:
+Reward accounting is:
 
 ```text
 ordinary qualifying opponent defeated → +1 Echo roll
 Official/Baseline AI difficulty bonus  → +difficulty Echo rolls
 ```
 
-Therefore:
+Therefore Baseline contributes `+1 ordinary +0 bonus`, while a Difficulty-5 character contributes `+1 ordinary +5 bonus`.
 
-```text
-Baseline AI D0 → +1 ordinary, +0 bonus
-D1 character   → +1 ordinary, +1 bonus
-D2 character   → +1 ordinary, +2 bonus
-...
-D5 character   → +1 ordinary, +5 bonus
-```
-
-The bonus is simply `difficulty`. Do not describe this as `Difficulty 1 = two loot` as the primary rule; base opponent loot and difficulty bonus are separate concepts.
+Difficulty controls only the extra AI bonus and remains preset metadata/source-of-truth.
 
 ---
 
-## 12. Open design work before character mapping
+## 12. Content-authoring sequence
 
-The next design pass should finalize the **configuration language** used to express character controllers. In particular:
+The generic Official-AI architecture and configuration language are closed enough for content mapping.
 
-1. exact final signal-kind literals where shared code needs a closed vocabulary;
-2. final broad Goal/GoalKind vocabulary and Goal object shape;
-3. Doctrine judgment/motive vocabulary and reusable doctrine primitives;
-4. PlanArbiter intent/resource-posture vocabulary;
-5. Plan state and persistence decisions;
-6. reusable Expression motif catalogue plus rules for sparse bespoke hooks;
-7. final `CharacterProfile`/configuration object shape;
-8. typical Difficulty `0..5` capability profiles using the component library.
+Canonical content completion proceeds in this order:
 
-After those are settled, configure the Difficulty-0 Baseline AI, then map several anchor characters, then the remaining roster.
+1. define every deployed Origin trait's AI support configuration;
+2. define Origin-level composed/special combination support where trait composition requires it;
+3. define the Difficulty-0 Baseline AI and every character's concrete `CharacterProfile`, including Origin adaptation;
+4. benchmark capability, thematic fidelity, and Origin-support correctness separately;
+5. perform a repository-wide stale/contradiction audit before merging the completed design batch.
 
-The final character mapping must remain recognizable across every allowed Origin in that preset's pool.
+For reviewability, trait, Origin, and character content should be authored in **batches of ten** with a consistency check between batches.
+
+The batch boundary is organizational only; canonical behavior remains determined by the final versioned configuration.
