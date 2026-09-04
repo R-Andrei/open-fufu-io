@@ -96,28 +96,3 @@ jobs:
             git --no-pager diff
             exit 1
           fi
-
-  finalize-origin-names:
-    name: 🧹 Finalize Origin naming
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout naming branch
-        uses: actions/checkout@v7
-        with:
-          ref: docs/finalize-origin-names
-          fetch-depth: 0
-      - name: Apply approved naming and self-remove helper
-        shell: bash
-        run: |
-          sed -i 's/the V1 trait\/Official-Origin naming pass and former O35\/O36 duplicate cleanup are complete/the V1 trait\/Official-Origin naming pass and duplicate cleanup are complete/' .github/finalize_origin_names.py
-          python .github/finalize_origin_names.py
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/ci.yml
-          rm -f .github/finalize_origin_names.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "docs: finalize Origin trait and preset naming"
-          git push origin HEAD:docs/finalize-origin-names
