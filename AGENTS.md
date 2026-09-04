@@ -15,3 +15,129 @@ These instructions apply to automated coding/documentation agents working in thi
 - Never delete `main`, a branch backing an open pull request, or a branch whose ownership/status is unclear without first verifying that it is stale.
 
 GitHub automation may delete merged pull-request branches automatically. Agents must still follow the policy above for non-PR temporary branches and for any cleanup case the automation does not cover.
+
+## Canonical documentation and configuration ownership
+
+The repository must prefer **one canonical source of truth per concern**. Long but coherent single-purpose files are preferable to a collection of overlapping fragments.
+
+### Before creating any new documentation or design/configuration file
+
+1. Search the repository for the concept, subsystem, entity catalogue, or configuration being documented.
+2. Identify the existing canonical owner, if one exists.
+3. Update that owner instead of creating another file when the new material belongs to the same concern.
+4. Create a new file only when the material has a genuinely distinct purpose, authority, lifecycle, or audience that would make adding it to the existing owner misleading or incoherent.
+5. When creating a new canonical file, explicitly state its ownership boundary and identify the neighboring canonical files whose concerns it does **not** own.
+
+A file becoming long is **not by itself** sufficient justification to split it.
+
+### One concern, one authority
+
+- Do not make two files independently canonical for the same facts.
+- Do not duplicate exact tables, registries, configuration objects, formulas, or rule text into multiple files merely for convenience.
+- Prefer cross-references to copying authoritative content.
+- A rationale document may explain *why* a configuration exists, but exact configuration values must remain in the configuration source of truth.
+- A configuration file may reference gameplay mechanics, but it must not duplicate mechanical arithmetic when a gameplay/rules document or effective-rules layer already owns that arithmetic.
+- A high-level architecture document should describe architecture and boundaries; it should not become a second copy of detailed configuration catalogues.
+- A content catalogue should own its content entries; architecture documents should point to it rather than restating the catalogue.
+
+### Update, do not fork
+
+When a rule, name, formula, mapping, or design decision changes:
+
+1. update the canonical owner;
+2. search the repository for references to the old form;
+3. update or delete stale summaries, examples, TODOs, and contradictory wording in the same change;
+4. preserve historical discussion in Git history rather than leaving obsolete files in the active tree.
+
+Do not solve uncertainty by adding a second “new canonical” document while leaving the old one intact. Either update the existing owner or explicitly retire/supersede the old file and remove it when safe.
+
+### Batch work must not become repository structure
+
+Batches are a review/workflow device, not a documentation architecture.
+
+- Do not commit permanent files named by temporary authoring ranges such as `*_P51_N06.md`, `part-1`, `batch-3`, or equivalent merely because work was reviewed in chunks.
+- Do not shard a configuration catalogue into `foo.p01-p10.config.ts`, `foo.p11-p20.config.ts`, etc. solely to make incremental editing easier.
+- Append accepted batch results to the single canonical file for that concern.
+- If temporary fragments are unavoidable during active work, consolidate them and delete the fragments before the topic branch/PR is considered complete.
+- Git history is the archive for earlier batch states; the checked-in tree should represent the current coherent system.
+
+### Configuration-file policy
+
+Prefer one code-readable configuration source per configuration domain unless runtime or tooling constraints provide a concrete reason to split it.
+
+For the current Official-AI design this means, unless architecture is explicitly changed:
+
+```text
+design/official-ai/origin-trait-support.config.ts
+  all exact trait-support mappings, additive combination support, and support-suppression rules
+
+design/official-ai/origin-configurations.config.ts
+  all exact named Official-Origin AI mappings
+
+design/official-ai/character-configurations.config.ts
+  Baseline and all exact character AI mappings once authored
+```
+
+Internal grouping/constants inside one file are acceptable for readability. Separate files require a real loading, ownership, generation, or lifecycle boundary—not merely file length or ten-at-a-time authoring.
+
+### Documentation vs configuration
+
+Keep these layers distinct:
+
+- **Gameplay/rules documents** own actual mechanics, formulas, costs, legality, and content rules.
+- **Code-readable design configuration** owns exact AI mappings and IDs intended to migrate into implementation.
+- **Architecture/contracts** own reusable types, boundaries, pipelines, and semantic rules.
+- **Rationale documents** own strategic intent, explanations, and important exclusions without duplicating exact config objects.
+- **Roster/catalogue documents** own the relevant list of entities and their content identity.
+
+If two files appear to answer the same question, resolve the ownership ambiguity instead of documenting the same answer twice.
+
+### Legitimate reasons to split a file
+
+Splitting is acceptable when there is a clear structural benefit such as:
+
+- different runtime loading/deployment boundaries;
+- generated versus hand-authored sources;
+- independently versioned/public APIs;
+- clearly different subsystem ownership and lifecycle;
+- tooling limits that make one file impractical;
+- a file would otherwise contain multiple unrelated purposes.
+
+When a split is justified, document the reason in the parent README/index, establish exactly one canonical owner for each fact, and provide an obvious aggregation/import path where appropriate.
+
+“Easier to edit this batch,” “the file is getting long,” or “this section might grow later” are not sufficient reasons.
+
+### Stale-document audit is part of completion
+
+Before completing a documentation-heavy topic branch or PR:
+
+- inspect the relevant directory for duplicate or temporary files;
+- search for old terminology, superseded formulas, renamed entities, and references to deleted files;
+- verify every durable concern has a clear canonical owner;
+- verify no two files claim canonical authority over the same exact data;
+- remove obsolete batch shards and abandoned planning documents when their information has been incorporated;
+- update links after renames/consolidations;
+- verify TODOs still describe genuinely open work rather than already-closed decisions;
+- prefer deletion over leaving a permanent “deprecated” duplicate when Git history already preserves it.
+
+A change that updates the canonical source but knowingly leaves contradictory active documentation is incomplete.
+
+### Progress/status information
+
+Avoid copying mutable progress counters, completion matrices, or current-status tables into many documents. Keep such information only where it materially belongs, or derive it from the canonical configuration when practical. If a progress statement becomes stale, update or remove it rather than adding another newer statement elsewhere.
+
+### Default decision rule
+
+When deciding between:
+
+- adding another file that overlaps an existing concern; or
+- extending/cleaning the existing canonical owner,
+
+**prefer the existing canonical owner**.
+
+When deciding between:
+
+- preserving a redundant active document “for history”; or
+- deleting it after its useful content has been incorporated,
+
+**prefer deletion; Git history already preserves history**.
