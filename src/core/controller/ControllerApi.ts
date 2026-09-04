@@ -15,7 +15,10 @@ export type DirectiveKey = string;
 export type CommandKey = string;
 
 export type JsonPrimitive = null | boolean | number | string;
-export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | { [key: string]: JsonValue };
 export type ControllerMemory = { [key: string]: JsonValue };
 
 export type FactionStatus = "ACTIVE" | "CAPITULATED" | "DEFEATED";
@@ -196,9 +199,16 @@ export type CellSelector =
   | { readonly kind: "CONQUERABLE"; readonly value: boolean }
   | { readonly kind: "COAST"; readonly value: boolean }
   | { readonly kind: "SHORELINE"; readonly value: boolean }
-  | { readonly kind: "CIRCLE"; readonly center: CellId; readonly radius: number }
+  | {
+      readonly kind: "CIRCLE";
+      readonly center: CellId;
+      readonly radius: number;
+    }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
-  | { readonly kind: "INTERSECTION"; readonly selectors: readonly CellSelector[] }
+  | {
+      readonly kind: "INTERSECTION";
+      readonly selectors: readonly CellSelector[];
+    }
   | {
       readonly kind: "DIFFERENCE";
       readonly left: CellSelector;
@@ -297,8 +307,15 @@ export interface CounterResponseCalculation {
 }
 
 export interface MechanicsApi {
-  growth(population: number, capacity: number, factionId?: FactionId): GrowthCalculation;
-  captureAdvantage(attackingPressure: number, defendingPressure: number): number;
+  growth(
+    population: number,
+    capacity: number,
+    factionId?: FactionId,
+  ): GrowthCalculation;
+  captureAdvantage(
+    attackingPressure: number,
+    defendingPressure: number,
+  ): number;
   counterResponse(
     attackingPopulation: number,
     respondingPopulation: number,
@@ -306,11 +323,19 @@ export interface MechanicsApi {
     responderId?: FactionId,
   ): CounterResponseCalculation;
   settlementPopulationCost(cellId: CellId, factionId?: FactionId): number;
-  structureCost(type: StructureType, level: 1 | 2 | 3 | 4 | 5, factionId?: FactionId): number;
+  structureCost(
+    type: StructureType,
+    level: 1 | 2 | 3 | 4 | 5,
+    factionId?: FactionId,
+  ): number;
   structureBuildTicks(type: StructureType, level: 1 | 2 | 3 | 4 | 5): number;
   unitCost(type: MobileUnitType, factionId?: FactionId): number;
   weaponCost(type: StrategicWeaponType, factionId?: FactionId): number;
-  canBuildStructure(type: StructureType, cellId: CellId, factionId?: FactionId): boolean;
+  canBuildStructure(
+    type: StructureType,
+    cellId: CellId,
+    factionId?: FactionId,
+  ): boolean;
   canMoveUnit(unitId: UnitId, targetCellId: CellId): boolean;
   canLaunchWeapon(
     launcherId: StructureId | UnitId,
@@ -372,15 +397,52 @@ export interface DecisionReceipt {
 }
 
 export type ControllerEvent =
-  | { readonly type: "CELL_CAPTURED"; readonly cellId: CellId; readonly byFactionId: FactionId }
-  | { readonly type: "POPULATION_CHANGED"; readonly delta: number; readonly reason: string }
-  | { readonly type: "FFY_CHANGED"; readonly delta: number; readonly reason: string }
-  | { readonly type: "STRUCTURE_CHANGED"; readonly structureId: StructureId; readonly reason: string }
-  | { readonly type: "UNIT_CHANGED"; readonly unitId: UnitId; readonly reason: string }
-  | { readonly type: "OPERATION_CHANGED"; readonly operationId: OperationId; readonly reason: string }
-  | { readonly type: "HOSTILITY_CHANGED"; readonly factionId: FactionId; readonly hostile: boolean }
-  | { readonly type: "FACTION_STATUS_CHANGED"; readonly factionId: FactionId; readonly status: FactionStatus }
-  | { readonly type: "STRATEGIC_WEAPON"; readonly weapon: StrategicWeaponType; readonly cellId: CellId; readonly reason: string };
+  | {
+      readonly type: "CELL_CAPTURED";
+      readonly cellId: CellId;
+      readonly byFactionId: FactionId;
+    }
+  | {
+      readonly type: "POPULATION_CHANGED";
+      readonly delta: number;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "FFY_CHANGED";
+      readonly delta: number;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "STRUCTURE_CHANGED";
+      readonly structureId: StructureId;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "UNIT_CHANGED";
+      readonly unitId: UnitId;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "OPERATION_CHANGED";
+      readonly operationId: OperationId;
+      readonly reason: string;
+    }
+  | {
+      readonly type: "HOSTILITY_CHANGED";
+      readonly factionId: FactionId;
+      readonly hostile: boolean;
+    }
+  | {
+      readonly type: "FACTION_STATUS_CHANGED";
+      readonly factionId: FactionId;
+      readonly status: FactionStatus;
+    }
+  | {
+      readonly type: "STRATEGIC_WEAPON";
+      readonly weapon: StrategicWeaponType;
+      readonly cellId: CellId;
+      readonly reason: string;
+    };
 
 export interface EventsApi {
   readonly sinceLastDecision: readonly ControllerEvent[];
@@ -514,7 +576,9 @@ export type ControllerCommand =
   | TeamSignalCommand
   | CapitulateCommand;
 
-export interface ControllerDecision<M extends ControllerMemory = ControllerMemory> {
+export interface ControllerDecision<
+  M extends ControllerMemory = ControllerMemory,
+> {
   readonly memory?: M;
   readonly directives?: DirectiveChanges;
   readonly commands?: readonly ControllerCommand[];
@@ -522,7 +586,9 @@ export interface ControllerDecision<M extends ControllerMemory = ControllerMemor
   readonly log?: string;
 }
 
-export interface ControllerContext<M extends ControllerMemory = ControllerMemory> {
+export interface ControllerContext<
+  M extends ControllerMemory = ControllerMemory,
+> {
   readonly game: GameView;
   readonly me: SelfFactionView;
   readonly factions: FactionsApi;
@@ -557,7 +623,9 @@ export interface SpawnFactionView {
   readonly influenceCenters: readonly CellId[];
 }
 
-export interface SpawnBaseContext<M extends ControllerMemory = ControllerMemory> {
+export interface SpawnBaseContext<
+  M extends ControllerMemory = ControllerMemory,
+> {
   readonly game: GameView;
   readonly me: SelfFactionView;
   readonly cells: CellsApi;
@@ -569,33 +637,40 @@ export interface SpawnBaseContext<M extends ControllerMemory = ControllerMemory>
   readonly profile: SpawnProfileView;
 }
 
-export interface SpawnInfluenceContext<M extends ControllerMemory = ControllerMemory>
-  extends SpawnBaseContext<M> {
+export interface SpawnInfluenceContext<
+  M extends ControllerMemory = ControllerMemory,
+> extends SpawnBaseContext<M> {
   readonly phase: "INFLUENCE";
 }
 
-export interface SpawnReconsiderContext<M extends ControllerMemory = ControllerMemory>
-  extends SpawnBaseContext<M> {
+export interface SpawnReconsiderContext<
+  M extends ControllerMemory = ControllerMemory,
+> extends SpawnBaseContext<M> {
   readonly phase: "RECONSIDER";
   readonly currentInfluenceCenters: readonly CellId[];
   readonly revealedFactions: readonly SpawnFactionView[];
 }
 
-export interface SpawnOriginContext<M extends ControllerMemory = ControllerMemory>
-  extends SpawnBaseContext<M> {
+export interface SpawnOriginContext<
+  M extends ControllerMemory = ControllerMemory,
+> extends SpawnBaseContext<M> {
   readonly phase: "ORIGIN";
   readonly influenceCenters: readonly CellId[];
   readonly revealedFactions: readonly SpawnFactionView[];
 }
 
-export interface SpawnInfluenceDecision<M extends ControllerMemory = ControllerMemory> {
+export interface SpawnInfluenceDecision<
+  M extends ControllerMemory = ControllerMemory,
+> {
   readonly centers: readonly CellId[];
   readonly memory?: M;
   readonly debug?: readonly DebugItem[];
   readonly log?: string;
 }
 
-export interface SpawnOriginDecision<M extends ControllerMemory = ControllerMemory> {
+export interface SpawnOriginDecision<
+  M extends ControllerMemory = ControllerMemory,
+> {
   readonly origins: readonly CellId[];
   readonly memory?: M;
   readonly debug?: readonly DebugItem[];
@@ -611,7 +686,9 @@ export interface SpawnOriginDecision<M extends ControllerMemory = ControllerMemo
  * explicitly ended. Module/global state is not guaranteed to survive between
  * callbacks; use the explicit JSON-like memory object instead.
  */
-export interface OpenFufuController<M extends ControllerMemory = ControllerMemory> {
+export interface OpenFufuController<
+  M extends ControllerMemory = ControllerMemory,
+> {
   chooseInfluence?(
     context: SpawnInfluenceContext<M>,
   ): SpawnInfluenceDecision<M> | void;
