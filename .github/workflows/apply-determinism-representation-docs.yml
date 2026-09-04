@@ -20,7 +20,15 @@ jobs:
       - name: Apply accepted documentation specifications
         run: |
           sed -i 's/### 7.2 Terrain extension/### 7.2 Canonical terrain translation/' .github/scripts/apply_determinism_representation_docs.py
-          python .github/scripts/apply_determinism_representation_docs.py
+          if ! python .github/scripts/apply_determinism_representation_docs.py; then
+            echo '--- surviving stale phrase locations ---'
+            grep -R -n -F 'The exact hash/RNG representation is implementation/versioning detail' docs || true
+            grep -R -n -F 'exact deterministic controller-memory codec' docs || true
+            grep -R -n -F 'exact Segment generation/size heuristics' docs || true
+            grep -R -n -F 'rolled back on failure/rejection' docs || true
+            grep -R -n -F 'Low-level implementation/versioning details for the settled Strategic Spawn resolver' docs || true
+            exit 1
+          fi
 
       - name: Verify documentation-only diff
         run: |
