@@ -1,3 +1,8 @@
+// Documentation entry point: docs/official-ai/README.md
+// Specific owners: docs/official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md
+//                  docs/official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md
+// Gameplay owner:  docs/OFFICIAL_ORIGINS.md
+//
 // Open Fufu Official-AI named-Origin configuration.
 //
 // DESIGN-TIME SOURCE OF TRUTH.
