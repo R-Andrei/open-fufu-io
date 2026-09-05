@@ -9,6 +9,11 @@ import type { RuleAxisId } from "./RuleAxisRegistry";
 export type OriginTraitRuleClass = "DECLARATIVE" | "MIXED" | "CUSTOM";
 export type OriginTraitId = `P${string}` | `N${string}`;
 
+export const RULE_COMPONENT = {
+  HOSTILE_FORT_DEFENSIVE_PRESSURE: "HOSTILE_FORT_DEFENSIVE_PRESSURE",
+  FALLOUT_ACQUISITION_RESISTANCE: "FALLOUT_ACQUISITION_RESISTANCE",
+} as const;
+
 export interface OriginTraitRuleManifestEntry {
   readonly id: OriginTraitId;
   readonly classification: OriginTraitRuleClass;
@@ -201,6 +206,20 @@ const addCap = (
     "COUNT",
     value,
   );
+const suppress = (
+  id: OriginTraitId,
+  axis: RuleAxisId,
+  component: string,
+): RuleContribution =>
+  contribution(
+    id,
+    axis,
+    scope.global,
+    "COMPONENT_SUPPRESSION",
+    "SUPPRESS_COMPONENT",
+    "COMPONENT_SET",
+    component,
+  );
 const structural = (
   id: OriginTraitId,
   axis: RuleAxisId,
@@ -265,6 +284,13 @@ define(
   ],
   "The profile replacement is declarative; exact 30–70% curve anchors remain a Population-mechanics closure dependency.",
 );
+define("P03", "DECLARATIVE", [
+  suppress(
+    "P03",
+    "LAND_PRESSURE_SUPPRESSED_COMPONENTS",
+    RULE_COMPONENT.HOSTILE_FORT_DEFENSIVE_PRESSURE,
+  ),
+]);
 define("P04", "DECLARATIVE", [
   contribution(
     "P04",
@@ -326,12 +352,25 @@ define("P13", "DECLARATIVE", [
     3300,
   ),
 ]);
+define("P14", "DECLARATIVE", [
+  pct("P14", "FFY_EVENT_YIELD", scope.ffy("ALL"), 3300, {
+    kind: "EVENT_TERRAIN_IS",
+    terrain: "DESERT",
+  }),
+]);
 define("P15", "DECLARATIVE", [
   pct(
     "P15",
     "TERRAIN_OFFENSIVE_PRESSURE",
     scope.terrain("HIGHLAND"),
     3300,
+  ),
+]);
+define("P16", "DECLARATIVE", [
+  suppress(
+    "P16",
+    "ACQUISITION_SUPPRESSED_COMPONENTS",
+    RULE_COMPONENT.FALLOUT_ACQUISITION_RESISTANCE,
   ),
 ]);
 define("P18", "DECLARATIVE", [
@@ -540,6 +579,12 @@ define("N03", "DECLARATIVE", [
     scope.terrain("DESERT"),
     -3300,
   ),
+]);
+define("N04", "DECLARATIVE", [
+  pct("N04", "FFY_EVENT_YIELD", scope.ffy("ALL"), -5000, {
+    kind: "EVENT_TERRAIN_IS",
+    terrain: "MOUNTAIN",
+  }),
 ]);
 define("N05", "DECLARATIVE", [
   permission(
