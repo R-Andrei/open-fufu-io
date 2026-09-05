@@ -2,18 +2,19 @@
 
 ## Status and authority
 
-This document is the canonical design appendix for the **architecture of Open Fufu's Official PvE AI controllers**.
+This document is the **canonical owner for the architecture of Open Fufu's Official PvE AI controllers**.
 
-It complements:
+Neighboring concerns are owned separately:
 
-- `OPEN_FUFU_DESIGN.md` for game/controller rules;
-- `OFFICIAL_AI_CONFIGURATION.md` for the concrete shared Official-AI configuration vocabulary and object contracts;
-- `OFFICIAL_AI_ORIGIN_SUPPORT.md` for the generic Origin-trait support/composition/adaptation architecture;
-- `OFFICIAL_AI_PRESETS.md` for the character roster, difficulty targets, and allowed Origin pools;
-- `CONTROLLER_MEMORY.md` for persistent per-match controller memory;
-- the public `ControllerApi.ts` contract for legal observations and actions.
+- game/controller rules: [`../OPEN_FUFU_DESIGN.md`](../OPEN_FUFU_DESIGN.md);
+- concrete shared Official-AI configuration vocabulary and object contracts: [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md);
+- generic Origin-trait support/composition/adaptation: [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md);
+- character roster, difficulty targets, and allowed-Origin pools: [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md);
+- persistent per-match controller memory: [`../CONTROLLER_MEMORY.md`](../CONTROLLER_MEMORY.md);
+- public controller observations/actions: [`../../src/core/controller/ControllerApi.ts`](../../src/core/controller/ControllerApi.ts);
+- Echo reward accounting: [`../ECHO_CATALOGUE.md`](../ECHO_CATALOGUE.md).
 
-Nothing in this document authorizes gameplay implementation. It defines the accepted V1 Official-AI architecture. Trait-by-trait support mappings, Origin-level compositions, and character profiles are content/configuration work that must conform to this architecture.
+Trait-by-trait support mappings, Origin-level compositions, and character profiles are content/configuration concerns that conform to this architecture rather than being redefined here.
 
 ---
 
@@ -481,20 +482,13 @@ This tests transformed mechanics, planner legality, spawn behavior, and Origin-s
 
 ---
 
-## 11. Difficulty and rewards
+## 11. Difficulty interface
 
 Character presets use Difficulty `1..5`; Baseline AI uses Difficulty `0`.
 
-Reward accounting is:
+The preset roster owns the bound difficulty values and competence targets in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Difficulty is versioned preset metadata consumed by benchmarking and by other systems.
 
-```text
-ordinary qualifying opponent defeated → +1 Echo roll
-Official/Baseline AI difficulty bonus  → +difficulty Echo rolls
-```
-
-Therefore Baseline contributes `+1 ordinary +0 bonus`, while a Difficulty-5 character contributes `+1 ordinary +5 bonus`.
-
-Difficulty controls only the extra AI bonus and remains preset metadata/source-of-truth.
+Echo reward accounting may consume that bound difficulty, but **all reward arithmetic is owned exclusively by [`../ECHO_CATALOGUE.md`](../ECHO_CATALOGUE.md)**. This architecture does not restate or redefine the conversion formula.
 
 ---
 

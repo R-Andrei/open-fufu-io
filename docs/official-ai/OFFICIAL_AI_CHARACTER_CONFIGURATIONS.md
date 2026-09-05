@@ -14,7 +14,8 @@ That configuration file is authoritative for exact evaluator/planner tiers, Doct
 
 Neighboring authorities remain separate:
 
-- `OFFICIAL_AI_PRESETS.md` — roster, difficulty, allowed-Origin pools, rewards;
+- `OFFICIAL_AI_PRESETS.md` — roster, difficulty targets, and allowed-Origin pools;
+- `../ECHO_CATALOGUE.md` — Echo reward accounting;
 - `OFFICIAL_AI_CONFIGURATION.md` — generic `CharacterProfile` contract and shared vocabularies;
 - `OFFICIAL_AI_ORIGIN_SUPPORT.md` — generic Origin-support/adaptation contract;
 - `OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md` — named-Origin strategic rationale;

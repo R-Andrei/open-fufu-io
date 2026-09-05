@@ -141,6 +141,8 @@ Automation cannot prove that a numerical rebalance still matches character strat
 
 The repository must prefer **one canonical source of truth per concern**. Long but coherent single-purpose files are preferable to a collection of overlapping fragments.
 
+**One canonical owner per concern. Other documents should link to that owner only when they genuinely need to reference the concern; they must not restate its mechanics, exceptions, constants, migration caveats, or other authoritative detail.** A cross-reference is navigation, not a license to maintain a synchronized summary copy.
+
 ### Subsystem documentation gateways
 
 When a subsystem grows beyond a few tightly related documents, group its dedicated documents under one obvious directory and provide a `README.md` gateway that explains the subsystem, names the broad/father design document, maps each narrower concern to its canonical owner, and links to relevant code/configuration. Detailed child documents should point back to that gateway or father document, and code/configuration owners should point toward the documentation gateway.

@@ -1,28 +1,23 @@
-# Open Fufu — Provisional Official AI Preset Roster
+# Open Fufu — Canonical Official AI Preset Roster
 
 ## Status and authority
 
-This document is the **canonical content registry for the provisional V1 Official PvE AI preset roster**.
+This document is the **canonical owner for the V1 Official PvE AI preset roster, character identities, provisional difficulty targets, allowed-Origin pools, and seeded Origin-selection/reveal rules**.
 
-Official-AI work starts at [`README.md`](./README.md). The broad subsystem/father design is [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md).
+Official-AI work starts at [`README.md`](./README.md). Broad subsystem architecture is owned by [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md).
 
-Related canonical documents:
+Neighboring owners:
 
-- [`OPEN_FUFU_DESIGN.md`](../OPEN_FUFU_DESIGN.md) — game-design authority;
-- [`OPENFRONT_INTEGRATION_PLAN.md`](../OPENFRONT_INTEGRATION_PLAN.md) — migration/implementation authority;
-- [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md) — Official-AI architecture;
-- [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md) — shared AI configuration contract;
-- [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md) — generic Origin support/adaptation contract;
-- [`OFFICIAL_AI_TRAIT_SUPPORT.md`](./OFFICIAL_AI_TRAIT_SUPPORT.md) — trait-support rationale;
-- [`OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) — named-Origin AI rationale;
-- [`OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) — Baseline/character behavioral rationale;
-- [`OFFICIAL_ORIGINS.md`](../OFFICIAL_ORIGINS.md) — Official Origin content/mechanics;
-- [`ORIGIN_TRAIT_CATALOGUE.md`](../ORIGIN_TRAIT_CATALOGUE.md) — Origin trait mechanics/costs;
-- [`ECHO_CATALOGUE.md`](../ECHO_CATALOGUE.md) — generic Echo reward semantics.
+- shared AI configuration contract: [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md);
+- Origin support/adaptation: [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md);
+- exact trait-support rationale/configuration: [`OFFICIAL_AI_TRAIT_SUPPORT.md`](./OFFICIAL_AI_TRAIT_SUPPORT.md);
+- named-Origin AI rationale: [`OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md);
+- Baseline/character behavioral rationale: [`OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md);
+- Official Origin roster: [`../OFFICIAL_ORIGINS.md`](../OFFICIAL_ORIGINS.md);
+- Origin trait mechanics/costs: [`../ORIGIN_TRAIT_CATALOGUE.md`](../ORIGIN_TRAIT_CATALOGUE.md);
+- Echo reward accounting, including how bound AI difficulty affects rewards: [`../ECHO_CATALOGUE.md`](../ECHO_CATALOGUE.md).
 
 Exact code-readable AI mappings live under `design/official-ai/` and are not duplicated here.
-
-Nothing in this file authorizes gameplay implementation.
 
 Current content status:
 
@@ -55,31 +50,29 @@ difficulty: 1..5
 allowedOriginIds[]
 ```
 
-The AI profile defines **how the character thinks**. Its randomly selected allowed Official Origin defines the faction's mechanical toolbox for that match.
+The AI profile defines how the character thinks. Its randomly selected allowed Official Origin defines the faction's mechanical toolbox for that match.
 
 This separation is intentional:
 
 - one character retains a recognizable controller/personality across matches;
-- the character does not always expose one predictable Origin that humans can hard-counter before the match;
+- the character does not always expose one predictable Origin that humans can counter-build before the match;
 - multiple characters may share Origins;
 - one Origin may fit unrelated characters for different thematic/mechanical reasons;
-- the controller must be able to exploit every Origin in the character's pool coherently without becoming a different character.
+- the controller must exploit every Origin in its pool coherently without becoming a different character.
 
-Official AI obeys all ordinary game rules and uses ordinary legal Origins from the same public Origin system as humans. Difficulty comes from controller competence, not hidden simulation bonuses or privileged Origin mechanics.
+Official AI obeys ordinary game rules and uses ordinary legal Origins from the same public Origin system as humans. Difficulty is controller competence, not a hidden simulation bonus or privileged Origin mechanic.
 
 ### Difficulty-0 Baseline AI
 
 Open Fufu also has one generic **Difficulty 0 Baseline AI**.
 
-It is not a character preset and is not part of the 20-character roster or its Origin-pool table.
-
-Baseline is the default first-match opponent and the initial capability-benchmark reference. Its configuration uses the same shared AI architecture but is intentionally generic and substantially less sophisticated than the character presets.
+It is not a character preset and is not part of the 20-character roster or its Origin-pool table. Baseline is the default first-match opponent and initial capability-benchmark reference. Its configuration uses the same shared AI architecture but is intentionally generic and substantially less sophisticated than the character presets.
 
 The exact Baseline `CharacterProfile` is canonical in `design/official-ai/character-configurations.config.ts`.
 
 ---
 
-## Origin selection and reveal timing — hard V1 rule
+## Origin selection and reveal timing
 
 Use this order:
 
@@ -98,13 +91,13 @@ Selection rules:
 - no map-conditioned Origin selector exists;
 - no character/controller logic chooses which allowed Origin it receives;
 - selection is deterministic from versioned match state for replayability;
-- the selected Origin does not change preset difficulty/reward identity.
+- selected Origin does not change the preset's bound difficulty.
 
-After selection, the controller uses the canonical support/adaptation architecture from `OFFICIAL_AI_ORIGIN_SUPPORT.md` to understand and exploit the rolled Origin.
+After selection, the controller uses the canonical support/adaptation architecture to understand and exploit the rolled Origin.
 
 ---
 
-## Difficulty targets and Echo rewards
+## Difficulty targets
 
 | Difficulty | Target controller behavior |
 | ---: | --- |
@@ -116,32 +109,7 @@ After selection, the controller uses the canonical support/adaptation architectu
 
 Difficulty describes controller competence and difficulty to defeat, not lore power, morality, visual harmlessness, age, or canonical combat strength.
 
-### Difficulty bonus is separate from ordinary opponent loot
-
-Every qualifying defeated opponent contributes:
-
-```text
-ordinary opponent defeat = +1 Echo roll
-```
-
-An Official/Baseline AI additionally contributes:
-
-```text
-AI difficulty bonus = +difficulty Echo rolls
-```
-
-Therefore:
-
-```text
-Baseline D0 → +1 ordinary +0 bonus = 1 total
-D1          → +1 ordinary +1 bonus = 2 total
-D2          → +1 ordinary +2 bonus = 3 total
-D3          → +1 ordinary +3 bonus = 4 total
-D4          → +1 ordinary +4 bonus = 5 total
-D5          → +1 ordinary +5 bonus = 6 total
-```
-
-Difficulty controls only the extra AI bonus. Do not maintain an independent per-character Echo-bonus table.
+Difficulty is a versioned preset field consumed by other systems. **Reward arithmetic is not owned here**; `ECHO_CATALOGUE.md` defines how the bound difficulty participates in Echo reward accounting. No independent per-character reward-bonus field/table exists in this roster.
 
 ---
 
@@ -172,14 +140,14 @@ Difficulty controls only the extra AI bonus. Do not maintain an independent per-
 
 ### Bocchi pool rationale
 
-Bocchi intentionally uses a **small four-Origin pool** rather than a broad generic one:
+Bocchi intentionally uses a small four-Origin pool rather than a broad generic one:
 
-- **Bocchi Time (O14)** — her own split-start identity; produces two defensive homelands and meaningful split-front anxiety;
-- **Kessoku Band (O15)** — Fort/Command-Post cross-support directly reinforces her defensive infrastructure behavior;
-- **Section 9 (O17)** — concealment and information denial reinforce her preference for safety, low exposure, and prepared defense;
-- **Everything Will Turn to Ash (O33)** — supplies the P35 scorched-earth/Fallout fallback capability used by her character-specific defensive adaptation.
+- **Bocchi Time (O14)** — split-start identity fitting defensive split-front anxiety;
+- **Kessoku Band (O15)** — infrastructure-support identity fitting her defensive construction behavior;
+- **Section 9 (O17)** — concealment/information-denial identity fitting low exposure and prepared defense;
+- **Everything Will Turn to Ash (O33)** — scorched-earth/Fallout-capable fallback identity fitting her defensive adaptation.
 
-Origin selection remains uniform, so O33 appears in **25%** of Bocchi matches. Fallout is therefore a recognizable conditional part of her defensive repertoire, not a universal mechanic she receives regardless of Origin. `Gemini` and `Light Music Club` are removed from her pool because their strategic identity is less central and their inclusion diluted the intentionally authored defensive variants.
+Origin selection is uniform, so each of those four roster entries has the same selection probability. The actual Origin mechanics remain owned by the Origin documents rather than this rationale.
 
 Target distribution:
 
@@ -191,14 +159,14 @@ Difficulty 4: 6 presets
 Difficulty 5: 3 presets
 ```
 
-The Difficulty-0 Baseline AI is not counted.
+The Difficulty-0 Baseline is not counted.
 
 ---
 
 ## Pool rules
 
 - A preset must have at least one legal active Official Origin.
-- Allowed-Origin IDs are a **set**: no duplicates.
+- Allowed-Origin IDs are a set: no duplicates.
 - Pools should normally contain several mechanically meaningful alternatives so the preset cannot be perfectly counter-built before Origin selection.
 - Pool sizes need not be equal across characters.
 - Origins may be shared across any number of presets.
@@ -210,15 +178,15 @@ The Difficulty-0 Baseline AI is not counted.
 
 ## Concrete content work still open
 
-The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, all 20 character `CharacterProfile`s, and the character quirk/signature pass are closed for the current V1 design.
+The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, all 20 character `CharacterProfile`s, and character quirk/signature pass are closed for the current V1 design.
 
 Remaining work proceeds in this order:
 
 1. run the complete 20-character cross-profile and character × allowed-Origin consistency audit;
 2. benchmark each character against its authored capability target;
 3. benchmark thematic/fidelity/signature behavior separately;
-4. version/hash final preset/controller/Origin configuration for match/replay/reward records.
+4. version/hash final preset/controller/Origin configuration for match/replay records.
 
-Signature behavior must use existing character-owned Expression/Goal/Arbiter/Persistence surfaces where possible. It must not create gameplay mechanics, Origin semantics, or a new shared subsystem merely to support personality when the existing architecture can represent the behavior.
+Signature behavior should use existing character-owned Expression/Goal/Arbiter/Persistence surfaces where possible. It must not create gameplay mechanics, Origin semantics, or a new shared subsystem merely to support personality when the existing architecture can represent the behavior.
 
-The roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, provisional difficulty targets, additive difficulty-bonus reward rule, and generic Official-AI architecture/configuration are accepted V1 direction.
+The roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, and provisional difficulty targets are accepted V1 content direction. Echo reward behavior is owned exclusively by `ECHO_CATALOGUE.md`.

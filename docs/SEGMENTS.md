@@ -2,11 +2,9 @@
 
 ## Status and authority
 
-This file is the **canonical detailed V1 specification for immutable strategic Segment generation, membership, sizing policy, connectivity, IDs, compilation, and validation**.
+This file is the **canonical V1 owner for the Segment concept: purpose, generation, membership, sizing policy, connectivity, IDs, compilation, runtime behavior, and validation**.
 
-[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains authoritative for the overall spatial ontology and the rule that Segments are a strategy/query lens rather than simulation physics. [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) governs implementation.
-
-Nothing in this file authorizes gameplay implementation.
+[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) owns the surrounding game-wide spatial model; [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) owns migration work needed to implement this contract. Neither redefines Segment mechanics.
 
 ---
 

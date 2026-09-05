@@ -1,16 +1,16 @@
 # Open Fufu — Authentication, Identity, Sessions, and External Provisioning
 
-## Status
+## Status and authority
 
-This document is the canonical V1 appendix for Open Fufu authentication, external identity linkage, browser sessions, and the machine-to-machine identity-provisioning boundary.
+This document is the **canonical V1 owner for Open Fufu authentication, external identity linkage, browser sessions, browser-origin/CSRF requirements, WebSocket authentication, and the machine-to-machine identity-provisioning boundary**.
 
-It is subordinate to [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) and is implemented through the migration direction in [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md).
+[`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) owns migration work around this contract; it does not redefine the authentication/session rules below. [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) owns game-wide architecture outside this concern.
 
-The central architectural rule is:
+The central rule is:
 
 > **Open Fufu authenticates external identities and recognizes identities that have already been provisioned to it. Open Fufu does not decide who should be admitted and does not reproduce the policy by which an external system chose to provision or revoke an identity.**
 
-Open Fufu must remain a standalone service. Fufubox, Fufu Control, Foof, a future identity/administration service, or a manual operator tool may provision identities, but none of those systems is a runtime dependency of normal Open Fufu login, sessions, matches, persistence, or replay.
+Open Fufu remains a standalone service. Fufubox, Fufu Control, Foof, a future identity/administration service, or a manual operator tool may provision identities, but none of those systems is a runtime dependency of normal Open Fufu login, sessions, matches, persistence, or replay.
 
 ---
 
@@ -32,17 +32,16 @@ local game account/session
     Open Fufu concern
 ```
 
-Open Fufu intentionally does **not** model concepts such as:
+Open Fufu intentionally does **not** model:
 
-- Fufubox users or Unix users;
+- Fufubox/Unix users;
 - Fufu Control roles;
 - Foof permissions;
 - firewall/network grants;
-- why a person was approved;
-- who approved a person;
-- an `isApproved` game-account field whose value recreates an external authorization policy.
+- approval reason or approver identity;
+- a local `isApproved` field that recreates external admission policy.
 
-The only local admission fact Open Fufu needs is whether a successfully authenticated external identity currently maps to an active local `linked_identities` record.
+The only local admission fact Open Fufu needs is whether a successfully authenticated external identity maps to an active local `linked_identities` record.
 
 ---
 
@@ -72,19 +71,15 @@ subject  = stable Discord numeric user ID as a decimal string
 
 Mutable usernames, display names, server nicknames, emails, avatars, or other presentation fields are never authentication identifiers.
 
-The provisioner is **not** the identity provider. Fufu Control, Foof, or another external system may provision `discord:123...`, but Open Fufu still authenticates that browser as `discord:123...` through its own Discord OAuth adapter.
+The provisioner is not the identity provider. An external system may provision `discord:123...`; Open Fufu still authenticates that browser through its own Discord identity-provider adapter.
 
 ---
 
 ## 3. External provisioning boundary
 
-### 3.1 Admission policy stays outside the game
+### 3.1 Admission policy stays outside Open Fufu
 
-An external authority decides whether an identity should exist in Open Fufu.
-
-Today that decision may be informed by Fufubox/Fufu Control/Foof state. A future deployment may use a completely different system. Open Fufu neither knows nor cares.
-
-The dependency direction is one-way:
+An external authority decides whether an identity should exist in Open Fufu. The dependency direction is one-way:
 
 ```text
 Fufu Control ───────┐
@@ -95,11 +90,11 @@ manual admin tool ──┘
 Open Fufu does not call those systems during login.
 ```
 
-Open Fufu never reads an external system's database directly and external systems never write Open Fufu's SQLite database directly.
+Open Fufu never reads an external authority's database directly, and external systems never write Open Fufu SQLite directly.
 
 ### 3.2 V1 integration endpoints
 
-V1 exposes a deliberately small machine-to-machine provisioning surface:
+V1 exposes:
 
 ```text
 POST /api/integration/v1/identities/provision
@@ -108,7 +103,7 @@ POST /api/integration/v1/identities/revoke
 
 These endpoints are separate from ordinary browser/user APIs.
 
-A provisioning request contains only identity data plus an optional non-authoritative display-name hint:
+A provisioning request contains identity data plus an optional non-authoritative display-name hint:
 
 ```json
 {
@@ -118,68 +113,48 @@ A provisioning request contains only identity data plus an optional non-authorit
 }
 ```
 
-The display-name hint is used only when creating a new local user and is never an authorization fact. Open Fufu owns its game-facing display name thereafter.
+The hint is used only when creating a new local user and is never an authorization fact. Open Fufu owns its game-facing display name thereafter.
 
 ### 3.3 Provision semantics
 
-Provision is idempotent.
+Provision is idempotent:
 
-If the identity has never existed:
+- never-seen identity → create local user + linked identity and return that user;
+- already-active identity → return the existing user;
+- revoked identity → reactivate the same linked identity and same user/progression.
 
-```text
-create Open Fufu user
-create linked identity
-return existing/new user public ID
-```
-
-If the identity already exists and is active:
-
-```text
-return the existing Open Fufu user
-```
-
-If the identity exists but was revoked:
-
-```text
-reactivate the same linked identity
-retain the same Open Fufu user/progression
-return that existing user
-```
-
-A successful browser OAuth callback **never** creates an Open Fufu user. Account creation occurs only through this external provisioning boundary.
+A successful browser OAuth callback **never** creates an Open Fufu user. Account creation occurs only through this provisioning boundary.
 
 ### 3.4 Revoke semantics
 
-Revocation marks that external identity inactive and invalidates all currently active Open Fufu sessions for the linked user.
+Revocation marks that external identity inactive and invalidates active Open Fufu sessions for the linked user.
 
 Revocation does **not** delete the user, controller versions, Origins, Echoes, progression, match history, or other game records. Re-provisioning the same provider/subject restores access to the same local account.
 
-If future accounts may have multiple active login identities, revoking one identity removes that login path; session invalidation remains conservative and may close all sessions for the user.
+If future accounts support multiple login identities, revoking one removes that login path; session invalidation may conservatively close all sessions for the user.
 
 ### 3.5 Integration-client authentication
 
-The provisioning API requires an Open-Fufu-owned machine credential; browser sessions cannot invoke it.
+Browser sessions cannot invoke the provisioning API.
 
-V1 uses one or more named **opaque 256-bit bearer credentials** supplied through private runtime secret configuration. Credentials are:
+V1 uses one or more named **opaque 256-bit bearer credentials** from private runtime secret configuration. They are:
 
 - independent from Discord OAuth credentials;
-- independent from browser session tokens;
+- independent from browser sessions;
 - independent from Fufu/Foof service credentials;
 - never committed to Git;
-- individually replaceable by deployment configuration;
-- used only for the narrow integration surface.
+- individually replaceable;
+- scoped to the integration surface.
 
-Open Fufu may log the integration-client label that performed provision/revoke for operational audit, but it does not receive or persist the external system's approval rationale, role model, or policy state.
+Open Fufu may log the integration-client label for operational audit but does not ingest the caller's approval rationale, roles, or policy state.
 
-V1 does not need an Open-Fufu service-principal/role database merely to authenticate this tiny provisioning API. If broader machine-to-machine APIs later justify first-class service principals, that can be added without changing the identity model.
+V1 does not require a service-principal/role database merely for these two endpoints.
 
 ---
 
 ## 4. Identity-provider adapter boundary
 
-Open Fufu keeps browser identity proof behind a small provider adapter rather than making the rest of the application Discord-specific.
-
-Conceptually:
+Browser identity proof sits behind a replaceable provider adapter:
 
 ```ts
 interface IdentityProvider {
@@ -188,7 +163,7 @@ interface IdentityProvider {
 }
 ```
 
-The rest of the application sees only `ExternalIdentity`.
+The rest of the application consumes only `ExternalIdentity`.
 
 V1 ships one production adapter:
 
@@ -197,26 +172,26 @@ Discord OAuth2
 → { provider: "discord", subject: "<stable Discord user ID>" }
 ```
 
-A future OIDC/Entra/custom provider may add another adapter without changing account, controller, match, progression, or session tables.
+Future OIDC/Entra/custom providers may add adapters without changing account, controller, match, progression, or session ownership.
 
-Provision requests must name a provider that the deployed Open Fufu build/configuration recognizes. V1 therefore provisions ordinary login identities under `discord` only.
+Provision requests must name a provider recognized by the deployed build/configuration. V1 ordinary login provisioning therefore uses `discord`.
 
 ---
 
-## 5. Discord OAuth2 login — Accepted V1
+## 5. Discord OAuth2 login — V1
 
-Use a server-side Authorization Code flow with:
+Use server-side Authorization Code flow with:
 
-- minimum identity scope required to retrieve the stable Discord user ID;
+- the minimum identity scope required to retrieve stable Discord user ID;
 - cryptographically random OAuth `state`;
 - PKCE/S256;
 - server-side code exchange;
-- a validated local-relative return path only;
-- short-lived transient OAuth state/verifier storage, maximum 10 minutes.
+- validated local-relative return path only;
+- short-lived transient OAuth state/verifier storage, maximum **10 minutes**.
 
-OAuth transient cookies/state are not account sessions and need no database table.
+OAuth transient state/cookies are not account sessions and require no persistent session table of their own.
 
-After the callback:
+Callback flow:
 
 ```text
 Discord proves external identity
@@ -228,19 +203,15 @@ not found  → deny access
 revoked    → deny access
 ```
 
-Discord access/refresh credentials are not retained as long-term Open Fufu credentials. Open Fufu uses the provider result to establish the external identity, then relies on its own local session.
+Discord access/refresh credentials are not retained as long-term Open Fufu credentials.
 
-A Discord outage may prevent establishing a new Discord-backed login but must not interrupt an already established Open Fufu session or a running match.
+A Discord outage may prevent establishing a new Discord-backed login but must not interrupt an already established Open Fufu session or running match.
 
 ---
 
 ## 6. Local account linkage
 
-Open Fufu game data uses its own internal `users.id` and externally surfaced random `users.public_id`.
-
-Do not use the Discord ID as a universal game-data primary key.
-
-The mapping is:
+Open Fufu game data uses internal `users.id` and externally surfaced random `users.public_id` rather than provider IDs as universal keys.
 
 ```text
 (provider, subject)
@@ -256,11 +227,9 @@ Why the identity was provisioned is not represented in this chain.
 
 ---
 
-## 7. Browser session model — Accepted V1
+## 7. Browser session model — V1
 
-V1 does not carry forward the inherited refresh-cookie → short-JWT browser architecture.
-
-Use one opaque Open Fufu session token:
+V1 uses one opaque Open Fufu session token rather than the inherited refresh-cookie → short-JWT browser chain:
 
 ```text
 256-bit cryptographically random token
@@ -275,7 +244,7 @@ internal users.id
 There is:
 
 - no Open Fufu JWT requirement;
-- no Open Fufu refresh-token hierarchy;
+- no refresh-token hierarchy;
 - no bearer token in `localStorage`;
 - no need to expose the raw session token to JavaScript.
 
@@ -292,23 +261,19 @@ no Domain attribute
 Max-Age=2592000
 ```
 
-The V1 lifetime is a **30-day absolute TTL**. It does not slide on every request and therefore does not require `last_seen` writes.
+V1 uses a **30-day absolute TTL**. It does not slide on every request and therefore requires no `last_seen` write merely to extend expiry.
 
-Multiple browsers/devices may hold independent sessions.
-
-Logout revokes the current session and clears the cookie. A logout-all operation revokes all sessions belonging to the user.
+Multiple browsers/devices may hold independent sessions. Logout revokes the current session; logout-all revokes all user sessions.
 
 ### 7.2 Session persistence
 
-SQLite stores only the SHA-256 digest/verifier of the high-entropy raw session token.
-
-Expired or revoked session rows are operational state rather than permanent account history and may be removed by routine cleanup.
+SQLite stores only the SHA-256 verifier of the raw high-entropy session token. Expired/revoked session rows are operational state and may be removed by routine cleanup.
 
 ---
 
 ## 8. CSRF and browser-origin rules
 
-Authenticated browser mutations require defense in depth:
+Authenticated browser mutations require:
 
 ```text
 valid session cookie
@@ -326,19 +291,17 @@ The browser-visible CSRF token may be derived from the raw session token with a 
 base64url(HMAC-SHA256(csrfHmacKey, rawSessionToken))
 ```
 
-A session/bootstrap endpoint may return that CSRF token to the authenticated frontend, which keeps it in memory and sends it as `X-Open-Fufu-CSRF` for state-changing HTTP requests.
+A session/bootstrap endpoint may return that CSRF value to the authenticated frontend, which keeps it in memory and sends it on state-changing HTTP requests.
 
-`GET`, `HEAD`, and `OPTIONS` remain non-mutating.
-
-V1 does not expose a credentialed cross-origin browser API. SameSite is defense in depth, not the sole CSRF control.
+`GET`, `HEAD`, and `OPTIONS` remain non-mutating. V1 exposes no credentialed cross-origin browser API. SameSite is defense in depth, not the sole CSRF mechanism.
 
 ---
 
 ## 9. WebSocket authentication
 
-Do not put JWTs, Discord credentials, or session tokens into WebSocket query strings.
+Do not put JWTs, Discord credentials, or session tokens in WebSocket query strings.
 
-On WebSocket upgrade:
+Upgrade flow:
 
 ```text
 browser sends Open Fufu session cookie
@@ -352,15 +315,13 @@ socket binds internal user/session identity
 
 SQLite is not queried for every WebSocket message. After upgrade, ordinary authorization uses the established internal identity plus lobby/match/resource ownership state.
 
-Revoking a known session should close any live sockets bound to it where the gateway can do so.
+Revoking a known session should close live sockets bound to it where the gateway can do so.
 
 ---
 
 ## 10. Authorization inside Open Fufu
 
 A client-supplied user/resource ID never proves authority.
-
-The server derives the actor from the authenticated session and separately checks ownership/membership:
 
 ```text
 session → users.id
@@ -369,27 +330,25 @@ resource.user_id / match membership → authorization
 
 Request bodies cannot assert a canonical actor or role.
 
-Match child processes receive only internal game-facing participant identity/configuration. They never receive Discord tokens, OAuth transient state, browser session cookies, integration credentials, or external-system policy data.
+Match child processes receive only internal game-facing participant identity/configuration. They never receive Discord tokens, OAuth transient state, browser session cookies, integration credentials, or external admission-policy data.
 
 ---
 
 ## 11. Portability and deployment independence
 
-Normal Open Fufu operation requires only Open Fufu's own runtime dependencies:
+Normal operation requires Open Fufu's own runtime inputs:
 
 ```text
 application build
 SQLite database
 map/rules/content data
-Discord OAuth credentials for the V1 login adapter
+Discord OAuth credentials for the V1 provider adapter
 Open Fufu private secrets/configuration
 ```
 
-Moving Open Fufu from Fufubox to another host must not require moving Fufu Control or Foof with it.
+Moving Open Fufu to another host must not require moving Fufu Control or Foof with it.
 
-External provisioners only need the new Open Fufu integration endpoint and an Open Fufu integration credential. A different administrative system can replace the previous provisioner without migrating game logic or account data.
-
-Network/firewall restrictions remain deployment defense in depth and are deliberately outside this application-level identity contract.
+External provisioners only need the Open Fufu integration endpoint and an Open Fufu integration credential. Network/firewall restrictions remain deployment defense in depth and are outside this application identity contract.
 
 ---
 
