@@ -180,6 +180,26 @@ function capAxis(
   };
 }
 
+function componentSuppressionAxis(
+  id: string,
+  scopeKind: RuleScopeKind,
+): RuleAxisDefinition {
+  return {
+    id,
+    kind: "COMPONENT_SET",
+    unit: "COMPONENT_SET",
+    scopeKind,
+    stages: [
+      {
+        id: "COMPONENT_SUPPRESSION",
+        reducer: "UNION",
+        allowedOperators: ["SUPPRESS_COMPONENT"],
+      },
+    ],
+    allowedSourceKinds: STATIC_RULE_SOURCES,
+  };
+}
+
 function structuralAxis(
   id: string,
   scopeKind: RuleScopeKind,
@@ -235,6 +255,10 @@ export const RULE_AXIS_REGISTRY = {
     "GLOBAL",
     { contextual: true },
   ),
+  ACQUISITION_SUPPRESSED_COMPONENTS: componentSuppressionAxis(
+    "ACQUISITION_SUPPRESSED_COMPONENTS",
+    "GLOBAL",
+  ),
   GLOBAL_OFFENSIVE_PRESSURE: standardScalarAxis(
     "GLOBAL_OFFENSIVE_PRESSURE",
     "RATIO",
@@ -246,6 +270,10 @@ export const RULE_AXIS_REGISTRY = {
     "RATIO",
     "GLOBAL",
     { contextual: true },
+  ),
+  LAND_PRESSURE_SUPPRESSED_COMPONENTS: componentSuppressionAxis(
+    "LAND_PRESSURE_SUPPRESSED_COMPONENTS",
+    "GLOBAL",
   ),
   COUNTER_RESPONSE_EFFECTIVENESS: standardScalarAxis(
     "COUNTER_RESPONSE_EFFECTIVENESS",
@@ -339,7 +367,7 @@ export const RULE_AXIS_REGISTRY = {
   ),
   STRUCTURE_REPAIR_RATE: standardScalarAxis(
     "STRUCTURE_REPAIR_RATE",
-    "RATIO",
+    "HEALTH_PER_SECOND",
     "STRUCTURE",
   ),
   STRUCTURE_OBSERVATION_RADIUS: standardScalarAxis(
@@ -385,7 +413,11 @@ export const RULE_AXIS_REGISTRY = {
   ),
   UNIT_ATTACK_RANGE: standardScalarAxis("UNIT_ATTACK_RANGE", "CELLS", "UNIT"),
   UNIT_DAMAGE: standardScalarAxis("UNIT_DAMAGE", "DAMAGE", "UNIT"),
-  UNIT_MAX_HEALTH: standardScalarAxis("UNIT_MAX_HEALTH", "DAMAGE", "UNIT"),
+  UNIT_MAX_HEALTH: standardScalarAxis(
+    "UNIT_MAX_HEALTH",
+    "HEALTH_POINTS",
+    "UNIT",
+  ),
   UNIT_BUILD_PERMISSION: permissionAxis("UNIT_BUILD_PERMISSION", "UNIT"),
   UNIT_OWNERSHIP_CAP: capAxis("UNIT_OWNERSHIP_CAP", "UNIT"),
   UNIT_MAX_RANK: capAxis("UNIT_MAX_RANK", "UNIT", { additive: true }),
