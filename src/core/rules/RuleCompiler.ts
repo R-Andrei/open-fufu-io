@@ -70,6 +70,7 @@ function exclusiveSameKindCondition(
   switch (a.kind) {
     case "SOURCE_TERRAIN_IS":
     case "TARGET_TERRAIN_IS":
+    case "EVENT_TERRAIN_IS":
     case "BUILD_TERRAIN_IS":
       return b.kind === a.kind && a.terrain !== b.terrain;
     case "TARGET_UNIT_IS":
