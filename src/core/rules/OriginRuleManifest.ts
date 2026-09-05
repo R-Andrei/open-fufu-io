@@ -249,6 +249,22 @@ function define(
   });
 }
 
+define("P01", "DECLARATIVE", [
+  pct("P01", "INITIAL_TERRITORY_QUOTA", scope.global, 1500),
+]);
+define(
+  "P02",
+  "MIXED",
+  [
+    structural(
+      "P02",
+      "POPULATION_GROWTH_UTILIZATION_PROFILE",
+      scope.global,
+      "ORIGIN_P02_30_70",
+    ),
+  ],
+  "The profile replacement is declarative; exact 30–70% curve anchors remain a Population-mechanics closure dependency.",
+);
 define("P04", "DECLARATIVE", [
   contribution(
     "P04",
