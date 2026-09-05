@@ -2,11 +2,9 @@
 
 ## Status and authority
 
-This file is the **canonical detailed V1 specification for persistent player-controller memory representation, validation, serialization, lifecycle, and commit semantics**.
+This file is the **canonical V1 owner for persistent player-controller memory representation, validation, serialization, lifecycle, and commit semantics**.
 
-[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains authoritative for the overall controller model and failure semantics. [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) governs implementation. `src/core/controller/ControllerApi.ts` defines the public TypeScript shape.
-
-Nothing in this file authorizes gameplay implementation.
+[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) owns the surrounding controller architecture; [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) owns migration/runtime wiring; [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) owns the public TypeScript shape. None of those redefine the memory semantics below.
 
 ---
 
