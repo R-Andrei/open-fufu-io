@@ -1,26 +1,44 @@
 # Open Fufu documentation map
 
-This directory contains canonical design, implementation, API, subsystem, and catalogue documentation. Do not treat every file here as an unrelated standalone document: follow subsystem gateways and ownership links before editing a system.
+Use this file to find the canonical owner of a concern. It is navigation only; it does not restate subsystem rules. Repository-wide ownership policy is defined in [`../AGENTS.md`](../AGENTS.md).
 
-## Major entry points
+## Canonical target owners
 
-- [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) — canonical target game-design contract.
-- [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) — canonical migration/implementation direction from inherited OpenFront.
-- [`official-ai/README.md`](./official-ai/README.md) — **Official PvE AI subsystem gateway**. Start here for Official-AI architecture, configuration, Origin support, preset pools, character profiles, or design-time AI config work.
-- [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) — canonical Official-Origin roster/content.
-- [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) — canonical Origin-trait mechanics/cost catalogue.
-- [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) — Echo mechanics/content catalogue.
+| Concern | Canonical owner |
+| --- | --- |
+| High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
+| OpenFront → Open Fufu migration and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
+| Combat/capture/counter-response tuning | [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
+| Terrain, persistent structures, Tanks, and structure-bound unit profiles | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
+| Naval units and strategic weapons | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
+| FFY economy, Trains, Trade Ships, payouts, and economic source families | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
+| Strategic Spawn | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
+| Segments | [`SEGMENTS.md`](./SEGMENTS.md) |
+| Controller persistent memory | [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md) |
+| Controller public TypeScript surface | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
+| Authentication, identity, sessions, and provisioning boundary | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
+| Origin trait mechanics/cost catalogue | [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) |
+| Official Origin roster/content | [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
+| Echo identities, acquisition, rewards, progression, naming, and Gacha | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
+| Official PvE AI subsystem | [`official-ai/README.md`](./official-ai/README.md) |
+| Minor Factions / Goons | [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md) |
 
-Other focused documents such as controller memory, strategic spawn, terrain/structures, naval/strategic weapons, economy, segments, identity/auth, API, and persistence-related design own their named concerns and should link back to broader owners where relevant.
+## Known target-documentation gap
 
-## Subsystem-folder rule
+Open Fufu's external/browser/game service API and participant protocol do not yet have a canonical target contract. The inherited [`API.md`](./API.md) is not that owner. This gap is intentionally tracked for the next architecture batch rather than filled by scattered additions to unrelated documents.
 
-When a subsystem accumulates several dedicated documents, prefer a directory with a `README.md` gateway instead of adding an indefinitely growing family of similarly named files to this root. The gateway should:
+## Inherited/current-state references
 
-1. identify the broad/father design document;
-2. map narrower concerns to one canonical owner each;
-3. link to exact code/configuration owners;
-4. identify relevant neighboring gameplay/system authorities outside the folder;
-5. provide task-specific reading trails when cross-document synchronization is important.
+These describe inherited OpenFront behavior or historical implementation context. They are useful migration evidence but are not Open Fufu target authorities:
 
-The gateway is navigation, not a duplicate rules document. Repository-wide requirements for canonical ownership, stale-reference audits, and cross-layer synchronization are defined in [`../AGENTS.md`](../AGENTS.md).
+- [`API.md`](./API.md)
+- [`Architecture.md`](./Architecture.md)
+- [`Auth.md`](./Auth.md)
+- [`GameServerRefactor.md`](./GameServerRefactor.md)
+- [`Maps.md`](./Maps.md)
+
+## Subsystem gateways
+
+A subsystem that grows into several independently owned documents may use a directory `README.md` as an ownership/navigation gateway. A gateway must not duplicate mechanics from its child documents.
+
+The current example is [`official-ai/README.md`](./official-ai/README.md).
