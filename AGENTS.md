@@ -16,6 +16,127 @@ These instructions apply to automated coding/documentation agents working in thi
 
 GitHub automation may delete merged pull-request branches automatically. Agents must still follow the policy above for non-PR temporary branches and for any cleanup case the automation does not cover.
 
+## Three-layer gameplay/Origin/character-AI synchronization invariant
+
+Open Fufu has three strategically coupled design/runtime layers that must remain synchronized:
+
+```text
+GAMEPLAY / MECHANICS LAYER
+  core rules, formulas, numerical balance, structures, units, terrain,
+  economy, combat, strategic weapons, visibility, etc.
+
+ORIGIN LAYER
+  Origin traits and drawbacks, Official Origin compositions,
+  trait AI support, combination/suppression support, named-Origin assertions
+
+CHARACTER AI LAYER
+  Official-AI presets, CharacterProfiles, Origin adaptation,
+  character-specific hooks, capability/fidelity expectations and tests
+```
+
+A change originating in **any one** of these layers requires an explicit impact inspection of **all three layers in both directions** before the change is complete.
+
+This is a mandatory review rule, not an assumption that every change must edit all three layers. `reviewed — no change required` is a valid outcome. Failing to perform the review is not.
+
+### Bidirectional rule
+
+Never reason only downstream.
+
+```text
+mechanic change
+  → inspect trait/Origin semantics and support
+  → inspect character valuation/adaptation
+
+Origin/trait change
+  → inspect whether underlying mechanics still support the intended rule cleanly
+  → inspect every affected character/preset/adaptation
+
+character-AI change
+  → inspect whether the requested behavior really belongs in character logic
+  → inspect whether it exposes a missing generic Origin-support concept
+  → inspect whether it reveals a mechanics/rules problem that should be fixed lower down
+```
+
+A character-specific workaround must not silently compensate for a broken or incomplete mechanic/Origin abstraction. Conversely, a mechanically legal change must not be assumed strategically neutral to Origin support or character reasoning.
+
+### Changes that trigger the audit
+
+Perform the three-layer inspection when adding, removing, or changing any of the following, including but not limited to:
+
+- core gameplay mechanics or formulas;
+- numerical balance values that can change strategic value, timing, risk, payoff, range, cost, throughput, damage, growth, capacity, cooldown, coverage, or opportunity cost;
+- structures, units, terrain behavior, economy sources, combat/capture rules, strategic weapons, visibility/information rules, spawn rules, or controller-visible mechanics;
+- Origin traits/drawbacks or their numerical/mechanical semantics;
+- Official Origin trait composition or roster entries;
+- Origin trait AI-support mappings;
+- Origin combination-support or support-suppression rules;
+- named-Origin AI assertions/support;
+- Official-AI allowed-Origin pools;
+- CharacterProfile evaluator/planner capability;
+- Doctrine, Goal generation, arbitration, persistence, Expression, or Origin-adaptation behavior;
+- character-specific trait/Origin overrides or hooks;
+- a new Official AI preset/character;
+- removal/retirement of any mechanic, trait, Origin, or preset.
+
+Purely numerical changes **still require the audit**. They do not automatically require AI configuration edits, but a number can cross a strategic threshold or materially change how much a character should value a mechanic. For example, changing cost, range, reload, growth, payout, or coverage may alter an Origin's strategic theme or make an existing character preference irrational even though all type-level mechanics remain unchanged.
+
+### Required cross-layer impact checklist
+
+For every triggering change, explicitly inspect and account for:
+
+1. **Gameplay/mechanics owner**
+   - Is the authoritative rule/formula/value correct?
+   - Did legality, timing, scale, opportunity cost, interaction, or public information change?
+   - Are related mechanics/tests/docs still accurate?
+
+2. **Origin/trait layer**
+   - Do affected trait mechanics/costs/descriptions still match the game rule?
+   - Do `origin-trait-support.config.ts` themes, affordances, cautions, tags, hooks, combinations, and suppressions still describe the effective strategy correctly?
+   - Do affected entries in `origin-configurations.config.ts` still compose correctly?
+   - Do any Official Origins gain/lose a meaningful synergy, conflict, or validation requirement?
+
+3. **Character AI layer**
+   - Which allowed-Origin pools include affected Origins?
+   - Do any CharacterProfiles value the changed mechanic through Doctrine, Origin adaptation, plan ranking, persistence, Expression, or bespoke hooks?
+   - Does the change alter the relative attractiveness of a tactic enough to require re-tuning or re-benchmarking even if no literal/config shape changes?
+   - Do character × affected-Origin validation/fidelity expectations still hold?
+
+4. **Reverse-direction architecture check**
+   - If the change started in character logic, should any of it instead become reusable Origin support or a mechanics-layer rule?
+   - If it started in an Origin/trait, is the game mechanic general enough and correctly surfaced through `EffectiveRulesView`?
+   - If it started in mechanics, are higher-layer assumptions now stale even when compilation/tests still pass?
+
+### Completion evidence
+
+A triggering change is incomplete until the task/PR records the result of the cross-layer audit.
+
+Use a compact record such as:
+
+```text
+Cross-layer impact audit
+- Mechanics: updated / reviewed-no-change — <short reason>
+- Origins/traits: updated / reviewed-no-change — <short reason>
+- Character AI: updated / reviewed-no-change — <short reason>
+- Affected character × Origin validation: updated / rerun / not required — <short reason>
+```
+
+For pull requests, include this in the PR description or review-visible change summary. For direct branch work without a PR yet, include it in the task/commit summary and ensure it is carried into the eventual PR.
+
+Do not use `not applicable` merely because the change was authored in another layer. The point of this invariant is that each neighboring layer must actually be inspected.
+
+### Automated validation supplements, but does not replace, semantic review
+
+Where practical, repository validation should mechanically verify referential synchronization, for example:
+
+- every deployed trait has exactly one AI-support mapping;
+- Official Origin trait membership matches the gameplay roster exactly;
+- required combination/suppression IDs exist and compose deterministically;
+- character allowed-Origin IDs resolve to active configured Origins;
+- character-specific trait/Origin overrides reference valid content;
+- every character × allowed-Origin pairing is represented in accelerated validation coverage.
+
+Automation cannot prove that a numerical rebalance still matches character strategy or theme. Passing CI never waives the manual three-layer semantic audit.
+
 ## Canonical documentation and configuration ownership
 
 The repository must prefer **one canonical source of truth per concern**. Long but coherent single-purpose files are preferable to a collection of overlapping fragments.
