@@ -1,7 +1,6 @@
 import {
   RULE_COMPOSITION_VERSION,
   ruleScopeMatches,
-  serializeRuleContributions,
   validateRuleAxisRegistry,
   validateRuleContributions,
   type RuleAxisRegistry,
@@ -10,6 +9,11 @@ import {
   type RuleScope,
   type RuleValidationIssue,
 } from "./RuleComposition";
+import {
+  normalizeRuleContributions,
+  serializeNormalizedRuleRecords,
+  type NormalizedRuleRecord,
+} from "./RuleNormalization";
 
 export type RuleCompilerIssueCode =
   | RuleValidationIssue["code"]
@@ -26,7 +30,10 @@ export interface RuleCompilerIssue {
 
 export interface CompiledRuleProfile {
   readonly version: typeof RULE_COMPOSITION_VERSION;
+  /** Canonically sorted authored contributions retained for provenance/debugging. */
   readonly contributions: readonly RuleContribution[];
+  /** Canonical normal form: commutative exact-scope groups are mathematically reduced. */
+  readonly normalizedRules: readonly NormalizedRuleRecord[];
   readonly canonicalSerialization: string;
 }
 
@@ -148,6 +155,21 @@ export function validateRuleProfile(
   return issues;
 }
 
+function canonicalContributionKey(contribution: RuleContribution): string {
+  return JSON.stringify({
+    axis: contribution.axis,
+    scope: contribution.scope,
+    stage: contribution.stage,
+    operator: contribution.operator,
+    sourceKind: contribution.sourceKind,
+    sourceId: contribution.sourceId,
+    valueUnit: contribution.valueUnit,
+    value: contribution.value,
+    condition: contribution.condition,
+    component: contribution.component,
+  });
+}
+
 export function compileRuleProfile(
   registry: RuleAxisRegistry,
   contributions: readonly RuleContribution[],
@@ -156,15 +178,19 @@ export function compileRuleProfile(
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
+
   const sorted = [...contributions].sort((a, b) => {
-    const left = serializeRuleContributions([a]);
-    const right = serializeRuleContributions([b]);
+    const left = canonicalContributionKey(a);
+    const right = canonicalContributionKey(b);
     return left < right ? -1 : left > right ? 1 : 0;
   });
+  const normalizedRules = normalizeRuleContributions(registry, sorted);
+
   return Object.freeze({
     version: RULE_COMPOSITION_VERSION,
     contributions: Object.freeze(sorted),
-    canonicalSerialization: serializeRuleContributions(sorted),
+    normalizedRules,
+    canonicalSerialization: serializeNormalizedRuleRecords(normalizedRules),
   });
 }
 
@@ -174,6 +200,16 @@ export function compiledContributionsFor(
   scope: RuleScope,
 ): readonly RuleContribution[] {
   return profile.contributions.filter(
+    (entry) => entry.axis === axis && ruleScopeMatches(entry.scope, scope),
+  );
+}
+
+export function compiledNormalizedRulesFor(
+  profile: CompiledRuleProfile,
+  axis: string,
+  scope: RuleScope,
+): readonly NormalizedRuleRecord[] {
+  return profile.normalizedRules.filter(
     (entry) => entry.axis === axis && ruleScopeMatches(entry.scope, scope),
   );
 }
