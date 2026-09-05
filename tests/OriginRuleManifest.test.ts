@@ -15,6 +15,7 @@ import {
   selectRuleContributionsForScope,
   validateRuleContributions,
   type RuleContribution,
+  type RuleOperator,
 } from "../src/core/rules/RuleComposition";
 import {
   RULE_AXIS_REGISTRY,
@@ -63,7 +64,9 @@ describe("Origin rule manifest", () => {
           definition?.stages.some(
             (stage) =>
               stage.id === provider.stage &&
-              stage.allowedOperators.includes(provider.operator),
+              (stage.allowedOperators as readonly RuleOperator[]).includes(
+                provider.operator,
+              ),
           ),
         ).toBe(true);
 
