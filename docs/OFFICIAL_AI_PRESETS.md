@@ -13,6 +13,7 @@ Related canonical documents:
 - [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md) — generic Origin support/adaptation contract;
 - [`OFFICIAL_AI_TRAIT_SUPPORT.md`](./OFFICIAL_AI_TRAIT_SUPPORT.md) — trait-support rationale;
 - [`OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) — named-Origin AI rationale;
+- [`OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) — Baseline/character behavioral rationale;
 - [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) — Official Origin content/mechanics;
 - [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) — generic Echo reward semantics.
 
@@ -26,10 +27,10 @@ Current content status:
 shared AI architecture/configuration contracts: closed
 Origin trait AI support:                    72 / 72 complete
 Official Origin AI configuration:            49 / 49 complete
-Baseline/character CharacterProfiles:          1 / 21 complete
+Baseline/character CharacterProfiles:         11 / 21 complete
 ```
 
-The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets. The Baseline profile is complete; the 20 character profiles remain to be authored.
+The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets. Baseline and the first 10 character profiles are complete; 10 character profiles remain to be authored.
 
 Difficulty values below are creator-authored competence targets, not claims that unfinished implementations already achieve those ratings.
 
@@ -146,7 +147,7 @@ Difficulty controls only the extra AI bonus. Do not maintain an independent per-
 
 | AI preset | Source | Difficulty target | Provisional controller fantasy | Allowed Official Origins |
 | --- | --- | ---: | --- | --- |
-| **Thorfinn Karlsefni** | Vinland Saga | **3** | Peaceful expansion; avoids initiating wars; extremely committed retaliation; Population preservation. | **A True Warrior Needs No Sword** · **What Is a True Warrior?** · **A War Worth Avoiding** · **The Art of Surviving** · **Gemini** |
+| **Thorfinn Karlsefni** | Vinland Saga | **3** | Peaceful expansion; never initiates hostility against an innocent faction; remembers factions that attacked him or his allies; extremely committed retaliation with strong post-conflict de-escalation; Population preservation. | **A True Warrior Needs No Sword** · **What Is a True Warrior?** · **A War Worth Avoiding** · **The Art of Surviving** · **Gemini** |
 | **Askeladd** | Vinland Saga | **4** | Opportunistic predator; infrastructure/economic targeting; willingly sacrifices position; attacks weakness. | **Survival of the Fittest** · **Right of Conquest** · **Woolong Hustle** · **The Fake Is of Far Greater Value** · **The Art of Surviving** · **What Is a True Warrior?** |
 | **Reinhard von Lohengramm** | Legend of the Galactic Heroes | **5** | Global optimization; expansion; decisive wars; thinks several fronts ahead. | **The Stars Are Within My Grasp** · **A Rational War** · **Right of Conquest** · **Efficiency Above All** · **Survival of the Fittest** |
 | **Yang Wen-li** | Legend of the Galactic Heroes | **5** | Defensive macro; preserves options; punishes overextension; wins wars he would rather not fight. | **The Magician** · **A War Worth Avoiding** · **A True Warrior Needs No Sword** · **The Art of Surviving** · **I Don't Know Everything** |
@@ -196,15 +197,16 @@ The Difficulty-0 Baseline AI is not counted.
 
 ## Concrete content work still open
 
-The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, and Difficulty-0 Baseline `CharacterProfile` are closed for the current V1 design.
+The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, and first 10 character `CharacterProfile`s are closed for the current V1 design.
 
 Remaining content work proceeds in this order:
 
-1. define all 20 character `CharacterProfile`s, including Origin adaptation and fidelity expectations;
-2. benchmark each character against its authored capability target;
-3. benchmark thematic/fidelity behavior separately;
-4. test every character × allowed-Origin pairing for coherent Origin usage and retained character identity;
-5. version/hash final preset/controller/Origin configuration for match/replay/reward records.
+1. define the remaining 10 character `CharacterProfile`s, including Origin adaptation and fidelity expectations;
+2. run the complete 20-character cross-profile consistency audit;
+3. benchmark each character against its authored capability target;
+4. benchmark thematic/fidelity behavior separately;
+5. test every character × allowed-Origin pairing for coherent Origin usage and retained character identity;
+6. version/hash final preset/controller/Origin configuration for match/replay/reward records.
 
 For reviewability, character mappings may be authored in batches of ten, but accepted content is appended to the single canonical `design/official-ai/character-configurations.config.ts`; batch shards must not be created.
 
