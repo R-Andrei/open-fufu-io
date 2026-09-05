@@ -1,5 +1,9 @@
 // Public Open Fufu controller SDK contract.
 //
+// Canonical documentation:
+// - docs/OPEN_FUFU_DESIGN.md — controller model and high-level constraints.
+// - docs/CONTROLLER_MEMORY.md — persistent controller-memory contract.
+//
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
 // into these types and validate returned decisions transactionally.
