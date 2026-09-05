@@ -1,3 +1,8 @@
+// Documentation entry point: docs/official-ai/README.md
+// Specific owners: docs/official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md
+//                  docs/official-ai/OFFICIAL_AI_CONFIGURATION.md
+// Preset owner:    docs/official-ai/OFFICIAL_AI_PRESETS.md
+//
 // Open Fufu Official-AI Baseline and character configuration.
 //
 // DESIGN-TIME SOURCE OF TRUTH.
