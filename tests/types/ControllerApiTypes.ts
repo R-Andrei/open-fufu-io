@@ -7,6 +7,8 @@ import type {
   PersistentDirective,
   PurchasableUnitType,
   StructureBuildQuote,
+  StructureView,
+  TransportMechanicsSpec,
   UnitAttackSpec,
 } from "../../src/core/controller/ControllerApi";
 
@@ -38,7 +40,7 @@ const cappedStructureQuote: StructureBuildQuote = {
   failureCode: "OWNERSHIP_CAP",
   cost: {
     ffyRequired: 50_000,
-    ffySpent: 50_000,
+    ffySpent: 0,
     populationSpent: 0,
   },
   structure: "FORT",
@@ -48,6 +50,56 @@ const cappedStructureQuote: StructureBuildQuote = {
   ownershipCap: 1,
 };
 void cappedStructureQuote;
+
+const freeFirstPurchaseQuote: StructureBuildQuote = {
+  legal: true,
+  cost: {
+    ffyRequired: 100_000,
+    ffySpent: 0,
+    populationSpent: 0,
+  },
+  structure: "CITY",
+  cellId: 43,
+  resultingLevel: 1,
+  buildTicks: 50,
+};
+void freeFirstPurchaseQuote;
+
+const freshDirectLevel5City: StructureView = {
+  id: "city-p41",
+  ownerId: "faction-a",
+  type: "CITY",
+  cellId: 43,
+  active: false,
+  construction: {
+    targetLevel: 5,
+    remainingTicks: 25,
+  },
+};
+void freshDirectLevel5City;
+
+const upgradingCity: StructureView = {
+  id: "city-upgrading",
+  ownerId: "faction-a",
+  type: "CITY",
+  completedLevel: 2,
+  cellId: 44,
+  active: true,
+  construction: {
+    targetLevel: 3,
+    remainingTicks: 20,
+  },
+};
+void upgradingCity;
+
+const landingGrant: NonNullable<TransportMechanicsSpec["successfulLandingGrant"]> = {
+  structure: "FORT",
+  level: 1,
+  placement: "EXACT_LANDING_CELL",
+  activation: "IMMEDIATE_COMPLETED",
+  failurePolicy: "SKIP_GRANT_KEEP_LANDING",
+};
+void landingGrant;
 
 const move: ControllerCommand = {
   kind: "MOVE_UNIT",
