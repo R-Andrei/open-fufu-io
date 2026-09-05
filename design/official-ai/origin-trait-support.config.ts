@@ -800,7 +800,7 @@ const TRAIT_SUPPORT_P51_N06 = [
     synergyTags: ["FALLOUT"],
     signalSupport: [
       { evaluator: "TERRITORY", hookId: "N05_UNCAPTURABLE_FALLOUT_GEOMETRY" },
-      { evaluator: "THREAT", hookId: "N05_FALLOUT_OWNERSHIP_BARRIER_FORECAST" },
+      { evaluator: "THREAT", hookId: "N05_FALLOUT_BARRIER_THREAT" },
       { evaluator: "FORECAST", hookId: "N05_FALLOUT_OWNERSHIP_BARRIER_FORECAST" },
     ],
     plannerSupport: [
