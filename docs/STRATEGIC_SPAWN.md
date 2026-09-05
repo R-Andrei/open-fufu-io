@@ -1,14 +1,54 @@
-# Open Fufu — Strategic Spawn Geometry
+# Open Fufu — Strategic Spawn
 
 ## Status and authority
 
-This file is the **canonical detailed V1 appendix for Strategic Spawn geometry, exact-origin spacing, deterministic starting-footprint construction, and spawn-shape Origin transformations**.
+This file is the **canonical owner for Strategic Spawn protocol, public spawn-profile behavior, influence/origin geometry, deterministic exact-origin resolution, Initial-Territory footprint construction, spawn immunity, diagnostics, replay representation, and Random/Fixed spawn-mode semantics**.
 
-[`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) remains authoritative for the overall three-phase Strategic Spawn protocol, Initial Territory / Starting Population semantics, controller lifecycle, and general match rules. [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) remains authoritative for Origin trait IDs/costs.
+Origin trait identities/costs remain owned by [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). The public TypeScript hook shapes remain owned by [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts). Game-wide Population semantics remain owned by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
 Nothing in this file authorizes gameplay implementation.
 
-All numeric values here are accepted provisional V1 balance/geometry values. They may be benchmark-retuned later without reopening the three-phase fairness model or the distinction between influence area, exact origin, and generated Initial Territory.
+All numeric values here are accepted provisional V1 balance/geometry values. They may be benchmark-retuned later without reopening the simultaneous reveal/commit fairness model or the distinction between influence area, exact origin, and generated Initial Territory.
+
+---
+
+# 0. Spawn modes and three-phase protocol
+
+Open Fufu supports:
+
+- **Strategic Spawn** — the ordinary three-phase controller-driven mode;
+- **Random Spawn** — deterministic match-seeded legal placement that bypasses controller Strategic Spawn choices;
+- **Fixed Spawn** — exact configured starts for benchmarks, certification, debugging, tournaments/scenarios, and reproducible tests.
+
+Strategic Spawn uses the specialized pre-match controller hooks `chooseInfluence`, `reconsiderInfluence`, and `chooseOrigins`.
+
+Before Phase 1, every participant receives the static map/Segments, ruleset and lobby constraints, legal spawn-space information, every participant's surfaced Origin, Initial Territory value, Starting Population effects, effective spawn profile, and other strategically relevant public spawn-affecting modifiers.
+
+## Phase 1 — initial influence choice
+
+Every participant simultaneously submits the broad influence center(s) required by its public spawn profile.
+
+Submissions remain hidden until every participant has committed or fallen back. The complete resolved Phase-1 influence set is then revealed simultaneously.
+
+Influence regions are legal search spaces for later exact origins, not territorial reservations. Foreign regions may overlap freely.
+
+## Phase 2 — one reconsideration round
+
+After seeing the complete Phase-1 influence set, every participant receives one simultaneous opportunity to retain or revise its influence center(s).
+
+Phase-2 submissions remain hidden until every participant has committed or fallen back. The resulting final influence regions are then revealed simultaneously.
+
+There is no iterative live-response bidding after seeing another participant's Phase-2 submission.
+
+## Phase 3 — exact origin choice
+
+Every participant simultaneously submits the exact origin cell(s) required by its spawn profile inside its final influence region(s).
+
+Submissions remain hidden until all participants have committed or fallen back. The deterministic exact-origin resolver then resolves legality/conflicts simultaneously. Final exact origins are public before Initial-Territory footprints are generated and normal play begins.
+
+A multi-slot spawn profile such as P39 participates in the same phase/reveal structure; its required slots are one faction decision, not independent sequential turns.
+
+Random and Fixed modes remain supported alongside Strategic Spawn. Their exact interaction with spawn-transforming Origins is not yet mechanically closed and must be resolved in this owner rather than distributed across Origin, controller, or migration documents.
 
 ---
 
