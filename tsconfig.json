@@ -27,6 +27,7 @@
     "zbin/**/*",
     "resources/**/*",
     "proprietary/**/*",
+    "design/**/*",
     "generated/**/*",
     "tests/**/*",
     "src/scripts",
