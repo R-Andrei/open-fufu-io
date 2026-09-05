@@ -379,54 +379,175 @@ These footprint/quota semantics are identical in Strategic, Random, and Fixed Sp
 
 P54 is a **spawn-geometry transformation**, not an acquisition-speed stat bonus.
 
-The faction keeps exactly the same final Initial-Territory population-bearing-cell quota it would otherwise receive. Instead of an ordinary approximately circular footprint, each of its starting footprints uses a deliberately thin-bodied, long-armed **five-point star** target geometry centered on the exact origin.
+The faction keeps exactly the same final Initial-Territory population-bearing-cell quota it would otherwise receive. Each generated footprint uses a deliberately thin-bodied, long-armed five-point-star **priority field** centered on the exact origin instead of the ordinary compact radial priority.
 
 P54 applies after exact-origin resolution in **Strategic, Random, and Fixed Spawn**. Fixed authored origins do not disable or replace the star profile.
 
-## 5.1 Ideal star profile
+The ideal star is a target preference field, **not a guaranteed final polygon and not an eligibility mask**. The authoritative footprint is always the connected cell-by-cell result of the Section 4 frontier resolver against real terrain, topology, competing footprints, and the final quota.
 
-The ideal profile has:
+## 5.1 Resolver-v1 canonical star template
 
-- **5 outward points**;
-- 10 alternating outer/inner vertices at equal angular intervals;
-- one outer point aligned to the canonical map north axis, giving one deterministic orientation without adding another spawn-control input;
-- accepted **6:1 outer-tip radius to inner-valley radius** intent.
+Resolver version `1` binds the immutable shape identity:
 
-The extreme tip-to-valley ratio is deliberate. At the ordinary roughly 1,000-cell scale, the intent is a small central body with long, thin territorial arms extending much farther from the origin than an equal-area circular start.
+```text
+shapeTemplateId = "P54_STAR_V1"
+fixedPointUnit  = 4096  // Q12-style integer template unit
++x              = map east
++y              = map north
+winding         = clockwise
+vertex 0        = north-facing outer tip
+```
 
-At equal idealized area, a five-point `6:1` star has roughly three-and-a-half times the perimeter of the equivalent circle before raster/geography deformation. That additional boundary is the only intended mechanical benefit: more neutral cells can be simultaneously adjacent/actionable under ordinary expansion rules.
+The ten authoritative integer vertices are:
 
-P54 therefore does **not** guarantee faster expansion. It merely creates more potential starting contact surface if geography and Population allocation allow the controller to exploit it. Terrain can blunt, bend, or waste individual arms.
+| Vertex | Role | x | y |
+| ---: | --- | ---: | ---: |
+| `v0` | outer | `0` | `24576` |
+| `v1` | inner | `2408` | `3314` |
+| `v2` | outer | `23373` | `7594` |
+| `v3` | inner | `3896` | `-1266` |
+| `v4` | outer | `14445` | `-19882` |
+| `v5` | inner | `0` | `-4096` |
+| `v6` | outer | `-14445` | `-19882` |
+| `v7` | inner | `-3896` | `-1266` |
+| `v8` | outer | `-23373` | `7594` |
+| `v9` | inner | `-2408` | `3314` |
 
-## 5.2 Raster/geography construction
+They were selected from the accepted regular alternating-ray `6:1` outer/inner design at Q12 precision. **The integer table above is authoritative**; implementations must not regenerate it with runtime/platform trigonometry, and the prose ratio is no longer a source from which different implementations may derive alternate rounded vertices.
 
-P54 uses the same connected simultaneous frontier resolver as ordinary spawning, but replaces the compact radial priority with one canonical versioned **fixed-point five-point-star shape score**.
+The canonical UTF-8 template serialization contains no trailing newline:
 
-Resolver version `1` must commit one exact ten-vertex normalized integer/fixed-point star template: five alternating outer/inner vertices, map-north outer-point orientation, and an exact canonical realization of the accepted 6:1 intent. Runtime/platform trigonometry is forbidden for authoritative rasterization.
+```text
+P54_STAR_V1|q=4096|winding=CW|axis=+X_EAST,+Y_NORTH|v=0,24576;2408,3314;23373,7594;3896,-1266;14445,-19882;0,-4096;-14445,-19882;-3896,-1266;-23373,7594;-2408,3314
+```
 
-**#32 remaining geometry closure:** the exact resolver-v1 integer scale, ten `(x,y)` constants, winding convention, and golden template/hash vectors must be frozen before resolver `1` is certified. Until those constants are committed, the descriptive 6:1 geometry is design intent rather than a sufficient independent executable specification.
+Its SHA-256 is:
 
-For a candidate offset `(dx, dy)`, compute the minimum fixed-point scale at which that offset lies inside the canonical star polygon. Candidate ordering is then:
+```text
+52318cc016a674164fc4861468e29b24b177b8fc35287337a55a11d1b6773440
+```
+
+Changing any template integer, orientation, winding convention, shape-score rule, or authoritative serialization requires a new `spawnResolverVersion`; it must not silently redefine resolver `1`.
+
+## 5.2 Exact star-shape score
+
+Let the candidate cell offset from its exact origin be:
+
+```text
+p = (dx, dy)
+```
+
+Define the integer cross product:
+
+```text
+cross((ax, ay), (bx, by)) = ax * by - ay * bx
+```
+
+For `p = (0, 0)`, define the star score as the exact rational `0/1`.
+
+For every other offset, find the **lowest edge index** `i` in `0..9` for which, with:
+
+```text
+a = v[i]
+b = v[(i + 1) mod 10]
+```
+
+the clockwise radial-sector test is true:
+
+```text
+cross(a, p) <= 0
+cross(p, b) <= 0
+```
+
+Every nonzero direction belongs to exactly one sector except a vertex ray, which belongs to its two adjacent sectors. The lowest matching edge index is canonical; in particular the `v0` ray chooses edge `0` rather than edge `9`.
+
+Then compute:
+
+```text
+N = -(cross(p, b) + cross(a, p))
+D = -cross(a, b)
+```
+
+For the canonical clockwise template, `N >= 0` and `D > 0`. The exact shape score is the rational:
+
+```text
+starScaleScore(p) = N / D
+```
+
+Geometrically this is the minimum uniform scale of the canonical ideal star at which the candidate offset lies on/inside the corresponding star edge. Only the ordering matters; quota determines how large the realized footprint ultimately becomes.
+
+Two scores `N1/D1` and `N2/D2` are compared **exactly** by integer cross multiplication:
+
+```text
+N1 * D2  <=>  N2 * D1
+```
+
+The authoritative comparison must not first round/quantize the ratio or convert it to an approximate floating-point score. An implementation may use fixed-width integer arithmetic only when validated map-coordinate bounds prove every intermediate product cannot overflow that representation; otherwise it must use a sufficiently wide/arbitrary-precision integer representation.
+
+P54 candidate ordering is therefore:
 
 ```text
 (
-  starScaleScore,
+  exactRationalStarScaleScore,
   stableTie32("spawn-star-cell", version, matchSeed, factionId, footprintSlot, cellId),
   cellId
 )
 ```
 
-The candidate must still be cardinally adjacent to the already claimed footprint, so geography/barriers can bend, blunt, or waste an arm rather than allowing disconnected painted territory.
+### Resolver-v1 golden shape vectors
 
-The same quota and simultaneous-collision rules as ordinary spawning apply:
+These raw vectors are part of the executable geometry specification. `edge` is the canonical selected edge; `N/D` is the unreduced exact score pair.
+
+| Offset `p` | edge | `N` | `D` |
+| --- | ---: | ---: | ---: |
+| `(0, 0)` | — | `0` | `1` |
+| `(0, 1)` | `0` | `2408` | `59179008` |
+| `(1, -1)` | `3` | `8067` | `59172902` |
+| `(1, 0)` | `2` | `8860` | `59176442` |
+| `(0, -1)` | `4` | `14445` | `59166720` |
+| `(1, 1)` | `1` | `16685` | `59171770` |
+| `(-1, 0)` | `7` | `8860` | `59176442` |
+| `(-1, 1)` | `8` | `16685` | `59171770` |
+| `v0 = (0, 24576)` | `0` | `59179008` | `59179008` |
+| `v1 = (2408, 3314)` | `0` | `59179008` | `59179008` |
+| `v5 = (0, -4096)` | `4` | `59166720` | `59166720` |
+
+These vectors also imply, by exact rational comparison:
+
+```text
+score(0,1)
+< score(1,-1)
+< score(1,0)
+< score(0,-1)
+< score(1,1)
+< score(v0) = score(v1) = score(v5) = 1
+```
+
+An implementation that disagrees with the template SHA or any golden vector is not resolver-v1 compatible.
+
+## 5.3 Runtime cell-by-cell construction and deformation
+
+P54 uses the same connected simultaneous frontier resolver as ordinary spawning. The star score changes **which legal frontier cell is preferred next**; it does not pre-rasterize a fixed polygon and it does not reserve a finite set of star cells.
+
+There is no maximum permitted star scale and no hard `inside/outside star` eligibility boundary. Every otherwise legal reachable frontier cell has a score. Therefore:
+
+- on unobstructed geography, low-score cells naturally grow toward the canonical star;
+- if an arm reaches Deep Water, Impassable terrain, a coastline, or another unavailable topology, that arm simply stops producing legal frontier candidates there;
+- the remaining frontier continues into progressively higher-score legal cells elsewhere until the required population-bearing quota is filled;
+- the result may be visibly asymmetric or substantially deformed when geography removes much of the ideal star;
+- P54 never reduces the faction's quota merely because the ideal target shape cannot be realized exactly;
+- disconnected painting/teleporting is never permitted to rescue a blocked arm.
+
+The candidate must remain cardinally adjacent to the already claimed footprint. The ordinary quota and simultaneous-collision rules remain unchanged:
 
 - population-bearing cells consume quota;
 - naturally included ownable `0 Capacity` cells do not consume quota;
 - barriers/topology may deform individual arms;
-- the frontier continues through other legal candidates rather than reducing the faction's Initial Territory merely because one point hits water/Impassable terrain;
 - simultaneous foreign-faction cell collisions use the Section 4 resolver.
 
-P54 changes **only generated starting-footprint geometry**. It does not alter:
+Thus the ten-vertex template answers **what shape the resolver prefers**; the frontier algorithm answers **what legal starting territory is actually constructed on this map**.
+
+P54 changes only generated starting-footprint geometry. It does not alter:
 
 - final Initial Territory;
 - Starting Population;
@@ -435,9 +556,9 @@ P54 changes **only generated starting-footprint geometry**. It does not alter:
 - neutral-settlement Population cost;
 - later territorial growth shape.
 
-Its advantage comes from the ordinary combat/acquisition system seeing a longer starting boundary/contact surface.
+Its advantage comes from the ordinary combat/acquisition system seeing the longer/differently distributed boundary that the realized starting footprint actually produced.
 
-## 5.3 P54 + P39
+## 5.4 P54 + P39
 
 P39 and P54 are ordinary legal catalogue traits and combine without a compatibility exception.
 
@@ -446,10 +567,10 @@ When both are selected:
 - the effective profile has two exact origins in every spawn mode;
 - under Strategic Spawn, P39 additionally provides two half-area influence regions;
 - final modified Initial Territory is divided between the two stable footprint slots;
-- **each split footprint uses the P54 star geometry**;
+- **each split footprint uses the same `P54_STAR_V1` priority field independently around its own origin**;
 - Starting Population remains one global pool.
 
-Thus the combination produces two smaller needle-like starts rather than one star receiving the full quota twice.
+Thus the combination produces two independently deformable star-biased starts rather than one star receiving the full quota twice.
 
 ---
 
@@ -542,10 +663,18 @@ for each footprint:
   footprintSlot
   population-bearing quota
   shape profile/version
+  P54 shapeTemplateId + template SHA-256 when shape = STAR
   final resolved starting cell IDs
   cell-set SHA-256
 
 resolved singular start-state effects/grants
+```
+
+For resolver-v1 P54, the bound shape metadata is exactly:
+
+```text
+shapeTemplateId     = P54_STAR_V1
+shapeTemplateSha256 = 52318cc016a674164fc4861468e29b24b177b8fc35287337a55a11d1b6773440
 ```
 
 Strategic Spawn additionally records its actual three-phase semantic inputs/outputs:
@@ -560,9 +689,9 @@ Random and Fixed modes do **not** fabricate empty/fake Strategic phases. Their r
 
 Final footprint cell IDs are sorted ascending, delta-encoded, and compressed inside the `.ofr.zst` replay. Starting footprints are spatially coherent and only thousands of cells per faction, so this remains small while allowing playback to restore the exact authoritative starting state.
 
-SQLite `match_factions.spawn_snapshot_json` should retain compact semantic/resolution summaries, resolved origin slots, singular-grant summaries, and cell-set hashes; the replay file carries the full footprint cell list.
+SQLite `match_factions.spawn_snapshot_json` should retain compact semantic/resolution summaries, resolved origin slots, singular-grant summaries, shape-template identity/hash, and cell-set hashes; the replay file carries the full footprint cell list.
 
-Determinism tests may independently regenerate the spawn from map + match seed + bound rules/Origins + mode-specific origin inputs + resolver version and compare the regenerated origins, cell sets, grants, and hashes to the authoritative replay record.
+Determinism tests may independently regenerate the spawn from map + match seed + bound rules/Origins + mode-specific origin inputs + resolver version and compare the regenerated origins, shape-template identity, cell sets, grants, and hashes to the authoritative replay record.
 
 ---
 
@@ -584,13 +713,20 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 - exact 1,000-cell and modified Initial-Territory quota fulfillment;
 - odd P39 population-bearing quota assigns its remainder to `originSlot 0`;
 - Tundra/Shallow-Water inclusion without consuming ordinary quota;
-- P54 star footprints against coastlines, narrow land bridges, barriers, and foreign footprint collisions in every spawn mode;
-- P39 + P54 interaction in Strategic, Random, and Fixed modes;
+- `P54_STAR_V1` canonical serialization hashes to `52318cc016a674164fc4861468e29b24b177b8fc35287337a55a11d1b6773440`;
+- every Section 5.2 golden offset reproduces the exact edge/`N`/`D` vector and exact ordering;
+- an unobstructed P54 fixture produces a connected star-biased footprint and fills the exact quota;
+- coastline/Deep-Water obstruction removes unavailable arm growth but reallocates the full reachable quota into higher-score legal frontier cells elsewhere;
+- narrow-land-bridge/Impassable fixtures never teleport/disconnect cells merely to preserve the ideal star;
+- foreign footprint collisions deform P54 through the ordinary simultaneous resolver rather than execution order;
+- P54 identical map/profile/exact-origin inputs produce identical realized footprint/cell-set hash regardless of whether the origin source was Strategic, Random, or Fixed;
+- P39 + P54 resolves two independent `P54_STAR_V1` fields in Strategic, Random, and Fixed modes;
+- modified P54 quota (for example P01) changes only how far the priority field is consumed, not the template itself;
 - P20 + P39 creates exactly one starting Silo request at `originSlot 0`;
 - spawn-time singular effects never multiply merely because a profile has multiple origins;
 - Strategic-only AI/controller candidate hooks are never invoked by Random/Fixed Spawn;
-- replay regeneration/hash stability of every mode, origin source, footprint, and singular start-state effect.
+- replay regeneration/hash stability of every mode, origin source, bound P54 template identity, realized footprint, and singular start-state effect.
 
-The exact P54 resolver-v1 integer template and its golden deterministic vectors remain the next #32 geometry closure item and must be added to this list before issue completion.
+Full realized cell-set golden hashes belong to the executable Spawn implementation/certification fixtures because they additionally depend on the canonical map/CellId representation and concrete `stableTie32` implementation. The geometry contract itself is now independently reproducible from the frozen template, exact score rule, template SHA, and golden shape vectors above; runtime certification must publish and lock the fixture cell-set hashes when that resolver is implemented.
 
 Retuning radius, pointiness, or spacing after map benchmarks is ordinary versioned balance/geometry iteration. Changing resolver ordering/hash/fallback/rasterization semantics requires an explicit new `spawnResolverVersion`; silent sequential spawn priority or arbitrary controller-painted starting territory is never permitted.
