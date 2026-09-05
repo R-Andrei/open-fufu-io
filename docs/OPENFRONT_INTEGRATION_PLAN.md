@@ -977,18 +977,69 @@ The key performance invariant is:
 
 ## 15.1 GitHub Actions / CI migration
 
-The current `.github/workflows/` and their pass/fail status are inherited OpenFront infrastructure and are **not yet authoritative Open Fufu acceptance gates**.
+The inherited GitHub Actions audit is complete for the **current Open Fufu migration baseline**. `.github/workflows/ci.yml` is the sole active workflow. Its green/red result is deliberately narrow and must expand as target implementation becomes authoritative.
 
-Before implementation work relies on CI status, audit every inherited workflow as `keep`, `adapt`, or `remove`, then establish an Open Fufu PR baseline that covers at least:
+### Current workflow disposition
 
-- TypeScript compile/typecheck, including public controller-contract type fixtures;
-- relevant unit/integration tests for migrated target behavior;
-- deterministic replay/headless checks once those target runtimes exist;
-- repository hygiene that remains applicable to Open Fufu.
+| Inherited workflow | Disposition | Current decision |
+| --- | --- | --- |
+| `ci.yml` | **adapt** | Retain one Open Fufu baseline job: clean install, build/typecheck, and lint. |
+| `claude-code-review.yml` | **remove** | Optional external AI review is not an Open Fufu acceptance gate and must not make PR validity depend on an external reviewer secret/service. |
+| `deploy.yml` | **remove** | Hard-coded OpenFront domains, hosts, credentials, and deployment topology are not Open Fufu deployment authority. |
+| `issue-lifecycle-cron.yml` | **remove** | OpenFront milestone/approval/stale automation conflicts with the claim/work-session model in `AGENTS.md`. |
+| `issue-lifecycle-events.yml` | **remove** | OpenFront milestone/approval assignment policy conflicts with current repository coordination. |
+| `pr-author.yml` | **remove** | Automatic PR-author assignment is non-essential and does not validate the repository. |
+| `pr-close-on-label.yml` | **remove** | OpenFront contribution/AI-close policy is not Open Fufu policy. |
+| `pr-description.yml` | **remove** | Mandatory PR milestones are not an Open Fufu authorization or acceptance requirement. |
+| `pr-gate.yml` | **remove** | The upstream `approved`-issue/Discord contribution gate is not Open Fufu policy. |
+| `pr-stale.yml` | **remove** | Upstream stale-PR policy and maintainer-specific exemptions are not current project policy. |
+| `release.yml` | **remove** | OpenFront image names and alpha/beta/blue/green release topology are not Open Fufu release authority. |
 
-Remove checks tied only to obsolete OpenFront deployment/release assumptions, proprietary assets, or intentionally removed mechanics. Keep useful inherited tests only when they validate still-supported infrastructure/behavior.
+Workflow-specific OpenFront policy scripts that became dead code when those workflows were removed should not be retained merely for history; Git history already preserves them.
 
-This work should happen early enough that a green/red GitHub status becomes meaningful before Open Fufu implementation PRs depend on it.
+### Current authoritative PR baseline
+
+The active baseline runs on Node 24 and performs exactly one dependency installation followed by:
+
+```text
+npm ci
+npm run build-prod
+npm run lint:github
+```
+
+`build-prod` includes `tsc --noEmit`; the TypeScript project includes code-readable Open Fufu configuration under `design/**/*`. The compile-only fixture in `tests/contracts/controller-api.typecheck.ts` consumes the public `ControllerApi.ts` surface so ordinary typechecking also verifies representative external-controller usage without pretending a controller runtime already exists.
+
+A green baseline currently means:
+
+- the dependency lockfile installs successfully in the CI environment;
+- the retained application can produce its current production build;
+- TypeScript source, public controller contracts, the controller-contract consumer fixture, and code-readable Open Fufu design configuration typecheck;
+- currently applicable lint rules pass.
+
+It **does not** mean that all inherited OpenFront tests remain valid, that final Open Fufu gameplay exists, that the target headless/replay/runtime architecture is implemented, or that deployment/release packaging is production-ready.
+
+The inherited Vitest suites, map generator, replay/performance harnesses, and build/deployment scripts remain migration evidence or reusable infrastructure unless separately retired. They are not blanket CI gates merely because they existed upstream. Repository-wide Prettier and generated-map byte-reproducibility are also not current blocking gates while the inherited tree has pre-existing formatting/generated-output drift; re-enable them only after establishing a deliberate Open Fufu baseline rather than forcing unrelated cleanup into feature work.
+
+### Future gates
+
+Validation should normally land with the implementation that makes the corresponding contract authoritative instead of accumulating fake/pass-through jobs in advance.
+
+| Future gate | Activate when the authoritative implementation exists |
+| --- | --- |
+| Migrated mechanic unit/integration tests | Each target mechanic/subsystem replaces or adapts inherited behavior. |
+| Origin catalogue/composition/conformance validation | Origin runtime/effective-rule hooks and the accepted exhaustive deployment sequencing are executable. |
+| Strategic/Random/Fixed spawn determinism | The target spawn resolver and Initial Territory pipeline exist. |
+| Headless full-match execution | The authoritative match process can run a complete match without browser/client authority. |
+| Replay hash equivalence | Server-authored bound replay artifacts can reproduce canonical match state/results. |
+| Controller sandbox/certification | The isolated controller runtime, resource limits, validation, and fault model exist. |
+| Participant/service contract integration | Target gateway/API, snapshots/deltas/resume, idempotency, and authorization are implemented. |
+| Persistence migration/transaction/backup checks | The SQLite persistence owner and migration runner exist. |
+| Map/Segment artifact reproducibility | The canonical Open Fufu map compiler/artifact model exists. |
+| Authoritative resource packaging | Headless/server packaging has defined exact rule/map resource inputs. |
+| Open Fufu deployment/release checks | Actual Fufubox deployment and release topology are defined and implemented. |
+| Capacity/performance gates | Representative authoritative runtime workloads exist for the 1/3/5-match benchmark envelope. |
+
+This baseline is therefore intentionally provisional. Future implementation PRs must expand validation when they create new authoritative behavior. If the cross-cutting CI architecture itself needs redesign, track that work under this integration owner rather than silently redefining what a green check means.
 
 ---
 
@@ -1082,7 +1133,7 @@ Paths below identify the principal current owners/entry points to inspect; they 
 | Lobby/account HTTP schemas | `src/core/ApiSchemas.ts`, `src/core/Schemas.ts`, inherited `docs/API.md`, server route modules | inherited OpenFront HTTP/game/lobby contracts | `service/SERVICE_API.md`, `AUTH_AND_IDENTITY.md` | treat old routes/schemas as evidence only; implement target resources/auth boundary instead of extending inherited public API by default | service contract/idempotency/authorization tests |
 | Replay / archive | `src/server/Archive.ts`, `tests/replay/ReplayGame.ts`, `src/core/Schemas.ts`, `GameRunner.ts` | uploads client-produced GameRecord; headless harness replays archived Turns/hashes | this plan + `service/SERVICE_API.md` | keep deterministic replay-harness technique, replace external archive/client-consensus record with server-authored bound replay artifact | exact-version replay hash equivalence + retention/integrity tests |
 | Authentication / join authorization | `JoinVerify.ts`, `IntentAuthorization.ts`, `Roster.ts`, inherited identity fields in `Schemas.ts` | inherited admission/session/intent authority | `AUTH_AND_IDENTITY.md` | replace conflicting auth assumptions; pass only resolved internal participant identity into match runtime | auth/session/Origin/CSRF/WS integration tests |
-| Build / deploy / assets / licensing | `.github/workflows/`, `Dockerfile`, `package.json`, `vite.config.ts`, `build.sh`, `build-deploy.sh`, `deploy.sh`, `nginx.conf`, `supervisord.conf`, `LICENSE-ASSETS`, `LICENSING.md`, `proprietary/`, `resources/` | inherited CI/release/deploy packaging, browser/server build assumptions, runtime process config, and asset/license inputs | this plan | audit each workflow/build/deploy path as keep/adapt/remove; package authoritative server resources; remove or replace proprietary asset dependencies only after reference audit; preserve required source/asset licensing obligations | reproducible target build/deploy, authoritative resource-loading test, asset-reference/provenance audit, meaningful Open Fufu CI baseline |
+| Build / deploy / assets / licensing | `.github/workflows/`, `Dockerfile`, `package.json`, `vite.config.ts`, `build.sh`, `build-deploy.sh`, `deploy.sh`, `nginx.conf`, `supervisord.conf`, `LICENSE-ASSETS`, `LICENSING.md`, `proprietary/`, `resources/` | current minimal Open Fufu CI plus inherited build/deploy packaging, browser/server build assumptions, runtime process config, and asset/license inputs | this plan | keep the current build/typecheck/lint migration baseline; add authoritative gates as target runtimes land; separately adapt target packaging/deployment and remove or replace proprietary asset dependencies only after reference audit; preserve required source/asset licensing obligations | reproducible target build/deploy, authoritative resource-loading test, asset-reference/provenance audit, meaningful Open Fufu CI baseline |
 | Victory / stats | `WinCheckExecution.ts`, `Stats.ts`, `StatsImpl.ts`, current finalization in `GameServer.ts` | inherited victory/stat collection and client-assisted final reporting | `OPEN_FUFU_DESIGN.md` + this plan | replace target victory semantics and make result/stat production server-authoritative | deterministic terminal result/stat/replay tests |
 
 A row marked `add` in §2 with no inherited principal owner is a genuinely new subsystem; do not invent an OpenFront owner merely to fill the table. Origins, Echo progression, Segments, controller sandbox/runtime, and Open Fufu persistence are primarily new systems, though they integrate with the inherited seams above.

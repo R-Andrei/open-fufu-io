@@ -1,19 +1,26 @@
-> **Before opening a PR:** discuss new features on [Discord](https://discord.gg/K9zernJB5z) first, and file bugs or small improvements as [issues](https://github.com/openfrontio/OpenFrontIO/issues/new/choose). You must be assigned to an `approved` issue — unsolicited PRs will be auto-closed.
+## Tracking
 
-**Add approved & assigned issue number here:**
+Resolves #
 
-Resolves #(issue number)
+Claim/work-session ID (when applicable):
 
-## Description:
+## Summary
 
-Describe the PR.
+Describe the change and the canonical owner(s) it affects.
 
-## Please complete the following:
+## Validation
 
-- [ ] I have added screenshots for all UI updates
-- [ ] I process any text displayed to the user through translateText() and I've added it to the en.json file
-- [ ] I have added relevant tests to the test directory
+List the checks, tests, fixtures, or manual verification performed. Do not claim inherited OpenFront tests as Open Fufu acceptance unless they still validate supported behavior.
 
-## Please put your Discord username so you can be contacted if a bug or regression is found:
+## Cross-layer impact audit
 
-DISCORD_USERNAME
+Complete this section when gameplay/mechanics, Origins/traits, or character-AI behavior is affected. Otherwise write `Not required — <reason>`.
+
+- Mechanics: updated / reviewed-no-change —
+- Origins/traits: updated / reviewed-no-change —
+- Character AI: updated / reviewed-no-change —
+- Affected character × Origin validation: updated / rerun / not required —
+
+## Notes
+
+Call out deferred work, migration constraints, or intentionally non-authoritative inherited behavior when relevant.
