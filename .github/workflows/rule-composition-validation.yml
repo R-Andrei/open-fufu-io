@@ -39,6 +39,7 @@ jobs:
           npx vitest run
           tests/EchoRuleRegistry.test.ts
           tests/OriginRuleManifest.test.ts
+          tests/OriginManifestConformance.test.ts
           tests/OriginCatalogueCompile.test.ts
 
   exhaustive-origin:
