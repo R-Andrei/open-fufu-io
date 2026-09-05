@@ -123,13 +123,16 @@ callback returns
 → whole output is structurally valid
 → returned memory, if any, validates and canonicalizes within 128 KiB
 → memory commits
-→ game-facing directives/commands receive their ordinary deterministic legality/transaction validation
-→ receipts report accepted/rejected game-facing actions
+→ the complete game-facing directives + commands proposal is validated
+   against one authoritative pre-decision snapshot
+→ if every game-facing change is legal, all of them commit atomically
+→ otherwise none of the game-facing changes commit
+→ DecisionReceipt reports the one accepted/rejected game-facing proposal
 ```
 
 Therefore an ordinary stale-state or gameplay-legality rejection **does not roll back valid new controller memory**. This is intentional: the next callback can inspect `lastDecision` and remember that an attempted action failed.
 
-The game-facing directive/command transaction retains its own canonical validation semantics; controller memory is not an excuse to partially apply an otherwise invalid game-state mutation.
+The public controller contract owns the exact `DecisionReceipt` shape and deterministic failure reporting. This memory contract owns only the separation between valid memory commit and the later all-or-nothing game-facing transaction.
 
 The following instead fault the callback/invocation and discard all newly proposed output, including memory:
 
@@ -186,6 +189,6 @@ Implementation/certification tests should cover at least:
 - cyclic and sparse structures;
 - exact 131,072-byte acceptance and one-byte-over rejection;
 - whole-object replacement and omitted-memory preservation;
-- ordinary game-action rejection with successful memory commit;
+- rejected atomic game-facing proposal with successful memory commit;
 - runtime fault with previous-memory preservation;
 - memory continuity across all three Strategic Spawn callbacks and first normal `decide()`.
