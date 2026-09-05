@@ -321,6 +321,8 @@ export interface ContactsApi {
 export interface FactionsApi {
   get(id: FactionId): FactionView | undefined;
   list(): readonly FactionView[];
+  /** Symmetric team-normalized current war state; see OPEN_FUFU_DESIGN.md. */
+  atWar(a: FactionId, b: FactionId): boolean;
 }
 
 export interface OperationsApi {
@@ -508,6 +510,8 @@ export interface UnitAttackSpec {
   readonly cooldownTicks?: number;
   readonly damage?: number;
   readonly targetUnitTypes?: readonly MobileUnitType[];
+  /** True when this autonomous attack is legal only against a side currently atWar. */
+  readonly requiresAtWar?: boolean;
 }
 
 export interface UnitMechanicsSpec {
@@ -557,6 +561,11 @@ export interface StrategicWeaponMechanicsSpec {
   readonly deepWaterCoreRadius?: number;
 }
 
+export interface HostilityMechanicsSpec {
+  /** Post-directed-hostility grace period under the current ruleset. */
+  readonly atWarGraceTicks: number;
+}
+
 export interface MechanicsApi {
   growth(
     population: number,
@@ -585,6 +594,8 @@ export interface MechanicsApi {
     attackerId?: FactionId,
     responderId?: FactionId,
   ): CounterResponseCalculation;
+
+  hostilitySpec(): HostilityMechanicsSpec;
 
   terrainSpec(
     terrain: TerrainType,
@@ -746,9 +757,10 @@ export type ControllerEvent =
       readonly reason: string;
     }
   | {
-      readonly type: "HOSTILITY_CHANGED";
-      readonly factionId: FactionId;
-      readonly hostile: boolean;
+      readonly type: "WAR_STATE_CHANGED";
+      readonly factionAId: FactionId;
+      readonly factionBId: FactionId;
+      readonly atWar: boolean;
     }
   | {
       readonly type: "FACTION_STATUS_CHANGED";
@@ -877,7 +889,8 @@ export interface BuildUnitCommand {
 /**
  * Strategic repositioning only. Once moving/arrived, autonomous unit logic owns
  * roaming, target acquisition, pursuit, firing/capture/interception, and repair
- * retreat. No patrol/raid/target-unit controller modes exist in V1.
+ * retreat. No patrol/raid/target-unit controller modes exist in V1. MOVE_UNIT
+ * does not itself create or refresh atWar.
  */
 export interface MoveUnitCommand {
   readonly kind: "MOVE_UNIT";
@@ -889,6 +902,7 @@ export interface MoveUnitCommand {
 /**
  * Creates one Transport operation carrying the committed Population from a legal
  * embark source toward a legal landing target. Pathing and landing are autonomous.
+ * A hostile accepted target is direct hostility under the game-wide atWar rules.
  */
 export interface EmbarkTransportCommand {
   readonly kind: "EMBARK_TRANSPORT";

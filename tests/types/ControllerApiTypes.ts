@@ -1,8 +1,12 @@
 import type {
   BuildUnitCommand,
   ControllerCommand,
+  ControllerEvent,
+  FactionsApi,
+  HostilityMechanicsSpec,
   PersistentDirective,
   PurchasableUnitType,
+  UnitAttackSpec,
 } from "../../src/core/controller/ControllerApi";
 
 const tank: PurchasableUnitType = "TANK";
@@ -44,6 +48,32 @@ const embark: ControllerCommand = {
   population: 100,
 };
 void embark;
+
+const warQuery = (factions: FactionsApi): boolean =>
+  factions.atWar("faction-a", "faction-b");
+void warQuery;
+
+const hostilitySpec: HostilityMechanicsSpec = {
+  atWarGraceTicks: 600,
+};
+void hostilitySpec;
+
+const populationAttack: UnitAttackSpec = {
+  kind: "DAMAGE_POPULATION",
+  rangeCells: 30,
+  cooldownTicks: 30,
+  damage: 250,
+  requiresAtWar: true,
+};
+void populationAttack;
+
+const warChanged: ControllerEvent = {
+  type: "WAR_STATE_CHANGED",
+  factionAId: "faction-a",
+  factionBId: "faction-b",
+  atWar: true,
+};
+void warChanged;
 
 // @ts-expect-error Patrol is deliberately not a controller command.
 const patrol: ControllerCommand = { kind: "PATROL", key: "patrol-1" };

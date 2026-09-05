@@ -412,7 +412,118 @@ Deliberately relinquishing owned territory is a separate political/spatial actio
 
 Fixed-team modes use explicit immutable team membership for the match. Team members are allies rather than opponents for victory/reward accounting where the relevant subsystem says so.
 
-`atWar` is a symmetric recent-hostility state used by mechanics that need a stable notion of active war rather than one-tick contact. Its exact V1 timeout remains an unresolved value owned by this game-wide rules layer and must be pinned before implementation completion.
+Open Fufu V1 has no declaration-of-war, treaty, negotiated-peace, relation-score, war-score, or mutable-diplomacy subsystem. `atWar` is instead a **symmetric deterministic state of recent controller-directed hostility** used by mechanics that need a stable notion of active war.
+
+## 12.1 Hostility sides and symmetry
+
+For war-state purposes, each active faction belongs to exactly one **hostility side**:
+
+```text
+HostilitySide(faction)
+= fixed team identity, when the faction belongs to a fixed team
+= faction identity, otherwise
+```
+
+An unteamed Minor Faction is therefore its own hostility side. Members of the same hostility side can never be `atWar` with one another.
+
+`atWar(sideA, sideB)` is symmetric. Controller-facing faction-pair queries normalize through these hostility sides, so if one member of Team A deliberately enters war with one member of Team B, every cross-team faction pair observes the same Team-A ↔ Team-B war state.
+
+## 12.2 What creates directed hostility
+
+War state is created or maintained only by an **accepted controller-facing action whose canonical semantics deliberately direct hostile force against an opposing side**. The V1 sources are:
+
+- an active hostile Population `ATTACK` operation against a resolved target faction/side;
+- an active hostile amphibious Transport operation whose accepted target was owned by an opposing side;
+- an active controller-directed counter-response against an incoming operation from an opposing side;
+- an accepted strategic-weapon launch deliberately targeted at an opposing side;
+- any future controller-facing action only when its own public contract explicitly classifies it as direct hostility.
+
+A persistent directed-hostility source has one resolved target hostility side when it commits. Later autonomous execution, ownership changes, collateral effects, or local target acquisition must not silently create an additional war relation with a different side. Re-targeting or newly directing hostile force against another side requires another accepted controller-facing hostile action under the relevant subsystem contract.
+
+Rejected/invalid controller proposals never create or refresh `atWar`.
+
+## 12.3 Autonomous violence is not war initiation
+
+The following do **not** create or refresh `atWar` merely because they are violent or economically hostile:
+
+- controller `MOVE_UNIT` strategic repositioning;
+- autonomous Warship target acquisition, firing, Transport destruction, Trade-Ship capture, or recapture;
+- autonomous Tank/Heavy-Artillery anti-armor combat;
+- autonomous Train interception;
+- autonomous SAM ship attack where an explicit rule permits it;
+- collateral strategic-weapon damage to a side that was not the deliberately targeted side;
+- Territorial/Operational Contact, observation, scouting, prospective targeting, or other non-committed intent.
+
+Therefore two opposing autonomous military formations may fight while their hostility sides are not `atWar`, and autonomous fighting that continues during a post-war grace period does not keep the war state alive.
+
+This distinction is intentional: `atWar` represents deliberate controller-directed faction hostility, not every consequence of autonomous weapons already operating in the world.
+
+## 12.4 Persistent sources and 600-tick grace
+
+The V1 post-hostility grace period is exactly:
+
+```text
+600 simulation ticks
+= 60 seconds at the V1 10 Hz simulation cadence
+```
+
+This value is a ruleset-owned mechanic and is reproduced from the bound `ruleset_version`, never wall-clock time.
+
+Conceptually, for one unordered pair of hostility sides:
+
+```text
+atWar
+= at least one active persistent directed-hostility source
+  OR currentTick < expiresAtTickExclusive
+```
+
+When a one-shot directed-hostility action such as a strategic-weapon launch commits at tick `t`:
+
+```text
+expiresAtTickExclusive
+= max(expiresAtTickExclusive, t + 600)
+```
+
+While at least one persistent directed-hostility source remains active, the relation cannot expire. When the **last** persistent source between the two sides ends at tick `t`, the post-hostility grace begins:
+
+```text
+expiresAtTickExclusive = max(expiresAtTickExclusive, t + 600)
+```
+
+A newly accepted persistent or one-shot directed-hostility action during that grace keeps or returns the relation to active war and applies the same rules. Autonomous combat does not modify the expiry.
+
+At exactly `currentTick == expiresAtTickExclusive`, and with no active persistent directed-hostility source, the relation is no longer `atWar`.
+
+## 12.5 Unit consequences do not redefine the state
+
+Focused unit/economy owners consume `atWar`; they do not own its timer or initiation rules.
+
+In particular, baseline Tank/Heavy-Artillery autonomous Population attacks require the owner and target hostility sides to be currently `atWar`, while their autonomous anti-armor combat and Train interception do not. Warship autonomous combat/piracy similarly does not require or create `atWar`. External Trade/Train economic events consume the current relation when their subsystem says wartime treatment applies.
+
+Origin/ruleset transformations may modify a consumer effect such as a wartime trade multiplier, but do not alter this lifecycle unless they explicitly define a game-wide hostility-state transformation.
+
+## 12.6 Public observation and aggression history
+
+Current `atWar` relations are coarse public match state. Player controllers and Official AI receive the same lawful pairwise query and transition information.
+
+The public state does **not** expose or store as war-state semantics:
+
+- who originally aggressed;
+- retaliation rights or moral responsibility;
+- a war score;
+- last-hostile-action tick;
+- the internal expiry tick;
+- a treaty/peace state.
+
+Characters/controllers that care who initiated aggression must retain that conclusion from lawful observed/controller history rather than treating `atWar` as an aggressor label.
+
+## 12.7 Defeat and terminal cleanup
+
+A hostility side participates in live `atWar` state only while it contains at least one `ACTIVE` faction.
+
+Defeat/capitulation of one fixed-team member does not clear the team's relations while another member remains active. When the final active faction on a hostility side ceases to be active, all live `atWar` relations involving that side end immediately. Historical/replay records remain unchanged.
+
+At terminal match completion, live war-state queries are no longer gameplay-relevant; replay reconstruction reproduces all prior transitions from the accepted controller actions, deterministic operation lifecycle, ticks, and bound ruleset.
 
 Team communication available to controllers must be bounded, deterministic, and rules-visible rather than an unrestricted side channel.
 
@@ -513,3 +624,4 @@ The following are the game-wide invariants this document owns:
 11. There is no privileged engine-level `Front` strategy object; controllers derive higher-level strategy from surfaced primitives.
 12. Strategically meaningful modifiers come from explicit surfaced rule-bearing sources rather than hidden corrective bonuses.
 13. Focused subsystem documents own their detailed mechanics; this contract does not shadow-copy them.
+14. `atWar` is symmetric team-normalized recent controller-directed hostility with a ruleset-bound 600-tick post-hostility grace; autonomous unit violence does not itself create or refresh it.

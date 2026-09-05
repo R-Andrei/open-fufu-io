@@ -6,6 +6,7 @@ This file is the **canonical owner for baseline Warship, Transport Ship, Warship
 
 Neighboring concerns are owned elsewhere:
 
+- game-wide teams, controller-directed hostility, and `atWar` lifecycle: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
 - Port/Silo/SAM structure levels, charges, repair fields, and launcher access: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - Trade Ship traffic, cargo, capture payout, and piracy economics: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
 - Origin transformations of naval units, launchers, or weapons: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
@@ -17,6 +18,8 @@ The rules and values below are the accepted provisional V1 baseline. Numeric val
 # 1. Strategic weapons
 
 Launcher level/access rules are owned by `TERRAIN_AND_STRUCTURES.md`. A launch must use a legal launcher; grants and other transformations do not bypass launcher legality unless their canonical owner explicitly says so.
+
+An accepted controller-directed strategic-weapon launch against an opposing faction applies the game-wide directed-hostility / `atWar` rule in `OPEN_FUFU_DESIGN.md`. The intended target side at accepted command commit is the hostility source; collateral damage to another side does not independently create or refresh `atWar` with that collateral side.
 
 ## 1.1 Baseline purchase costs
 
@@ -190,6 +193,8 @@ Ordinary autonomous target priority within legal observation is:
 3. legally capturable hostile Trade Ship
 ```
 
+Autonomous Warship target acquisition, firing, Transport destruction, and Trade-Ship capture/recapture do **not** require, create, or refresh `atWar`. A controller-issued Warship move remains strategic repositioning rather than a direct attack order even when autonomous combat is a predictable consequence of moving into an opposing force's area.
+
 Trade Ship capture/cargo semantics are owned by `FFY_ECONOMY.md`. Port repair mechanics are owned by `TERRAIN_AND_STRUCTURES.md`.
 
 ---
@@ -247,6 +252,8 @@ The three-Transport cap prevents fragmentation of one invasion into very large n
 
 The controller begins an amphibious operation by choosing a legal embark source, legal landing target, and Population commitment. The simulation creates the Transport and owns pathfinding/travel to that target; Transports do not accept generic controller movement orders.
 
+When the accepted target is owned by an opposing hostility side, the resulting Transport operation is controller-directed hostility under `OPEN_FUFU_DESIGN.md` and maintains the corresponding `atWar` relation while that directed hostile operation remains active. The Transport's autonomous routing does not create additional war relations with third parties merely because ownership or nearby combat later changes.
+
 ## 5.2 Amphibious landing
 
 Reaching a legal hostile/neutral landing coast does **not** award the target cell.
@@ -268,6 +275,8 @@ On successful return:
 
 Destruction before successful return loses the carried Population under ordinary Transport-destruction rules.
 
+Ending the final controller-directed hostile Transport operation contributes to war-state cooldown only through the canonical game-wide `atWar` lifecycle; this document does not own that timer.
+
 Origin-specific Transport transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ---
@@ -279,9 +288,11 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - fleet-vs-fleet time-to-kill across ordinary ranks;
 - autonomous target priority around mixed Transport/Warship/Trade traffic;
 - Warship move-anchor/leash behavior without patrol/raid/target controller modes;
+- autonomous Warship combat/piracy continuing without creating or refreshing `atWar`;
 - repair-retreat integration with canonical Port repair fields;
 - three-Transport amphibious throughput across representative coasts;
 - autonomous Transport travel/abort/return behavior;
+- hostile Transport operation start/end integration with canonical `atWar` state;
 - Atom/Hydrogen blast impact on representative territories;
 - MIRV target saturation on compact, fragmented, coastal, and very large factions;
 - carrier interception versus post-separation SAM-charge saturation;
