@@ -177,6 +177,26 @@ Destroyed Warships stop counting toward the active-count curve.
 
 Baseline shell damage is deterministic.
 
+### 3.1.1 Warship build admission and ownership reservations
+
+Warship construction uses the same transactional admission principle as persistent-structure acquisition, while this naval owner remains authoritative for Warship-specific producer/build lifecycle.
+
+An effective hard Warship ownership cap, when supplied by an Origin/ruleset, counts:
+
+```text
+owned completed/active Warships
++ already committed Warships still under construction
++ temporary reservations created while validating the current atomic decision
+```
+
+The baseline cap is unbounded. P23 supplies an effective cap of one.
+
+A successful Warship build admission reserves its ownership slot at transaction commit and holds it through the five-second construction lifecycle. Destruction/cancellation before completion or later destruction/loss releases the slot at the authoritative state transition. A failed proposal consumes no FFY/Population and leaves no reservation.
+
+A mechanics quote is not a reservation. Consequently, with an effective cap of one and no existing Warship, two Port build quotes may each be legal against the same immutable snapshot while a decision containing both build commands is rejected atomically with `OWNERSHIP_CAP`. Command-array order must not decide which sibling purchase wins.
+
+Hard build prohibitions are evaluated before transaction resources are committed and remain effective even when another rule changes the payment resource or makes the purchase free. Alternate payment therefore never bypasses a Warship build prohibition or ownership cap.
+
 ## 3.2 Strategic/autonomous control
 
 Warships are autonomous combat formations rather than RTS-micro units.
@@ -290,6 +310,7 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - Warship move-anchor/leash behavior without patrol/raid/target controller modes;
 - autonomous Warship combat/piracy continuing without creating or refreshing `atWar`;
 - repair-retreat integration with canonical Port repair fields;
+- effective Warship ownership caps counting committed constructions and rejecting aggregate oversubscription atomically;
 - three-Transport amphibious throughput across representative coasts;
 - autonomous Transport travel/abort/return behavior;
 - hostile Transport operation start/end integration with canonical `atWar` state;
