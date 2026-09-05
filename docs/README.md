@@ -20,6 +20,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Controller public TypeScript surface | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
 | Authentication, identity, sessions, and provisioning | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
 | Origin trait mechanics/cost catalogue | [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) |
+| Origin trait validation coverage, dependency traces, integration seams, and certification blockers | [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md) |
 | Official Origin roster/content | [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
 | Echo identities, acquisition, rewards, progression, naming, and Gacha | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
 | Official PvE AI subsystem | [`official-ai/README.md`](./official-ai/README.md) |
