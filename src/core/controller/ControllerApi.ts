@@ -70,7 +70,8 @@ export type MovementClass =
   | "TANK"
   | "HEAVY_ARTILLERY"
   | "NAVAL"
-  | "TRANSPORT";
+  | "TRANSPORT"
+  | "RAIL";
 
 export type StrategicWeaponType = "ATOM_BOMB" | "HYDROGEN_BOMB" | "MIRV";
 
@@ -447,7 +448,8 @@ export interface TerrainMechanicsSpec {
   readonly hasFallout: boolean;
   readonly conquerable: boolean;
   readonly populationBearing: boolean;
-  readonly persistentStructureBuildable: boolean;
+  /** Terrain/Origin permission only; exact placement still requires a build quote. */
+  readonly persistentStructureTerrainEligible: boolean;
   readonly acquisitionProgressMultiplier: number;
   readonly offensivePressureMultiplier: number;
   readonly defensivePressureMultiplier: number;
@@ -508,6 +510,8 @@ export interface StrategicWeaponMechanicsSpec {
   readonly distributionRadius?: number;
   readonly minimumWarheadSpacing?: number;
   readonly usesRemaining?: number;
+  readonly waterNukesEnabled: boolean;
+  readonly deepWaterCoreRadius?: number;
 }
 
 export interface MechanicsApi {
@@ -641,6 +645,11 @@ export interface DecisionFailure {
   readonly detail?: string;
 }
 
+// If several game-facing conditions are invalid, the authoritative validator
+// reports one failure using its versioned deterministic validation order.
+// Controllers should use quotes/legality helpers rather than depend on which
+// invalid condition wins that diagnostic ordering.
+
 /**
  * Receipt for the previous normal controller decision.
  *
@@ -654,7 +663,9 @@ export interface DecisionReceipt {
   readonly decisionNumber: number;
   readonly accepted: boolean;
   readonly failure?: DecisionFailure;
+  /** Total normal-runtime faults accumulated so far in this match. */
   readonly faultCount: number;
+  /** True once the runtime circuit breaker has faulted the controller for the match. */
   readonly faulted: boolean;
 }
 
@@ -864,6 +875,11 @@ export interface RelinquishCommand {
   readonly cells: CellSelector;
 }
 
+/**
+ * Broadcasts a bounded deterministic signal to legal fixed teammates. An
+ * accepted signal is never observable during the sending invocation; recipients
+ * may observe it no earlier than their next eligible controller decision.
+ */
 export interface TeamSignalCommand {
   readonly kind: "TEAM_SIGNAL";
   readonly key: CommandKey;
