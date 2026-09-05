@@ -155,7 +155,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 - `P05 + N17`: N17 changes capture disposition to destruction; P05 must not fire.
 - `P05 + N07`: cap-rejected capture transfer destroys the incoming structure; P05 must not fire because no `STRUCTURE_TRANSFERRED` result exists.
-- `P05 + P34`: a successfully transferred captured Factory can both trigger P05 and acquire P34 conquest provenance on one atomic capture resolution.
+- `P05 + P34`: a successfully transferred captured Factory can both trigger P05 and acquire P34 conquest provenance on one atomic capture resolution; P34 does not multiply the P05 event.
 - Inspect P14/P24 after P05 event-location semantics are closed.
 
 **Blocker**
@@ -192,26 +192,29 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Direct transformation / owner**
 
 - Factory Train dispatch scheduler / Train economy.
-- Each Factory has its own normal-primary-dispatch count; every fourth dispatch adds one simultaneous bonus Train.
-- Bonus Train does not consume/delay the primary slot and receives an independently generated deterministic ordinary route.
+- Each Factory maintains an owner-scoped P07 phase for its current Train-service ownership epoch. Normal primary dispatches advance `0 -> 1 -> 2 -> 3 -> bonus + 0`.
+- Bonus Trains do not advance, consume, or delay the primary service slot and receive independently generated deterministic ordinary routes.
 
 **Required seams / dependencies**
 
-- `persistent Factory lifecycle -> per-Factory P07 scheduler`.
+- `persistent Factory current ownership -> owner-scoped Train-service epoch -> serialized P07 phase -> primary dispatch`.
 - `bonus Train -> ordinary Train route/event/dwell/destruction/interception/replay lifecycle`.
-- Expected primary dispatch sequence: `1,1,1,2,1,1,1,2...`, independently per Factory.
-- Train destruction must not reset the Factory's sequence.
+- Expected dispatch Train-count sequence is `1,1,1,2,1,1,1,2...`, independently per Factory and current ownership epoch.
+- Save/reload or replay at phase `3` must reproduce a bonus on the next normal primary dispatch.
+- Temporary Factory inactivity pauses/preserves phase; Factory upgrade preserves phase; ordinary Train destruction preserves phase; physical Factory destruction deletes it.
+- Successful Factory ownership transfer closes the old owner's service epoch. A new P07 owner starts at phase `0`; no latent old-owner phase is inherited or advanced for a non-P07 owner.
+- An old-owner Train already in flight remains the old owner's Train with its dispatch-time route/economic snapshot, stops occupying the captured Factory's new primary slot, and cannot mutate the new owner's turnaround or P07 phase when it later returns/terminates/is destroyed.
 
 **Explicit interactions**
 
-- `P07 + P33`: bonus Trains must generate ordinary qualifying Train events and therefore eligible P33 Population gains.
-- Inspect P34's `2x ordinary Factory effect` against the explicit P07 scheduler.
-- N09 may prevent building Factories but does not suppress P07 for a legally acquired Factory.
-- N17 may prevent such acquisition by destroying the Factory instead.
+- `P07 + P33`: bonus Trains generate ordinary qualifying Train events and therefore eligible P33 Population gains.
+- `P07 + P34`: P34 does not change P07 cadence or Train count. Primary and bonus Trains dispatched while the Factory has the P34 profile snapshot its `1.50x` Factory Train-event base-value transformation.
+- `P07 + N09`: N09 may prevent building Factories but does not suppress P07 on a legally acquired Factory.
+- `P07 + N17`: if N17 destroys a Factory instead of transferring it, no new owner Factory service epoch exists.
 
-**Blocker**
+**Resolved mechanic-definition result (#49)**
 
-- Per-Factory primary-dispatch counter behavior across Factory ownership transfer should be canonically explicit before certification.
+- Factory ownership-transfer behavior, P07 phase persistence/reset, in-flight old-epoch Train behavior, and replay/serialization expectations are canonical. P07 is no longer blocked on undefined Factory-transfer scheduler semantics.
 
 ---
 
@@ -931,7 +934,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P33 + P41`: a purchased L5 City provides the ordinary completed level consumed by P33, producing `100` Population per qualifying event while Capacity permits.
 - `P33 + P08`: wartime modification of the Train's external FFY payout does not change P33's level-based Population amount.
 - `P33 + P14/P24/N11`: these traits modify **FFY yield** at a location; they do not cancel the Train event identity. A hard-zero FFY event under N11 still remains a Train-triggered economic event for P33 unless the canonical economy owner explicitly cancels the event itself rather than setting yield to zero.
-- Inspect P34 after its exact doubled-Factory scope is closed because any P34 change to Train throughput/event generation can change how often P33 is reached without changing the P33 formula.
+- `P33 + P34`: P34 raises a qualifying Factory Train's dispatch-time FFY base value but creates no additional Train or station event and does not modify P33's `20 x City level` Population grant.
 
 **Non-effects**
 
@@ -943,30 +946,48 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Direct transformations / owners**
 
-- Persistent Factory ownership/provenance: only a Factory **successfully transferred by conquest** to the P34 holder receives the transformed state while owned by that holder.
-- The transformed Factory is intended to operate at `2x ordinary Factory effect`, which crosses the persistent-structure Factory owner and every focused subsystem that consumes a Factory effect.
+- Persistent Factory current-owner acquisition provenance: only a Factory whose present ownership epoch was established by successful `CAPTURE_TRANSFER` qualifies for P34 while the current owner has P34.
+- Factory/Train economy: qualifying Factory Train-event base value is `1.50x` at dispatch.
+- Factory Tank-chassis production: construction work rate is `1.50x`.
+- Factory Tank repair: `150 HP/s` repair rate and `8-cell` repair radius.
 
 **Required seams / dependencies**
 
-- `successful enemy-Factory territorial capture -> canonical structure-capture resolver -> STRUCTURE_TRANSFERRED -> new owner/provenance classification -> P34 effective Factory profile -> ordinary Factory consumers`.
-- Built or granted Factories remain ordinary.
-- A Factory resolved as `DESTROYED_ON_CAPTURE`, whether because of N17 or rejected transfer admission such as N07 overflow, never acquires P34 provenance.
-- If ownership leaves the P34 holder, the P34 transformation must not persist as an owner-independent permanent buff. A later qualifying conquest by a P34 holder may re-establish the transformed state through the same canonical ownership rule.
-- Successful transfer preserves the physical Factory identity/state; #49 remains owner of Factory-specific provenance/counter lifecycle across later ownership changes.
+- `successful enemy-Factory territorial capture -> canonical structure-capture resolver -> STRUCTURE_TRANSFERRED -> current acquisition path CAPTURE_TRANSFER -> P34 effective Factory profile -> ordinary Factory consumers`.
+- Built or granted Factories remain ordinary. A Factory resolved as `DESTROYED_ON_CAPTURE`, whether because of N17 or rejected transfer admission such as N07 overflow, never enters P34 state.
+- If ownership leaves the P34 holder, that owner's P34 transformation disappears. A later successful capture creates a new `CAPTURE_TRANSFER` ownership epoch and is evaluated against the new owner's traits.
+- Physical Factory identity/level/health/construction state remain transfer-preserved while owner-scoped Train scheduler state follows the fresh ownership-epoch rules in `FFY_ECONOMY.md`.
+- `structureTypeSpec(..., CAPTURE_TRANSFER)` and `structureSpec(structureId)` must expose the effective P34 Factory values to controllers/Official AI rather than requiring them to parse P34 or infer a generic multiplier.
+
+**Required scenario coverage**
+
+- ordinary built/granted Factory: Train value `1.00x`, Tank construction speed `1.00x`, repair `100 HP/s`, radius `5`;
+- qualifying P34 captured Factory: Train value `1.50x`, Tank construction speed `1.50x`, repair `150 HP/s`, radius `8`;
+- baseline Tank build: `50` ticks -> `34` ticks under isolated P34 speed using `ceil(baseTicks / 1.5)`;
+- P43 Heavy Artillery build: `100` ticks -> `67` ticks under isolated P34 speed;
+- current Train count/service slot, 5-second turnaround, Train speed/routes/dwell, Tank build concurrency, Tank purchase cost, simultaneous repair capacity, Factory level/build/upgrade/cost all remain unchanged;
+- save/reload/replay preserves current-owner acquisition provenance and reproduces the same effective Factory profile;
+- repeated ownership transfer replaces provenance for the new ownership epoch rather than permanently marking the physical Factory as enhanced;
+- a Train dispatched under P34 retains its `1.50x` Factory base-value snapshot after Factory upgrade/transfer/loss and uses that transformed pending base cargo if intercepted.
 
 **Explicit interactions**
 
-- `P34 + P05`: a successfully transferred conquered Factory can both trigger the P05 structure-capture event and enter P34's transformed Factory state.
-- `P34 + N09`: explicitly legal and potentially important; N09 prevents building Factories but a legally transferred conquered Factory can still provide P34 behavior.
+- `P34 + P05`: one successful Factory transfer may independently create one P05 conquest FFY event and establish P34 provenance; P34 does not multiply/duplicate the P05 event.
+- `P34 + N09`: N09 prevents Factory construction, not otherwise legal capture ownership; a captured Factory may qualify for P34.
 - `P34 + N17`: N17 destroys instead of transferring the Factory, so P34 cannot activate.
-- `P34 + N07`: if the holder's Factory slot is already full, the captured Factory is destroyed on capture and P34 cannot activate on that structure.
-- `P34 + P07`: requires focused coverage once `2x ordinary Factory effect` defines whether/how Train service/throughput is doubled.
-- `P34 + P33`: if P34 increases Train event throughput, resulting additional ordinary events can drive P33; P33 itself remains event-driven rather than Factory-driven.
-- `P34 + P43`: if P34 affects Tank production/repair outputs, the transformed Heavy-Artillery chassis must consume those same canonical Factory hooks rather than receive a separate P34 implementation.
+- `P34 + N07`: if Factory ownership admission rejects the transfer, the Factory is destroyed on capture and P34 cannot activate.
+- `P34 + P07`: P07 cadence/Train count remain unchanged; actual primary and bonus Trains dispatched while P34 is active snapshot the `1.50x` Factory Train-event base value.
+- `P34 + P33`: P34 changes only the Train FFY base-value axis; it neither creates extra Train events nor changes P33's Population amount.
+- `P34 + P43`: Heavy Artillery consumes the same Factory Tank-construction-speed and repair hooks, yielding 67-tick construction plus 150 HP/s repair within 8 cells while P43's authored chassis/cost values remain intact.
 
-**Blocker / mechanic-definition finding**
+**Non-effects / negative assertions**
 
-- #45 closes the capture-transfer trigger/fate. The remaining #49 blocker is that `2x ordinary Factory effect` is not one executable scalar in the current canonical Factory model; #49 must enumerate which outputs/timers/capacities/values are doubled and its Factory-specific provenance/counter lifecycle.
+- No implementation may interpret `50% increased effectiveness` as a generic Factory scalar or independently decide which Factory axes it changes.
+- P34 does not increase primary Train count/service capacity, Tank-build concurrency, simultaneous repair capacity, or discount Tank/Factory costs.
+
+**Resolved mechanic-definition result (#49)**
+
+- The transformed axes, current-owner conquest provenance, Train value snapshot, Tank-build timing, Factory transfer lifecycle, and P07/P33/P43/N09/N17 interactions are canonical. P34 is no longer blocked on an undefined Factory-effect scalar.
 
 ---
 
@@ -1154,7 +1175,7 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | --- | --- | --- |
 | P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot finalize without the intended curve. |
 | P05 | Capture trigger/fate is closed by #45, but structure-capture FFY event base value and location remain open under #48. | P05 payout and spatial-modifier integration cannot fully certify until #48 closes value/location. |
-| P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle lacks a canonical expected result until #49 defines it. |
+| P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-owner Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
 | P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
 | P20 | Exact start-state grant placement/ordering remains #32-owned; initial charge readiness remains #46-owned. | P20's generic grant admission, L1 result, and immediate activation are closed by #45, but full start-state certification still depends on #32/#46. |
@@ -1163,7 +1184,7 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
 | P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected result yet. |
 | P29 | Dynamic Warship-rank -> effective-Silo-level changes do not yet state new charge-slot readiness semantics. | P29 charge/cooldown certification is incomplete when rank changes launcher capacity. |
-| P34 | Capture-transfer trigger/fate is closed by #45; `2x ordinary Factory effect` and Factory-specific transformed provenance/counter lifecycle remain #49-owned. | P34's transfer prerequisite is canonical, but its transformed Factory projection still depends on #49. |
+| P34 | P34's exact four transformed Factory axes, current-owner `CAPTURE_TRANSFER` provenance, Train economic snapshot, Tank-build speed semantics, and Factory/P07 transfer lifecycle are closed by #49. | P34 is no longer blocked on a generic Factory-effect interpretation; runtime/AI must consume the explicit effective profile. |
 | P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
 | P36 | Faction-level half-Population residual accounting does not define the eventual whole-Population debit destination/order across multiple concurrent expansion commitments. | P36 multi-operation settlement accounting cannot have one deterministic expected state yet. |
 | P39 | Random/Fixed Spawn interaction with spawn-transforming Origins remains unresolved under #32. | P39 certification is complete only for spawn modes whose deterministic transformed profile is canonically defined. |
