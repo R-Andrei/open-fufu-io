@@ -21,6 +21,8 @@ The focused owner defines **what a rule means**. This document defines **how ind
 
 This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
 
+The executable V1 realization lives under `src/core/rules/` and is bound by `RULE_COMPOSITION_VERSION = "1"`. The code-readable registry, manifests, normalizer, compiler, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
+
 ---
 
 # 1. V1 design rule: no global modifier priority numbers
@@ -304,18 +306,18 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Global offensive-pressure specialization | AXIS | `combat.pressure.offense.global`; Echo and applicable Origins may contribute. |
 | Terrain offensive-pressure component | AXIS | `terrain.pressure.offense[terrain]`; baseline terrain table, terrain Echoes, N02 etc. |
 | Structure offensive-pressure field magnitude | AXIS | `structure.field.pressureMagnitude[type,direction=OFFENSE]`; Command baseline; P50 mirrors Fort effective defense; Echo specializes Command magnitude. |
-| Conditional Origin offense contributions | AXIS contribution / condition | P15/P18/P19 target pressure through typed conditions rather than source-order callbacks. Exact component aggregation must be declared by the combat axis. |
+| Conditional Origin offense contributions | AXIS contribution / condition | P15/P18/P19 target pressure through typed conditions rather than source-order callbacks. Component aggregation is defined in §13.1. |
 | Global defensive-pressure specialization | AXIS | `combat.pressure.defense.global`. |
 | Terrain defensive-pressure component | AXIS | `terrain.pressure.defense[terrain]`. |
 | Structure defensive-pressure field magnitude | AXIS | `structure.field.pressureMagnitude[type,direction=DEFENSE]`; Fort baseline; P51 mirrors Command effective offense. |
 | Acquisition/capture/settlement progress multiplier | AXIS | `combat.acquisitionProgressMultiplier`; terrain/Fallout/global/neutral-only effects are typed contributions/conditions. |
 | Capture progress per second | DERIVED | Advantage × effective progress multipliers. |
 | Partial-progress decay 0.50/s | PARAMETER | No current modifier. |
-| Counter-response response-side effectiveness | AXIS | `combat.counterResponse.responseEffectiveness`; P04 fixed semantics + Echo specialization question must be explicit. |
+| Counter-response response-side effectiveness | AXIS | `combat.counterResponse.responseEffectiveness`; P04 is terminal `FINAL_OVERRIDE(1.0)`, so ordinary response-effectiveness Echo specialization is legal but inert while P04 applies. |
 | Counter-response attack-side effectiveness | AXIS-capable / currently baseline | Surfaced effective hook; no current Echo counterpart. |
 | Counter-response `k`, `p`, `M`, tick cadence | PARAMETER | Versioned combat constants, not ordinary current modifier axes. |
 
-**Audit finding:** pressure is not one scalar axis internally. Terrain components, structure-field magnitudes, conditional Origin contributions, and final global specialization need explicit component/aggregation semantics so a Fort-specific suppression cannot erase unrelated defense and so P50/P51's domain-specific cross-field reducer remains possible.
+**Canonical finding:** pressure is not one scalar axis internally. Terrain components, structure-field magnitudes, conditional/global rule contributions, and selective component suppression retain distinct typed semantics through domain aggregation; P50/P51's cross-field reducer remains a named domain rule.
 
 ## 8.3 Terrain and overlays
 
@@ -488,7 +490,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P01 | NUMERIC AXIS | `spawn.initialTerritoryQuota`: Origin `+15%`. |
 | P02 | BASE REPLACEMENT | `population.growth.utilizationProfile`: replacement curve; later explicit growth inputs remain separate. |
 | P03 | COMPONENT SUPPRESSION | Attacker suppresses hostile `FORT` defensive-pressure field component only. |
-| P04 | FINAL OVERRIDE candidate | `combat.counterResponse.responseEffectiveness = 1.0`; exact interaction with response-effectiveness Echo must be terminally explicit. |
+| P04 | FINAL OVERRIDE | `combat.counterResponse.responseEffectiveness = 1.0` as terminal `FINAL_OVERRIDE`; response-effectiveness Echoes remain legal but are inert while P04 applies. |
 | P05 | CUSTOM event | successful qualifying structure capture -> Military/conquest FFY event; base value/location still blocker. |
 | P06 | NUMERIC AXIS | `unit.movementSpeed[TRADE_SHIP]`: Origin `+25%`. |
 | P07 | CUSTOM scheduler | every fourth normal primary Factory Train dispatch creates bonus Train; do not reduce to scalar count mutation. |
@@ -497,7 +499,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P10 | NUMERIC AXIS | `weapon.projectileSpeed[...] +100%`; exact projectile class/stage scope remains weapon-owner blocker. |
 | P11 | MIXED | SAM FFY purchase cost `HARD_ZERO`; dynamic SAM ownership entitlement/cap derived from peak Population (`1 / 25,000`). |
 | P12 | NUMERIC AXIS | `unit.movementSpeed[TRANSPORT] +25%`. |
-| P13 | CONDITIONAL PRESSURE | Mountain target defensive-pressure contribution `+33%`; combat aggregation must retain terrain/source provenance. |
+| P13 | CONDITIONAL PRESSURE | Mountain target defensive-pressure contribution `+33%`; combat aggregation retains terrain/source provenance. |
 | P14 | CONDITIONAL FFY | Desert-located positive FFY event `+33%` ordinary yield contribution. |
 | P15 | CONDITIONAL PRESSURE | Highland-source offensive pressure `+33%`. |
 | P16 | COMPONENT SUPPRESSION | suppress ordinary Fallout acquisition-resistance multiplier; does not bypass N05 legality. |
@@ -624,6 +626,7 @@ The 12,927 derived Echo identities remain generated from these concrete keys and
 - Command-pressure Echoes specialize the effective Command magnitude; P51 mirrors that effective magnitude.
 - A stat may become inert because a hard Origin rule removes the relevant capability. Inert is legal; it is not a hidden compatibility veto.
 - A hard zero/prohibition remains terminal across ordinary Echo specialization. Examples include N08 Fort defensive pressure and N12 Warship build permission.
+- Counter-response-effectiveness Echoes are legal with P04 but inert while P04's terminal `FINAL_OVERRIDE(1.0)` applies.
 
 ---
 
@@ -730,33 +733,54 @@ This is a named land-combat/structure-field aggregation rule. It must not be gen
 
 ---
 
-# 13. Composition questions exposed by the inventory
+# 13. Settled composition decisions exposed by the inventory
 
-The inventory reveals additional cases that must be explicit before the executable registry is frozen.
+The inventory exposed additional cross-source cases that are now explicit in the V1 contract and executable schema.
 
 ## 13.1 Pressure component algebra
 
-Terrain pressure, global pressure Echoes, conditional Origin pressure, Fort/Command fields, P03 component suppression, and the P50/P51 complement reducer meet in one final `A`/`D` calculation but do **not** all have identical semantics.
+Terrain pressure, global/conditional rule pressure, Fort/Command fields, P03 component suppression, and the P50/P51 complement reducer meet in one final `A`/`D` calculation but do **not** share one unordered percentage bucket.
 
-The executable axis registry must therefore define a typed pressure-component pipeline rather than flattening all percentages into one bag. In particular it must state whether a conditional trait such as P15 modifies the final lane pressure or contributes a separate additive pressure component relative to terrain, and how global Echo pressure specializes the resulting effective pressure.
+The V1 contract is component-aware. Conceptually:
 
-This is a #43 composition concern because the focused combat owner already exposes `effectiveAttackingPressure` / `effectiveDefendingPressure` but does not own cross-source modifier algebra.
+```text
+raw lane pressure
+× effective terrain component
+× effective general/conditional-rule component
+× effective structure-support component
+= effective lane pressure
+```
+
+The typed rule surfaces preserve those distinctions:
+
+- terrain offense/defense is specialized on terrain pressure axes;
+- global and conditional rules such as P18 use global/contextual pressure stages rather than masquerading as terrain;
+- Fort/Command pressure magnitudes are materialized independently, same-type overlap is resolved by the structure rule, and cross-type overlap uses the explicit complement reducer;
+- P03 suppresses only the hostile Fort defensive-pressure component and therefore cannot erase Mountain/terrain defense, Command-derived defense, or global defensive specialization;
+- P50/P51 consume **effective** structure magnitudes, so terminal rules such as N08 naturally propagate through mirrored fields.
+
+Source provenance remains separate from semantic stage. In particular, an Origin-authored late contextual rule is legal when the axis explicitly admits it; N18 is the current motivating example.
 
 ## 13.2 P04 fixed response effectiveness versus Echo
 
-P04 says response-side effectiveness is fixed at `1.0`, while Echoes include response-side effectiveness specialization.
+P04 is canonically `FINAL_OVERRIDE(1.0)` on response-side counter-response effectiveness.
 
-The recommended V1 interpretation is `FINAL_OVERRIDE`: P04 establishes a genuinely fixed final response-side effectiveness and the Echo becomes inert on that hook while P04 applies. This must be made explicit in the final executable schema/tests rather than inferred from trait order.
+While P04 applies:
+
+- the final response-side effectiveness is exactly `1.0`;
+- response-effectiveness Echoes may still be legally equipped and compiled;
+- those ordinary Echo specializations are inert on this hook because the terminal final override wins;
+- no trait/Echo insertion order is consulted.
 
 ## 13.3 Origin profile transforms followed by Echo specialization
 
-The following should all use the same structural-profile -> Echo pattern unless an owner says otherwise:
+The following use the same structural-profile -> Echo pattern unless a focused owner explicitly defines another domain order:
 
 - P43 Tank -> Heavy Artillery, then Tank-scoped cost/speed/range/damage/health Echoes;
 - P49 Observation -> blackout, then Observation-radius Echo;
 - P40 effective SAM range/recharge profile, then SAM range/recharge Echoes;
 - P25 Hydrogen cost/blast-area Origin profile, then matching weapon Echo specialization;
-- P31 Warship-specific Port repair transform should consume the **effective** Port repair field after ordinary Port/Echo specialization unless a focused owner defines another order.
+- P31 Warship-specific Port repair transform consumes the effective Port repair field after ordinary Port/Echo specialization unless its focused owner defines another explicit order.
 
 ## 13.4 Hard-zero purchase cost versus percentage cost modifiers
 
@@ -800,9 +824,9 @@ These are not reasons to add arbitrary priority values or hidden compatibility v
 
 # 15. Normalized effective-rule representation
 
-The eventual machine-readable implementation should normalize raw rule-bearing inputs before subsystem execution.
+The machine-readable implementation normalizes raw rule-bearing inputs before subsystem execution.
 
-Conceptually a normalized declaration contains:
+A normalized declaration contains the semantic equivalent of:
 
 ```text
 schema/algebra version
@@ -824,7 +848,9 @@ operation    = ADD_PERCENT
 value        = +2000 bp
 ```
 
-P42 contributes `-3300 bp` to the same slot. Normalization stores one canonical Origin result of `-1300 bp` for that slot plus provenance sufficient for diagnostics.
+P42 contributes `-3300 bp` to the same slot. Normalization produces the canonical mathematical result for that slot while the compiled profile retains authored provenance for diagnostics.
+
+Singleton stages are validated against **scope and typed-condition overlap**, not merely axis/stage identity. Two singleton transforms whose typed conditions are provably mutually exclusive may coexist; transforms that may apply simultaneously remain a validation error.
 
 Controllers should consume materialized typed effective mechanics/quotes such as the existing `MechanicsApi` contracts. They should not reconstruct raw precedence from Pxx/Nxx/Echo lists.
 
@@ -834,7 +860,7 @@ The generic `EffectiveModifierSheet` may remain useful for introspection/less co
 
 # 16. Static validation requirements
 
-Before a rule-bearing catalogue/ruleset version is deployable, static validation should prove at least:
+Before a rule-bearing catalogue/ruleset version is deployable, static validation must prove at least:
 
 1. every declaration references a known axis family and valid typed scope;
 2. every operator is legal in the chosen axis slot;
@@ -843,7 +869,7 @@ Before a rule-bearing catalogue/ruleset version is deployable, static validation
 5. same-slot commutative inputs are independent of input/source order;
 6. no arbitrary per-modifier numeric priority is accepted where the schema does not explicitly allow an ordered custom transform;
 7. explicit dependency graphs are acyclic;
-8. no content-legal combination creates two unresolved `SINGLETON` replacements/structural transforms on one facet;
+8. no content-legal combination creates two unresolved overlapping `SINGLETON` replacements/structural transforms on one facet;
 9. hard prohibitions cannot be bypassed by price discounts, grants, terrain permissions, or numeric modifiers on other hooks unless an explicit mechanic says so;
 10. hard-zero/final-override semantics cannot be resurrected by later ordinary modifiers;
 11. every builder-legal Origin compiles to one deterministic normalized representation;
@@ -851,39 +877,43 @@ Before a rule-bearing catalogue/ruleset version is deployable, static validation
 13. every current Echo concrete stat/scope key maps to exactly one valid game-wide axis target;
 14. every Pxx/Nxx direct effect maps to one or more valid axes/constraints or is explicitly registered as a custom structural/lifecycle rule;
 15. representative golden combinations produce the authoritative results in §12;
-16. focused subsystem blockers are reported as missing dependencies rather than silently guessed by the normalizer.
+16. source provenance is valid for the semantic stage it authors, while provenance and execution stage remain independent concepts;
+17. focused subsystem blockers are reported as missing dependencies rather than silently guessed by the normalizer.
 
-For the current finite Origin catalogue, the inexpensive structural/static compiler should enumerate **every builder-legal trait combination**. Expensive runtime/headless certification remains domain-focused under the existing Origin-validation architecture rather than simulating every named Origin.
+For the current finite Origin catalogue, the structural/static compiler enumerates **every builder-legal trait combination**. Expensive runtime/headless certification remains domain-focused under the existing Origin-validation architecture rather than simulating every named Origin.
 
-Property tests should additionally randomize modifier insertion order and prove normalized output is unchanged for all commutative slots.
+Property tests additionally randomize modifier insertion order and prove normalized output is unchanged for commutative slots.
 
 ---
 
-# 17. Implementation boundary for issue #43
+# 17. Implementation boundary and closure status for issue #43
 
-Issue #43 should implement/land enough code-readable schema and validation to make the contract above executable, but it should **not** require every gameplay subsystem to be fully migrated to the new runtime before the issue can close.
+Issue #43 lands the code-readable composition foundation without requiring every gameplay subsystem to be migrated to the new runtime in the same change.
 
-The intended implementation sequence after this inventory is accepted is:
+The #43 branch now contains:
 
-1. freeze the V1 axis family/scope/type vocabulary from this audit;
-2. define code-readable axis/slot/operator/unit/reducer types and registry;
-3. define Origin rule manifests and Echo-key -> axis mappings;
-4. implement canonical normalization/serialization and static validation;
-5. exhaustively compile all builder-legal Origin combinations;
-6. add permutation/property tests and §12 golden cases;
-7. expose focused blocker diagnostics for unresolved external mechanics;
-8. update Origin/Echo documentation to reference this owner rather than duplicating generic algebra;
-9. leave subsystem runtime wiring to the owning implementation work, which consumes the normalized/effective-rule contract.
+1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
+2. code-readable axis/slot/operator/unit/reducer types and registry;
+3. Origin rule manifests and the complete 93-key Echo -> axis mapping;
+4. canonical normalization/serialization and static validation;
+5. exhaustive builder-legal Origin compilation validation;
+6. permutation/property and authoritative golden-case coverage;
+7. provenance-vs-stage validation and condition-aware singleton-conflict validation;
+8. explicit focused-subsystem blocker boundaries rather than guessed composition semantics.
 
-The closure gate for #43 is therefore:
+The remaining work in §14 is deliberately **not** #43 composition work. Owning subsystem implementations consume this normalized/effective-rule contract as those mechanics are implemented.
+
+The closure gate for #43 is:
 
 > **No ambiguous current Origin/Echo modifier definition remains in the composition layer; the complete current V1 modifiable-axis vocabulary is represented; every current rule declaration can be classified; normalization/serialization is deterministic; every builder-legal Origin statically compiles; and remaining unresolved semantics are explicitly identified as focused subsystem dependencies rather than hidden arithmetic.**
 
+That composition-layer closure gate is satisfied by the executable registry/manifests/compiler/normalizer and current validation suite on the #43 branch.
+
 ---
 
-## Next work items
+## Follow-up integration work
 
-- Review the base inventory and the pressure/P04 questions in §13 before freezing code IDs.
-- After approval, implement the typed rule-axis registry, normalized declaration schema, Origin/Echo manifests, and static validators on the #43 branch.
-- Add exhaustive builder-legal Origin compilation plus permutation/golden tests.
-- Carry the mandatory gameplay / Origins-traits / Character-AI cross-layer impact record into the eventual PR.
+- Consume the compiled/effective-rule contract from each focused gameplay subsystem as that subsystem's implementation lands; do not reimplement Origin/Echo precedence locally.
+- Keep §14 blockers with their named focused owners/issues, especially #32, #44, #48, #49, #50, and #51 where applicable.
+- Preserve the mandatory gameplay / Origins-traits / Character-AI cross-layer impact record when downstream mechanics begin consuming these effective rules.
+- Increment `RULE_COMPOSITION_VERSION` only for a semantic/schema compatibility change that can alter normalized interpretation or replay identity.
