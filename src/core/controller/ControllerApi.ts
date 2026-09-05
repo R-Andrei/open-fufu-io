@@ -20,6 +20,10 @@ export type StructureId = string;
 export type DirectiveKey = string;
 export type CommandKey = string;
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
+export type StructureAcquisitionPath =
+  | "PURCHASE_BUILD"
+  | "GRANT"
+  | "CAPTURE_TRANSFER";
 
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue =
@@ -457,6 +461,7 @@ export interface UnitBuildQuote extends ActionQuote {
   readonly requestedUnit: PurchasableUnitType;
   readonly resultingUnit: MobileUnitType;
   readonly producerId: StructureId;
+  /** Effective producer-sensitive construction duration, including Factory transformations. */
   readonly buildTicks: number;
   /** Effective hard ownership cap when this unit type is capped for the faction. */
   readonly ownershipCap?: number;
@@ -508,6 +513,10 @@ export interface StructureMechanicsSpec {
   readonly repairRadius?: number;
   readonly repairRateHpPerSecond?: number;
   readonly simultaneousRepairCapacity?: number;
+  /** Factory-only multiplier applied to its Train event base value at dispatch. */
+  readonly trainEventBaseValueMultiplier?: number;
+  /** Factory-only construction work-rate multiplier for Tank-derived chassis. */
+  readonly tankConstructionSpeedMultiplier?: number;
   readonly chargeCapacity?: number;
   readonly rechargeTicks?: number;
   readonly interceptionRange?: number;
@@ -626,15 +635,23 @@ export interface MechanicsApi {
     factionId?: FactionId,
   ): TerrainMechanicsSpec;
 
+  /**
+   * Effective completed-level mechanics for a structure type. When acquisitionPath
+   * is omitted, provenance-sensitive effects are evaluated as PURCHASE_BUILD.
+   * Pass CAPTURE_TRANSFER to evaluate a hypothetical conquered Factory for a
+   * faction without making controllers inspect P34 or duplicate its modifiers.
+   */
   structureTypeSpec(
     type: StructureType,
     level: StructureLevel,
     factionId?: FactionId,
+    acquisitionPath?: StructureAcquisitionPath,
   ): StructureMechanicsSpec;
   /**
-   * Effective currently active mechanics for a physical structure.
-   * Fresh inactive construction has no completed mechanics yet and returns undefined;
-   * an upgrade returns the previous completed level's active mechanics until completion.
+   * Effective currently active mechanics for a physical structure, including its
+   * authoritative current-owner acquisition provenance. Fresh inactive construction
+   * has no completed mechanics yet and returns undefined; an upgrade returns the
+   * previous completed level's active mechanics until completion.
    */
   structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
