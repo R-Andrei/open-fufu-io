@@ -1,0 +1,28 @@
+name: Issue 43 Full Test Validation
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  full-tests:
+    name: Full npm test suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Run full test suite
+        run: npm test
