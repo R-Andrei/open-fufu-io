@@ -6,6 +6,7 @@ export type RuleAxisKind =
   | "PERMISSION"
   | "CAP"
   | "CAPABILITY_SET"
+  | "COMPONENT_SET"
   | "STRUCTURAL";
 
 export type RuleSourceKind =
@@ -25,6 +26,8 @@ export type RuleUnit =
   | "CELLS"
   | "CELLS_PER_SECOND"
   | "DAMAGE"
+  | "HEALTH_POINTS"
+  | "HEALTH_PER_SECOND"
   | "FFY"
   | "POPULATION"
   | "SECONDS"
@@ -33,6 +36,7 @@ export type RuleUnit =
   | "BOOLEAN"
   | "COUNT"
   | "CAPABILITY_SET"
+  | "COMPONENT_SET"
   | "PROFILE_ID";
 
 export type TerrainScopeId =
@@ -102,6 +106,7 @@ export type RuleStageId =
   | "CAPABILITY_ADD"
   | "CAPABILITY_REMOVE"
   | "CAPABILITY_REPLACE"
+  | "COMPONENT_SUPPRESSION"
   | "PERMISSION"
   | "FINAL_OVERRIDE"
   | "TERMINAL";
@@ -121,6 +126,7 @@ export type RuleOperator =
   | "ADD_CAPABILITY"
   | "REMOVE_CAPABILITY"
   | "REPLACE_CAPABILITIES"
+  | "SUPPRESS_COMPONENT"
   | "STRUCTURAL_TRANSFORM";
 
 export type RuleReducer =
@@ -137,6 +143,7 @@ export type RuleReducer =
 export type RuleCondition =
   | { readonly kind: "SOURCE_TERRAIN_IS"; readonly terrain: TerrainScopeId }
   | { readonly kind: "TARGET_TERRAIN_IS"; readonly terrain: TerrainScopeId }
+  | { readonly kind: "EVENT_TERRAIN_IS"; readonly terrain: TerrainScopeId }
   | { readonly kind: "BUILD_TERRAIN_IS"; readonly terrain: TerrainScopeId }
   | { readonly kind: "TARGET_HAS_FALLOUT" }
   | { readonly kind: "TARGET_LACKS_FALLOUT" }
@@ -163,10 +170,11 @@ export interface RuleContribution {
   readonly operator: RuleOperator;
   readonly sourceKind: RuleSourceKind;
   readonly sourceId: string;
-  /** Operand unit. Percentage/scalar operands are always integer basis points. */
+  /** Operand unit. Percentage/scalar operands are integer basis points. */
   readonly valueUnit: RuleUnit;
   readonly value?: RuleValue;
   readonly condition?: RuleCondition;
+  /** Optional typed-domain provenance tag used by selective aggregation. */
   readonly component?: string;
 }
 
@@ -184,6 +192,7 @@ export interface RuleAxisDefinition {
   /** Unit of the materialized effective result. */
   readonly unit: RuleUnit;
   readonly scopeKind: RuleScopeKind;
+  /** Ordered semantic stages owned by this axis. */
   readonly stages: readonly RuleStageDefinition[];
   readonly allowedSourceKinds: readonly RuleSourceKind[];
 }
@@ -194,6 +203,7 @@ export type RuleValidationCode =
   | "AXIS_ID_MISMATCH"
   | "DUPLICATE_STAGE"
   | "UNKNOWN_STAGE_DEPENDENCY"
+  | "STAGE_DEPENDENCY_ORDER"
   | "STAGE_DEPENDENCY_CYCLE"
   | "UNKNOWN_AXIS"
   | "SCOPE_KIND_MISMATCH"
@@ -204,8 +214,10 @@ export type RuleValidationCode =
   | "VALUE_REQUIRED"
   | "VALUE_NOT_ALLOWED"
   | "INVALID_NUMERIC_VALUE"
+  | "NON_INTEGER_BASIS_POINTS"
   | "INVALID_STRING_VALUE"
   | "INVALID_CAPABILITY_VALUE"
+  | "INVALID_COMPONENT_VALUE"
   | "SINGLETON_CONFLICT"
   | "MIXED_STAGE_OPERATORS";
 
@@ -242,6 +254,7 @@ const CAPABILITY_OPERATORS = new Set<RuleOperator>([
   "REMOVE_CAPABILITY",
   "REPLACE_CAPABILITIES",
 ]);
+const COMPONENT_OPERATORS = new Set<RuleOperator>(["SUPPRESS_COMPONENT"]);
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -367,6 +380,8 @@ function expectedValueUnit(
     case "REMOVE_CAPABILITY":
     case "REPLACE_CAPABILITIES":
       return "CAPABILITY_SET";
+    case "SUPPRESS_COMPONENT":
+      return "COMPONENT_SET";
     case "STRUCTURAL_TRANSFORM":
       return "PROFILE_ID";
   }
@@ -384,8 +399,12 @@ export function validateRuleAxisRegistry(
         message: `Registry key ${axisId} does not match definition id ${definition.id}`,
       });
     }
+
     const ids = new Set<RuleStageId>();
-    for (const stage of definition.stages) {
+    const stageIndex = new Map<RuleStageId, number>();
+    for (let index = 0; index < definition.stages.length; index += 1) {
+      const stage = definition.stages[index];
+      if (stage === undefined) continue;
       if (ids.has(stage.id)) {
         issues.push({
           code: "DUPLICATE_STAGE",
@@ -395,7 +414,9 @@ export function validateRuleAxisRegistry(
         });
       }
       ids.add(stage.id);
+      stageIndex.set(stage.id, index);
     }
+
     const graph = new Map<RuleStageId, readonly RuleStageId[]>();
     for (const stage of definition.stages) {
       const after = stage.after ?? [];
@@ -408,9 +429,25 @@ export function validateRuleAxisRegistry(
             stage: stage.id,
             message: `${stage.id} depends on unknown ${dependency}`,
           });
+          continue;
+        }
+        const dependencyIndex = stageIndex.get(dependency);
+        const currentIndex = stageIndex.get(stage.id);
+        if (
+          dependencyIndex !== undefined &&
+          currentIndex !== undefined &&
+          dependencyIndex >= currentIndex
+        ) {
+          issues.push({
+            code: "STAGE_DEPENDENCY_ORDER",
+            axis: axisId,
+            stage: stage.id,
+            message: `${stage.id} must appear after dependency ${dependency}`,
+          });
         }
       }
     }
+
     const visiting = new Set<RuleStageId>();
     const visited = new Set<RuleStageId>();
     const cyclic = (id: RuleStageId): boolean => {
@@ -439,6 +476,29 @@ export function validateRuleAxisRegistry(
   return issues;
 }
 
+function validateStringSetValue(
+  contribution: RuleContribution,
+  code: "INVALID_CAPABILITY_VALUE" | "INVALID_COMPONENT_VALUE",
+  label: string,
+  issues: RuleValidationIssue[],
+): void {
+  const value = contribution.value;
+  const valid =
+    typeof value === "string" ||
+    (Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((entry) => typeof entry === "string" && entry.length > 0));
+  if (!valid) {
+    issues.push({
+      code,
+      axis: contribution.axis,
+      sourceId: contribution.sourceId,
+      stage: contribution.stage,
+      message: `${contribution.operator} requires ${label} ID(s)`,
+    });
+  }
+}
+
 function validateValue(
   contribution: RuleContribution,
   issues: RuleValidationIssue[],
@@ -460,6 +520,15 @@ function validateValue(
         ...base,
         code: "INVALID_NUMERIC_VALUE",
         message: `${contribution.operator} requires a finite number`,
+      });
+    } else if (
+      contribution.valueUnit === "BASIS_POINTS" &&
+      !Number.isSafeInteger(contribution.value)
+    ) {
+      issues.push({
+        ...base,
+        code: "NON_INTEGER_BASIS_POINTS",
+        message: `${contribution.operator} requires an integer basis-point operand`,
       });
     }
     return;
@@ -485,19 +554,21 @@ function validateValue(
     return;
   }
   if (CAPABILITY_OPERATORS.has(contribution.operator)) {
-    const value = contribution.value;
-    const valid =
-      typeof value === "string" ||
-      (Array.isArray(value) &&
-        value.length > 0 &&
-        value.every((entry) => typeof entry === "string" && entry.length > 0));
-    if (!valid) {
-      issues.push({
-        ...base,
-        code: "INVALID_CAPABILITY_VALUE",
-        message: `${contribution.operator} requires capability ID(s)`,
-      });
-    }
+    validateStringSetValue(
+      contribution,
+      "INVALID_CAPABILITY_VALUE",
+      "capability",
+      issues,
+    );
+    return;
+  }
+  if (COMPONENT_OPERATORS.has(contribution.operator)) {
+    validateStringSetValue(
+      contribution,
+      "INVALID_COMPONENT_VALUE",
+      "component",
+      issues,
+    );
   }
 }
 
@@ -575,6 +646,7 @@ export function validateRuleContributions(
     if (group === undefined) groups.set(key, [contribution]);
     else group.push(contribution);
   }
+
   for (const group of groups.values()) {
     const first = group[0];
     if (first === undefined) continue;
@@ -632,6 +704,53 @@ function assertValid(
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
+  for (const stage of definition.stages) {
+    if (
+      stage.reducer === "SINGLETON" &&
+      contributions.filter((entry) => entry.stage === stage.id).length > 1
+    ) {
+      throw new Error(`${definition.id}/${stage.id} has multiple applicable singletons`);
+    }
+  }
+}
+
+function bigintAbs(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
+function bigintGcd(a: bigint, b: bigint): bigint {
+  let left = bigintAbs(a);
+  let right = bigintAbs(b);
+  while (right !== 0n) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left === 0n ? 1n : left;
+}
+
+function exactBasisPointProduct(group: readonly RuleContribution[]): number {
+  let numerator = 1n;
+  let denominator = 1n;
+  for (const entry of group) {
+    const value = numericValue(entry);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`Unsafe basis-point multiplier from ${entry.sourceId}`);
+    }
+    numerator *= BigInt(value);
+    denominator *= BigInt(BASIS_POINTS_SCALE);
+    const divisor = bigintGcd(numerator, denominator);
+    numerator /= divisor;
+    denominator /= divisor;
+  }
+  return Number(numerator) / Number(denominator);
+}
+
+function deterministicNumericSum(group: readonly RuleContribution[]): number {
+  return group
+    .map(numericValue)
+    .sort((a, b) => a - b)
+    .reduce((total, value) => total + value, 0);
 }
 
 /** Scope/condition eligibility is resolved by the owning subsystem before reduction. */
@@ -650,31 +769,33 @@ export function reduceScalarRule(
     if (operator === undefined) continue;
     switch (stage.reducer) {
       case "SUM": {
-        const sum = group.reduce((total, entry) => total + numericValue(entry), 0);
+        const sum = deterministicNumericSum(group);
         if (operator === "ADD_FLAT") current += sum;
         else if (operator === "ADD_PERCENT") {
           current *= 1 + sum / BASIS_POINTS_SCALE;
         } else throw new Error(`SUM cannot apply ${operator}`);
         break;
       }
-      case "PRODUCT": {
-        if (operator !== "MULTIPLY") throw new Error(`PRODUCT cannot apply ${operator}`);
-        current *= group.reduce(
-          (product, entry) => product * (numericValue(entry) / BASIS_POINTS_SCALE),
-          1,
-        );
+      case "PRODUCT":
+        if (operator !== "MULTIPLY") {
+          throw new Error(`PRODUCT cannot apply ${operator}`);
+        }
+        current *= exactBasisPointProduct(group);
         break;
-      }
       case "SINGLETON": {
         const entry = group[0];
-        if (entry !== undefined &&
-            (operator === "REPLACE_BASE" || operator === "FINAL_OVERRIDE")) {
+        if (
+          entry !== undefined &&
+          (operator === "REPLACE_BASE" || operator === "FINAL_OVERRIDE")
+        ) {
           current = numericValue(entry);
         } else throw new Error(`SINGLETON cannot apply ${operator}`);
         break;
       }
       case "ANY":
-        if (operator !== "HARD_ZERO") throw new Error(`ANY cannot apply ${operator}`);
+        if (operator !== "HARD_ZERO") {
+          throw new Error(`ANY cannot apply ${operator}`);
+        }
         current = 0;
         break;
       case "MIN":
@@ -701,7 +822,9 @@ export function reducePermissionRule(
   for (const stage of definition.stages) {
     const group = contributions.filter((entry) => entry.stage === stage.id);
     if (group.length === 0) continue;
-    if (stage.reducer !== "PROHIBIT_WINS") throw new Error("Permission reducer mismatch");
+    if (stage.reducer !== "PROHIBIT_WINS") {
+      throw new Error("Permission reducer mismatch");
+    }
     if (group.some((entry) => entry.operator === "PROHIBIT")) allowed = false;
     else if (group.some((entry) => entry.operator === "ALLOW")) allowed = true;
   }
@@ -721,7 +844,7 @@ export function reduceCapRule(
     if (group.length === 0) continue;
     const operator = group[0]?.operator;
     if (stage.reducer === "SUM" && operator === "ADD_CAP") {
-      cap += group.reduce((sum, entry) => sum + numericValue(entry), 0);
+      cap += deterministicNumericSum(group);
     } else if (stage.reducer === "MIN" && operator === "CAP_LIMIT") {
       cap = Math.min(cap, ...group.map(numericValue));
     } else if (stage.reducer === "MAX" && operator === "CAP_FLOOR") {
@@ -731,12 +854,12 @@ export function reduceCapRule(
   return cap;
 }
 
-function capabilityIds(value: RuleValue | undefined): readonly string[] {
+function stringIds(value: RuleValue | undefined): readonly string[] {
   if (typeof value === "string") return [value];
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
     return value;
   }
-  throw new Error("Expected capability ID(s)");
+  throw new Error("Expected string ID(s)");
 }
 
 export function reduceCapabilitySetRule(
@@ -752,17 +875,38 @@ export function reduceCapabilitySetRule(
     if (group.length === 0) continue;
     if (stage.reducer === "UNION") {
       for (const entry of group) {
-        for (const id of capabilityIds(entry.value)) capabilities.add(id);
+        for (const id of stringIds(entry.value)) capabilities.add(id);
       }
     } else if (stage.reducer === "DIFFERENCE") {
       for (const entry of group) {
-        for (const id of capabilityIds(entry.value)) capabilities.delete(id);
+        for (const id of stringIds(entry.value)) capabilities.delete(id);
       }
     } else if (stage.reducer === "SINGLETON") {
-      capabilities = new Set(capabilityIds(group[0]?.value));
+      capabilities = new Set(stringIds(group[0]?.value));
     } else throw new Error(`${stage.reducer} is invalid for capability set`);
   }
   return [...capabilities].sort(compareStrings);
+}
+
+export function reduceComponentSetRule(
+  baseSuppressedComponents: readonly string[],
+  definition: RuleAxisDefinition,
+  contributions: readonly RuleContribution[],
+): readonly string[] {
+  assertKind(definition, "COMPONENT_SET");
+  assertValid(definition, contributions);
+  const suppressed = new Set(baseSuppressedComponents);
+  for (const stage of definition.stages) {
+    const group = contributions.filter((entry) => entry.stage === stage.id);
+    if (group.length === 0) continue;
+    if (stage.reducer !== "UNION") {
+      throw new Error(`${stage.reducer} is invalid for component suppression`);
+    }
+    for (const entry of group) {
+      for (const id of stringIds(entry.value)) suppressed.add(id);
+    }
+  }
+  return [...suppressed].sort(compareStrings);
 }
 
 export function selectStructuralTransform(
@@ -813,8 +957,12 @@ function strongestFieldBonus(
 /** Component-aware pressure; same-type strongest, cross-type complement. */
 export function composePressure(input: PressureCompositionInput): number {
   const suppressed = input.suppressedComponents ?? new Set<string>();
-  const terrainBp = (input.terrainPercentBp ?? []).reduce((a, b) => a + b, 0);
-  const ruleBp = (input.rulePercentBp ?? []).reduce((a, b) => a + b, 0);
+  const terrainBp = [...(input.terrainPercentBp ?? [])]
+    .sort((a, b) => a - b)
+    .reduce((a, b) => a + b, 0);
+  const ruleBp = [...(input.rulePercentBp ?? [])]
+    .sort((a, b) => a - b)
+    .reduce((a, b) => a + b, 0);
   const fields = (input.structureFields ?? []).filter(
     (field) => !suppressed.has(field.component),
   );
