@@ -1,0 +1,889 @@
+# Open Fufu — Rule Composition Contract and V1 Inventory
+
+## Status and authority
+
+This document is the **canonical owner for game-wide effective-rule composition architecture**: rule-axis identity, source/layer metadata, operator and reducer semantics, normalization order, terminal constraints, deterministic serialization requirements, and the V1 inventory used to prove that current rule-bearing content can be represented without ambiguous arithmetic.
+
+It does **not** own the baseline mechanics or balance values of the systems it inventories. Those remain with their focused canonical owners:
+
+- game-wide Population, land operations, automatic defense, hostility, and cross-system invariants: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
+- capture/counter-response arithmetic: [`COMBAT_TUNING.md`](./COMBAT_TUNING.md);
+- terrain, persistent structures, and baseline Tank: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
+- Warships, Transports, and strategic weapons: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
+- FFY, Factory Trains, Trade Ships, and piracy: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
+- Strategic Spawn: [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md);
+- Segments: [`SEGMENTS.md`](./SEGMENTS.md);
+- Minor Factions / Goons: [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md);
+- Origin trait identities, values, and trait-specific mechanics: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
+- Echo identities, scopes, magnitudes, and Echo-specific rules: [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
+
+The focused owner defines **what a rule means**. This document defines **how independently authored rule-bearing sources compose when they meet on the same effective rule surface**.
+
+This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
+
+---
+
+# 1. V1 design rule: no global modifier priority numbers
+
+Open Fufu V1 does not assign arbitrary `priority: N` values to ordinary modifiers.
+
+A modifier is not interpreted as an instruction to mutate a value in source/insertion/trait-ID order. Instead it identifies:
+
+1. a stable **rule axis** and typed scope;
+2. its **source kind** and provenance;
+3. an allowed semantic **slot** on that axis;
+4. an allowed **operator**;
+5. a typed value/unit where applicable;
+6. an optional closed, typed eligibility condition;
+7. terminal/constraint behavior where applicable.
+
+The **axis definition owns ordering**. Each slot owns an explicit reducer such as `SUM`, `PRODUCT`, `MIN`, `MAX`, `UNION`, `INTERSECTION`, `ANY`, or `SINGLETON`.
+
+Source IDs are allowed as canonical serialization/provenance keys. They must never silently decide which of two semantically conflicting replacements or structural transformations wins.
+
+If two builder-legal/content-legal rules create a non-commutative conflict and no explicit composition rule exists, catalogue/ruleset validation fails. Runtime does not invent a winner.
+
+---
+
+# 2. Inventory classification
+
+Not every gameplay number is a modifier axis. The V1 audit classifies rule-bearing surfaces into the following classes.
+
+| Class | Meaning |
+| --- | --- |
+| **AXIS** | A deliberately modifiable effective-rule quantity/capability/profile with an explicit composition contract. |
+| **PARAMETER** | A versioned baseline constant or table entry that currently has no generic modifier composition surface. It may become an axis only through an explicit future design change. |
+| **DERIVED** | A value calculated from authoritative state/parameters/axes. Modifiers should target the correct inputs rather than mutate this output opportunistically. |
+| **STATE** | Dynamic match state such as Population, ownership, rank, ready charges, or `atWar`; rules may consume it but it is not itself a modifier declaration. |
+| **CUSTOM** | A structural, lifecycle, event, scheduler, transaction, geometry, or resolver mechanic that cannot be truthfully represented as ordinary scalar composition. It may consume/produce AXIS values. |
+| **COMPILER / RESOLVER** | Deterministic map/spawn/compiler parameters and algorithms whose version binding is authoritative but which do not participate in the ordinary faction-effective modifier stack. |
+
+A value being numeric does not make it an `AXIS`. For example, Segment target size, spawn tie/hash constants, MIRV target-distribution spacing, and Goon placement spacing are versioned rules but are not current ordinary modifier targets.
+
+---
+
+# 3. Rule-axis identity
+
+A concrete rule axis is conceptually:
+
+```text
+axis family
++ typed scope
+```
+
+Examples:
+
+```text
+unit.attack.range
+  { unit = WARSHIP, attack = NAVAL_GUN }
+
+structure.field.coverageArea
+  { structure = FORT, field = FORT_SUPPORT }
+
+structure.transaction.buildCost
+  { structure = FORT }
+
+terrain.pressure.offense
+  { terrain = FOREST }
+
+weapon.projectileSpeed
+  { weapon = HYDROGEN_BOMB, projectileStage = PRIMARY }
+```
+
+The implementation may expose ergonomic enums/types rather than these literal strings. Canonical serialization must nevertheless produce one stable, versioned identity for the same family+scope pair.
+
+A typed **eligibility condition** is separate from axis identity when the same quantity is modified only in a particular context, for example:
+
+- source cell is Highland;
+- target has Fallout;
+- event location lies inside an effective Fort field;
+- structure provenance is `CONQUERED`;
+- current Territorial Contact count is `N`.
+
+Conditions must come from a closed creator-authored/engine-authored vocabulary. Player content does not supply arbitrary formulas, callbacks, or executable predicates.
+
+A rule contribution may also identify a named **component/provenance tag** when another rule must suppress that exact component without suppressing unrelated contributors. Current examples include P03 suppressing hostile Fort-derived defensive pressure and P16 suppressing the ordinary Fallout acquisition-resistance component.
+
+---
+
+# 4. Source provenance is not semantic priority
+
+Current useful source kinds include at least:
+
+```text
+BASE_RULESET
+RULESET_TRANSFORM
+ORIGIN
+ECHO
+TERRAIN
+STRUCTURE
+UNIT_PROFILE
+SCENARIO
+SITUATIONAL
+```
+
+This field answers **where a rule came from**. It does not by itself answer **when it executes**.
+
+That distinction is required because an Origin may define a structural chassis transformation, a conditional terrain effect, a hard prohibition, or an ordinary numeric specialization. Those cannot all share one meaningful global `ORIGIN` execution position.
+
+Likewise, terrain may establish a baseline component before an Origin transform on one axis while acting as a local eligibility condition on another axis.
+
+---
+
+# 5. Slots, operators, and reducers
+
+## 5.1 Axis-owned slots
+
+Each axis declares an ordered list of named semantic slots. There is no requirement that every axis use the same list.
+
+A reusable numeric family may commonly contain slots conceptually equivalent to:
+
+```text
+BASE
+STRUCTURAL / BASE_REPLACEMENT
+FLAT_ADDITION
+ORIGIN_PERCENT
+ORIGIN_MULTIPLIER
+ECHO_PERCENT
+OTHER_EXPLICIT_SPECIALIZATION
+DOMAIN_CONSTRAINT
+TERMINAL
+FINALIZE
+```
+
+That is a reusable pattern, not a universal hard-coded order. The axis registry is authoritative for the slots it actually allows.
+
+## 5.2 Core operators/reducers
+
+| Operator/reducer | V1 meaning |
+| --- | --- |
+| `ADD_FLAT` / `SUM` | Same-slot flat deltas sum. |
+| `ADD_PERCENT` / `SUM` | Same-slot signed relative percentages sum, then apply once. |
+| `MULTIPLY` / `PRODUCT` | Independent same-slot scalars multiply, then apply once. |
+| `CAP_MAX` / `MIN` | Most restrictive upper cap wins. |
+| `FLOOR_MIN` / `MAX` | Strongest lower floor wins. |
+| `ALLOW` / `UNION` | Adds explicitly permitted capability/target/category where the axis allows additive permission. |
+| `REQUIRE` / `INTERSECTION` | All required conditions/capability constraints must remain satisfied. |
+| `PROHIBIT` / `ANY` | Any applicable hard prohibition makes the action/capability illegal. Ordinary numeric benefits cannot bypass it. |
+| `HARD_ZERO` / `ANY` | Any applicable hard-zero makes the numeric effective value exactly zero at the terminal stage. Later ordinary positive modifiers cannot resurrect it. |
+| `BASE_REPLACE` / `SINGLETON` | Establishes a replacement base/profile before later ordinary specialization. Multiple applicable replacements are invalid unless that axis names an explicit resolver. |
+| `FINAL_OVERRIDE` / `SINGLETON` | Establishes a genuinely fixed final semantic value. Later ordinary specialization is inert unless the axis explicitly says otherwise. |
+| `STRUCTURAL_TRANSFORM` / `SINGLETON` | Replaces/reshapes a profile, capability set, event/lifecycle, or geometry before downstream consumers. Competing transforms require an explicit named composition rule. |
+| `SUPPRESS_COMPONENT` | Removes one explicitly tagged contribution/component while leaving unrelated components intact. |
+| named domain reducer | Used only where the focused mechanic defines a non-generic aggregation law, e.g. Fort/Command cross-type complement composition. |
+
+`BASE_REPLACE` and `FINAL_OVERRIDE` are intentionally distinct. Replacing a baseline curve/profile does not automatically make later explicit specialization illegal. A rule worded as a fixed final result may do so.
+
+## 5.3 Same-slot commutativity
+
+`SUM`, `PRODUCT`, `MIN`, `MAX`, `UNION`, `INTERSECTION`, and `ANY` are order-independent. The normalizer must reduce all applicable contributions in the slot before moving to the next slot.
+
+Do not perform intermediate rounding between members of a commutative slot.
+
+If changing input order changes the normalized result, validation fails unless the axis explicitly owns a non-commutative named reducer/dependency.
+
+## 5.4 Explicit dependencies for genuine non-commutativity
+
+When one named transformation genuinely requires another named transformation to have completed first, encode the semantic dependency directly rather than assigning unexplained numeric ranks.
+
+Conceptually:
+
+```text
+ECHO_TANK_SPECIALIZATION
+  after ORIGIN_TANK_CHASSIS_PROFILE
+```
+
+Dependency graphs must be acyclic and deterministic. An unresolved cycle or competing non-commutative transform is a content/schema error.
+
+---
+
+# 6. Layer composition and ordinary numeric normalization
+
+For current V1 content, the intended high-level specialization relationship is:
+
+```text
+baseline/profile
+→ Origin structural profile and Origin same-slot normalization
+→ Echo same-slot specialization
+→ other explicitly ordered contextual/domain stages
+→ constraints / hard terminal rules
+→ finalization
+```
+
+This does **not** mean all Origin rules execute before all terrain or structure logic. Axis-specific slots still own the actual order.
+
+Within one additive-percentage slot/layer:
+
+```text
+combinedPercent = sum(all applicable signed percentages)
+value' = value × (1 + combinedPercent)
+```
+
+Across two separately ordered percentage-specialization slots, each slot acts once on the value produced by the previous slot.
+
+Therefore Origin percentages that target the same Origin slot add with one another, while a later Echo specialization acts on the already-established Origin-effective profile.
+
+Example:
+
+```text
+base Warship range = 130
+P23 Origin range = +20%
+P42 Origin range = -33%
+Origin slot = -13%
+Origin-effective range = 130 × 0.87 = 113.1
+```
+
+A later `+5%` Warship-range Echo would specialize that Origin-effective range rather than being inserted between P23 and P42.
+
+Independent multiplicative scalars in one slot combine as a product before application. Because multiplication is commutative, they require no individual rank.
+
+Flat surcharges that must remain immune to later discounts should not be disguised as ordinary same-axis flat additions. They should use a distinct transaction hook/slot whose immunity is explicit.
+
+---
+
+# 7. Numeric representation, rounding, and serialization
+
+Authored percentages/scalars should use canonical integer fixed-scale storage for versioning, hashing, and exact normalization. Basis points are sufficient for current authored percentage granularity:
+
+```text
++20%  -> +2000 bp
+-33%  -> -3300 bp
++9%   ->  +900 bp
+```
+
+A scalar may likewise use a canonical fixed scale, for example `1.50× -> 15000` at a 10,000-unit scale.
+
+The normalized arithmetic may use the deterministic numeric facilities appropriate to the owning subsystem. Do not round after every modifier. Rounding/clamping/geometry rasterization belongs to the owning domain boundary and should happen at the explicitly defined finalization point.
+
+Canonical serialization must sort normalized records by stable semantic keys such as:
+
+```text
+axis family
+scope
+slot ordinal defined by the axis
+condition/component identity
+source kind
+source/provenance identity
+```
+
+That sort exists for byte-stable serialization/hash/debugging. It is not semantic conflict resolution.
+
+A match must bind the effective-rule schema/algebra version directly or through an unambiguous bound ruleset/catalogue version so historical matches cannot silently acquire new composition semantics.
+
+---
+
+# 8. Base-game V1 inventory
+
+This section inventories current target mechanics **before** Origin/Echo mapping. It distinguishes modifiable surfaces from parameters, derived values, state, and custom logic.
+
+## 8.1 Population and game-wide state
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Initial Territory population-bearing quota | AXIS | `spawn.initialTerritoryQuota`; baseline 1,000; P01 modifies; P39/P54 consume final quota structurally. |
+| Starting Population fraction of final Initial Territory/Capacity | AXIS | `population.startingFraction`; baseline 50%; Echo specializes. |
+| Population Capacity | DERIVED | From current owned faction-effective population-bearing cells; P48 modifies classification, not Capacity by hidden scalar. |
+| Population-bearing terrain classification | AXIS | `terrain.populationBearing`; typed terrain/faction-effective classification; P48 transforms Shallow Water. |
+| Base growth coefficient/exponent | PARAMETER | `0.05 × Capacity^0.75`; no current ordinary modifier rewrites these constants. |
+| Population utilization curve | AXIS | `population.growth.utilizationProfile`; baseline piecewise curve; P02 replaces profile. |
+| Explicit Population Growth multiplier | AXIS | `population.growth.explicitMultiplier`; consumes terrain-share, City, Origin/Echo contributions through declared subcomponents/slots. |
+| Current Total/Available/committed Population | STATE | Authoritative dynamic resource; P11/P52 etc. consume state. |
+| Neutral settlement Population cost | AXIS | `population.neutralSettlementCost`; baseline 1/cell; P36 transforms with residual accounting. |
+| Automatic defender count per threatened cell | PARAMETER / INVARIANT | Binary 0/1; current traits alter effectiveness/survival, not generic quantity. |
+| Successful defended-capture baseline casualties | PARAMETER + CUSTOM lifecycle | Baseline defender -1/attacker -1; P38/P47 alter specific post-capture consequences rather than one generic damage scalar. |
+| `atWar` grace duration | PARAMETER | 600 ticks; current Origins consume `atWar` effects but do not change the lifecycle timer. |
+| Current `atWar` relation | STATE | Derived from active directed-hostility sources + grace; not a modifier declaration. |
+
+## 8.2 Land capture, pressure, and counter-response
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Required capture progress | PARAMETER | Baseline `1.0`; no current generic modifier. |
+| Pressure advantage `(A-D)/(A+D)` | DERIVED / formula | Canonical combat formula; modifiers target effective `A`, `D`, or progress multipliers. |
+| Final offensive pressure | DERIVED from components | Do not treat every terrain/structure/Origin contribution as one unordered number; retain typed component provenance until domain aggregation. |
+| Global offensive-pressure specialization | AXIS | `combat.pressure.offense.global`; Echo and applicable Origins may contribute. |
+| Terrain offensive-pressure component | AXIS | `terrain.pressure.offense[terrain]`; baseline terrain table, terrain Echoes, N02 etc. |
+| Structure offensive-pressure field magnitude | AXIS | `structure.field.pressureMagnitude[type,direction=OFFENSE]`; Command baseline; P50 mirrors Fort effective defense; Echo specializes Command magnitude. |
+| Conditional Origin offense contributions | AXIS contribution / condition | P15/P18/P19 target pressure through typed conditions rather than source-order callbacks. Exact component aggregation must be declared by the combat axis. |
+| Global defensive-pressure specialization | AXIS | `combat.pressure.defense.global`. |
+| Terrain defensive-pressure component | AXIS | `terrain.pressure.defense[terrain]`. |
+| Structure defensive-pressure field magnitude | AXIS | `structure.field.pressureMagnitude[type,direction=DEFENSE]`; Fort baseline; P51 mirrors Command effective offense. |
+| Acquisition/capture/settlement progress multiplier | AXIS | `combat.acquisitionProgressMultiplier`; terrain/Fallout/global/neutral-only effects are typed contributions/conditions. |
+| Capture progress per second | DERIVED | Advantage × effective progress multipliers. |
+| Partial-progress decay 0.50/s | PARAMETER | No current modifier. |
+| Counter-response response-side effectiveness | AXIS | `combat.counterResponse.responseEffectiveness`; P04 fixed semantics + Echo specialization question must be explicit. |
+| Counter-response attack-side effectiveness | AXIS-capable / currently baseline | Surfaced effective hook; no current Echo counterpart. |
+| Counter-response `k`, `p`, `M`, tick cadence | PARAMETER | Versioned combat constants, not ordinary current modifier axes. |
+
+**Audit finding:** pressure is not one scalar axis internally. Terrain components, structure-field magnitudes, conditional Origin contributions, and final global specialization need explicit component/aggregation semantics so a Fort-specific suppression cannot erase unrelated defense and so P50/P51's domain-specific cross-field reducer remains possible.
+
+## 8.3 Terrain and overlays
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Conquerable/ownable terrain | AXIS-capable permission | `terrain.acquirePermission[terrain/overlay]`; N05 supplies Fallout hard prohibition. |
+| Population-bearing classification | AXIS | P48 changes Shallow Water for holder. |
+| Land/naval/heavy-unit traversal permission | AXIS-capable permission | `terrain.traversalPermission[movementClass,terrain]`; current P43 preserves Tank barriers rather than modifying them. |
+| Movement multiplier by movement class/terrain | AXIS | `terrain.movementMultiplier[movementClass,terrain]`; participates in final unit speed. |
+| Persistent-structure terrain eligibility | AXIS | `terrain.structureBuildEligibility[terrain]`; P46 allows Tundra, N09 remains separate Factory-type prohibition. |
+| Spawn eligibility | AXIS-capable / currently baseline | `terrain.spawnEligibility[terrain]`; no current ordinary percentage modifier. |
+| Terrain acquisition multiplier | AXIS | `terrain.acquisitionMultiplier[terrain]`. |
+| Terrain offense/defense | AXIS | Component axes above. |
+| Plains-share Growth / Desert-share FFY | AXIS contributions | Dynamic state-derived contributions into Growth/FFY axes, not new hidden final formulas. |
+| Fallout capture multiplier 0.50× | AXIS component | Named overlay component so P16 can suppress exactly this factor. |
+| Fallout overlay identity/persistence | STATE + CUSTOM | Overlay creation/removal lifecycle; P35/P44 produce it. |
+
+## 8.4 Persistent structures
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Build FFY cost by type/target level | AXIS | `structure.transaction.buildCost[type]`; baseline table, Origin/Echo specialization, hard-zero transaction effects where applicable. |
+| Upgrade FFY cost | AXIS | `structure.transaction.upgradeCost[type]`; separate from build cost because Echoes distinguish them and P17 applies to upgrades. |
+| Build/upgrade duration | AXIS | `structure.transaction.constructionTime[type]`; Echoes specialize. |
+| Resulting purchased level/profile | STRUCTURAL AXIS / CUSTOM transaction | P41 direct-L5 City purchase changes transaction shape, not four hidden upgrades. |
+| Structure ownership cap | AXIS / hard constraint | `structure.ownershipCap[type]`; N07, P11 entitlement interaction. Admission/reservation semantics are subsystem-owned. |
+| Structure type build permission | AXIS / hard constraint | e.g. N09 Factory prohibition; separate from terrain eligibility and price. |
+| City Growth contribution magnitude | AXIS | `structure.effect.cityGrowth[level]`; N01 Origin then Echo specialization. |
+| Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area must remain area until geometry projection (#44). |
+| Fort defensive / Command offensive magnitude | AXIS | `structure.field.pressureMagnitude[type,direction]`. |
+| Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type field; not a generic percentage stack. |
+| Fort+Command cross-type pressure handling | DOMAIN REDUCER | Complement formula when both distinct field types affect same direction. |
+| Port/Factory repair radius | AXIS | `structure.repair.radius[type,service]`. |
+| Port/Factory repair rate | AXIS | `structure.repair.rate[type,service]`. |
+| Factory simultaneous repair capacity | AXIS-capable / baseline | Current P34 may touch but exact scope unresolved. |
+| Silo/SAM charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
+| Silo/SAM recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
+| SAM interception range | AXIS | `structure.interception.range[SAM]`; P40 + Echo. |
+| Observation radius | AXIS | `structure.observation.radius`; under P49 the same effective radius specializes blackout field. |
+| Observation effect (`REVEAL`/`BLACKOUT`) | STRUCTURAL AXIS | P49 changes profile; numeric radius remains separately composable. |
+| SAM ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains subsystem blocker. |
+| Silo weapon-access set | CAPABILITY AXIS | Level/profile + weapon restrictions such as P25. |
+| Structure provenance (built/captured/granted) | STATE | P34 consumes conquered provenance. |
+
+## 8.5 Tank / Heavy Artillery and generic mobile-unit surfaces
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Tank active-count purchase-cost curve | PARAMETER/profile feeding AXIS | Curve is baseline computation; final purchase FFY cost is `unit.transaction.purchaseCost[TANK]`. |
+| Unit purchase FFY cost | AXIS | Origin profile transforms then Echo specialization; transaction hard-zero/prohibition remains explicit. |
+| Unit purchase Population cost | AXIS / transaction resource | P42 introduces 2,000 Population for Warship; do not encode as negative FFY. |
+| Build time | AXIS | P43 changes Tank-derived build time. |
+| Chassis/profile identity | STRUCTURAL AXIS | `unit.chassisProfile[TANK]`; P43 -> Heavy Artillery. |
+| Movement class/traversal profile | STRUCTURAL / capability | Chassis owns class/barriers; terrain produces local movement multiplier. |
+| Final movement speed | AXIS-derived profile | Base speed × terrain/profile transforms × later Echo specialization according to axis order. |
+| Max health | AXIS | Rank/profile/Origin/Echo contributions as applicable. |
+| Repair-retreat threshold | PARAMETER | 50% baseline; no current generic modifier. |
+| Ownership cap | AXIS / constraint | P23 Warship cap; Tank baseline none. |
+| Maximum rank | AXIS | Warship baseline 3, P22 +2. |
+| Attack range by attack identity | AXIS | Separate attack IDs prevent naval-gun range from modifying Trade capture distance or strategic launch semantics. |
+| Numeric attack damage | AXIS | Separate from binary Train interception/destruction. |
+| Attack cooldown | AXIS-capable | P43 structurally supplies 12s attacks; no current Echo cooldown. |
+| Attack capability/target set | CAPABILITY AXIS | P30 removes Warship ship gunfire; P43 removes Train interception. |
+| Autonomous leash | PARAMETER | 100 cells; no current modifier. |
+
+## 8.6 Warships, Transports, and amphibious lifecycle
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Warship active-count purchase curve | PARAMETER/profile feeding purchase-cost AXIS | Same progressive baseline shape as Tank. |
+| Warship speed/health/gun range/damage | AXIS | Origin/rank/Echo composition. |
+| Warship shell cooldown | AXIS-capable / baseline | No current Echo; P30 prohibits use rather than modifying cadence. |
+| Trade Ship capture distance | PARAMETER / distinct axis candidate | Baseline 5 cells; deliberately not `WARSHIP_ATTACK_RANGE`. |
+| Warship rank | STATE | Starts 1; XP changes current rank. |
+| Warship maximum rank | AXIS | P22. |
+| Rank-derived health/damage | DERIVED profile contribution | Uses current rank before later effective profile specialization. |
+| Naval XP awards | PARAMETER | 100/10/4; no current modifier. |
+| Transport active cap | AXIS-capable | Baseline 3. |
+| Transport embark source rule | STRUCTURAL AXIS | Coast/shore baseline; P32 -> owned active Port. |
+| Transport embark FFY cost | AXIS | Baseline 0; P37 +250 and N15 +500 flat additions. |
+| Transport movement speed | AXIS | P12. |
+| Transport health/profile | STRUCTURAL AXIS | Baseline fragile/no pool; P32 -> 500 HP health-bearing. |
+| Landing Population survival/casualty | AXIS + lifecycle boundary | N13 50% death; exact application/rounding point is subsystem blocker. |
+| Return Population survival fraction | AXIS-capable / baseline | 75%; no current modifier. |
+| Successful-landing structure grant | CUSTOM lifecycle | P37; not a scalar modifier. |
+| Transport-destruction Population theft | CUSTOM lifecycle | P28. |
+
+## 8.7 Strategic weapons and launchers
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Weapon FFY purchase cost | AXIS | `weapon.transaction.purchaseCost[type]`; P25/Echo/P26 transaction behavior. |
+| Weapon-family use permission | CAPABILITY AXIS | P25 hard-prohibits Atom/MIRV. |
+| Per-faction use count/limit | AXIS / entitlement | P26 MIRV once. |
+| Projectile speed by weapon/stage | AXIS | P10 + Echo; exact P10 projectile classes must be closed by weapon owner. |
+| Atom/Hydrogen blast **area** | AXIS | P25/Echo authored as area; inner/outer radius/raster projection remains weapon-domain geometry. |
+| Baseline inner/outer radii | PARAMETER / geometry basis | Focused weapon owner. |
+| MIRV max warheads, distribution radius, spacing | PARAMETER | No current generic modifier. |
+| MIRV separation progress fraction | PARAMETER | No current generic modifier. |
+| Water Nukes enabled/core geometry | RULESET PARAMETER / CUSTOM geometry | Not an ordinary Origin/Echo scalar. |
+| Launcher weapon-access set | CAPABILITY AXIS | Silo level/P29/P25. |
+| Launcher charge capacity/recharge | AXIS | Persistent structure axes; P29 creates mobile launcher profile. |
+| Warship-as-launcher profile | STRUCTURAL AXIS / CUSTOM state | P29. |
+
+## 8.8 FFY, Trains, Trade Ships, and piracy
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Starting FFY | PARAMETER | 25,000 baseline. |
+| Passive FFY rate | PARAMETER + source providers | Baseline 1,000/s; P52/P53 add new sources rather than mutating one hidden scalar. |
+| Positive FFY event yield | AXIS | `ffy.eventYield`; family/scope eligibility (All/Military/Naval/Industrial) plus spatial conditions. Existing canonical same-axis percentage rule is generalized here. |
+| Explicit FFY loss/penalty | CUSTOM transaction | Not automatically modified by positive-yield percentages. |
+| Hard-zero FFY event yield | TERMINAL AXIS rule | N11. |
+| External wartime trade multiplier | AXIS | Baseline 0.50×; P08 base replacement to 1.00×. |
+| Train speed | PARAMETER | 25 rail cells/s; no current modifier. |
+| Train turnaround/dwell/target count | PARAMETER | 5s / 1.5s / up to five targets. |
+| Factory Train event value by level | PARAMETER feeding FFY event | 10k..15k. |
+| Train dispatch scheduler | CUSTOM | P07 every-fourth bonus logic; not an unordered `+25%` scalar. |
+| Trade Ship speed | AXIS | P06. |
+| Trade dispatch cadence | PARAMETER / resolver | deterministic 20–30s; no current modifier. |
+| Raw cargo | DERIVED | `150 × planned route length`. |
+| Destination selection | CUSTOM deterministic policy | least-recently-selected. |
+| Piracy payout multiplier | AXIS / event-specific structural multiplier | P30 `3×` on piracy event, then ordinary eligible yield specialization. |
+| Voyage `Vowner` snapshot | CUSTOM/DERIVED blocker | N14/N16 depend on a canonical formula not yet defined in FFY owner. |
+| P52/P53 alternative passive sources | CUSTOM source providers | Produce All/general FFY source values from authoritative state. |
+
+## 8.9 Strategic Spawn
+
+| Surface | Class | Candidate effective-rule surface / note |
+| --- | --- | --- |
+| Spawn mode | RULESET PARAMETER / profile | STRATEGIC/RANDOM/FIXED. |
+| Influence-area/profile shape | STRUCTURAL AXIS | Ordinary one-area profile; P39 split profile. |
+| Exact-origin slot count/profile | STRUCTURAL AXIS | P39 two slots. |
+| Initial-Territory quota | AXIS | Shared with Population initialization; P01. |
+| Footprint geometry profile | STRUCTURAL AXIS | compact vs P54 star. |
+| Population-bearing quota classification | Consumes terrain AXIS | P48 can alter Shallow-Water quota counting for holder. |
+| Influence radius, foreign spacing, spawn immunity | PARAMETER | 400 / 50 / 5s under current V1. |
+| Deterministic tie/hash/fallback algorithms | COMPILER / RESOLVER | Bound by `spawnResolverVersion`; not ordinary modifier axes. |
+| Star template/rasterization constants | COMPILER / RESOLVER | Exact constants are a P54 blocker in Spawn owner. |
+| Random/Fixed × transforming-Origin profile | CUSTOM blocker | #32 owner. |
+
+## 8.10 Minor Factions / Goons
+
+Minor Factions intentionally consume the ordinary Population, terrain, acquisition, and defense rules. Their special ambient population/placement/decision policy is not a parallel modifier stack.
+
+| Surface | Class | Note |
+| --- | --- | --- |
+| requested count formula | PARAMETER / DERIVED | `floor(populationBearingMapCells / 20,000)`. |
+| Initial Territory / Starting Population | Shared base rules | 1,000 / 500 baseline; no Origin/Echo. |
+| Goon↔Goon 100-cell placement floor | RESOLVER PARAMETER | Separate from universal foreign 50-cell floor. |
+| deterministic farthest-point placement | RESOLVER | Versioned generation policy. |
+| 50%-Capacity allocation trigger | CUSTOM engine policy | Not a generic faction modifier axis. |
+| 20%-Total-Population allocation amount | CUSTOM engine policy | Not a generic faction modifier axis. |
+| P19 contact counting | Shared STATE consumer | P19 consumes ordinary active faction/contact state including Goons. |
+
+## 8.11 Segments
+
+Segments expose no V1 gameplay modifier axes. Segment membership/borders have no intrinsic combat, capture, movement, economy, visibility, or other physical effect.
+
+The ~4,096-cell target, geography heuristics, connectivity repair, stable-ID assignment, and `segmentGeneratorVersion` are **COMPILER / RESOLVER** concerns bound into the map artifact, not effective faction modifiers.
+
+---
+
+# 9. Origin P01–P54 classification
+
+The table below maps every current positive Origin trait to the game-wide inventory. `CUSTOM` does not mean untyped: custom mechanics should declare the axes/state/events they consume and produce so integration remains inspectable.
+
+| ID | Classification | Primary rule target(s) / composition note |
+| --- | --- | --- |
+| P01 | NUMERIC AXIS | `spawn.initialTerritoryQuota`: Origin `+15%`. |
+| P02 | BASE REPLACEMENT | `population.growth.utilizationProfile`: replacement curve; later explicit growth inputs remain separate. |
+| P03 | COMPONENT SUPPRESSION | Attacker suppresses hostile `FORT` defensive-pressure field component only. |
+| P04 | FINAL OVERRIDE candidate | `combat.counterResponse.responseEffectiveness = 1.0`; exact interaction with response-effectiveness Echo must be terminally explicit. |
+| P05 | CUSTOM event | successful qualifying structure capture -> Military/conquest FFY event; base value/location still blocker. |
+| P06 | NUMERIC AXIS | `unit.movementSpeed[TRADE_SHIP]`: Origin `+25%`. |
+| P07 | CUSTOM scheduler | every fourth normal primary Factory Train dispatch creates bonus Train; do not reduce to scalar count mutation. |
+| P08 | BASE REPLACEMENT | `ffy.externalWartimeTradeMultiplier`: `0.50 -> 1.00`. |
+| P09 | MULTI-AXIS | Fort coverage area `+10%`; Fort effective defensive pressure `+9%`; Fort build/upgrade price `-8%` on applicable Fort transaction hooks. |
+| P10 | NUMERIC AXIS | `weapon.projectileSpeed[...] +100%`; exact projectile class/stage scope remains weapon-owner blocker. |
+| P11 | MIXED | SAM FFY purchase cost `HARD_ZERO`; dynamic SAM ownership entitlement/cap derived from peak Population (`1 / 25,000`). |
+| P12 | NUMERIC AXIS | `unit.movementSpeed[TRANSPORT] +25%`. |
+| P13 | CONDITIONAL PRESSURE | Mountain target defensive-pressure contribution `+33%`; combat aggregation must retain terrain/source provenance. |
+| P14 | CONDITIONAL FFY | Desert-located positive FFY event `+33%` ordinary yield contribution. |
+| P15 | CONDITIONAL PRESSURE | Highland-source offensive pressure `+33%`. |
+| P16 | COMPONENT SUPPRESSION | suppress ordinary Fallout acquisition-resistance multiplier; does not bypass N05 legality. |
+| P17 | DYNAMIC MULTIPLIER | `structure.transaction.upgradeCost`: `0.99^S`, `S=current owned structures`; deterministic evaluation/no per-modifier rounding. |
+| P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in qualifying self/team Fort area; one qualification regardless of overlapping Fort count. |
+| P19 | DYNAMIC CONDITIONAL PRESSURE | `+5%` offense per distinct active other faction with current Territorial Contact; includes Goons and fixed teammate under current literal rule. |
+| P20 | CUSTOM start grant | one free starting Missile Silo; placement/level/readiness/start-profile semantics remain external blockers. |
+| P21 | CUSTOM transaction override | first successful purchase per structure type passes ordinary legality + affordability, then consumes `0 FFY`; grant/capture not purchase. |
+| P22 | FLAT AXIS | `unit.maximumRank[WARSHIP] +2`. |
+| P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`. |
+| P24 | CONDITIONAL FFY | event inside qualifying Fort area `+20%`; Fort affiliation blocker remains external. |
+| P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection external. |
+| P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
+| P27 | CAPABILITY | SAM may attack ships; exact target/damage/cadence/charge arbitration external blocker. |
+| P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order external blocker. |
+| P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; launcher charge/readiness lifecycle external. |
+| P30 | MIXED | Warship movement `+50%`; piracy event `3×`; hard prohibit Warship naval gunfire against ships while preserving Trade capture. |
+| P31 | CONDITIONAL PROFILE/SCALARS | Warship-specific effective Port repair radius `2×`, rate `1.5×`, operational while repairing; consumes effective Port field and strongest-overlap rules. |
+| P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
+| P33 | CUSTOM event side effect | qualifying Train event at owned City also grants `20 × City level` Available Population, Capacity-capped. |
+| P34 | STRUCTURAL/CONDITIONAL CUSTOM | conquered Factory `2× ordinary Factory effect`; exact transformed effect set unresolved in #49. |
+| P35 | CUSTOM territorial lifecycle | deliberate relinquishment -> neutral Fallout; ordinary abandonment semantics external. |
+| P36 | AXIS + residual lifecycle | neutral settlement Population cost `0.5/cell`; faction-level persistent residual accounting. |
+| P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing -> L1 Fort grant; grant placement/admission lifecycle external. |
+| P38 | CUSTOM capture consequence | automatic defender survives successful capture and remains/returns Available. |
+| P39 | STRUCTURAL SPAWN PROFILE | two half-area influence regions, two origins, split one final quota; one global Population pool. |
+| P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`. |
+| P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; construction duration blocker external. |
+| P42 | MIXED | Warship FFY purchase cost `HARD_ZERO`; purchase Population cost `2,000`; attack range Origin `-33%`. |
+| P43 | STRUCTURAL CHASSIS PROFILE | Tank -> Heavy Artillery; establishes cost/build/speed/range/health/attack/capability profile before Tank-scoped Echo specialization. |
+| P44 | CUSTOM attack aftermath | successful Tank-chassis Population attack neutralizes deterministic nearby cells + Fallout; not ordinary capture. |
+| P45 | STRUCTURAL VISIBILITY | Forest-owned concealment filter; interior/boundary/manifestation exact projection external blocker. |
+| P46 | PERMISSION | allow persistent structures on owned Tundra; separate structure-type prohibitions still win. |
+| P47 | CUSTOM capture aftermath | enemy successfully capturing holder's Marsh -> capturer loses +1 Population after ordinary capture. |
+| P48 | CLASSIFICATION AXIS | holder-owned Shallow Water becomes population-bearing / +1 Capacity per cell through normal Capacity derivation. |
+| P49 | STRUCTURAL OBSERVATION PROFILE | Observation Post effect `REVEAL -> ENEMY_BLACKOUT`; same effective observation-radius axis specializes blackout radius. |
+| P50 | STRUCTURAL FIELD PROJECTION | Fort also projects offense equal to **effective** Fort defensive magnitude; cross-type Fort/Command overlap uses domain complement reducer. |
+| P51 | STRUCTURAL FIELD PROJECTION | Command Post also projects defense equal to **effective** Command offensive magnitude; cross-type reducer as above. |
+| P52 | CUSTOM passive source | All/general FFY source `max(0, Capacity-TotalPopulation)/250`. |
+| P53 | CUSTOM passive source | All/general FFY source `2,000/s × ready persistent Silo charges`; excludes P29/SAM charges. |
+| P54 | STRUCTURAL SPAWN PROFILE | footprint shape compact -> canonical star profile; quota/Starting Population unchanged. |
+
+---
+
+# 10. Origin N01–N18 classification
+
+| ID | Classification | Primary rule target(s) / precedence note |
+| --- | --- | --- |
+| N01 | NUMERIC AXIS | City-derived Growth contribution `20% less`; level unchanged; later Echo City contribution specializes effective value. |
+| N02 | CONDITIONAL TERRAIN PRESSURE | Plains source offensive-pressure component `-25%`. |
+| N03 | CONDITIONAL TERRAIN PRESSURE | Desert target defensive-pressure component `-33%`. |
+| N04 | CONDITIONAL FFY | Mountain-located positive event `-50%` ordinary yield contribution. |
+| N05 | HARD PROHIBITION | Fallout territorial acquisition forbidden; P16 speed/resistance suppression cannot bypass. |
+| N06 | HARD TRANSACTION PROHIBITION | cannot spend FFY on ordinary structure upgrades; discounts do not create permission. |
+| N07 | HARD OWNERSHIP CAP | maximum one persistent structure of each type; applies to builds/transfers/grants; overflow resolution is external admission blocker. |
+| N08 | HARD ZERO | effective Fort defensive-pressure magnitude exactly zero; coverage remains; P09/Echo cannot resurrect; P50 mirrors effective zero. |
+| N09 | HARD BUILD PROHIBITION | cannot build Factories; terrain permission/free price cannot bypass; acquired Factory may still function. |
+| N10 | NUMERIC AXIS | Fort coverage **area** Origin `-25%`; same Origin slot as P09 area modifier. |
+| N11 | TERMINAL HARD ZERO | qualifying FFY event inside applicable SAM area yields exactly zero after ordinary percentages; event identity/side effects remain. |
+| N12 | HARD BUILD PROHIBITION | cannot build Warships; P42 Population funding/free FFY cannot bypass. |
+| N13 | LANDING SURVIVAL/CUSTOM BOUNDARY | `50%` carried Population dies at landing; exact lifecycle point/rounding external. |
+| N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; depends on missing FFY `Vowner` snapshot definition. |
+| N15 | FLAT AXIS | Transport embarkation `+500 FFY`; same flat slot as P37 `+250`, producing +750 together. |
+| N16 | CUSTOM Trade payout inversion | uncaptured success -> owner `-Vowner`; first hostile capture -> owner `+Vowner` once; `Vowner` blocker shared with N14. |
+| N17 | STRUCTURAL CAPTURE OUTCOME | enemy structure that would transfer is destroyed instead; capture-dependent transfer effects therefore do not fire. |
+| N18 | LATE CONDITIONAL MULTIPLIER | final capture/settlement progress against **non-Fallout** target `×0.50`; Fallout targets exempt. This is not an ordinary additive terrain percentage. |
+
+---
+
+# 11. Echo mapping — all 93 concrete stat/scope keys
+
+Echo identity remains owned by `ECHO_CATALOGUE.md`. This section maps its full V1 concrete modifier pool onto game-wide axis families.
+
+Echo modifiers are ordinary signed percentage specializations unless their Echo owner explicitly changes that rule. Beneficial/harmful **polarity** remains distinct from mathematical sign for costs/cooldowns.
+
+| Echo family/stat | Concrete scopes | Count | Rule-axis family |
+| --- | --- | ---: | --- |
+| Population Growth | global | 1 | `population.growth.explicitMultiplier` |
+| Starting Population | global fraction | 1 | `population.startingFraction` |
+| Neutral settlement progress/speed | global | 1 | `combat.acquisitionProgressMultiplier` with `NEUTRAL` condition |
+| Offensive pressure | global | 1 | `combat.pressure.offense.global` |
+| Defensive pressure | global | 1 | `combat.pressure.defense.global` |
+| Counter-response effectiveness while responding | global | 1 | `combat.counterResponse.responseEffectiveness` |
+| Terrain offensive pressure | Plains/Highland/Mountain/Desert/Forest/Tundra/Marsh/Shallow Water | 8 | `terrain.pressure.offense[terrain]` |
+| Terrain defensive pressure | same 8 terrains | 8 | `terrain.pressure.defense[terrain]` |
+| Terrain capture/settlement speed | same 8 terrains | 8 | `terrain.acquisitionMultiplier[terrain]` |
+| All FFY event yield | global | 1 | `ffy.eventYield[ALL]` |
+| Military/conquest FFY | global | 1 | `ffy.eventYield[MILITARY_CONQUEST]` |
+| Naval/trade FFY | global | 1 | `ffy.eventYield[NAVAL_TRADE]` |
+| Industrial FFY | global | 1 | `ffy.eventYield[INDUSTRIAL]` |
+| Structure build cost | all + 8 structure types | 9 | `structure.transaction.buildCost[scope]` |
+| Structure upgrade cost | all + 8 structure types | 9 | `structure.transaction.upgradeCost[scope]` |
+| Structure construction time | all + 8 structure types | 9 | `structure.transaction.constructionTime[scope]` |
+| City Growth contribution | City | 1 | `structure.effect.cityGrowth` |
+| Fort coverage area | Fort | 1 | `structure.field.coverageArea[FORT]` |
+| Fort defensive pressure | Fort | 1 | `structure.field.pressureMagnitude[FORT,DEFENSE]` |
+| Armored-unit repair radius | Factory | 1 | `structure.repair.radius[FACTORY,ARMORED]` |
+| Armored-unit repair rate | Factory | 1 | `structure.repair.rate[FACTORY,ARMORED]` |
+| Passive repair radius | Port | 1 | `structure.repair.radius[PORT,NAVAL]` |
+| Passive repair rate | Port | 1 | `structure.repair.rate[PORT,NAVAL]` |
+| Observation radius | Observation Post | 1 | `structure.observation.radius` — also blackout radius under P49 |
+| Coverage area | Command Post | 1 | `structure.field.coverageArea[COMMAND_POST]` |
+| Offensive-pressure magnitude | Command Post | 1 | `structure.field.pressureMagnitude[COMMAND_POST,OFFENSE]` |
+| Interception range | SAM | 1 | `structure.interception.range[SAM]` |
+| Recharge/cooldown time | SAM | 1 | `structure.charge.rechargeTime[SAM]` |
+| Recharge/cooldown time | Silo | 1 | `structure.charge.rechargeTime[MISSILE_SILO]` |
+| Mobile-unit FFY purchase cost | Warship/Tank | 2 | `unit.transaction.purchaseCost[unit]` |
+| Mobile-unit movement speed | Warship/Tank | 2 | `unit.movementSpeed[unit]` |
+| Mobile-unit attack range | Warship/Tank | 2 | typed ordinary attack-range set for each chassis; never Trade-capture/launcher range |
+| Mobile-unit damage | Warship/Tank | 2 | numeric attack-damage set for each chassis; never binary Train destruction/P44 footprint |
+| Mobile-unit maximum health | Warship/Tank | 2 | `unit.maxHealth[unit]` |
+| Warhead projectile speed | all/Atom/Hydrogen/MIRV | 4 | `weapon.projectileSpeed[scope]` |
+| Strategic-weapon FFY cost | Atom/Hydrogen/MIRV | 3 | `weapon.transaction.purchaseCost[type]` |
+| Blast area | Atom/Hydrogen | 2 | `weapon.blastArea[type]` |
+| **Total** |  | **93** |  |
+
+The 12,927 derived Echo identities remain generated from these concrete keys and Echo shape rules; they are not 12,927 hand-authored modifier definitions.
+
+### 11.1 Required Echo ordering examples
+
+- Tank-scoped Echoes specialize the P43 Heavy-Artillery profile after the Origin structural transform.
+- Observation-radius Echoes specialize the radius used by P49 blackout rather than restoring observation.
+- Fort-pressure Echoes specialize the effective Fort magnitude; P50 mirrors that effective magnitude.
+- Command-pressure Echoes specialize the effective Command magnitude; P51 mirrors that effective magnitude.
+- A stat may become inert because a hard Origin rule removes the relevant capability. Inert is legal; it is not a hidden compatibility veto.
+- A hard zero/prohibition remains terminal across ordinary Echo specialization. Examples include N08 Fort defensive pressure and N12 Warship build permission.
+
+---
+
+# 12. Authoritative #43 composition cases
+
+These are composition decisions owned by this contract rather than by a focused subsystem's geometry/lifecycle implementation.
+
+## 12.1 P09 + N10 — Fort coverage area
+
+Both are Origin-layer additive percentages on the same semantic **Fort coverage area** axis:
+
+```text
++10% + (-25%) = -15%
+
+effectiveFortCoverageArea
+= ordinaryFortCoverageArea × 0.85
+```
+
+This contract stops at effective area. Deterministic area -> radius/raster realization is owned by the structure/geometry work (#44).
+
+## 12.2 P23 + P42 — Warship ordinary attack range
+
+Both are Origin-layer additive percentages on the same ordinary Warship naval-gun attack-range axis:
+
+```text
++20% + (-33%) = -13%
+```
+
+With the current baseline 130-cell naval-gun range:
+
+```text
+effective Origin Warship gun range
+= 130 × 0.87
+= 113.1 cells
+```
+
+Trade Ship capture distance and strategic-launcher behavior are distinct hooks and are unchanged by this range arithmetic.
+
+## 12.3 P09 Fort defensive pressure
+
+P09's `+9% Fort defensive pressure` is a **relative percentage specialization of the effective level-dependent Fort pressure magnitude**, not `+9 percentage points`.
+
+Current baseline -> P09 Origin-effective magnitude:
+
+| Level | baseline | P09 |
+| ---: | ---: | ---: |
+| L1 | 10% | 10.90% |
+| L2 | 15% | 16.35% |
+| L3 | 20% | 21.80% |
+| L4 | 25% | 27.25% |
+| L5 | 30% | 32.70% |
+
+If a future trait means percentage **points**, it must say so and use a flat/points unit rather than `ADD_PERCENT`.
+
+## 12.4 N08 + P09 / Echo / P50
+
+N08 is a terminal `HARD_ZERO` on the holder's Fort defensive-pressure magnitude.
+
+Therefore:
+
+- P09 may still modify Fort cost and coverage area;
+- P09 cannot restore defensive pressure;
+- Fort-pressure Echoes cannot restore defensive pressure;
+- P50 reads the **effective** Fort defensive magnitude and therefore mirrors zero offense from that Fort pressure under N08;
+- Fort coverage remains present for independent area consumers such as P18/P24 unless another rule removes it.
+
+## 12.5 Hard legality versus ordinary benefits
+
+Hard permission/admission rules use separate legality axes and are not numeric price/range values.
+
+Canonical examples:
+
+- N05 + P16: Fallout remains uncapturable; P16 only removes ordinary Fallout resistance when acquisition is otherwise legal.
+- N09 + P46: Tundra terrain may become structure-eligible, but Factory construction remains forbidden by N09.
+- N12 + P42: a Population-funded/zero-FFY Warship is still unbuildable.
+- N06 + P17: a cheaper ordinary FFY upgrade remains a forbidden FFY upgrade transaction.
+
+## 12.6 N11 hard-zero FFY
+
+Eligible ordinary yield percentages normalize first. N11 then hard-zeroes the qualifying event's FFY result. No later ordinary positive yield specialization resurrects it.
+
+## 12.7 P37 + N15 Transport embark cost
+
+These are flat additions on the dedicated embark-cost hook:
+
+```text
+baseline 0 FFY
++ P37 250 FFY
++ N15 500 FFY
+= 750 FFY
+```
+
+## 12.8 P50/P51 are a domain reducer, not the generic percent algebra
+
+Same-type field overlap continues to use the structure owner's strongest-applicable rule.
+
+Where distinct Fort and Command-Post field types both contribute to the same pressure direction, use the Origin catalogue's explicit complement reducer:
+
+```text
+combinedBonus = 1 - (1-A) × (1-B)
+```
+
+This is a named land-combat/structure-field aggregation rule. It must not be generalized into the default same-axis percentage behavior.
+
+---
+
+# 13. Composition questions exposed by the inventory
+
+The inventory reveals additional cases that must be explicit before the executable registry is frozen.
+
+## 13.1 Pressure component algebra
+
+Terrain pressure, global pressure Echoes, conditional Origin pressure, Fort/Command fields, P03 component suppression, and the P50/P51 complement reducer meet in one final `A`/`D` calculation but do **not** all have identical semantics.
+
+The executable axis registry must therefore define a typed pressure-component pipeline rather than flattening all percentages into one bag. In particular it must state whether a conditional trait such as P15 modifies the final lane pressure or contributes a separate additive pressure component relative to terrain, and how global Echo pressure specializes the resulting effective pressure.
+
+This is a #43 composition concern because the focused combat owner already exposes `effectiveAttackingPressure` / `effectiveDefendingPressure` but does not own cross-source modifier algebra.
+
+## 13.2 P04 fixed response effectiveness versus Echo
+
+P04 says response-side effectiveness is fixed at `1.0`, while Echoes include response-side effectiveness specialization.
+
+The recommended V1 interpretation is `FINAL_OVERRIDE`: P04 establishes a genuinely fixed final response-side effectiveness and the Echo becomes inert on that hook while P04 applies. This must be made explicit in the final executable schema/tests rather than inferred from trait order.
+
+## 13.3 Origin profile transforms followed by Echo specialization
+
+The following should all use the same structural-profile -> Echo pattern unless an owner says otherwise:
+
+- P43 Tank -> Heavy Artillery, then Tank-scoped cost/speed/range/damage/health Echoes;
+- P49 Observation -> blackout, then Observation-radius Echo;
+- P40 effective SAM range/recharge profile, then SAM range/recharge Echoes;
+- P25 Hydrogen cost/blast-area Origin profile, then matching weapon Echo specialization;
+- P31 Warship-specific Port repair transform should consume the **effective** Port repair field after ordinary Port/Echo specialization unless a focused owner defines another order.
+
+## 13.4 Hard-zero purchase cost versus percentage cost modifiers
+
+P11 SAM FFY cost and P42 Warship FFY cost are true zero-cost Origin rules. Ordinary Echo/ruleset percentage cost modifiers must not turn zero back into a positive value.
+
+P21/P26 are different: they are transaction-consumption rules that still require ordinary affordability before spending zero. They must not be encoded as the same `HARD_ZERO purchase price` operator.
+
+---
+
+# 14. External mechanic blockers discovered during classification
+
+The composition registry must not invent focused subsystem semantics. The following remain external blockers/owners even though this inventory records the affected axes:
+
+- **#32 / Spawn:** Random/Fixed interaction with spawn-transforming Origins; singular start-state grant placement/uniqueness under multi-origin profiles.
+- **#44 / structure geometry:** deterministic Fort/SAM/Command area -> radius/raster geometry and affiliation contracts.
+- **generic structure/unit admission:** concurrent/pending ownership-cap reservation; deterministic result of capture/grant that would exceed N07 or another hard cap.
+- **P02:** exact replacement 30–70% utilization-curve anchors must be available canonically.
+- **P05:** structure-capture FFY base value/location.
+- **P07:** Factory primary-dispatch counter transfer behavior.
+- **P10:** exact projectile classes/stages covered by `warhead projectile speed`.
+- **P20:** granted Silo resulting level/activation/initial charge readiness.
+- **P24:** qualifying Fort affiliation.
+- **P25:** deterministic +50% Hydrogen blast-area geometry including Water-Nukes behavior.
+- **P27:** SAM anti-ship targets/damage/cadence/charge/priority semantics.
+- **P28:** Transport theft attribution/recipient/order.
+- **P29/P53:** readiness of newly created launcher charge slots on dynamic level/capacity increase.
+- **P34 / #49:** exact meaning of `2× ordinary Factory effect`.
+- **P35:** generic deliberate-abandonment result for structure-occupied cells.
+- **P36:** exact residual debit ordering/destination across concurrent settlement commitments.
+- **P37:** landing-Fort grant placement/activation/conflict/admission semantics.
+- **P41:** direct-L5 City construction time.
+- **P45/P49/#51:** exact tactical concealment/manifestation/blackout geometry and information contract.
+- **P54:** committed fixed-point star template constants.
+- **N11:** qualifying SAM affiliation/effective area, coordinated with structure geometry.
+- **N13:** exact landing casualty lifecycle point and deterministic half-Population rounding.
+- **N14/N16/#48:** canonical launch-time `Vowner` snapshot formula and included modifier state.
+
+These are not reasons to add arbitrary priority values or hidden compatibility vetoes. Each focused owner must supply the missing semantic input; the composition layer then consumes it through the appropriate typed axis/profile/event contract.
+
+---
+
+# 15. Normalized effective-rule representation
+
+The eventual machine-readable implementation should normalize raw rule-bearing inputs before subsystem execution.
+
+Conceptually a normalized declaration contains:
+
+```text
+schema/algebra version
+axis family + typed scope
+slot
+operator/reducer-compatible operand
+source kind + stable provenance ID
+optional typed condition/component ID
+terminality/constraint metadata where applicable
+```
+
+Example authored contribution:
+
+```text
+source       = ORIGIN:P23
+target       = unit.attack.range { WARSHIP, NAVAL_GUN }
+slot         = ORIGIN_PERCENT
+operation    = ADD_PERCENT
+value        = +2000 bp
+```
+
+P42 contributes `-3300 bp` to the same slot. Normalization stores one canonical Origin result of `-1300 bp` for that slot plus provenance sufficient for diagnostics.
+
+Controllers should consume materialized typed effective mechanics/quotes such as the existing `MechanicsApi` contracts. They should not reconstruct raw precedence from Pxx/Nxx/Echo lists.
+
+The generic `EffectiveModifierSheet` may remain useful for introspection/less common surfaced values, but first-class mechanics should prefer typed effective specs and action quotes.
+
+---
+
+# 16. Static validation requirements
+
+Before a rule-bearing catalogue/ruleset version is deployable, static validation should prove at least:
+
+1. every declaration references a known axis family and valid typed scope;
+2. every operator is legal in the chosen axis slot;
+3. every operand unit/value representation matches the axis;
+4. every slot has a declared reducer;
+5. same-slot commutative inputs are independent of input/source order;
+6. no arbitrary per-modifier numeric priority is accepted where the schema does not explicitly allow an ordered custom transform;
+7. explicit dependency graphs are acyclic;
+8. no content-legal combination creates two unresolved `SINGLETON` replacements/structural transforms on one facet;
+9. hard prohibitions cannot be bypassed by price discounts, grants, terrain permissions, or numeric modifiers on other hooks unless an explicit mechanic says so;
+10. hard-zero/final-override semantics cannot be resurrected by later ordinary modifiers;
+11. every builder-legal Origin compiles to one deterministic normalized representation;
+12. equivalent permutations of raw rule inputs serialize to byte-identical normalized output;
+13. every current Echo concrete stat/scope key maps to exactly one valid game-wide axis target;
+14. every Pxx/Nxx direct effect maps to one or more valid axes/constraints or is explicitly registered as a custom structural/lifecycle rule;
+15. representative golden combinations produce the authoritative results in §12;
+16. focused subsystem blockers are reported as missing dependencies rather than silently guessed by the normalizer.
+
+For the current finite Origin catalogue, the inexpensive structural/static compiler should enumerate **every builder-legal trait combination**. Expensive runtime/headless certification remains domain-focused under the existing Origin-validation architecture rather than simulating every named Origin.
+
+Property tests should additionally randomize modifier insertion order and prove normalized output is unchanged for all commutative slots.
+
+---
+
+# 17. Implementation boundary for issue #43
+
+Issue #43 should implement/land enough code-readable schema and validation to make the contract above executable, but it should **not** require every gameplay subsystem to be fully migrated to the new runtime before the issue can close.
+
+The intended implementation sequence after this inventory is accepted is:
+
+1. freeze the V1 axis family/scope/type vocabulary from this audit;
+2. define code-readable axis/slot/operator/unit/reducer types and registry;
+3. define Origin rule manifests and Echo-key -> axis mappings;
+4. implement canonical normalization/serialization and static validation;
+5. exhaustively compile all builder-legal Origin combinations;
+6. add permutation/property tests and §12 golden cases;
+7. expose focused blocker diagnostics for unresolved external mechanics;
+8. update Origin/Echo documentation to reference this owner rather than duplicating generic algebra;
+9. leave subsystem runtime wiring to the owning implementation work, which consumes the normalized/effective-rule contract.
+
+The closure gate for #43 is therefore:
+
+> **No ambiguous current Origin/Echo modifier definition remains in the composition layer; the complete current V1 modifiable-axis vocabulary is represented; every current rule declaration can be classified; normalization/serialization is deterministic; every builder-legal Origin statically compiles; and remaining unresolved semantics are explicitly identified as focused subsystem dependencies rather than hidden arithmetic.**
+
+---
+
+## Next work items
+
+- Review the base inventory and the pressure/P04 questions in §13 before freezing code IDs.
+- After approval, implement the typed rule-axis registry, normalized declaration schema, Origin/Echo manifests, and static validators on the #43 branch.
+- Add exhaustive builder-legal Origin compilation plus permutation/golden tests.
+- Carry the mandatory gameplay / Origins-traits / Character-AI cross-layer impact record into the eventual PR.
