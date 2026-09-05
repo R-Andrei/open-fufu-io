@@ -407,12 +407,20 @@ export const RULE_AXIS_REGISTRY = {
     allowedSourceKinds: STATIC_RULE_SOURCES,
   },
 
-  TRANSPORT_EMBARK_COST: standardScalarAxis(
-    "TRANSPORT_EMBARK_COST",
-    "FFY",
-    "GLOBAL",
-    { echo: false },
-  ),
+  TRANSPORT_EMBARK_COST: {
+    id: "TRANSPORT_EMBARK_COST",
+    kind: "SCALAR",
+    unit: "FFY",
+    scopeKind: "GLOBAL",
+    stages: [
+      {
+        id: "ORIGIN_FLAT",
+        reducer: "SUM",
+        allowedOperators: ["ADD_FLAT"],
+      },
+    ],
+    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
+  },
   TRANSPORT_LANDING_SURVIVAL_FRACTION: standardScalarAxis(
     "TRANSPORT_LANDING_SURVIVAL_FRACTION",
     "RATIO",
