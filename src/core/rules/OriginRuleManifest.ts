@@ -1087,6 +1087,14 @@ export function originDynamicRuleProviders(
   });
 }
 
+function bigintPower(base: bigint, exponent: number): bigint {
+  let result = 1n;
+  for (let index = 0; index < exponent; index += 1) {
+    result *= base;
+  }
+  return result;
+}
+
 export function evaluateDynamicRuleProvider(
   provider: DynamicRuleProvider,
   dependencyValue: number,
@@ -1097,16 +1105,18 @@ export function evaluateDynamicRuleProvider(
     );
   }
   switch (provider.formula.kind) {
-    case "RATIONAL_POWER": {
-      const exponent = BigInt(dependencyValue);
+    case "RATIONAL_POWER":
       return {
         kind: "RATIONAL",
-        numerator: (BigInt(provider.formula.numerator) ** exponent).toString(),
-        denominator: (
-          BigInt(provider.formula.denominator) ** exponent
+        numerator: bigintPower(
+          BigInt(provider.formula.numerator),
+          dependencyValue,
+        ).toString(),
+        denominator: bigintPower(
+          BigInt(provider.formula.denominator),
+          dependencyValue,
         ).toString(),
       };
-    }
     case "PERCENT_BP_PER_COUNT": {
       const value = provider.formula.bpPerUnit * dependencyValue;
       if (!Number.isSafeInteger(value)) {
