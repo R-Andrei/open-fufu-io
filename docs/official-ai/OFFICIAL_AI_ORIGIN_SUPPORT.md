@@ -27,9 +27,10 @@ Neighboring authorities:
 
 - `OFFICIAL_AI_ARCHITECTURE.md` — whole-controller architecture;
 - `OFFICIAL_AI_CONFIGURATION.md` — Signals, Goals, Doctrine, planners, Expression, persistence, component profiles, and `CharacterProfile`;
-- `OFFICIAL_AI_PRESETS.md` — character roster, difficulty, rewards, and allowed-Origin pools;
-- `ORIGIN_TRAIT_CATALOGUE.md` — actual Origin trait mechanics/costs;
-- `OFFICIAL_ORIGINS.md` — actual named Official-Origin roster and trait membership;
+- `OFFICIAL_AI_PRESETS.md` — character roster, difficulty targets, and allowed-Origin pools;
+- `../ECHO_CATALOGUE.md` — Echo reward accounting, including any use of bound AI difficulty;
+- `../ORIGIN_TRAIT_CATALOGUE.md` — actual Origin trait mechanics/costs;
+- `../OFFICIAL_ORIGINS.md` — actual named Official-Origin roster and trait membership;
 - `OFFICIAL_AI_TRAIT_SUPPORT.md` — trait-level AI rationale;
 - `OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md` — named-Origin AI rationale.
 
@@ -93,7 +94,7 @@ Rules:
 - no map-conditioned selector exists;
 - no character/controller logic chooses among allowed Origins;
 - selection is deterministic/replayable from versioned match state;
-- difficulty/reward belongs to the preset, not the selected Origin.
+- difficulty belongs to the preset, not the selected Origin; reward accounting that consumes difficulty is owned by `ECHO_CATALOGUE.md`.
 
 Character intelligence begins **after** the Origin roll.
 
@@ -763,9 +764,9 @@ design/official-ai/character-configurations.config.ts   # once character mapping
 Rationale stays in one document per entity type:
 
 ```text
-docs/OFFICIAL_AI_TRAIT_SUPPORT.md
-docs/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md
-docs/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md            # once needed
+docs/official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md
+docs/official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md
+docs/official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md
 ```
 
 Do not create permanent range/batch shards for either configuration or rationale. Repository history preserves incremental authoring history.
