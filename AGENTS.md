@@ -141,6 +141,22 @@ Automation cannot prove that a numerical rebalance still matches character strat
 
 The repository must prefer **one canonical source of truth per concern**. Long but coherent single-purpose files are preferable to a collection of overlapping fragments.
 
+### Subsystem documentation gateways
+
+When a subsystem grows beyond a few tightly related documents, group its dedicated documents under one obvious directory and provide a `README.md` gateway that explains the subsystem, names the broad/father design document, maps each narrower concern to its canonical owner, and links to relevant code/configuration. Detailed child documents should point back to that gateway or father document, and code/configuration owners should point toward the documentation gateway.
+
+The gateway is navigation and ownership metadata, **not another copy of the detailed rules**.
+
+For Official AI specifically:
+
+```text
+docs/official-ai/README.md
+```
+
+is mandatory first reading for Official-AI work. Agents changing `design/official-ai/*`, an Official-AI document, an AI preset pool, or character/Origin AI behavior must start there and follow the task-specific reading trail before editing. The broad/father design is `docs/official-ai/OFFICIAL_AI_ARCHITECTURE.md`.
+
+Do not leave a mature subsystem as an unstructured pile of similarly named top-level files merely to avoid moving links. When documents move, audit references to the old paths in the same change. A compatibility pointer is acceptable only when it is explicitly non-canonical and materially safer than rewriting a large legacy owner immediately; do not create a forest of permanent redirect files.
+
 ### Before creating any new documentation or design/configuration file
 
 1. Search the repository for the concept, subsystem, entity catalogue, or configuration being documented.
