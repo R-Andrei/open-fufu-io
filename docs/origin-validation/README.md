@@ -10,20 +10,24 @@ The coverage registry is split only for reviewability; all files below use the s
 
 | Coverage | File |
 | --- | --- |
+| **Final frozen validation domains, interaction registry, blocker routing, and #31 completion state** | [`FINAL_VALIDATION_MODEL.md`](./FINAL_VALIDATION_MODEL.md) |
 | Coverage model + P01–P40 + running blockers through P40 | [`../ORIGIN_VALIDATION_COVERAGE.md`](../ORIGIN_VALIDATION_COVERAGE.md) |
 | P41–P50 + new blockers/status corrections | [`P41-P50.md`](./P41-P50.md) |
 | P51–P54 + positive-trait conclusions/corrections | [`P51-P54.md`](./P51-P54.md) |
 | N01–N10 + hard-prohibition/admission findings | [`N01-N10.md`](./N01-N10.md) |
 | N11–N18 + full-catalogue boundary conclusions | [`N11-N18.md`](./N11-N18.md) |
 
-The interaction registry must cover both:
+The interaction registry covers both:
 
-- **same-Origin interactions**, where multiple selected traits affect one effective mechanic; and
-- **cross-faction Origin interactions**, where one faction's trait changes state that another faction's trait explicitly queries.
+- **same-Origin interactions**, where multiple selected traits affect one effective mechanic;
+- **cross-faction Origin interactions**, where one faction's trait changes state that another faction's trait explicitly queries;
+- hard-prohibition/hard-zero precedence;
+- external-system dependencies;
+- representative composition suites where an all-pairs matrix would be redundant.
 
 Negative-trait validation additionally requires explicit treatment of **hard prohibitions, caps, admission rules, and precedence**. These remain owned by the gameplay domain whose action/state is constrained; they do not justify a separate monolithic Origin runtime validator.
 
-## Audit status
+## Audit status — complete
 
 Concrete dependency tracing is complete for the entire current Origin trait catalogue:
 
@@ -32,9 +36,11 @@ P01–P54
 N01–N18
 ```
 
-The next design step is to consolidate/review the complete mechanic-definition blocker list, classify each blocker by canonical owner, then freeze the final validation-domain catalogue and explicit interaction registry from the completed traces.
+The blocker review is complete. Every remaining mechanic-definition blocker discovered by the audit is routed to its canonical owner under #32 or #43–#51 rather than being solved inside validation metadata.
 
-The full-catalogue evidence currently supports nine recurring gameplay validation domains; admission/legality is an explicit stage inside relevant domains rather than a separate tenth domain. See [`N11-N18.md`](./N11-N18.md) for the current consolidated boundary shape.
+The final validation-domain catalogue, admission/legality stage rule, interaction-registry requirements, blocker routing, and #31 completion criteria are frozen in [`FINAL_VALIDATION_MODEL.md`](./FINAL_VALIDATION_MODEL.md).
+
+Historical `Next work items` sections inside the batch files describe the audit sequence as it existed when those batches were written. They are superseded by the final model and are not remaining #31 work.
 
 ## Authority rule
 
