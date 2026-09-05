@@ -395,6 +395,12 @@ export interface EffectiveActionCost {
   readonly populationSpent: number;
 }
 
+/**
+ * Exact single-action result against the current immutable observation snapshot.
+ * A quote is not a reservation and does not account for other actions submitted in
+ * the same later decision; aggregate FFY/Population use or conflicting actions can
+ * therefore still make the complete atomic proposal reject.
+ */
 export interface ActionQuote {
   readonly legal: boolean;
   readonly failureCode?: DecisionFailureCode;
@@ -602,6 +608,7 @@ export interface RulesView {
 
 export interface ControllerLimitsView {
   readonly persistentMemoryBytes: number;
+  readonly serializedDecisionBytes: number;
   readonly queriesPerDecision: number;
   readonly materializedCellsPerDecision: number;
   readonly directiveUpdatesPerDecision: number;
