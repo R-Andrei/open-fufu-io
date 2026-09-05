@@ -39,6 +39,12 @@ describe("rule profile compiler", () => {
     ).toBe(false);
     expect(
       ruleConditionsMayOverlap(
+        { kind: "EVENT_TERRAIN_IS", terrain: "DESERT" },
+        { kind: "EVENT_TERRAIN_IS", terrain: "MOUNTAIN" },
+      ),
+    ).toBe(false);
+    expect(
+      ruleConditionsMayOverlap(
         { kind: "EVENT_INSIDE_FIELD", field: "FORT" },
         { kind: "EVENT_INSIDE_FIELD", field: "SAM" },
       ),
