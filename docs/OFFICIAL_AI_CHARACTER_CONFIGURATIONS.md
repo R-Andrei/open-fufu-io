@@ -26,276 +26,306 @@ This rationale explains character intent and bespoke hook semantics. It must not
 ## Progress
 
 ```text
-Difficulty-0 Baseline: complete
-Character profiles:    20 / 20 complete
-Remaining characters:   0
+Difficulty-0 Baseline:        complete
+Character profiles:           20 / 20 complete
+Character quirk/signature pass: complete
 ```
 
-The first full character-profile pass is closed. A separate fastfire **character-quirk/signature-move review** remains intentionally open; it may add sparse character-owned Expression/Goal/Arbiter hooks where those quirks materially improve identity, but must not reopen mechanics or Origin support without a real cross-layer reason.
+The next character work is validation/benchmarking rather than another ordinary content-mapping pass.
+
+---
+
+## Signature behavior contract
+
+A character signature is a **recognizable family of preferred legal behavior**, not a script and not a private game mechanic.
+
+Use the existing character-owned surfaces first:
+
+```text
+Expression SIGNATURE preferences
++ bespoke character candidate-generation/ranking hooks
++ Goal/Arbiter/Persistence rules when the signature affects commitment
+```
+
+Hard rules:
+
+- a signature never changes gameplay mechanics, costs, legality, or Origin effects;
+- a signature never resurrects a non-viable candidate;
+- unusual geometry must remain strategically useful enough for the character's Expression leeway;
+- a low-difficulty character does not gain high-tier reasoning merely because its quirk is elaborate;
+- a signature may exaggerate a sound tactic, but does not monopolize it: other rational controllers may use the same tactic when appropriate;
+- signatures may be conditional on the rolled Origin or available structures and simply not fire when the required capability is absent;
+- quirks are not mandatory for every character. A sufficiently distinctive Doctrine/controller identity is preferable to a forced gimmick.
 
 ---
 
 ## Difficulty-0 Baseline
 
-Baseline is deliberately **not a character**. It exercises the complete ordinary game surface through low-tier evaluators/planners, simple arbitration, reactive persistence, strict planner-best Expression, and generic Origin literacy with no authored Origin preferences.
-
-Its purpose is to establish the minimum coherent controller and benchmark floor, not to exhibit personality.
+Baseline is deliberately not a character. It exercises the complete ordinary game surface through low-tier evaluators/planners, simple arbitration, reactive persistence, strict planner-best Expression, and generic Origin literacy with no authored character preference.
 
 ---
 
-# First 10 character profiles
+# Character rationale and signatures
 
-## Thorfinn Karlsefni
+## Thorfinn Karlsefni — D3
 
-Thorfinn's defining rule is stronger than generic pacifism: **voluntary hostility against an innocent faction is forbidden**.
+Thorfinn's defining signature remains the **hard innocent-hostility prohibition** rather than an additional cosmetic quirk.
 
-`THORFINN_AGGRESSOR_MEMORY` maintains a match-lifetime set of remembered aggressor faction IDs. A faction enters this set when it directly attacks Thorfinn or attacks one of Thorfinn's teammates while that teammate relationship exists. Once entered, the faction remains historically classified as an aggressor for the rest of the match even if active conflict later settles.
+`THORFINN_AGGRESSOR_MEMORY` keeps a match-lifetime record of factions that directly attacked Thorfinn or attacked one of his teammates while allied. Innocent factions may never become voluntary hostility targets. Remembered aggressors remain legally targetable after peace, although renewed aggression after settlement is deliberately rare.
 
-That memory changes eligibility, not automatic behavior:
+This must not make Thorfinn noncompetitive. Once a faction qualifies as an aggressor, he may conduct real offensive warfare, break through, seize territory, and if strategically justified dismantle that aggressor. His restraint is about **who he may attack**, not about refusing to use conquest after somebody has crossed that line.
 
-- a faction that has never qualified as an aggressor may not be the target of a voluntary hostility-initiating Goal/Plan;
-- an active aggressor may generate strong defense/repel/retaliation Goals;
-- after a conflict settles, Thorfinn strongly prefers continued peace and ordinary retaliation Goals decay;
-- a remembered aggressor may exceptionally become eligible for later renewed hostility through `THORFINN_RARE_REMEMBERED_AGGRESSOR_REENGAGEMENT`, but this path is deliberately rare, strategically gated, and never applies to an innocent faction;
-- an ally's historical aggressor counts because the original aggression against the ally is itself remembered; the ally does not need to remain under immediate attack forever.
+**Identity test:** no innocent wars; very real wars against aggressors.
 
-Across Origins, Thorfinn prioritizes Population/force preservation, defensible growth, efficient retaliation, and territorial trades that save people. Transformative aggressive mechanics remain usable against legal aggressor targets but do not bypass the innocent-target prohibition.
+## Askeladd — D4
 
-**Identity test:** peaceful expansion and defense by default; ferocious but bounded retaliation when attacked; no innocent wars.
+Askeladd is a strategic predator whose signature is **weaponized boundary geometry**.
 
-## Askeladd
+When opportunity permits, he values captures or kill-steals that create awkward enemy holdings: thin salients, exposed strips, badly connected regions, frontage surrounded by hostile factions, or positions that force an opponent to defend territory they should never have acquired in that shape. The objective is leverage, not pretty borders.
 
-Askeladd is a strategic predator rather than a generic aggressive controller. His adaptive opponent model looks for distraction, dependency, weak infrastructure, exposed geography, and situations where the opponent can be manipulated into a worse exchange.
+This sits on top of his existing deception, infrastructure predation, sacrifice, and weak-target exploitation. Other advanced AIs may notice bad borders; Askeladd deliberately helps create them.
 
-His bespoke rules deliberately permit territorial/resource sacrifice when it creates leverage. Retreat is not failure if it opens a better attack, isolates an asset, diverts the opponent, or preserves the ability to strike somewhere weaker.
+**Identity test:** he manipulates the map so somebody else inherits the uncomfortable position.
 
-Across Origins he preferentially converts raiding, information denial, conquest economy, piracy, and sacrificial mechanics into asymmetric pressure. A strong Origin does not make him seek an honorable head-on contest when a cheaper exploit exists.
+## Reinhard von Lohengramm — D5
 
-**Identity test:** manipulate and exploit the strategic contest; attack weakness rather than prove strength.
+Reinhard is the roster's **11/10 conquest/general-offensive specialist**.
 
-## Reinhard von Lohengramm
+Outside early game, a serious Reinhard offensive should normally be multi-front whenever multiple useful fronts exist. He may use nearly every valuable contact line on an awkward map rather than concentrating the whole war into one local corridor.
 
-Reinhard is the D5 global-expansion benchmark. He evaluates local actions through their effect on global position, access, economic scaling, multiple theaters, and the path to decisive superiority.
+He may also stage a convincing preliminary attack, observe the defender's response, then launch the true broad offensive elsewhere. His preferred campaign state is not merely “winning”; it is **overwhelming the enemy across the strategic map**.
 
-His campaign/portfolio hooks permit coordinated parent objectives with dependent theater Goals. He can abandon a locally winning plan if another campaign materially improves the global route to supremacy.
+The multi-front signature remains conditional on force availability and strategic usefulness. It does not require feeding forces into obviously worthless fronts solely to satisfy a counter.
 
-Origin adaptation asks how the rolled toolbox accelerates positional dominance: infrastructure becomes the base for expansion, distributed starts become theater access, conquest mechanics become campaign momentum, and specialist force mechanics become tools for decisive overmatch.
+**Identity test:** when Reinhard finally attacks, the whole border becomes a problem.
 
-**Identity test:** several-front global optimization whose end state is strategic supremacy, not isolated tactical brilliance.
+## Yang Wen-li — D5
 
-## Yang Wen-li
+Yang is the roster's **11/10 defensive and strategic-survival specialist**, but this does **not** mean passive play.
 
-Yang uses D5 cognition for almost the opposite strategic objective. He minimizes unnecessary wars, preserves future options, values retreat and territorial sacrifice when they improve geometry, and actively looks for opponent overextension.
+He should be one of the hardest factions in the game to attack cleanly: strong economy, reserves, observation, geometry, withdrawals, bait recognition, counterattack timing, and option preservation. An expert player looking at Yang should rarely see an obviously safe invasion route except one Yang may be deliberately willing to expose.
 
-His characteristic sequence is:
+At the same time, Yang remains D5 and understands that territory is power. If a neighbor exposes a momentary weakness, Yang should aggressively exploit it. He expands for security, position, buffer depth, removal of dangerous enemy footholds, ally protection, or simply because a low-risk opportunity materially strengthens his long-term position.
+
+The distinction from Reinhard is motive and campaign shape:
 
 ```text
-avoid unnecessary commitment
-→ preserve options / defensible geometry
-→ opponent overextends or creates a forcing vulnerability
-→ concentrated efficient counterattack
-→ stop when the strategic reason for continued war disappears
+Reinhard: expand to dominate and impose strategic supremacy.
+Yang:     expand because the position becomes safer/stronger and the opportunity is good.
 ```
 
-Origins are interpreted through preservation, defensive geometry, information, efficient response, and option value rather than as invitations to conquer merely because a mechanic is powerful.
+Yang may therefore become very large. Defensive specialization changes **why and how** he conquers, not whether he is allowed to conquer.
 
-**Identity test:** extraordinarily capable at winning wars he would prefer not to have needed.
+**Identity test:** an apparently impassable object that immediately punishes the weakness you thought he would politely ignore.
 
-## Frieren
+## Frieren — D4
 
-Frieren is defined primarily by **time preference**, not merely intelligence. Her controller is unusually willing to defer marginal immediate value in exchange for preparation, infrastructure, knowledge, accumulated resources, and a much stronger later commitment.
+Frieren's signature is **just-in-case accumulation**.
 
-Low visible urgency must not mean inactivity: Background and Secondary preparation Goals should continue building future advantage while immediate pressure remains modest. When the preparation/advantage case matures, her controller should switch cleanly from patient accumulation to decisive execution rather than continuing to wait forever.
+If a useful capability can be acquired at low opportunity cost, she disproportionately likes owning it even without an immediate need: a nearby Port, observation capability, niche infrastructure, spare strategic option, or other useful tool. The behavior evokes collecting strange spells without turning into economic self-harm.
 
-**Identity test:** patient enough to wait when time helps her, decisive enough to end the matter when preparation is complete.
+Her long-horizon controller remains willing to wait, accumulate, and then commit decisively once the advantage matures.
 
-## Übel
+**Identity test:** she keeps acquiring harmlessly useful things until one of them unexpectedly matters.
 
-Übel is a D4 controller with intentionally unusual **risk interpretation**. She has strong strategic opportunity recognition but accepts high-upside lines that another expert controller may discard as too strange, exposed, indirect, or fragile.
+## Übel — D4
 
-This is not literal randomness. Plans must still be legal, viable, generated by her actual planner tiers, and supported by observed state. Her distinction is willingness to trust a dangerous but coherent opening.
+Übel's visual offensive signature is **The Cut**.
 
-**Identity test:** frightening intuition and ruthless exploitation, not incompetent recklessness.
+When strategically advantageous, she prefers narrow and often nearly straight penetrations into enemy territory whose purpose is to sever connectivity, split regions, isolate a section, or carve a line toward something important. The cut may be a thin segment or occasionally nearly cell-wide rather than a broad conventional front.
 
-## Tanya Degurechaff
+The cut must create actual positional value. It is not permission to draw lines through enemy territory for aesthetics.
 
-Tanya is an expected-value military optimizer. Her ruthlessness is expressed through willingness to spend lives/resources when the forecast justifies it, while pointless waste and spectacle are explicitly rejected.
+**Identity test:** her attacks leave surgical scars through the map.
 
-Her custom model emphasizes force concentration, timing, artillery/standoff mechanics, strategic weapons, preparation, opportunity cost, and cancellation of operations whose expected return has collapsed. Sunk cost alone is not a reason to continue.
+## Tanya Degurechaff — D4
 
-**Identity test:** ruthless because she calculates, not because she enjoys waste.
+No forced signature gimmick is added. Tanya is already differentiated by quantified military operations: concentration, artillery preparation, strategic weapons, deep strikes, unexpected amphibious vectors, and cancellation of operations whose expected value collapses.
 
-## Kiss-Shot Acerola-Orion Heart-Under-Blade
+Other advanced controllers may use these tactics too. Tanya's distinction is how consistently she selects them when the arithmetic says they are correct.
 
-Kiss-Shot is a D3 dominance/snowball controller. She prefers conspicuous overwhelming commitments and presses an advantage harder than a cautious peer, but she is not given D4/D5 global optimization simply because her preferred solutions are powerful.
+**Identity test:** ruthless military sophistication without ornamental doctrine.
 
-Her most distinctive resource behavior is around elite/irreplaceable assets. Origins that create one flagship, veteran centerpiece, or other uniquely valuable force receive strong preservation treatment even while ordinary resources remain expendable in pursuit of dominance.
+## Kiss-Shot Acerola-Orion Heart-Under-Blade — D3
 
-**Identity test:** extravagant overwhelming strength with surprising care for the singular asset embodying that strength.
+No new quirk is forced in this pass. Her existing identity remains dominance, overwhelming commitments, snowballing power, and unusual protection of truly exceptional/irreplaceable assets.
 
-## Hanekawa Tsubasa
+A more specific visual signature should remain open until the intended interpretation of Acerola/Kiss-Shot/Shinobu is deliberately narrowed rather than filling the slot with generic vampire royalty imagery.
 
-Hanekawa is an information-first D4 analyst. New observed evidence is a reason to update opponent/state interpretation rather than cling to a previously elegant theory.
+## Hanekawa Tsubasa — D4
 
-Her controller values observation, counterintelligence, efficient infrastructure, broad preparation, low-casualty solutions, and clean responses. Risky commitments should normally follow adequate information rather than precede it.
+Hanekawa gains **No Blind Spots**.
 
-This separates her from Frieren: Frieren's signature is patience across time; Hanekawa's signature is active acquisition and synthesis of information.
+She prefers unusually complete, overlapping observation/information coverage and is more willing than peer controllers to close material coverage holes. This remains budget-aware: information completeness is valuable, but she does not bankrupt the economy building Observation Posts for geometric neatness.
 
-**Identity test:** understand the situation, update when evidence changes, then choose the efficient response.
+This complements her broader identity of continuously updating her model when evidence changes.
 
-## Kaiki Deishuu
+**Identity test:** the map around Hanekawa feels methodically observed.
 
-Kaiki is an economy/opportunism specialist whose core question is whether the conflict is **worth paying for**.
+## Kaiki Deishuu — D3
 
-His profitability model prefers weak/exposed targets, deception, indirect operations, piracy/raiding, liquidity, and wars whose gains fund or exceed their costs. He disengages readily when the expected margin disappears.
+No extra gimmick is needed. His existing profitability model already creates a strong signature: avoid fair expensive contests, attack exposed value, use deception, and exit when the economic case disappears.
 
-This intentionally separates him from Askeladd. Askeladd sacrifices and manipulates to win a larger strategic contest; Kaiki manipulates so he does not have to pay the full price of that contest in the first place.
+He still holds valuable captured Cities/Factories/Ports when doing so is worthwhile. “Take the money and leave” must never become abandoning the very asset that makes the conquest profitable.
 
-**Identity test:** never fight fairly when a cheaper profitable arrangement exists.
+## Misaka Mikoto — D3
+
+Misaka gains the **Railgun Corridor**.
+
+She prefers a supported offensive axis that can be hammered open with ranged pressure, artillery/armor where available, observation, and other useful supporting assets. It is intentionally broader and more sustained than Übel's surgical cut.
+
+```text
+Übel:  slice connectivity with a thin advantageous cut.
+Misaka: build a supported lane and blast the lane open.
+```
+
+**Identity test:** a direct technically supported corridor of force rather than elaborate deception.
+
+## Edward Wong Hau Pepelu Tivrusky IV — D2
+
+Ed gains **Arcane Borders**.
+
+Among similarly useful expansion choices, Ed prefers bizarre but legal territorial shapes: tendrils, loops, asymmetric branches, odd terrain-following curves, and boundaries that make another player wonder why the faction looks like that. Territory remains real territory, so the quirk need not be strategically useless.
+
+Ed is also unusually willing to preserve or extend an existing weird geometry rather than immediately regularizing it.
+
+**Identity test:** “what the hell am I looking at, and why is it somehow still working?”
+
+## Shaula — D3
+
+Shaula's signature is the **Pleiades Watchtower family** around a designated protected core.
+
+When legal and useful, candidate generation may prefer recognizable arrangements such as:
+
+```text
+FORT ---- CORE ---- FORT
+SAM  ---- CORE ---- SAM
+FORT ---- CORE ---- SAM
+```
+
+or closely related symmetric/near-symmetric defensive tower patterns. The exact structure types depend on what the ordinary mechanics and selected Origin permit.
+
+Other infrastructure should prefer useful exterior/peripheral positions where practical so it does not destroy the readable core motif. Once established, threats to the designated core receive extraordinary defensive priority.
+
+**Identity test:** a recognizable protected tower/core she will fight disproportionately hard to preserve.
+
+## Hirasawa Yui — D1
+
+Yui's signature is generalized from one heart to **Cute Infrastructure**.
+
+Her pattern library may propose hearts, stars, bunny/ear shapes, simple faces or `:3`-like motifs, flowers, bows, and other simple recognizable geometry using rail/infrastructure placements that remain viable within her large Expression leeway.
+
+Cute geometry is a preference among usable plans, never permission for disconnected or catastrophically inefficient construction.
+
+**Identity test:** useful infrastructure that periodically looks suspiciously adorable.
+
+## Saitama — D2
+
+Saitama's signature remains **One Punch**.
+
+His strategic reasoning is deliberately simple. When something does not matter, urgency is low. Once he decides an attack matters, however, he prefers a simple plan with **disproportionate localized overmatch** and is willing to commit considerably more force than the minimum needed to turn likely victory into immediate decisive collapse.
+
+This is not fear of a fair fight. Fairness is irrelevant; the fantasy is ending the selected fight in one overwhelming commitment.
+
+**Identity test:** few clever layers, one enormous punch.
+
+## Ferdinand — D5
+
+Ferdinand is the roster's **11/10 economy/infrastructure specialist**.
+
+He remains D5 elsewhere—excellent defense and conquest—but Reinhard should beat him at conquest specialization and Yang at defensive specialization. Ferdinand's exceptional domain is making the internal machine absurdly efficient.
+
+His signature prefers dense, compact, network-integrated development: Factory/rail loops, City packing, infrastructure sequencing, minimal dead coverage, high compounding return, and continued expansion that preserves network coherence. If the mechanics permit fifteen Cities to fit productively into a loop where a human expected six, Ferdinand is the controller most likely to find it.
+
+**Identity test:** inspect his territory and discover that every meter somehow participates in a spreadsheet.
+
+## Power — D2
+
+No exclusive quirk is added. Opportunistic kill-stealing, greed, visible gains, bragging-force overcommitment, spectacle, and refusal to back down already emerge across her entire playstyle.
+
+Other deceptive or rational characters must remain free to exploit weakened enemies too; Power does not own that tactic.
+
+## Reze — D3
+
+No exclusive new gimmick is required. Her existing signature rhythm remains useful and recognizable:
+
+```text
+quiet/deceptive positioning
+→ attack window
+→ sudden breakthrough / landing / multi-domain escalation
+```
+
+Higher-difficulty controllers may use synchronized overwhelming attacks too. Reze is distinguished by how often her preferred plan follows this concealment-to-detonation rhythm, especially through infiltration/amphibious angles.
+
+## Hitori Gotou — D2
+
+Bocchi becomes an intentionally **exceptional defender for D2** while remaining weak at proactive offense and mediocre/poor at economic optimization.
+
+Her signature family is **Fortress Bocchi**:
+
+- unusually dense but still useful Fort coverage along exposed borders;
+- layered fallback positions and natural defensive terrain;
+- generous buffers around important territory;
+- strong preference for retreating toward prepared safety rather than improvising offense;
+- pressure-triggered panic overcommitment remains a separate volatile behavior.
+
+A cross-layer audit found that the approved Fallout-buffer idea could not occur with her previous allowed-Origin set. `Everything Will Turn to Ash` (O33) already contains the necessary P35 scorched-earth mechanic and complete reusable AI support, so O33 is now added to Bocchi's allowed pool. When she rolls it, her Origin adaptation may deliberately create Fallout during planned withdrawal to form defensive safety barriers around fallback positions.
+
+No trait, Origin mechanic, or Origin-support rule changes are required.
+
+**Identity test:** far harder to invade than her D2 economy/offense would suggest.
+
+## Maomao — D4
+
+No additional exclusive gimmick is forced. Her existing causal-mechanics diagnosis is already characterful: form a hypothesis about the specific terrain/status/rule interaction causing an outcome, probe cheaply where useful, update from evidence, then exploit the mechanism.
+
+Other analytical controllers may probe too. Maomao's distinction is her fascination with the mechanism itself rather than ownership of “testing” as a tactic.
 
 ---
 
-# Characters 11–20
+# D5 specialist triangle
 
-## Misaka Mikoto
-
-Misaka is a direct, competent D3 problem-solver. She likes concentrated force, useful infrastructure, ranged pressure, defensive/interception coverage, and clear counterpressure. She is intentionally less interested in deception or complicated strategic theater than controllers such as Askeladd, Reze, or the D5s.
-
-**Identity test:** understand the immediate strategic problem and hit it with a clean, forceful, technically sensible answer.
-
-## Edward Wong Hau Pepelu Tivrusky IV
-
-Ed's unpredictability comes from **curiosity and unusual preferences**, never random action selection. Ed values strange but useful geography, distributed positions, information, unconventional infrastructure, and opportunities that other D2 controllers may simply not find interesting.
-
-The controller may switch attention relatively readily when a genuinely novel legal opportunity appears, but every action must still be viable and planner-generated.
-
-**Identity test:** weird and exploratory without ever becoming dice-driven stupidity.
-
-## Shaula
-
-Shaula is a long-range guardian built around a **designated protected core**. Once a strategically sensible core is chosen, threats to it gain exceptional priority and she becomes unusually unwilling to abandon it.
-
-Her first authored signature-move family is the **tower layout**. When SAM access, map geometry, cost, and tactical viability permit, `SHAULA_TOWER_PATTERN_CANDIDATES` should generate recognizable protected-core candidates such as:
+The three D5 controllers must remain excellent across the whole game while each having one deliberately exceptional specialty:
 
 ```text
-SAM  --------  CITY / CORE  --------  SAM
+Reinhard  — 11/10 conquest / general offensive
+Yang      — 11/10 defense / strategic survival
+Ferdinand — 11/10 economy / infrastructure
 ```
 
-or a compact three-SAM line/tower interpretation where that is mechanically legal and preferable for the selected Origin. The exact geometry is a candidate family rather than a forced literal blueprint: terrain, legal placement, actual SAM coverage, and the selected Origin's limits remain authoritative.
+This is comparative emphasis, not hidden numerical bonuses. All three use the same legal mechanics and D5 architecture.
 
-`SHAULA_PROTECTED_CORE_RING_LAYOUT` then prefers other useful infrastructure toward the useful exterior/periphery of the resulting SAM-protected area rather than cluttering or destroying the readable central tower pattern. This is not permission to make economically or tactically worthless placements merely to draw a picture.
-
-The designated core is the territory she will commit extraordinary resources to defend. “Die to protect” means her Arbiter/Persistence may escalate to unusually high commitment when the core is genuinely threatened; it does not bypass legality or make already-hopeless actions viable.
-
-**Identity test:** a recognizable long-range protected tower/core that she treats as sacred ground.
-
-## Hirasawa Yui
-
-Yui is intentionally simple D1 cognition with high expressive personality. She likes comfortable growth, support, coherent infrastructure, symmetry, and low urgency.
-
-Her existing **heart-layout** idea is canonical as a signature candidate family. `YUI_HEART_INFRASTRUCTURE_CANDIDATES` / `YUI_HEART_RAIL_SIGNATURE` may propose heart-like rail/infrastructure geometry when it remains within her broad Expression leeway and is still a genuinely viable network.
-
-The heart shape never makes illegal, disconnected, or catastrophically inefficient infrastructure acceptable.
-
-**Identity test:** low-complexity friendly play whose infrastructure sometimes becomes visibly and recognizably Yui's.
-
-## Saitama
-
-Saitama's low complexity must not be confused with timid or evenly matched combat. He does not need elaborate five-stage operational art to express the One Punch fantasy.
-
-The intended attack pattern is:
-
-```text
-problem does not matter → low urgency
-problem matters enough to attack → choose a simple viable solution
-                              → commit overwhelming concentrated force
-                              → finish the problem quickly
-```
-
-`SAITAMA_ONE_PUNCH_COMMITMENT` therefore strongly favors disproportionate force when he has decided to attack. He does not “seek fair fights”; fairness is simply irrelevant. The signature is that **when he attacks, he ATTACKS**.
-
-**Identity test:** strategically simple, operationally decisive, disproportionately forceful once engaged.
-
-## Ferdinand
-
-Ferdinand is the D5 system/infrastructure optimizer. His objective is not Reinhard-style conquest for supremacy but the elimination of waste and the creation of a tightly optimized machine: infrastructure sequence, compounding returns, resource bottlenecks, timing, network shape, and opportunity cost all matter.
-
-He should willingly replan when the system's true optimum changes and reject sunk-cost reasoning.
-
-**Identity test:** if two strategies reach similar outcomes, Ferdinand's should look engineered.
-
-## Power
-
-Power is coherent D2 recklessness: greed, spectacle, bravado, visible gains, and violent overcommitment. She tolerates overextension and expensive failure far more readily than a sensible peer and may double down after a conspicuous commitment.
-
-This still does not permit random actions. Her recklessness must be explainable by a real opportunity, dominance display, greed motive, or aggressive plan generated within D2 capability.
-
-**Identity test:** the plan makes enough sense to exist, then Power makes it much louder and less cautious than necessary.
-
-## Reze
-
-Reze has a two-phase strategic rhythm: concealed/indirect approach followed by abrupt violent escalation when an attack window appears. Her amphibious specialization is intentionally above the rest of her general D3 planner set because infiltration and second-front attacks are core identity rather than general intelligence inflation.
-
-**Identity test:** quiet positioning first; sudden breakthrough, landing, or strike second.
-
-## Hitori Gotou
-
-Bocchi maximizes safety far beyond an ordinary D2 controller, but not beyond usefulness. Her signature defensive behavior is to prefer **dense sensible Fort coverage along vulnerable territorial edges**, creating a fortified perimeter because exposed borders make her uncomfortable.
-
-`BOCCHI_PERIMETER_FORT_SIGNATURE` may therefore keep considering useful edge Fort placements after a normal controller would consider its defense “good enough,” provided the placements actually protect vulnerable frontage, structures, or likely attack routes. It must never build Forts in strategically useless locations merely to satisfy the quirk.
-
-Her second behavioral signature is a pressure-triggered panic spike: severe immediate danger can temporarily flip her from extreme avoidance into unusually committed response. This is event-driven, not random volatility.
-
-**Identity test:** visibly over-secured borders, extreme avoidance, and occasional pressure-induced panic commitment.
-
-## Maomao
-
-Maomao is a D4 **causal-mechanics diagnostician**. Where Hanekawa synthesizes the broad information picture, Maomao tries to determine what specific rule, terrain interaction, status effect, resource mechanism, or opponent behavior is actually producing the observed result.
-
-Her controller may form low-cost test actions, update its hypothesis from outcomes, then exploit the confirmed mechanism through terrain, Fallout/status geometry, denial, or targeted response.
-
-**Identity test:** diagnose the mechanism causing the problem, verify it, then exploit the mechanism rather than merely react to the surface symptom.
+Reinhard may still defend brilliantly. Yang may still conquer aggressively. Ferdinand may still win wars and hold fronts exceptionally well. Their specialties describe where each controller should feel uniquely terrifying relative to another D5.
 
 ---
 
-## Signature moves and quirks — current architectural rule
+## Cross-layer audit result
 
-The Shaula, Yui, Saitama, and Bocchi additions confirm that a separate generic “signature-move engine” is not currently necessary.
+This signature pass was reviewed through the mandatory mechanics ↔ Origin ↔ character synchronization rule.
 
-Character signatures should first use the existing character-owned surfaces:
+- **Gameplay mechanics:** reviewed; no mechanic changes required.
+- **Origin trait support:** reviewed; no trait-support changes required.
+- **Named-Origin configuration:** reviewed; no Origin definition/support changes required.
+- **Character AI:** updated with the approved signature behavior and revised Yang/Thorfinn competitiveness rules.
+- **Preset Origin pools:** Bocchi gains `Everything Will Turn to Ash` so the approved P35 Fallout-fallback behavior is actually reachable.
 
-```text
-Expression SIGNATURE preferences
-+ bespoke Expression candidate augmentation/ranking hooks
-+ character Goal/Arbiter/Persistence hooks where the quirk changes strategic commitment
-```
+The O33/P35 support already exposes territorial shaping, denial, sacrifice, and reusable scorched-earth semantics, so Bocchi requires no `CharacterTraitOverride` or `CharacterOriginOverride`; her ordinary `OriginAdaptationProfile` can interpret the rolled capability defensively.
 
-A signature move may generate or prefer unusual **legal viable candidates**. It may not:
-
-- create mechanics or structures the selected Origin does not possess;
-- bypass resource/placement/action legality;
-- resurrect non-viable candidates;
-- grant a low-difficulty character reasoning sophistication it otherwise lacks;
-- force cosmetic geometry when it is strategically catastrophic.
-
-This is the default for the upcoming 20-character fastfire quirk pass. A new shared subsystem should be added only if that pass exposes a recurring need the existing Expression/character-hook architecture genuinely cannot represent.
+No other character signature requires changing an allowed-Origin pool.
 
 ---
 
-## Full character-pass consistency result
+## Full character consistency result
 
-All 20 character profiles use the already-closed gameplay mechanics, Origin trait support, named-Origin configurations, and generic character architecture without requiring a new gameplay mechanic, Origin trait, named Origin, shared AI literal, or Origin-support rule.
+All 20 characters and Baseline remain inside the existing shared AI architecture. The signature pass adds no new game rule, Origin trait, named Origin, shared AI literal, or generic signature subsystem.
 
-No current character requires a `CharacterTraitOverride` or `CharacterOriginOverride`; broad `OriginAdaptationProfile` preferences plus character-owned hooks remain sufficient.
+Important contrasts remain:
 
-The principal intentional contrasts include:
-
-- Reinhard vs Yang — global supremacy vs option-preserving defensive genius;
-- Askeladd vs Kaiki — strategic predation vs profitable avoidance;
-- Frieren vs Hanekawa — time/accumulation vs information/adaptation;
-- Übel vs Tanya — high-upside intuition vs quantified expected-value warfare;
-- Hanekawa vs Maomao — broad information synthesis vs causal-mechanics diagnosis;
-- Power vs Saitama — loud reckless overcommitment vs simple deliberate overwhelming force;
-- Shaula vs Bocchi — sacred-core obsessive defense vs generalized perimeter safety.
-
-The next character-design step is the intentionally lightweight **quirk/signature-move pass across all 20 characters**, followed by the character × allowed-Origin validation/benchmark phase.
+- Reinhard vs Yang vs Ferdinand — conquest vs defense vs economy specialization;
+- Askeladd vs Kaiki — strategic leverage manipulation vs profitable avoidance;
+- Frieren vs Hanekawa vs Maomao — long-horizon collection vs information completeness vs causal-mechanics diagnosis;
+- Übel vs Misaka — thin surgical connectivity cut vs wider supported offensive corridor;
+- Tanya vs Reze — expected-value military operations vs concealment-to-detonation rhythm;
+- Power vs Saitama — reckless loud overcommitment vs deliberate localized overmatch;
+- Shaula vs Bocchi — sacred designated core vs generalized paranoid layered defense;
+- Yui vs Edward — cute useful construction geometry vs arcane useful territorial geometry.
