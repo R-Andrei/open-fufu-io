@@ -223,19 +223,30 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Required seams / dependencies**
 
-- `atWar lifecycle -> maritime external-trade payout`.
-- `atWar lifecycle -> rail external-trade payout`.
-- Test peace, entry, sustained/refreshed war, expiration/exit, and both trade channels.
-- Depends on canonical symmetric `atWar` lifecycle/timeout.
+- `canonical atWar relation at event-resolution tick -> maritime external-trade payout`.
+- `canonical atWar relation at event-resolution tick -> rail external-trade payout`.
+- The canonical lifecycle is now closed: `atWar` is symmetric and hostility-side/team normalized, is created/maintained by accepted controller-directed hostility, persists while a directed-hostility source remains active, and uses an exact `600`-simulation-tick post-hostility grace after the final persistent source ends or after a one-shot directed-hostility action.
+- Each qualifying external Train/Trade payout evaluates the **current** `atWar` relation when the economic event resolves; launch/dispatch-time war state is not snapshotted for later payout.
+- Autonomous Warship combat/Trade capture and autonomous Train interception do not themselves create or refresh `atWar`.
+
+**Required scenario coverage**
+
+- peaceful external payout -> ordinary non-war treatment;
+- accepted directed-hostility source becomes active -> P08 wartime payout remains `1.00x` instead of baseline `0.50x`;
+- multiple/persistent hostility sources -> relation remains active until the last source ends;
+- final persistent source ends -> P08 remains wartime through ticks `< expiresAtTickExclusive` and returns to peace exactly at expiry with no active source;
+- one-shot directed hostility extends the same 600-tick grace;
+- autonomous piracy/interception during peace or grace does not create/refresh the relation;
+- both maritime and rail external trade use the same canonical relation but retain their own ordinary event rules.
 
 **Explicit interactions**
 
-- Inspect N14/N16 when audited because they snapshot/use owner-side voyage value around hostile capture.
+- Inspect N14/N16 when audited because they snapshot/use owner-side voyage value around hostile capture; their launch-time `Vowner` semantics must not be conflated with P08's event-resolution-time `atWar` check.
 - No bespoke P06/P07 pair is required when those traits independently change speed/count.
 
-**Blocker/status**
+**Status**
 
-- Affected conformance remains `BLOCKED`/`UNAVAILABLE` until canonical `atWar` semantics are closed/implemented; validation does not invent a temporary timeout.
+- The former semantic blocker from #33 is closed on `main`. P08 conformance may still be `UNAVAILABLE` until the relevant runtime/test implementation exists, but it is no longer `BLOCKED` on undefined `atWar` semantics.
 
 ---
 
