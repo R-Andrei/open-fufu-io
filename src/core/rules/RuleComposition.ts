@@ -19,6 +19,7 @@ export type RuleSourceKind =
   | "SITUATIONAL";
 
 export type RuleUnit =
+  | "NONE"
   | "AREA"
   | "BASIS_POINTS"
   | "CELLS"
@@ -26,11 +27,66 @@ export type RuleUnit =
   | "DAMAGE"
   | "FFY"
   | "POPULATION"
+  | "SECONDS"
+  | "TICKS"
   | "RATIO"
   | "BOOLEAN"
   | "COUNT"
   | "CAPABILITY_SET"
   | "PROFILE_ID";
+
+export type TerrainScopeId =
+  | "PLAINS"
+  | "HIGHLAND"
+  | "MOUNTAIN"
+  | "DESERT"
+  | "FOREST"
+  | "TUNDRA"
+  | "MARSH"
+  | "SHALLOW_WATER";
+
+export type StructureScopeId =
+  | "ALL"
+  | "CITY"
+  | "FORT"
+  | "PORT"
+  | "FACTORY"
+  | "MISSILE_SILO"
+  | "SAM_LAUNCHER"
+  | "OBSERVATION_POST"
+  | "COMMAND_POST";
+
+export type UnitScopeId =
+  | "ALL"
+  | "TANK"
+  | "HEAVY_ARTILLERY"
+  | "WARSHIP"
+  | "TRANSPORT_SHIP"
+  | "TRADE_SHIP"
+  | "TRAIN";
+
+export type WeaponScopeId =
+  | "ALL"
+  | "ATOM_BOMB"
+  | "HYDROGEN_BOMB"
+  | "MIRV";
+
+export type FfyFamilyScopeId =
+  | "ALL"
+  | "MILITARY_CONQUEST"
+  | "NAVAL_TRADE"
+  | "INDUSTRIAL"
+  | "PIRACY";
+
+export type RuleScope =
+  | { readonly kind: "GLOBAL" }
+  | { readonly kind: "TERRAIN"; readonly terrain: TerrainScopeId }
+  | { readonly kind: "STRUCTURE"; readonly structure: StructureScopeId }
+  | { readonly kind: "UNIT"; readonly unit: UnitScopeId }
+  | { readonly kind: "WEAPON"; readonly weapon: WeaponScopeId }
+  | { readonly kind: "FFY_FAMILY"; readonly family: FfyFamilyScopeId };
+
+export type RuleScopeKind = RuleScope["kind"];
 
 export type RuleStageId =
   | "STRUCTURAL_PROFILE"
@@ -79,9 +135,12 @@ export type RuleReducer =
   | "PROHIBIT_WINS";
 
 export type RuleCondition =
-  | { readonly kind: "SOURCE_TERRAIN_IS"; readonly terrain: string }
-  | { readonly kind: "TARGET_TERRAIN_IS"; readonly terrain: string }
+  | { readonly kind: "SOURCE_TERRAIN_IS"; readonly terrain: TerrainScopeId }
+  | { readonly kind: "TARGET_TERRAIN_IS"; readonly terrain: TerrainScopeId }
+  | { readonly kind: "BUILD_TERRAIN_IS"; readonly terrain: TerrainScopeId }
   | { readonly kind: "TARGET_HAS_FALLOUT" }
+  | { readonly kind: "TARGET_LACKS_FALLOUT" }
+  | { readonly kind: "TARGET_UNIT_IS"; readonly unit: UnitScopeId }
   | {
       readonly kind: "EVENT_INSIDE_FIELD";
       readonly field: "FORT" | "SAM" | "COMMAND_POST";
@@ -99,11 +158,13 @@ export type RuleValue = number | string | readonly string[];
 
 export interface RuleContribution {
   readonly axis: string;
+  readonly scope: RuleScope;
   readonly stage: RuleStageId;
   readonly operator: RuleOperator;
   readonly sourceKind: RuleSourceKind;
   readonly sourceId: string;
-  readonly unit: RuleUnit;
+  /** Operand unit. Percentage/scalar operands are always integer basis points. */
+  readonly valueUnit: RuleUnit;
   readonly value?: RuleValue;
   readonly condition?: RuleCondition;
   readonly component?: string;
@@ -113,14 +174,16 @@ export interface RuleStageDefinition {
   readonly id: RuleStageId;
   readonly reducer: RuleReducer;
   readonly allowedOperators: readonly RuleOperator[];
-  /** Semantic dependency only. Numeric priority values are intentionally absent. */
+  /** Semantic dependency only; arbitrary numeric priority is intentionally absent. */
   readonly after?: readonly RuleStageId[];
 }
 
 export interface RuleAxisDefinition {
   readonly id: string;
   readonly kind: RuleAxisKind;
+  /** Unit of the materialized effective result. */
   readonly unit: RuleUnit;
+  readonly scopeKind: RuleScopeKind;
   readonly stages: readonly RuleStageDefinition[];
   readonly allowedSourceKinds: readonly RuleSourceKind[];
 }
@@ -133,7 +196,8 @@ export type RuleValidationCode =
   | "UNKNOWN_STAGE_DEPENDENCY"
   | "STAGE_DEPENDENCY_CYCLE"
   | "UNKNOWN_AXIS"
-  | "UNIT_MISMATCH"
+  | "SCOPE_KIND_MISMATCH"
+  | "VALUE_UNIT_MISMATCH"
   | "SOURCE_KIND_NOT_ALLOWED"
   | "STAGE_NOT_ALLOWED"
   | "OPERATOR_NOT_ALLOWED"
@@ -143,8 +207,7 @@ export type RuleValidationCode =
   | "INVALID_STRING_VALUE"
   | "INVALID_CAPABILITY_VALUE"
   | "SINGLETON_CONFLICT"
-  | "MIXED_STAGE_OPERATORS"
-  | "WRONG_AXIS_KIND";
+  | "MIXED_STAGE_OPERATORS";
 
 export interface RuleValidationIssue {
   readonly code: RuleValidationCode;
@@ -153,6 +216,10 @@ export interface RuleValidationIssue {
   readonly sourceId?: string;
   readonly stage?: RuleStageId;
 }
+
+export const GLOBAL_RULE_SCOPE = {
+  kind: "GLOBAL",
+} as const satisfies RuleScope;
 
 const NUMERIC_OPERATORS = new Set<RuleOperator>([
   "ADD_FLAT",
@@ -164,62 +231,59 @@ const NUMERIC_OPERATORS = new Set<RuleOperator>([
   "CAP_FLOOR",
   "ADD_CAP",
 ]);
-
 const NO_VALUE_OPERATORS = new Set<RuleOperator>([
   "HARD_ZERO",
   "ALLOW",
   "PROHIBIT",
 ]);
-
 const STRING_OPERATORS = new Set<RuleOperator>(["STRUCTURAL_TRANSFORM"]);
-
 const CAPABILITY_OPERATORS = new Set<RuleOperator>([
   "ADD_CAPABILITY",
   "REMOVE_CAPABILITY",
   "REPLACE_CAPABILITIES",
 ]);
 
-function compareCanonicalStrings(a: string, b: string): number {
+function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function canonicalizeValue(value: RuleValue | undefined): RuleValue | undefined {
-  if (!Array.isArray(value)) return value;
-  return [...value].sort(compareCanonicalStrings);
 }
 
 function canonicalJson(value: unknown): string {
   if (value === null) return "null";
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
     return JSON.stringify(value);
   }
-  if (typeof value === "string") return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+    return `[${value.map(canonicalJson).join(",")}]`;
   }
   if (typeof value === "object") {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record)
       .filter((key) => record[key] !== undefined)
-      .sort(compareCanonicalStrings);
+      .sort(compareStrings);
     return `{${keys
       .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
       .join(",")}}`;
   }
-  throw new Error(`Unsupported canonical JSON value: ${typeof value}`);
+  throw new Error(`Unsupported canonical value: ${typeof value}`);
 }
 
 function canonicalContribution(contribution: RuleContribution): RuleContribution {
+  const value = Array.isArray(contribution.value)
+    ? [...contribution.value].sort(compareStrings)
+    : contribution.value;
   return {
     axis: contribution.axis,
+    scope: contribution.scope,
     stage: contribution.stage,
     operator: contribution.operator,
     sourceKind: contribution.sourceKind,
     sourceId: contribution.sourceId,
-    unit: contribution.unit,
-    ...(contribution.value === undefined
-      ? {}
-      : { value: canonicalizeValue(contribution.value) }),
+    valueUnit: contribution.valueUnit,
+    ...(value === undefined ? {} : { value }),
     ...(contribution.condition === undefined
       ? {}
       : { condition: contribution.condition }),
@@ -233,20 +297,85 @@ export function serializeRuleContributions(
   contributions: readonly RuleContribution[],
 ): string {
   const normalized = contributions.map(canonicalContribution);
-  normalized.sort((a, b) =>
-    compareCanonicalStrings(canonicalJson(a), canonicalJson(b)),
-  );
+  normalized.sort((a, b) => compareStrings(canonicalJson(a), canonicalJson(b)));
   return canonicalJson({
     version: RULE_COMPOSITION_VERSION,
     contributions: normalized,
   });
 }
 
+function scopeValue(scope: RuleScope): string {
+  switch (scope.kind) {
+    case "GLOBAL":
+      return "GLOBAL";
+    case "TERRAIN":
+      return scope.terrain;
+    case "STRUCTURE":
+      return scope.structure;
+    case "UNIT":
+      return scope.unit;
+    case "WEAPON":
+      return scope.weapon;
+    case "FFY_FAMILY":
+      return scope.family;
+  }
+}
+
+/** `ALL` is a typed wildcard only within scope kinds that explicitly define it. */
+export function ruleScopeMatches(
+  contributionScope: RuleScope,
+  requestedScope: RuleScope,
+): boolean {
+  if (contributionScope.kind !== requestedScope.kind) return false;
+  if (contributionScope.kind === "GLOBAL") return true;
+  const authored = scopeValue(contributionScope);
+  return authored === "ALL" || authored === scopeValue(requestedScope);
+}
+
+export function selectApplicableRuleContributions(
+  axis: string,
+  requestedScope: RuleScope,
+  contributions: readonly RuleContribution[],
+): readonly RuleContribution[] {
+  return contributions.filter(
+    (contribution) =>
+      contribution.axis === axis &&
+      ruleScopeMatches(contribution.scope, requestedScope),
+  );
+}
+
+function expectedValueUnit(
+  definition: RuleAxisDefinition,
+  operator: RuleOperator,
+): RuleUnit {
+  switch (operator) {
+    case "ADD_PERCENT":
+    case "MULTIPLY":
+      return "BASIS_POINTS";
+    case "ADD_FLAT":
+    case "REPLACE_BASE":
+    case "FINAL_OVERRIDE":
+    case "CAP_LIMIT":
+    case "CAP_FLOOR":
+    case "ADD_CAP":
+      return definition.unit;
+    case "HARD_ZERO":
+    case "ALLOW":
+    case "PROHIBIT":
+      return "NONE";
+    case "ADD_CAPABILITY":
+    case "REMOVE_CAPABILITY":
+    case "REPLACE_CAPABILITIES":
+      return "CAPABILITY_SET";
+    case "STRUCTURAL_TRANSFORM":
+      return "PROFILE_ID";
+  }
+}
+
 export function validateRuleAxisRegistry(
   registry: RuleAxisRegistry,
 ): readonly RuleValidationIssue[] {
   const issues: RuleValidationIssue[] = [];
-
   for (const [axisId, definition] of Object.entries(registry)) {
     if (definition.id !== axisId) {
       issues.push({
@@ -255,64 +384,121 @@ export function validateRuleAxisRegistry(
         message: `Registry key ${axisId} does not match definition id ${definition.id}`,
       });
     }
-
-    const stageIds = new Set<RuleStageId>();
+    const ids = new Set<RuleStageId>();
     for (const stage of definition.stages) {
-      if (stageIds.has(stage.id)) {
+      if (ids.has(stage.id)) {
         issues.push({
           code: "DUPLICATE_STAGE",
           axis: axisId,
           stage: stage.id,
-          message: `Axis ${axisId} defines stage ${stage.id} more than once`,
+          message: `${axisId} defines ${stage.id} more than once`,
         });
       }
-      stageIds.add(stage.id);
+      ids.add(stage.id);
     }
-
     const graph = new Map<RuleStageId, readonly RuleStageId[]>();
     for (const stage of definition.stages) {
-      const dependencies = stage.after ?? [];
-      graph.set(stage.id, dependencies);
-      for (const dependency of dependencies) {
-        if (!stageIds.has(dependency)) {
+      const after = stage.after ?? [];
+      graph.set(stage.id, after);
+      for (const dependency of after) {
+        if (!ids.has(dependency)) {
           issues.push({
             code: "UNKNOWN_STAGE_DEPENDENCY",
             axis: axisId,
             stage: stage.id,
-            message: `Stage ${stage.id} depends on unknown stage ${dependency}`,
+            message: `${stage.id} depends on unknown ${dependency}`,
           });
         }
       }
     }
-
     const visiting = new Set<RuleStageId>();
     const visited = new Set<RuleStageId>();
-    const visit = (stageId: RuleStageId): boolean => {
-      if (visiting.has(stageId)) return true;
-      if (visited.has(stageId)) return false;
-      visiting.add(stageId);
-      for (const dependency of graph.get(stageId) ?? []) {
-        if (graph.has(dependency) && visit(dependency)) return true;
+    const cyclic = (id: RuleStageId): boolean => {
+      if (visiting.has(id)) return true;
+      if (visited.has(id)) return false;
+      visiting.add(id);
+      for (const dependency of graph.get(id) ?? []) {
+        if (graph.has(dependency) && cyclic(dependency)) return true;
       }
-      visiting.delete(stageId);
-      visited.add(stageId);
+      visiting.delete(id);
+      visited.add(id);
       return false;
     };
-
-    for (const stageId of graph.keys()) {
-      if (visit(stageId)) {
+    for (const id of graph.keys()) {
+      if (cyclic(id)) {
         issues.push({
           code: "STAGE_DEPENDENCY_CYCLE",
           axis: axisId,
-          stage: stageId,
-          message: `Axis ${axisId} contains a cyclic stage dependency`,
+          stage: id,
+          message: `${axisId} contains a cyclic stage dependency`,
         });
         break;
       }
     }
   }
-
   return issues;
+}
+
+function validateValue(
+  contribution: RuleContribution,
+  issues: RuleValidationIssue[],
+): void {
+  const base = {
+    axis: contribution.axis,
+    sourceId: contribution.sourceId,
+    stage: contribution.stage,
+  };
+  if (NUMERIC_OPERATORS.has(contribution.operator)) {
+    if (typeof contribution.value !== "number") {
+      issues.push({
+        ...base,
+        code: "VALUE_REQUIRED",
+        message: `${contribution.operator} requires a numeric value`,
+      });
+    } else if (!Number.isFinite(contribution.value)) {
+      issues.push({
+        ...base,
+        code: "INVALID_NUMERIC_VALUE",
+        message: `${contribution.operator} requires a finite number`,
+      });
+    }
+    return;
+  }
+  if (NO_VALUE_OPERATORS.has(contribution.operator)) {
+    if (contribution.value !== undefined) {
+      issues.push({
+        ...base,
+        code: "VALUE_NOT_ALLOWED",
+        message: `${contribution.operator} does not accept a value`,
+      });
+    }
+    return;
+  }
+  if (STRING_OPERATORS.has(contribution.operator)) {
+    if (typeof contribution.value !== "string" || contribution.value.length === 0) {
+      issues.push({
+        ...base,
+        code: "INVALID_STRING_VALUE",
+        message: `${contribution.operator} requires a non-empty string`,
+      });
+    }
+    return;
+  }
+  if (CAPABILITY_OPERATORS.has(contribution.operator)) {
+    const value = contribution.value;
+    const valid =
+      typeof value === "string" ||
+      (Array.isArray(value) &&
+        value.length > 0 &&
+        value.every((entry) => typeof entry === "string" && entry.length > 0));
+    if (!valid) {
+      issues.push({
+        ...base,
+        code: "INVALID_CAPABILITY_VALUE",
+        message: `${contribution.operator} requires capability ID(s)`,
+      });
+    }
+  }
 }
 
 export function validateRuleContributions(
@@ -320,8 +506,7 @@ export function validateRuleContributions(
   registry: RuleAxisRegistry,
 ): readonly RuleValidationIssue[] {
   const issues: RuleValidationIssue[] = [];
-  const byAxisAndStage = new Map<string, RuleContribution[]>();
-
+  const groups = new Map<string, RuleContribution[]>();
   for (const contribution of contributions) {
     const definition = registry[contribution.axis];
     if (definition === undefined) {
@@ -330,31 +515,38 @@ export function validateRuleContributions(
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Unknown rule axis ${contribution.axis}`,
+        message: `Unknown axis ${contribution.axis}`,
       });
       continue;
     }
-
-    if (contribution.unit !== definition.unit) {
+    if (contribution.scope.kind !== definition.scopeKind) {
       issues.push({
-        code: "UNIT_MISMATCH",
+        code: "SCOPE_KIND_MISMATCH",
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Axis ${contribution.axis} expects ${definition.unit}, received ${contribution.unit}`,
+        message: `${contribution.axis} expects ${definition.scopeKind} scope`,
       });
     }
-
+    const expectedUnit = expectedValueUnit(definition, contribution.operator);
+    if (contribution.valueUnit !== expectedUnit) {
+      issues.push({
+        code: "VALUE_UNIT_MISMATCH",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        stage: contribution.stage,
+        message: `${contribution.operator} on ${contribution.axis} expects ${expectedUnit}, received ${contribution.valueUnit}`,
+      });
+    }
     if (!definition.allowedSourceKinds.includes(contribution.sourceKind)) {
       issues.push({
         code: "SOURCE_KIND_NOT_ALLOWED",
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Source kind ${contribution.sourceKind} is not allowed on ${contribution.axis}`,
+        message: `${contribution.sourceKind} is not allowed on ${contribution.axis}`,
       });
     }
-
     const stage = definition.stages.find(
       (candidate) => candidate.id === contribution.stage,
     );
@@ -364,235 +556,137 @@ export function validateRuleContributions(
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Stage ${contribution.stage} is not defined on ${contribution.axis}`,
+        message: `${contribution.stage} is not defined on ${contribution.axis}`,
       });
       continue;
     }
-
     if (!stage.allowedOperators.includes(contribution.operator)) {
       issues.push({
         code: "OPERATOR_NOT_ALLOWED",
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Operator ${contribution.operator} is not allowed in ${contribution.axis}/${contribution.stage}`,
+        message: `${contribution.operator} is not allowed in ${contribution.axis}/${contribution.stage}`,
       });
     }
-
-    if (NUMERIC_OPERATORS.has(contribution.operator)) {
-      if (typeof contribution.value !== "number") {
-        issues.push({
-          code: "VALUE_REQUIRED",
-          axis: contribution.axis,
-          sourceId: contribution.sourceId,
-          stage: contribution.stage,
-          message: `Operator ${contribution.operator} requires a numeric value`,
-        });
-      } else if (!Number.isFinite(contribution.value)) {
-        issues.push({
-          code: "INVALID_NUMERIC_VALUE",
-          axis: contribution.axis,
-          sourceId: contribution.sourceId,
-          stage: contribution.stage,
-          message: `Operator ${contribution.operator} requires a finite numeric value`,
-        });
-      }
-    } else if (NO_VALUE_OPERATORS.has(contribution.operator)) {
-      if (contribution.value !== undefined) {
-        issues.push({
-          code: "VALUE_NOT_ALLOWED",
-          axis: contribution.axis,
-          sourceId: contribution.sourceId,
-          stage: contribution.stage,
-          message: `Operator ${contribution.operator} does not accept a value`,
-        });
-      }
-    } else if (STRING_OPERATORS.has(contribution.operator)) {
-      if (typeof contribution.value !== "string" || contribution.value.length === 0) {
-        issues.push({
-          code: "INVALID_STRING_VALUE",
-          axis: contribution.axis,
-          sourceId: contribution.sourceId,
-          stage: contribution.stage,
-          message: `Operator ${contribution.operator} requires a non-empty string value`,
-        });
-      }
-    } else if (CAPABILITY_OPERATORS.has(contribution.operator)) {
-      const value = contribution.value;
-      const valid =
-        typeof value === "string" ||
-        (Array.isArray(value) &&
-          value.length > 0 &&
-          value.every((entry) => typeof entry === "string" && entry.length > 0));
-      if (!valid) {
-        issues.push({
-          code: "INVALID_CAPABILITY_VALUE",
-          axis: contribution.axis,
-          sourceId: contribution.sourceId,
-          stage: contribution.stage,
-          message: `Operator ${contribution.operator} requires one or more capability IDs`,
-        });
-      }
-    }
-
-    const groupKey = `${contribution.axis}\u0000${contribution.stage}`;
-    const group = byAxisAndStage.get(groupKey);
-    if (group === undefined) {
-      byAxisAndStage.set(groupKey, [contribution]);
-    } else {
-      group.push(contribution);
-    }
+    validateValue(contribution, issues);
+    const key = `${contribution.axis}\0${canonicalJson(contribution.scope)}\0${contribution.stage}`;
+    const group = groups.get(key);
+    if (group === undefined) groups.set(key, [contribution]);
+    else group.push(contribution);
   }
-
-  for (const group of byAxisAndStage.values()) {
+  for (const group of groups.values()) {
     const first = group[0];
     if (first === undefined) continue;
-    const definition = registry[first.axis];
-    const stage = definition?.stages.find((candidate) => candidate.id === first.stage);
+    const stage = registry[first.axis]?.stages.find(
+      (candidate) => candidate.id === first.stage,
+    );
     if (stage === undefined) continue;
-
     if (stage.reducer === "SINGLETON" && group.length > 1) {
       issues.push({
         code: "SINGLETON_CONFLICT",
         axis: first.axis,
         stage: first.stage,
-        message: `Axis ${first.axis}/${first.stage} received ${group.length} contributions but requires exactly zero or one`,
+        message: `${first.axis}/${first.stage} received ${group.length} singleton contributions`,
       });
     }
-
-    const operators = new Set(group.map((contribution) => contribution.operator));
+    const operators = new Set(group.map((entry) => entry.operator));
     if (operators.size > 1 && stage.reducer !== "PROHIBIT_WINS") {
       issues.push({
         code: "MIXED_STAGE_OPERATORS",
         axis: first.axis,
         stage: first.stage,
-        message: `Axis ${first.axis}/${first.stage} received mixed operators: ${[...operators].join(", ")}`,
+        message: `${first.axis}/${first.stage} received mixed operators`,
       });
     }
   }
-
   return issues;
 }
 
 function numericValue(contribution: RuleContribution): number {
   if (typeof contribution.value !== "number") {
-    throw new Error(
-      `Expected numeric value for ${contribution.axis}/${contribution.stage}/${contribution.sourceId}`,
-    );
+    throw new Error(`Expected numeric value from ${contribution.sourceId}`);
   }
   return contribution.value;
 }
 
-function assertAxisKind(
+function assertKind(
   definition: RuleAxisDefinition,
-  expected: RuleAxisKind,
+  kind: RuleAxisKind,
 ): void {
-  if (definition.kind !== expected) {
-    throw new Error(
-      `Axis ${definition.id} is ${definition.kind}; expected ${expected}`,
-    );
+  if (definition.kind !== kind) {
+    throw new Error(`${definition.id} is ${definition.kind}; expected ${kind}`);
   }
 }
 
-function assertValidForAxis(
+function assertValid(
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): void {
-  const registry: RuleAxisRegistry = { [definition.id]: definition };
-  const issues = validateRuleContributions(contributions, registry);
+  if (contributions.some((entry) => entry.axis !== definition.id)) {
+    throw new Error(`Reducer for ${definition.id} received another axis`);
+  }
+  const issues = validateRuleContributions(contributions, {
+    [definition.id]: definition,
+  });
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
-  for (const contribution of contributions) {
-    if (contribution.axis !== definition.id) {
-      throw new Error(
-        `Contribution for ${contribution.axis} passed to reducer for ${definition.id}`,
-      );
-    }
-  }
 }
 
-/**
- * Reduce contributions whose runtime eligibility conditions have already been
- * resolved by the owning subsystem. The reducer itself never executes arbitrary
- * predicates or callbacks.
- */
+/** Scope/condition eligibility is resolved by the owning subsystem before reduction. */
 export function reduceScalarRule(
   baseValue: number,
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): number {
-  assertAxisKind(definition, "SCALAR");
-  assertValidForAxis(definition, contributions);
-
+  assertKind(definition, "SCALAR");
+  assertValid(definition, contributions);
   let current = baseValue;
   for (const stage of definition.stages) {
-    const group = contributions.filter(
-      (contribution) => contribution.stage === stage.id,
-    );
+    const group = contributions.filter((entry) => entry.stage === stage.id);
     if (group.length === 0) continue;
     const operator = group[0]?.operator;
     if (operator === undefined) continue;
-
     switch (stage.reducer) {
       case "SUM": {
-        const sum = group.reduce(
-          (total, contribution) => total + numericValue(contribution),
-          0,
-        );
-        if (operator === "ADD_FLAT") {
-          current += sum;
-        } else if (operator === "ADD_PERCENT") {
+        const sum = group.reduce((total, entry) => total + numericValue(entry), 0);
+        if (operator === "ADD_FLAT") current += sum;
+        else if (operator === "ADD_PERCENT") {
           current *= 1 + sum / BASIS_POINTS_SCALE;
-        } else {
-          throw new Error(`SUM reducer cannot apply operator ${operator}`);
-        }
+        } else throw new Error(`SUM cannot apply ${operator}`);
         break;
       }
       case "PRODUCT": {
-        if (operator !== "MULTIPLY") {
-          throw new Error(`PRODUCT reducer cannot apply operator ${operator}`);
-        }
-        const factor = group.reduce(
-          (product, contribution) =>
-            product * (numericValue(contribution) / BASIS_POINTS_SCALE),
+        if (operator !== "MULTIPLY") throw new Error(`PRODUCT cannot apply ${operator}`);
+        current *= group.reduce(
+          (product, entry) => product * (numericValue(entry) / BASIS_POINTS_SCALE),
           1,
         );
-        current *= factor;
         break;
       }
       case "SINGLETON": {
-        const contribution = group[0];
-        if (contribution === undefined) break;
-        if (operator === "REPLACE_BASE" || operator === "FINAL_OVERRIDE") {
-          current = numericValue(contribution);
-        } else {
-          throw new Error(`SINGLETON reducer cannot apply operator ${operator}`);
-        }
+        const entry = group[0];
+        if (entry !== undefined &&
+            (operator === "REPLACE_BASE" || operator === "FINAL_OVERRIDE")) {
+          current = numericValue(entry);
+        } else throw new Error(`SINGLETON cannot apply ${operator}`);
         break;
       }
-      case "ANY": {
-        if (operator !== "HARD_ZERO") {
-          throw new Error(`ANY reducer cannot apply operator ${operator}`);
-        }
+      case "ANY":
+        if (operator !== "HARD_ZERO") throw new Error(`ANY cannot apply ${operator}`);
         current = 0;
         break;
-      }
-      case "MIN": {
+      case "MIN":
         current = Math.min(current, ...group.map(numericValue));
         break;
-      }
-      case "MAX": {
+      case "MAX":
         current = Math.max(current, ...group.map(numericValue));
         break;
-      }
       default:
-        throw new Error(
-          `Reducer ${stage.reducer} is not valid for scalar axis ${definition.id}`,
-        );
+        throw new Error(`${stage.reducer} is invalid for scalar ${definition.id}`);
     }
   }
-
   return current;
 }
 
@@ -601,25 +695,15 @@ export function reducePermissionRule(
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): boolean {
-  assertAxisKind(definition, "PERMISSION");
-  assertValidForAxis(definition, contributions);
-
+  assertKind(definition, "PERMISSION");
+  assertValid(definition, contributions);
   let allowed = baseAllowed;
   for (const stage of definition.stages) {
-    const group = contributions.filter(
-      (contribution) => contribution.stage === stage.id,
-    );
+    const group = contributions.filter((entry) => entry.stage === stage.id);
     if (group.length === 0) continue;
-    if (stage.reducer !== "PROHIBIT_WINS") {
-      throw new Error(
-        `Permission axis ${definition.id} requires PROHIBIT_WINS reducer`,
-      );
-    }
-    if (group.some((contribution) => contribution.operator === "PROHIBIT")) {
-      allowed = false;
-    } else if (group.some((contribution) => contribution.operator === "ALLOW")) {
-      allowed = true;
-    }
+    if (stage.reducer !== "PROHIBIT_WINS") throw new Error("Permission reducer mismatch");
+    if (group.some((entry) => entry.operator === "PROHIBIT")) allowed = false;
+    else if (group.some((entry) => entry.operator === "ALLOW")) allowed = true;
   }
   return allowed;
 }
@@ -629,32 +713,20 @@ export function reduceCapRule(
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): number {
-  assertAxisKind(definition, "CAP");
-  assertValidForAxis(definition, contributions);
-
+  assertKind(definition, "CAP");
+  assertValid(definition, contributions);
   let cap = baseCap;
   for (const stage of definition.stages) {
-    const group = contributions.filter(
-      (contribution) => contribution.stage === stage.id,
-    );
+    const group = contributions.filter((entry) => entry.stage === stage.id);
     if (group.length === 0) continue;
     const operator = group[0]?.operator;
-    if (operator === undefined) continue;
-
     if (stage.reducer === "SUM" && operator === "ADD_CAP") {
-      cap += group.reduce(
-        (total, contribution) => total + numericValue(contribution),
-        0,
-      );
+      cap += group.reduce((sum, entry) => sum + numericValue(entry), 0);
     } else if (stage.reducer === "MIN" && operator === "CAP_LIMIT") {
       cap = Math.min(cap, ...group.map(numericValue));
     } else if (stage.reducer === "MAX" && operator === "CAP_FLOOR") {
       cap = Math.max(cap, ...group.map(numericValue));
-    } else {
-      throw new Error(
-        `Reducer/operator ${stage.reducer}/${operator} is not valid for cap axis ${definition.id}`,
-      );
-    }
+    } else throw new Error(`Invalid cap reducer/operator on ${definition.id}`);
   }
   return cap;
 }
@@ -664,7 +736,7 @@ function capabilityIds(value: RuleValue | undefined): readonly string[] {
   if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
     return value;
   }
-  throw new Error("Expected capability ID or capability ID array");
+  throw new Error("Expected capability ID(s)");
 }
 
 export function reduceCapabilitySetRule(
@@ -672,73 +744,54 @@ export function reduceCapabilitySetRule(
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): readonly string[] {
-  assertAxisKind(definition, "CAPABILITY_SET");
-  assertValidForAxis(definition, contributions);
-
+  assertKind(definition, "CAPABILITY_SET");
+  assertValid(definition, contributions);
   let capabilities = new Set(baseCapabilities);
   for (const stage of definition.stages) {
-    const group = contributions.filter(
-      (contribution) => contribution.stage === stage.id,
-    );
+    const group = contributions.filter((entry) => entry.stage === stage.id);
     if (group.length === 0) continue;
-
     if (stage.reducer === "UNION") {
-      for (const contribution of group) {
-        for (const capability of capabilityIds(contribution.value)) {
-          capabilities.add(capability);
-        }
+      for (const entry of group) {
+        for (const id of capabilityIds(entry.value)) capabilities.add(id);
       }
     } else if (stage.reducer === "DIFFERENCE") {
-      for (const contribution of group) {
-        for (const capability of capabilityIds(contribution.value)) {
-          capabilities.delete(capability);
-        }
+      for (const entry of group) {
+        for (const id of capabilityIds(entry.value)) capabilities.delete(id);
       }
     } else if (stage.reducer === "SINGLETON") {
-      const contribution = group[0];
-      if (contribution !== undefined) {
-        capabilities = new Set(capabilityIds(contribution.value));
-      }
-    } else {
-      throw new Error(
-        `Reducer ${stage.reducer} is not valid for capability axis ${definition.id}`,
-      );
-    }
+      capabilities = new Set(capabilityIds(group[0]?.value));
+    } else throw new Error(`${stage.reducer} is invalid for capability set`);
   }
-
-  return [...capabilities].sort(compareCanonicalStrings);
+  return [...capabilities].sort(compareStrings);
 }
 
 export function selectStructuralTransform(
   definition: RuleAxisDefinition,
   contributions: readonly RuleContribution[],
 ): string | undefined {
-  assertAxisKind(definition, "STRUCTURAL");
-  assertValidForAxis(definition, contributions);
+  assertKind(definition, "STRUCTURAL");
+  assertValid(definition, contributions);
   if (contributions.length === 0) return undefined;
-  const contribution = contributions[0];
+  const entry = contributions[0];
   if (
-    contribution === undefined ||
-    contribution.operator !== "STRUCTURAL_TRANSFORM" ||
-    typeof contribution.value !== "string"
+    entry === undefined ||
+    entry.operator !== "STRUCTURAL_TRANSFORM" ||
+    typeof entry.value !== "string"
   ) {
     throw new Error(`Invalid structural transform for ${definition.id}`);
   }
-  return contribution.value;
+  return entry.value;
 }
 
 export interface StructurePressureFieldContribution {
   readonly fieldType: "FORT" | "COMMAND_POST";
   readonly component: string;
-  /** Relative bonus magnitude in basis points, e.g. 3000 = +30%. */
   readonly bonusBp: number;
 }
 
 export interface PressureCompositionInput {
   readonly basePressure: number;
-  /** Relative terrain contribution(s), summed within the terrain component. */
   readonly terrainPercentBp?: readonly number[];
-  /** General/conditional rule contributions, summed within the rule component. */
   readonly rulePercentBp?: readonly number[];
   readonly structureFields?: readonly StructurePressureFieldContribution[];
   readonly suppressedComponents?: ReadonlySet<string>;
@@ -750,40 +803,28 @@ function strongestFieldBonus(
 ): number {
   let strongest = 0;
   for (const field of fields) {
-    if (field.fieldType !== type) continue;
-    if (field.bonusBp > strongest) strongest = field.bonusBp;
+    if (field.fieldType === type && field.bonusBp > strongest) {
+      strongest = field.bonusBp;
+    }
   }
   return strongest / BASIS_POINTS_SCALE;
 }
 
-/**
- * Component-aware land-pressure composition. Same-type structure fields choose
- * the strongest applicable effective field; distinct Fort/Command fields then
- * use the canonical complement reducer before the final pressure is materialized.
- */
+/** Component-aware pressure; same-type strongest, cross-type complement. */
 export function composePressure(input: PressureCompositionInput): number {
   const suppressed = input.suppressedComponents ?? new Set<string>();
-  const terrainBp = (input.terrainPercentBp ?? []).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const ruleBp = (input.rulePercentBp ?? []).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-
-  const eligibleFields = (input.structureFields ?? []).filter(
+  const terrainBp = (input.terrainPercentBp ?? []).reduce((a, b) => a + b, 0);
+  const ruleBp = (input.rulePercentBp ?? []).reduce((a, b) => a + b, 0);
+  const fields = (input.structureFields ?? []).filter(
     (field) => !suppressed.has(field.component),
   );
-  const fortBonus = strongestFieldBonus(eligibleFields, "FORT");
-  const commandBonus = strongestFieldBonus(eligibleFields, "COMMAND_POST");
-  const combinedStructureBonus =
-    1 - (1 - fortBonus) * (1 - commandBonus);
-
+  const fort = strongestFieldBonus(fields, "FORT");
+  const command = strongestFieldBonus(fields, "COMMAND_POST");
+  const structureBonus = 1 - (1 - fort) * (1 - command);
   return (
     input.basePressure *
     (1 + terrainBp / BASIS_POINTS_SCALE) *
     (1 + ruleBp / BASIS_POINTS_SCALE) *
-    (1 + combinedStructureBonus)
+    (1 + structureBonus)
   );
 }
