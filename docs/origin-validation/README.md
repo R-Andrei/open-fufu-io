@@ -12,8 +12,9 @@ The coverage registry is split only for reviewability; all files below use the s
 | --- | --- |
 | Coverage model + P01–P40 + running blockers through P40 | [`../ORIGIN_VALIDATION_COVERAGE.md`](../ORIGIN_VALIDATION_COVERAGE.md) |
 | P41–P50 + new blockers/status corrections | [`P41-P50.md`](./P41-P50.md) |
+| P51–P54 + positive-trait conclusions/corrections | [`P51-P54.md`](./P51-P54.md) |
 
-Future batches should be added here rather than turning one registry file into an unreviewable monolith.
+Future negative-trait batches should be added here rather than turning one registry file into an unreviewable monolith.
 
 The interaction registry must cover both:
 
@@ -22,7 +23,9 @@ The interaction registry must cover both:
 
 ## Audit status
 
-Concrete positive-trait dependency tracing is complete through **P50**. Remaining positive-trait work is P51–P54, followed by N01–N18.
+Concrete positive-trait dependency tracing is complete for **P01–P54**. Remaining catalogue audit work is N01–N18.
+
+Do not freeze the final validation-domain taxonomy until the negative-trait audit is complete; hard prohibitions/refunds may expose admission and precedence boundaries not visible from positive traits alone.
 
 ## Authority rule
 
