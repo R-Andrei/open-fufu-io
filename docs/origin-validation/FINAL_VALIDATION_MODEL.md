@@ -109,7 +109,7 @@ The following groups are required by the completed audit. This is a validation r
 ### Population / growth / settlement
 
 - **P02 + N01** — replacement utilization curve and City-growth reduction remain separate hooks.
-- **P11 + N07** — permanent SAM entitlement and global one-per-type structure cap both constrain the same generic structure-acquisition admission.
+- **P11 + N07** — permanent SAM entitlement and global one-per-type structure rule are both mandatory ownership constraints on the same admission. An acquisition must satisfy both; normalized cap-valued rule composition remains #43-owned.
 - **P36 + N18** — settlement Population cost and final non-Fallout progress multiplier remain independent.
 - **P52 + P48** — P48 changes effective Capacity consumed by P52's empty-Capacity economy source.
 
@@ -133,7 +133,8 @@ The following groups are required by the completed audit. This is a validation r
 - **P50/P51 with ordinary reciprocal structure fields** — Fort and Command-Post cross-type contributions use the canonical complement rule even when only one reciprocal Origin trait is selected.
 - **P20 + P21** and **P37 + P21** — grants do not consume first-purchase entitlements.
 - **P20/P37 + N07** — grants pass generic ownership/admission; rejection creates no granted structure and does not roll back the triggering spawn/landing result.
-- **P41 + N06** — direct-L5 City creation is one five-second purchase/construction action rather than FFY-funded upgrade spending.
+- **P37 landing-cell capture disposition** — a successfully transferred captured structure keeps the landing cell occupied and blocks the exact-cell Fort grant; N17 or an N07-rejected `CAPTURE_TRANSFER` may instead destroy that captured structure and free the cell, after which the P37 Fort grant is independently evaluated. A separate full Fort slot can still reject the Fort.
+- **P41 + N06** — direct-L5 City creation is one five-second purchase/construction action rather than FFY-funded upgrade spending. During construction it has no completed level, remains inactive, targets L5, and preserves that pending target/time if captured.
 - **N09 + P34/P07/P43** — Factory construction prohibition does not suppress transformations/services on a Factory acquired through a separately legal transfer.
 
 ### FFY / Train / Trade
@@ -187,9 +188,9 @@ The full audit intentionally did not invent missing gameplay semantics inside #3
 | Issue | Canonical closure scope | Principal audit blockers routed there |
 | --- | --- | --- |
 | **#32 — Random/Fixed Spawn × spawn-transforming Origins** | Strategic Spawn profiles/resolver | P39/P54 Random/Fixed behavior, multi-origin singular grants including P20 ordering, exact resolver-v1 P54 star representation/constants |
-| **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition |
+| **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition, generic normalization of multiple cap-valued rule sources |
 | **#44 — structure-field geometry and affiliation** | effective Fort/SAM fields | area→geometry/raster conversion, P24 qualifying Fort affiliation, N11 qualifying SAM affiliation/effective P40 area |
-| **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved by #45:** generic structure acquisition/grants/capture resolver, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
+| **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved by #45:** generic structure acquisition/grants/capture resolver, in-progress structure-state preservation, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
 | **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
 | **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
 | **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
@@ -203,7 +204,7 @@ Closed dependencies and resolved downstream contracts are consumed directly from
 
 - **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
 - **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
-- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #32/#46/#48/#49/#50 boundaries;
+- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #32/#43/#46/#48/#49/#50 boundaries;
 - **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
 
 ---
