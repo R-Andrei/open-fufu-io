@@ -1,6 +1,7 @@
 import {
   RuleAxisDefinition,
   RuleAxisRegistry,
+  RuleScopeKind,
   RuleSourceKind,
   RuleStageDefinition,
 } from "./RuleComposition";
@@ -34,49 +35,113 @@ const originPercentStage: RuleStageDefinition = {
   reducer: "SUM",
   allowedOperators: ["ADD_PERCENT"],
 };
-
+const originScalarStage: RuleStageDefinition = {
+  id: "ORIGIN_SCALAR",
+  reducer: "PRODUCT",
+  allowedOperators: ["MULTIPLY"],
+  after: ["ORIGIN_PERCENT"],
+};
 const echoPercentStage: RuleStageDefinition = {
   id: "ECHO_PERCENT",
   reducer: "SUM",
   allowedOperators: ["ADD_PERCENT"],
-  after: ["ORIGIN_PERCENT"],
+  after: ["ORIGIN_SCALAR"],
+};
+const echoScalarStage: RuleStageDefinition = {
+  id: "ECHO_SCALAR",
+  reducer: "PRODUCT",
+  allowedOperators: ["MULTIPLY"],
+  after: ["ECHO_PERCENT"],
 };
 
-const terminalHardZeroStage: RuleStageDefinition = {
-  id: "TERMINAL",
-  reducer: "ANY",
-  allowedOperators: ["HARD_ZERO"],
-};
-
-function percentScalarAxis(
+function standardScalarAxis(
   id: string,
   unit: RuleAxisDefinition["unit"],
-  options: { readonly hardZero?: boolean; readonly echo?: boolean } = {},
+  scopeKind: RuleScopeKind,
+  options: {
+    readonly hardZero?: boolean;
+    readonly echo?: boolean;
+    readonly baseReplacement?: boolean;
+    readonly finalOverride?: boolean;
+    readonly contextual?: boolean;
+  } = {},
 ): RuleAxisDefinition {
   const echo = options.echo ?? true;
-  const hardZero = options.hardZero ?? false;
-  const stages: RuleStageDefinition[] = [originPercentStage];
-  if (echo) stages.push(echoPercentStage);
-  if (hardZero) {
+  const stages: RuleStageDefinition[] = [];
+  if (options.baseReplacement) {
     stages.push({
-      ...terminalHardZeroStage,
-      after: [echo ? "ECHO_PERCENT" : "ORIGIN_PERCENT"],
+      id: "BASE_REPLACEMENT",
+      reducer: "SINGLETON",
+      allowedOperators: ["REPLACE_BASE"],
+    });
+  }
+  stages.push(originPercentStage, originScalarStage);
+  if (echo) stages.push(echoPercentStage, echoScalarStage);
+  if (options.contextual) {
+    stages.push(
+      {
+        id: "CONTEXTUAL_PERCENT",
+        reducer: "SUM",
+        allowedOperators: ["ADD_PERCENT"],
+        after: [echo ? "ECHO_SCALAR" : "ORIGIN_SCALAR"],
+      },
+      {
+        id: "CONTEXTUAL_SCALAR",
+        reducer: "PRODUCT",
+        allowedOperators: ["MULTIPLY"],
+        after: ["CONTEXTUAL_PERCENT"],
+      },
+    );
+  }
+  if (options.finalOverride) {
+    stages.push({
+      id: "FINAL_OVERRIDE",
+      reducer: "SINGLETON",
+      allowedOperators: ["FINAL_OVERRIDE"],
+      after: [
+        options.contextual
+          ? "CONTEXTUAL_SCALAR"
+          : echo
+            ? "ECHO_SCALAR"
+            : "ORIGIN_SCALAR",
+      ],
+    });
+  }
+  if (options.hardZero) {
+    stages.push({
+      id: "TERMINAL",
+      reducer: "ANY",
+      allowedOperators: ["HARD_ZERO"],
+      after: [
+        options.finalOverride
+          ? "FINAL_OVERRIDE"
+          : options.contextual
+            ? "CONTEXTUAL_SCALAR"
+            : echo
+              ? "ECHO_SCALAR"
+              : "ORIGIN_SCALAR",
+      ],
     });
   }
   return {
     id,
     kind: "SCALAR",
     unit,
+    scopeKind,
     stages,
     allowedSourceKinds: echo ? ORIGIN_ECHO_SOURCES : ORIGIN_ONLY_SOURCES,
   };
 }
 
-function hardPermissionAxis(id: string): RuleAxisDefinition {
+function permissionAxis(
+  id: string,
+  scopeKind: RuleScopeKind,
+): RuleAxisDefinition {
   return {
     id,
     kind: "PERMISSION",
     unit: "BOOLEAN",
+    scopeKind,
     stages: [
       {
         id: "PERMISSION",
@@ -88,127 +153,42 @@ function hardPermissionAxis(id: string): RuleAxisDefinition {
   };
 }
 
-export const RULE_AXIS_REGISTRY = {
-  FORT_COVERAGE_AREA: percentScalarAxis("FORT_COVERAGE_AREA", "AREA"),
-  FORT_DEFENSIVE_PRESSURE: percentScalarAxis(
-    "FORT_DEFENSIVE_PRESSURE",
-    "BASIS_POINTS",
-    { hardZero: true },
-  ),
-  FORT_BUILD_COST: percentScalarAxis("FORT_BUILD_COST", "FFY"),
-
-  WARSHIP_NAVAL_GUN_RANGE: percentScalarAxis(
-    "WARSHIP_NAVAL_GUN_RANGE",
-    "CELLS",
-  ),
-  WARSHIP_MOVEMENT_SPEED: percentScalarAxis(
-    "WARSHIP_MOVEMENT_SPEED",
-    "CELLS_PER_SECOND",
-  ),
-  WARSHIP_DAMAGE: percentScalarAxis("WARSHIP_DAMAGE", "DAMAGE"),
-  WARSHIP_PURCHASE_FFY_COST: {
-    id: "WARSHIP_PURCHASE_FFY_COST",
-    kind: "SCALAR",
-    unit: "FFY",
-    stages: [
-      originPercentStage,
-      echoPercentStage,
-      {
-        id: "TERMINAL",
-        reducer: "ANY",
-        allowedOperators: ["HARD_ZERO"],
-        after: ["ECHO_PERCENT"],
-      },
-    ],
-    allowedSourceKinds: ORIGIN_ECHO_SOURCES,
-  },
-  WARSHIP_PURCHASE_POPULATION_COST: {
-    id: "WARSHIP_PURCHASE_POPULATION_COST",
-    kind: "SCALAR",
-    unit: "POPULATION",
-    stages: [
-      {
-        id: "BASE_REPLACEMENT",
-        reducer: "SINGLETON",
-        allowedOperators: ["REPLACE_BASE"],
-      },
-    ],
-    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
-  },
-  WARSHIP_BUILD_PERMISSION: hardPermissionAxis("WARSHIP_BUILD_PERMISSION"),
-  FACTORY_BUILD_PERMISSION: hardPermissionAxis("FACTORY_BUILD_PERMISSION"),
-  FALLOUT_ACQUISITION_PERMISSION: hardPermissionAxis(
-    "FALLOUT_ACQUISITION_PERMISSION",
-  ),
-  TUNDRA_STRUCTURE_BUILD_PERMISSION: hardPermissionAxis(
-    "TUNDRA_STRUCTURE_BUILD_PERMISSION",
-  ),
-  WARSHIP_OWNERSHIP_CAP: {
-    id: "WARSHIP_OWNERSHIP_CAP",
+function capAxis(
+  id: string,
+  scopeKind: RuleScopeKind,
+  options: { readonly additive?: boolean } = {},
+): RuleAxisDefinition {
+  return {
+    id,
     kind: "CAP",
     unit: "COUNT",
+    scopeKind,
     stages: [
-      {
-        id: "ORIGIN_CAP",
-        reducer: "MIN",
-        allowedOperators: ["CAP_LIMIT"],
-      },
+      options.additive
+        ? {
+            id: "ORIGIN_CAP",
+            reducer: "SUM",
+            allowedOperators: ["ADD_CAP"],
+          }
+        : {
+            id: "ORIGIN_CAP",
+            reducer: "MIN",
+            allowedOperators: ["CAP_LIMIT"],
+          },
     ],
     allowedSourceKinds: ORIGIN_ONLY_SOURCES,
-  },
+  };
+}
 
-  TRANSPORT_EMBARK_COST: {
-    id: "TRANSPORT_EMBARK_COST",
-    kind: "SCALAR",
-    unit: "FFY",
-    stages: [
-      {
-        id: "ORIGIN_FLAT",
-        reducer: "SUM",
-        allowedOperators: ["ADD_FLAT"],
-      },
-    ],
-    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
-  },
-
-  FFY_EVENT_YIELD: {
-    id: "FFY_EVENT_YIELD",
-    kind: "SCALAR",
-    unit: "FFY",
-    stages: [
-      originPercentStage,
-      echoPercentStage,
-      {
-        id: "TERMINAL",
-        reducer: "ANY",
-        allowedOperators: ["HARD_ZERO"],
-        after: ["ECHO_PERCENT"],
-      },
-    ],
-    allowedSourceKinds: STATIC_RULE_SOURCES,
-  },
-
-  COUNTER_RESPONSE_EFFECTIVENESS: {
-    id: "COUNTER_RESPONSE_EFFECTIVENESS",
-    kind: "SCALAR",
-    unit: "RATIO",
-    stages: [
-      originPercentStage,
-      echoPercentStage,
-      {
-        id: "FINAL_OVERRIDE",
-        reducer: "SINGLETON",
-        allowedOperators: ["FINAL_OVERRIDE"],
-        after: ["ECHO_PERCENT"],
-      },
-    ],
-    allowedSourceKinds: ORIGIN_ECHO_SOURCES,
-  },
-
-  TANK_CHASSIS_PROFILE: {
-    id: "TANK_CHASSIS_PROFILE",
+function structuralAxis(
+  id: string,
+  scopeKind: RuleScopeKind,
+): RuleAxisDefinition {
+  return {
+    id,
     kind: "STRUCTURAL",
     unit: "PROFILE_ID",
+    scopeKind,
     stages: [
       {
         id: "STRUCTURAL_PROFILE",
@@ -217,12 +197,194 @@ export const RULE_AXIS_REGISTRY = {
       },
     ],
     allowedSourceKinds: ORIGIN_ONLY_SOURCES,
-  },
+  };
+}
 
-  WARSHIP_ATTACK_CAPABILITIES: {
-    id: "WARSHIP_ATTACK_CAPABILITIES",
+export const RULE_AXIS_REGISTRY = {
+  POPULATION_GROWTH: standardScalarAxis("POPULATION_GROWTH", "RATIO", "GLOBAL"),
+  STARTING_POPULATION_FRACTION: standardScalarAxis(
+    "STARTING_POPULATION_FRACTION",
+    "RATIO",
+    "GLOBAL",
+  ),
+  NEUTRAL_SETTLEMENT_PROGRESS: standardScalarAxis(
+    "NEUTRAL_SETTLEMENT_PROGRESS",
+    "RATIO",
+    "GLOBAL",
+    { contextual: true },
+  ),
+  NEUTRAL_SETTLEMENT_POPULATION_COST: standardScalarAxis(
+    "NEUTRAL_SETTLEMENT_POPULATION_COST",
+    "POPULATION",
+    "GLOBAL",
+    { baseReplacement: true, echo: false },
+  ),
+  ACQUISITION_PROGRESS: standardScalarAxis(
+    "ACQUISITION_PROGRESS",
+    "RATIO",
+    "GLOBAL",
+    { contextual: true },
+  ),
+  GLOBAL_OFFENSIVE_PRESSURE: standardScalarAxis(
+    "GLOBAL_OFFENSIVE_PRESSURE",
+    "RATIO",
+    "GLOBAL",
+    { contextual: true },
+  ),
+  GLOBAL_DEFENSIVE_PRESSURE: standardScalarAxis(
+    "GLOBAL_DEFENSIVE_PRESSURE",
+    "RATIO",
+    "GLOBAL",
+    { contextual: true },
+  ),
+  COUNTER_RESPONSE_EFFECTIVENESS: standardScalarAxis(
+    "COUNTER_RESPONSE_EFFECTIVENESS",
+    "RATIO",
+    "GLOBAL",
+    { finalOverride: true },
+  ),
+
+  TERRAIN_OFFENSIVE_PRESSURE: standardScalarAxis(
+    "TERRAIN_OFFENSIVE_PRESSURE",
+    "RATIO",
+    "TERRAIN",
+  ),
+  TERRAIN_DEFENSIVE_PRESSURE: standardScalarAxis(
+    "TERRAIN_DEFENSIVE_PRESSURE",
+    "RATIO",
+    "TERRAIN",
+  ),
+  TERRAIN_ACQUISITION_SPEED: standardScalarAxis(
+    "TERRAIN_ACQUISITION_SPEED",
+    "RATIO",
+    "TERRAIN",
+  ),
+  TERRAIN_POPULATION_BEARING_PERMISSION: permissionAxis(
+    "TERRAIN_POPULATION_BEARING_PERMISSION",
+    "TERRAIN",
+  ),
+  FALLOUT_ACQUISITION_PERMISSION: permissionAxis(
+    "FALLOUT_ACQUISITION_PERMISSION",
+    "GLOBAL",
+  ),
+
+  FFY_EVENT_YIELD: standardScalarAxis(
+    "FFY_EVENT_YIELD",
+    "FFY",
+    "FFY_FAMILY",
+    { hardZero: true },
+  ),
+  EXTERNAL_TRADE_WARTIME_MULTIPLIER: standardScalarAxis(
+    "EXTERNAL_TRADE_WARTIME_MULTIPLIER",
+    "RATIO",
+    "GLOBAL",
+    { baseReplacement: true, echo: false },
+  ),
+
+  STRUCTURE_BUILD_COST: standardScalarAxis(
+    "STRUCTURE_BUILD_COST",
+    "FFY",
+    "STRUCTURE",
+    { hardZero: true },
+  ),
+  STRUCTURE_UPGRADE_COST: standardScalarAxis(
+    "STRUCTURE_UPGRADE_COST",
+    "FFY",
+    "STRUCTURE",
+  ),
+  STRUCTURE_CONSTRUCTION_TIME: standardScalarAxis(
+    "STRUCTURE_CONSTRUCTION_TIME",
+    "TICKS",
+    "STRUCTURE",
+  ),
+  STRUCTURE_BUILD_PERMISSION: permissionAxis(
+    "STRUCTURE_BUILD_PERMISSION",
+    "STRUCTURE",
+  ),
+  STRUCTURE_UPGRADE_PERMISSION: permissionAxis(
+    "STRUCTURE_UPGRADE_PERMISSION",
+    "STRUCTURE",
+  ),
+  STRUCTURE_OWNERSHIP_CAP: capAxis("STRUCTURE_OWNERSHIP_CAP", "STRUCTURE"),
+  CITY_GROWTH_CONTRIBUTION: standardScalarAxis(
+    "CITY_GROWTH_CONTRIBUTION",
+    "RATIO",
+    "STRUCTURE",
+  ),
+  STRUCTURE_FIELD_COVERAGE_AREA: standardScalarAxis(
+    "STRUCTURE_FIELD_COVERAGE_AREA",
+    "AREA",
+    "STRUCTURE",
+  ),
+  STRUCTURE_PRESSURE_MAGNITUDE: standardScalarAxis(
+    "STRUCTURE_PRESSURE_MAGNITUDE",
+    "BASIS_POINTS",
+    "STRUCTURE",
+    { hardZero: true },
+  ),
+  STRUCTURE_REPAIR_RADIUS: standardScalarAxis(
+    "STRUCTURE_REPAIR_RADIUS",
+    "CELLS",
+    "STRUCTURE",
+  ),
+  STRUCTURE_REPAIR_RATE: standardScalarAxis(
+    "STRUCTURE_REPAIR_RATE",
+    "RATIO",
+    "STRUCTURE",
+  ),
+  STRUCTURE_OBSERVATION_RADIUS: standardScalarAxis(
+    "STRUCTURE_OBSERVATION_RADIUS",
+    "CELLS",
+    "STRUCTURE",
+  ),
+  STRUCTURE_INTERCEPTION_RANGE: standardScalarAxis(
+    "STRUCTURE_INTERCEPTION_RANGE",
+    "CELLS",
+    "STRUCTURE",
+  ),
+  STRUCTURE_RECHARGE_TIME: standardScalarAxis(
+    "STRUCTURE_RECHARGE_TIME",
+    "TICKS",
+    "STRUCTURE",
+  ),
+  STRUCTURE_CHARGE_CAPACITY: capAxis(
+    "STRUCTURE_CHARGE_CAPACITY",
+    "STRUCTURE",
+  ),
+  STRUCTURE_EFFECT_PROFILE: structuralAxis(
+    "STRUCTURE_EFFECT_PROFILE",
+    "STRUCTURE",
+  ),
+
+  UNIT_PURCHASE_FFY_COST: standardScalarAxis(
+    "UNIT_PURCHASE_FFY_COST",
+    "FFY",
+    "UNIT",
+    { hardZero: true },
+  ),
+  UNIT_PURCHASE_POPULATION_COST: standardScalarAxis(
+    "UNIT_PURCHASE_POPULATION_COST",
+    "POPULATION",
+    "UNIT",
+    { baseReplacement: true, echo: false },
+  ),
+  UNIT_MOVEMENT_SPEED: standardScalarAxis(
+    "UNIT_MOVEMENT_SPEED",
+    "CELLS_PER_SECOND",
+    "UNIT",
+  ),
+  UNIT_ATTACK_RANGE: standardScalarAxis("UNIT_ATTACK_RANGE", "CELLS", "UNIT"),
+  UNIT_DAMAGE: standardScalarAxis("UNIT_DAMAGE", "DAMAGE", "UNIT"),
+  UNIT_MAX_HEALTH: standardScalarAxis("UNIT_MAX_HEALTH", "DAMAGE", "UNIT"),
+  UNIT_BUILD_PERMISSION: permissionAxis("UNIT_BUILD_PERMISSION", "UNIT"),
+  UNIT_OWNERSHIP_CAP: capAxis("UNIT_OWNERSHIP_CAP", "UNIT"),
+  UNIT_MAX_RANK: capAxis("UNIT_MAX_RANK", "UNIT", { additive: true }),
+  UNIT_CHASSIS_PROFILE: structuralAxis("UNIT_CHASSIS_PROFILE", "UNIT"),
+  UNIT_ATTACK_CAPABILITIES: {
+    id: "UNIT_ATTACK_CAPABILITIES",
     kind: "CAPABILITY_SET",
     unit: "CAPABILITY_SET",
+    scopeKind: "UNIT",
     stages: [
       {
         id: "CAPABILITY_REPLACE",
@@ -244,6 +406,35 @@ export const RULE_AXIS_REGISTRY = {
     ],
     allowedSourceKinds: STATIC_RULE_SOURCES,
   },
+
+  TRANSPORT_EMBARK_COST: standardScalarAxis(
+    "TRANSPORT_EMBARK_COST",
+    "FFY",
+    "GLOBAL",
+    { echo: false },
+  ),
+  TRANSPORT_LANDING_SURVIVAL_FRACTION: standardScalarAxis(
+    "TRANSPORT_LANDING_SURVIVAL_FRACTION",
+    "RATIO",
+    "GLOBAL",
+    { baseReplacement: true, echo: false },
+  ),
+
+  WEAPON_PROJECTILE_SPEED: standardScalarAxis(
+    "WEAPON_PROJECTILE_SPEED",
+    "CELLS_PER_SECOND",
+    "WEAPON",
+  ),
+  WEAPON_PURCHASE_FFY_COST: standardScalarAxis(
+    "WEAPON_PURCHASE_FFY_COST",
+    "FFY",
+    "WEAPON",
+  ),
+  WEAPON_BLAST_AREA: standardScalarAxis("WEAPON_BLAST_AREA", "AREA", "WEAPON"),
+  WEAPON_USE_PERMISSION: permissionAxis("WEAPON_USE_PERMISSION", "WEAPON"),
+
+  SPAWN_PROFILE: structuralAxis("SPAWN_PROFILE", "GLOBAL"),
+  SPAWN_FOOTPRINT_PROFILE: structuralAxis("SPAWN_FOOTPRINT_PROFILE", "GLOBAL"),
 } as const satisfies RuleAxisRegistry;
 
 export type RuleAxisId = keyof typeof RULE_AXIS_REGISTRY;
