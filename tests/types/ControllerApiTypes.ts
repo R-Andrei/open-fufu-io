@@ -6,6 +6,7 @@ import type {
   HostilityMechanicsSpec,
   PersistentDirective,
   PurchasableUnitType,
+  StructureBuildQuote,
   UnitAttackSpec,
 } from "../../src/core/controller/ControllerApi";
 
@@ -31,6 +32,22 @@ const buildTank: BuildUnitCommand = {
   producerId: "factory-1",
 };
 void buildTank;
+
+const cappedStructureQuote: StructureBuildQuote = {
+  legal: false,
+  failureCode: "OWNERSHIP_CAP",
+  cost: {
+    ffyRequired: 50_000,
+    ffySpent: 50_000,
+    populationSpent: 0,
+  },
+  structure: "FORT",
+  cellId: 42,
+  resultingLevel: 1,
+  buildTicks: 50,
+  ownershipCap: 1,
+};
+void cappedStructureQuote;
 
 const move: ControllerCommand = {
   kind: "MOVE_UNIT",
