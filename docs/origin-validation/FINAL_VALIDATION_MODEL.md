@@ -1,0 +1,227 @@
+# Open Fufu — Final Origin Validation Model
+
+## Status and authority
+
+This document is the **closure summary for issue #31**. It freezes the validation-domain catalogue, admission/legality rule, interaction-registry shape, and external blocker routing derived from the completed P01–P54 / N01–N18 dependency audit.
+
+It does **not** redefine Origin mechanics. Trait mechanics remain canonical in [`../ORIGIN_TRAIT_CATALOGUE.md`](../ORIGIN_TRAIT_CATALOGUE.md), subsystem baselines remain with their focused owners, and the five-layer certification/deployment architecture remains canonical in [`../OPENFRONT_INTEGRATION_PLAN.md`](../OPENFRONT_INTEGRATION_PLAN.md).
+
+The detailed per-trait evidence remains in the coverage registry files. This document is the stable conclusion derived from that evidence.
+
+---
+
+# 1. Final validation-domain catalogue
+
+Every deployed trait must resolve to at least one direct validation owner or be explicitly intrinsic-only. A missing owner is a certification failure.
+
+The completed catalogue audit supports exactly these recurring gameplay validation domains:
+
+| Domain | Owns Origin conformance for |
+| --- | --- |
+| **Spawn / pre-match initialization** | spawn profiles, exact origins, starting-footprint quota/geometry, initial ownership/Population, start-state grants, deterministic resolver/replay |
+| **Population state/accounting** | Capacity/Total/Available/committed Population, growth, peak-state entitlements, settlement accounting, casualties/transfers, Population-derived passive effects |
+| **Land combat / capture resolution** | offensive/defensive pressure, counter-response, acquisition progress, automatic defense, capture casualties, post-capture consequences, structure-capture consequence dispatch |
+| **Terrain / territorial mutation** | faction-effective terrain classification, terrain acquisition rules, Fallout overlays, abandonment/neutralization, terrain construction permissions |
+| **Persistent structures / transactions / lifecycle** | purchase/upgrade/grant/capture admission, hard caps/prohibitions, provenance, active level/state, effective fields, charge-bearing structures, destruction/transfer |
+| **FFY economy / physical logistics** | FFY source/event families, modifier ordering, spatial yields/hard zero, passive sources, Train/Trade lifecycle, piracy, explicit costs/losses/snapshots |
+| **Naval / amphibious lifecycle** | Warship/Transport admission and profiles, movement, rank/caps, repair, embarkation, landing/abort/destruction, carried Population |
+| **Strategic weapons / interception** | launcher legality, weapon access/cost, launch charges/cooldowns, projectile motion/classification, blast geometry, SAM interception/anti-ship behavior |
+| **Observation / concealment** | lawful observation/reveal/blackout/concealment geometry, hostile-manifestation exceptions, controller/AI-visible projection |
+
+These are validation ownership boundaries, not new monolithic runtime systems. A trait may require more than one direct owner only when it genuinely changes mechanics owned by multiple domains; otherwise cross-system consequences are modeled as integration seams rather than duplicate ownership.
+
+## 1.1 Admission / legality is a stage, not a tenth domain
+
+Hard prohibitions, ownership caps, permissions, entitlements, and alternate purchase paths are enforced inside the domain that owns the action/state being admitted.
+
+Canonical action shape:
+
+```text
+request / input
+    ↓
+canonical legality / admission
+    ↓
+effective transaction / profile
+    ↓
+authoritative resolution
+    ↓
+cross-system consequences
+```
+
+A hard prohibition or cap must fail before resources, entitlements, construction slots, or other transactional state are consumed. It cannot be bypassed merely because another trait makes the action free, changes the payment resource, grants the result, changes terrain permission, or modifies a later runtime effect.
+
+Examples established by the audit include N05 over Fallout acquisition, N06 over paid upgrade actions, N07 over every structure-creation/transfer path, N09 over Factory construction, and N12 over Warship construction even when P42 replaces the ordinary FFY payment.
+
+---
+
+# 2. Final coverage relationship model
+
+The validator metadata must preserve four distinct relationships rather than reducing coverage to `trait -> domains[]`:
+
+1. **Direct transformation** — the gameplay owner whose canonical rule/value/permission/state the trait directly changes.
+2. **Required integration seam** — trait-specific state/event flow crossing subsystem boundaries that needs explicit integration coverage.
+3. **External semantic dependency** — canonical state/mechanics the trait reads without owning.
+4. **Ordinary downstream consumption** — valid canonical output that normal downstream systems consume without gaining redundant trait-specific implementations/tests.
+
+Conceptually:
+
+```ts
+interface OriginTraitValidationCoverage {
+  traitId: OriginTraitId;
+  directOwners: readonly OriginValidationDomainId[];
+  integrationSeams?: readonly OriginValidationSeamId[];
+  semanticDependencies?: readonly OriginValidationDependencyId[];
+  explicitInteractions?: readonly OriginValidationInteractionId[];
+}
+```
+
+The exact implementation type is not fixed by this documentation; the relationship semantics are.
+
+---
+
+# 3. Final interaction-registry rules
+
+The interaction registry must be **explicit but selective**. It is not an all-pairs compatibility matrix.
+
+A dedicated interaction is required when one trait changes a value, state, geometry, legality result, event, or lifecycle point that another trait directly consumes, or when precedence across traits must be proven. Otherwise each trait relies on independent domain conformance plus generated composition/property validation.
+
+The registry distinguishes:
+
+1. **Same-Origin same-axis composition** — multiple selected traits modify the same effective hook.
+2. **Same-Origin cross-axis / cross-system seam** — traits affect different hooks but one materially feeds another subsystem result.
+3. **Hard-prohibition / hard-zero precedence** — a structural prohibition/zero must not be resurrected by a numeric modifier or alternate path.
+4. **Cross-faction Origin interaction** — one faction's trait changes state/classification queried by another faction's trait.
+5. **External-system dependency** — a trait consumes canonical game state owned outside the Origin layer.
+6. **Representative aggregate composition suites** — used where many independent modifiers meet in one ordinary aggregate but no pair has special semantics.
+
+## 3.1 Required explicit interaction groups from the current catalogue
+
+The following groups are required by the completed audit. This is a validation registry, not a new trait-mechanics definition; exact expected outcomes remain with the canonical mechanic owners.
+
+### Spawn / initial-state
+
+- **P01 + P39** — modified total Initial-Territory quota is split only after P01 changes the total.
+- **P01 + P54** — star geometry preserves P01's modified quota.
+- **P39 + P54** — both P39 footprints use the star profile while preserving one total faction quota/Population pool.
+- **P39 + P20** — singular starting-Silo grant under a multi-origin profile; exact unresolved mode semantics are routed to #32.
+- **P48 with P01/P39/P54 footprint accounting** — faction-effective population-bearing Shallow Water must be respected wherever Spawn quota accounting queries population-bearing classification.
+
+### Population / growth / settlement
+
+- **P02 + N01** — replacement utilization curve and City-growth reduction remain separate hooks.
+- **P11 + N07** — permanent SAM entitlement and global one-per-type structure cap both constrain admission.
+- **P36 + N18** — settlement Population cost and final non-Fallout progress multiplier remain independent.
+- **P52 + P48** — P48 changes effective Capacity consumed by P52's empty-Capacity economy source.
+
+### Land combat / terrain / capture
+
+- **P03 with P09/N08/N10** — P03 ignores only the effective Fort-derived defense after Fort magnitude/coverage transformations.
+- **P13/P15/N02/N03 and other independent pressure modifiers** — representative multi-source pressure-composition suites rather than a bespoke test for every legal pair.
+- **P16 + N05** — N05's Fallout-acquisition prohibition wins over P16's resistance removal.
+- **P16 + N18** — P16 removes the ordinary Fallout penalty while N18 continues to halve non-Fallout progress.
+- **P18 with P09/N10** — effective Fort geometry changes the P18 qualifying source region.
+- **P19 -> Territorial Contact / Minor-Faction lifecycle** — external dependency; canonical semantics are closed by #34 and must be consumed rather than redefined.
+- **P44 attacker -> P48 defender** — P44's population-bearing target eligibility uses the defender's effective classification.
+- **N18 attacker -> P47 defender** — non-Fallout progress transformation and post-capture Marsh casualty resolve in their separate authored stages.
+- **N17 with P05/P34** — destruction instead of structure transfer suppresses effects that require successful structure acquisition while preserving the underlying cell capture.
+
+### Structure fields / structure transactions
+
+- **P09 + N10** — same-axis Fort coverage composition; routed to #43/#44.
+- **P09 with P24/P50** — transformed Fort geometry/magnitude must feed downstream event/support fields.
+- **P50 + N08** — P50 derives offense from the effective Fort defensive magnitude, so an N08 zero must remain zero.
+- **P50/P51 with ordinary reciprocal structure fields** — Fort and Command-Post cross-type contributions use the canonical complement rule even when only one reciprocal Origin trait is selected.
+- **P20 + P21** and **P37 + P21** — grants do not consume first-purchase entitlements.
+- **P20/P37 + N07** — grants still pass the generic ownership/admission contract.
+- **P41 + N06** — direct-L5 City creation is one purchase action rather than FFY-funded upgrade spending.
+- **N09 + P34/P07/P43** — Factory construction prohibition does not suppress transformations/services on a Factory acquired through a separately legal path.
+
+### FFY / Train / Trade
+
+- **P05 + N17** — P05 does not fire when N17 prevents structure transfer.
+- **P05 + P34** — when transfer is allowed, capture FFY and conquered-Factory provenance can coexist on one transition.
+- **P07 + P33** — bonus Trains produce ordinary qualifying Train events and therefore P33 Population side effects.
+- **P07 + P34** — transformed Factory semantics must define how P07 scheduling participates; routed to #49.
+- **P14 + P24** — independent eligible spatial FFY modifiers may apply to the same event through the canonical FFY modifier algebra.
+- **P14/P24/N04 + N11** — N11's explicit hard zero cannot be resurrected by ordinary positive/negative yield percentages.
+- **N14 + N16** — first-hostile-capture owner-side `-Vowner` and `+Vowner` deltas cancel exactly while physical cargo continues normally.
+- **P08 -> canonical `atWar`** — external dependency; canonical semantics are closed by #33. Trade events read current `atWar` at event resolution rather than Origin validation inventing a second war lifecycle.
+- **N14/N16 with P08/spatial yield rules** — exact expectations depend on the canonical `Vowner` snapshot contract routed to #48.
+
+### Naval / strategic weapons
+
+- **P22 + P29** — Warship rank ceiling changes P29 effective launcher level.
+- **P23 + P42** — same-axis Warship attack-range composition; routed to #43.
+- **N12 + P42** — Warship build prohibition wins before P42's Population-funded transaction can consume resources.
+- **P27 + P40** — anti-ship SAM attacks share P40's effective range, one-charge capacity, and recharge lifecycle; mechanic closure routed to #50.
+- **P32/P37/N13/N15 Transport lifecycle combinations** — embark source/chassis, cost, landing casualty, and post-success Fort grant must resolve in their canonical lifecycle order; unresolved N13 details are routed to #50.
+- **P29 with P25/P26** — a mobile Warship launcher obeys ordinary transformed weapon legality/cost/one-use rules while its launcher level derives from rank.
+- **P53 with P20** — starting persistent-Silo charge state is immediately economically observable by P53; charge-state closure is routed to #46.
+- **P53 negative assertion against P29** — mobile Warship launcher charges never count as persistent-Silo charges for P53.
+- **P30 with N14/N16** — transformed hostile piracy payout remains separate from original-owner N14/N16 voyage deltas.
+
+### Observation / concealment
+
+- **P45 + P49** — terrain and structure concealment predicates compose as a union/continued concealment through one lawful visibility projection rather than numeric stacking/cancellation.
+- hostile-manifestation exception behavior shared by P45/P49 is routed to #51.
+
+## 3.2 What does not enter the explicit interaction registry
+
+Do not add a dedicated pair merely because two traits can coexist or because both ultimately influence a broad aggregate.
+
+Examples:
+
+- speed plus payout modifiers that do not read one another;
+- independent Train-count and wartime-yield modifiers;
+- unrelated offensive-pressure sources that already enter the ordinary canonical pressure aggregate;
+- generic downstream effects of changed Population/Capacity/ownership once the authoritative upstream state is already correct.
+
+Those cases receive ordinary per-domain conformance plus generated legal-combination/property coverage.
+
+---
+
+# 4. Blocker routing
+
+The full audit intentionally did not invent missing gameplay semantics inside #31. Every remaining mechanic-definition blocker discovered by the audit has now been assigned to a focused canonical-owner issue.
+
+| Issue | Canonical closure scope | Principal audit blockers routed there |
+| --- | --- | --- |
+| **#32 — Random/Fixed Spawn × spawn-transforming Origins** | Strategic Spawn profiles/resolver | P39/P54 Random/Fixed behavior, multi-origin singular grants including P20 ordering, exact resolver-v1 P54 star representation/constants |
+| **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition |
+| **#44 — structure-field geometry and affiliation** | effective Fort/SAM fields | area→geometry/raster conversion, P24 qualifying Fort affiliation, N11 qualifying SAM affiliation/effective P40 area |
+| **#45 — admission/grants/transfers/caps** | atomic action/result admission | N07 overflow, P37 grant placement/conflict, P20 generic grant activation after Spawn ordering, P23 concurrent cap admission, P41 direct-L5 construction timing |
+| **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
+| **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
+| **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
+| **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | P07 counter transfer lifecycle, P34 exact `2× ordinary Factory effect` axes |
+| **#50 — naval/amphibious Origin interactions** | Transport/SAM-vs-ship mechanics | N13 landing casualty order/rounding, P27 complete anti-ship SAM behavior, P28 Transport-Population theft |
+| **#51 — tactical observation/concealment** | observation visibility contract | P45 Forest interior/boundary geometry, P45/P49 minimum hostile-manifestation reveal payload/precedence/lifetime |
+
+No remaining discovered mechanic-definition blocker is owned by issue #31. #31 owns the validation architecture and coverage declaration that represents unresolved external mechanics as `BLOCKED` rather than pretending they pass.
+
+Closed dependencies discovered during the audit are consumed directly from their canonical owners:
+
+- **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
+- **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
+- **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
+
+---
+
+# 5. Completion state for #31
+
+The #31 design/documentation work is complete when all of the following are true:
+
+- the impossible pre-mechanics exhaustive Origin runtime gate is removed from the migration dependency spine;
+- the five-layer certification model and aggregate deployment predicate are canonical;
+- `UNAVAILABLE / BLOCKED / FAIL / PASS` evidence states are canonical;
+- live named-Origin validation is cheap and does not launch runtime certification;
+- every current trait P01–P54/N01–N18 has a concrete dependency/ownership trace;
+- the final nine validation domains are frozen;
+- admission/legality is explicitly modeled as a stage inside action-owning domains;
+- explicit interaction-registry rules and required current-catalogue groups are frozen;
+- discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
+- neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
+
+All of those #31-scoped design/documentation deliverables are represented by this branch. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of #32/#43–#51 is downstream work owned by those systems/issues. Their absence legitimately produces `UNAVAILABLE` or `BLOCKED` evidence under the architecture; it is not unfinished #31 architecture work.
+
+Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.
