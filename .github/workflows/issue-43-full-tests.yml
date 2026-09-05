@@ -8,6 +8,29 @@ permissions:
   contents: read
 
 jobs:
+  issue-43-tests:
+    name: Issue 43 focused tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+      - name: Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Core composition tests
+        run: npx vitest run tests/RuleComposition.test.ts tests/RuleCompiler.test.ts tests/RuleNormalization.test.ts
+      - name: Catalogue projection tests
+        run: npx vitest run tests/EchoRuleRegistry.test.ts tests/OriginRuleManifest.test.ts
+      - name: Exhaustive Origin catalogue test
+        run: npx vitest run tests/OriginCatalogueCompile.test.ts
+
   full-tests:
     name: Full npm test suite
     runs-on: ubuntu-latest
