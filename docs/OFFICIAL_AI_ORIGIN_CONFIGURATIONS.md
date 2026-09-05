@@ -22,9 +22,9 @@ A named-Origin configuration does **not** duplicate the entire derived `OriginSt
 ## Progress
 
 ```text
-Configured Official Origins: 20 / 49
-Current canonical roster coverage: first 20 in library/UI order
-Remaining Official Origins: 29
+Configured Official Origins: 30 / 49
+Current canonical roster coverage: first 30 in library/UI order
+Remaining Official Origins: 19
 ```
 
 O35 is retired; the canonical roster currently contains 49 active Official Origins.
@@ -183,6 +183,90 @@ No dedicated P03+P43 combination hook is needed because neither trait creates a 
 
 ---
 
+## O26 — A Rational War
+
+Conquest FFY, Heavy Artillery, and fixed response-side counter-response compose into a disciplined continental war economy. There is no new mechanical loop that requires a combination adapter: P05 values captured structures, P43 owns artillery candidate generation/positioning, and P04 changes the real counter-response exchange curve.
+
+N12 removes Warship construction and N01 weakens City growth; neither suppresses any selected positive support entry.
+
+**AI identity:** prosecute deliberate artillery warfare in which captured infrastructure finances continued pressure and counter-response commitments remain economically measured.
+
+## O27 — Ordinary Offensive Magic
+
+Heavy Artillery and Hydrogen-only strategic weapons are two independent long-range force packages. They reinforce the same broad standoff fantasy, but do not create a transformed action or dependency that needs bespoke combination support.
+
+The controller should compare artillery and Hydrogen expenditure through ordinary opportunity-cost/forecast reasoning rather than blindly stacking both forms of long-range force on the same target.
+
+**AI identity:** solve hard land positions with standoff force, choosing between repeatable artillery pressure and expensive oversized Hydrogen strikes.
+
+## O28 — The Height of Magic
+
+Hydrogen-only strategic weapons gain faster projectile delivery while giant single-charge SAMs create unusually broad but low-throughput defense. N07 then makes the relevant infrastructure globally scarce because only one of each structure type may be owned.
+
+No new combination hook is necessary: strategic-weapon forecasting already uses actual projectile speed, P40 already models single-charge shield behavior, and N07 already prices unique infrastructure placement/loss.
+
+**AI identity:** concentrate strategic offense and defense into a small number of exceptionally consequential assets whose timing and placement must be deliberate.
+
+## O29 — Serious Series
+
+P43 + P44 activates the canonical `RADIOACTIVE_HEAVY_ARTILLERY` support. Heavy Artillery can therefore create Fallout and territorial neutralization from standoff range, turning artillery fire into geography manipulation rather than merely Population damage.
+
+N12 keeps the build continental and N01 weakens ordinary City growth.
+
+**AI identity:** erode enemy territory from range with radioactive Heavy Artillery, exploiting topology and denial opportunities without exposing slow artillery unnecessarily.
+
+## O30 — Being X
+
+The faction begins with a Missile Silo, launches strategic warheads at greatly increased speed, and replaces Tanks with Heavy Artillery. These advantages share a long-range theme but remain mechanically independent enough for ordinary composition.
+
+N03 makes Desert defense weaker, so the existence of strong long-range tools must not make the controller indifferent to defensive geography.
+
+**AI identity:** begin strategically armed and apply fast-delivery weapons plus artillery pressure while respecting weak Desert defensive positions.
+
+## O31 — Hell's Snipe
+
+A free starting Silo gives immediate access to the Origin's Hydrogen-only strategic doctrine. N11 creates a separate spatial tradeoff: FFY events occurring inside SAM coverage yield nothing.
+
+This does not require a new strategic-weapon/SAM combination. The controller should independently value Hydrogen strike timing and SAM placement while accounting for the economic exclusion geometry created by defensive coverage.
+
+**AI identity:** exploit immediate specialized Hydrogen access while placing defensive SAM coverage carefully enough not to sterilize valuable economic space.
+
+## O32 — Watchtower
+
+P11 + P40 activates `POPULATION_SCALED_GIANT_SAM_NETWORK`: Population growth unlocks additional zero-FFY SAM slots, while each SAM is a huge one-charge shield. N11 then makes every coverage decision economically costly because FFY events inside SAM areas yield zero.
+
+N11 does not require a third bespoke combination rule. Its existing infrastructure/defense tradeoff hooks already evaluate the economic cost of the giant coverage produced by the P11+P40 network.
+
+**AI identity:** build a Population-scaled strategic shield network, but treat every additional coverage footprint as a defense-versus-economy geometry decision.
+
+## O33 — Everything Will Turn to Ash
+
+This Origin activates two reusable Fallout combinations.
+
+`REVERSIBLE_SCORCHED_EARTH` covers P16 + P35: deliberately relinquished cells become Fallout, while P16 makes later reacquisition comparatively easy. The newly added `RADIOACTIVE_FALLOUT_ADVANCE` covers P16 + P44: Radioactive Munitions can create Fallout during offensive territorial neutralization, while P16 prevents the faction from suffering the ordinary Fallout-capture resistance when following through that contaminated geography.
+
+The combination support is reusable rather than Origin-specific because O34 shares the P16+P44 loop.
+
+**AI identity:** treat Fallout as a controllable strategic medium—create it offensively or defensively, deny geography with it, and remain unusually capable of moving territorial ownership back through the contamination later.
+
+## O34 — The Dose Makes the Poison
+
+P44 + P16 activates the reusable `RADIOACTIVE_FALLOUT_ADVANCE` combination: radioactive Population attacks can reshape/contaminate enemy territory without imposing the ordinary Fallout-capture resistance on this faction's subsequent advance.
+
+P47 adds a separate Marsh attrition tool, making some owned Marsh cells expensive for enemies to capture. This composes normally with the Fallout package rather than requiring a three-way adapter.
+
+**AI identity:** make hostile geography costly in two different ways—Fallout shaping during offense and Population-taxing Marsh defense—while remaining unusually comfortable advancing through contaminated ground.
+
+## O36 — Radical Edward
+
+Tundra construction, Shallow-Water Capacity, Fallout-resistance bypass, and half-cost neutral settlement all broaden what the controller can regard as useful expansion geography. The traits modify different terrain/economy dimensions, so no bespoke combined mechanic is necessary.
+
+N13 keeps amphibious projection risky despite the Origin's unusual relationship with Shallow Water; Capacity value must not be mistaken for safe Transport landings.
+
+**AI identity:** find settlement and infrastructure value in terrain that ordinary factions treat as awkward, while distinguishing ownership value from amphibious safety.
+
+---
+
 ## Batch consistency results
 
 ### First 10
@@ -198,9 +282,20 @@ All first ten configured Origins compose successfully from the completed trait-s
 All next ten configured Origins also compose successfully from the existing trait-support catalogue.
 
 - 1/10 needs reusable **trait-combination** support: O04;
-- O04 requires two already-existing reusable combination entries: `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`;
+- O04 requires two reusable combination entries: `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`;
 - 0/10 need named-Origin-specific support;
-- O21, O24, and O25 contain N12, so the generic no-Warships suppression matcher applies, but none contains a Warship-dependent positive support entry; therefore **no otherwise-active support contribution is actually removed**;
-- no new shared strategic literal, trait hook, combination support, suppression rule, or named-Origin escape hatch was required.
+- O21, O24, and O25 contain N12, so the generic no-Warships suppression matcher applies, but none contains a Warship-dependent positive support entry; therefore no otherwise-active support contribution is removed.
 
-Across the first 20 Origins, named-Origin-specific support remains **0/20**. This is the intended architecture: named-Origin exceptions stay rare because reusable trait and combination support carry the mechanical literacy.
+### Third 10
+
+All third-batch Origins compose successfully after one reusable omission from the trait-wide sweep was corrected.
+
+- O29 requires the existing `RADIOACTIVE_HEAVY_ARTILLERY` combination;
+- O32 requires the existing `POPULATION_SCALED_GIANT_SAM_NETWORK` combination;
+- O33 requires `REVERSIBLE_SCORCHED_EARTH` plus the new reusable `RADIOACTIVE_FALLOUT_ADVANCE` combination;
+- O34 also requires `RADIOACTIVE_FALLOUT_ADVANCE`, confirming that the new support belongs at trait-combination level rather than as named-Origin logic;
+- 0/10 need named-Origin-specific support;
+- O26, O27, O29, O30, O33, and O34 contain N12, but none selects a Warship-dependent positive trait, so its generic suppression matcher removes no otherwise-active support;
+- no new strategic literal or named-Origin escape hatch was required.
+
+Across the first 30 Origins, named-Origin-specific support remains **0/30**. The only architecture correction in this batch was adding one reusable P16+P44 combination that applies to multiple Origins.
