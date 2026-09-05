@@ -4,6 +4,7 @@
 // - docs/OPEN_FUFU_DESIGN.md — controller model and high-level constraints.
 // - docs/CONTROLLER_MEMORY.md — persistent controller-memory contract.
 // - docs/STRATEGIC_SPAWN.md — Strategic Spawn mechanics and resolver semantics.
+// - docs/TERRAIN_AND_STRUCTURES.md — structure admission/grant/capture semantics.
 //
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
@@ -411,8 +412,8 @@ export interface EffectiveActionCost {
 /**
  * Exact single-action result against the current immutable observation snapshot.
  * A quote is not a reservation and does not account for other actions submitted in
- * the same later decision; aggregate FFY/Population use or conflicting actions can
- * therefore still make the complete atomic proposal reject.
+ * the same later decision; aggregate FFY/Population use, ownership-slot reservations,
+ * or conflicting actions can therefore still make the complete atomic proposal reject.
  */
 export interface ActionQuote {
   readonly legal: boolean;
@@ -426,6 +427,8 @@ export interface StructureBuildQuote extends ActionQuote {
   readonly cellId: CellId;
   readonly resultingLevel: StructureLevel;
   readonly buildTicks: number;
+  /** Effective hard ownership cap when this structure type is capped for the faction. */
+  readonly ownershipCap?: number;
 }
 
 export interface StructureUpgradeQuote extends ActionQuote {
@@ -440,6 +443,7 @@ export interface UnitBuildQuote extends ActionQuote {
   readonly resultingUnit: MobileUnitType;
   readonly producerId: StructureId;
   readonly buildTicks: number;
+  /** Effective hard ownership cap when this unit type is capped for the faction. */
   readonly ownershipCap?: number;
 }
 
