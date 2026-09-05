@@ -1,3 +1,8 @@
+// Documentation entry point: docs/official-ai/README.md
+// Specific owners: docs/official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md
+//                  docs/official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md
+// Gameplay owner:  docs/ORIGIN_TRAIT_CATALOGUE.md
+//
 // Open Fufu Official-AI Origin trait support configuration.
 //
 // DESIGN-TIME SOURCE OF TRUTH.
