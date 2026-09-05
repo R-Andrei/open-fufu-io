@@ -20,6 +20,10 @@ The interaction registry must cover both:
 - **same-Origin interactions**, where multiple selected traits affect one effective mechanic; and
 - **cross-faction Origin interactions**, where one faction's trait changes state that another faction's trait explicitly queries.
 
+## Audit status
+
+Concrete positive-trait dependency tracing is complete through **P50**. Remaining positive-trait work is P51–P54, followed by N01–N18.
+
 ## Authority rule
 
 Trait-effect wording in these coverage files is explanatory shorthand only. If it disagrees with a canonical mechanic owner, the mechanic owner wins and the coverage registry must be corrected. Coverage files must record unresolved mechanic questions as blockers; they must not silently solve them.
