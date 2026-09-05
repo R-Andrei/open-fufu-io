@@ -4,7 +4,7 @@
 
 This document is the **canonical content registry for Official Origins**.
 
-It does not replace [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains authoritative for game mechanics and Origin-system rules, or [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md), which remains authoritative for migration/implementation direction. Trait definitions/costs come from [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). Official AI preset pools are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md).
+It does not replace [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains authoritative for game mechanics and Origin-system rules, or [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md), which remains authoritative for migration/implementation direction. Trait definitions/costs come from [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). Official AI preset pools are maintained in [`official-ai/OFFICIAL_AI_PRESETS.md`](./official-ai/OFFICIAL_AI_PRESETS.md).
 
 The roster below is the accepted **provisional V1 Official Origin library**. Mechanical combinations are provisional content baselines subject to playtest repricing/revision while remaining ordinary legal builds under the public Origin catalogue. Display names below are the accepted V1 naming baseline and remain separable from the stable Oxx mechanical/content IDs.
 
