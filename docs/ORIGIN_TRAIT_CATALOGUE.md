@@ -170,7 +170,7 @@ P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Str
 
 Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11's SAM FFY cost is genuinely zero; ordinary non-FFY legality still applies.
 
-The unlocked count is a hard SAM ownership-admission limit. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. P11 + N07 uses the stricter effective limit.
+The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
 
 ### N07 — one-per-type structure ownership
 
