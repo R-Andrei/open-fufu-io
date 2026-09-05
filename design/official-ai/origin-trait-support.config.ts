@@ -972,6 +972,18 @@ export const OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT = [
     ],
   },
   {
+    id: "RADIOACTIVE_FALLOUT_ADVANCE",
+    match: { allTraitIds: ["P16", "P44"] },
+    addsThemes: ["TERRITORIAL_SHAPING", "EXPANSION", "POSITIONAL_CONTROL"],
+    addsAffordances: ["SHAPE_TERRITORY"],
+    signalSupport: [
+      { evaluator: "FORECAST", hookId: "P16_P44_FALLOUT_FOLLOWUP_ADVANCE_FORECAST" },
+    ],
+    plannerSupport: [
+      { domain: "LAND_WAR", phase: "EVALUATE_CANDIDATES", hookId: "P16_P44_RADIOACTIVE_ADVANCE_VALUE" },
+    ],
+  },
+  {
     id: "VETERAN_MOBILE_MIRV_PLATFORM",
     match: { allTraitIds: ["P22", "P29"] },
     addsThemes: ["NAVAL_PROJECTION", "DETERRENCE", "SPECIALIZATION"],
