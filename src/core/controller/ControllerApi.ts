@@ -3,6 +3,7 @@
 // Canonical documentation:
 // - docs/OPEN_FUFU_DESIGN.md — controller model and high-level constraints.
 // - docs/CONTROLLER_MEMORY.md — persistent controller-memory contract.
+// - docs/STRATEGIC_SPAWN.md — Strategic Spawn mechanics and resolver semantics.
 //
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
@@ -17,6 +18,7 @@ export type UnitId = string;
 export type StructureId = string;
 export type DirectiveKey = string;
 export type CommandKey = string;
+export type StructureLevel = 1 | 2 | 3 | 4 | 5;
 
 export type JsonPrimitive = null | boolean | number | string;
 export type JsonValue =
@@ -48,6 +50,7 @@ export type StructureType =
   | "OBSERVATION_POST"
   | "COMMAND_POST";
 
+/** Every physical mobile-unit type that may appear in legal observation. */
 export type MobileUnitType =
   | "TANK"
   | "HEAVY_ARTILLERY"
@@ -55,6 +58,19 @@ export type MobileUnitType =
   | "TRANSPORT_SHIP"
   | "TRADE_SHIP"
   | "TRAIN";
+
+/** Chassis the ordinary controller may directly purchase. */
+export type PurchasableUnitType = "TANK" | "WARSHIP";
+
+/** Units the controller may strategically reposition with MOVE_UNIT. */
+export type RepositionableUnitType = "TANK" | "HEAVY_ARTILLERY" | "WARSHIP";
+
+export type MovementClass =
+  | "LAND"
+  | "TANK"
+  | "HEAVY_ARTILLERY"
+  | "NAVAL"
+  | "TRANSPORT";
 
 export type StrategicWeaponType = "ATOM_BOMB" | "HYDROGEN_BOMB" | "MIRV";
 
@@ -97,6 +113,11 @@ export interface OriginView {
 
 export type ModifierValue = number | boolean | string;
 
+/**
+ * Introspection for surfaced rule-bearing values that do not yet justify a
+ * first-class typed field. Controllers should prefer typed MechanicsApi methods
+ * whenever one exists rather than rebuilding formulas from these keys.
+ */
 export interface EffectiveModifierSheet {
   readonly values: Readonly<Record<string, ModifierValue>>;
 }
@@ -144,7 +165,7 @@ export interface SegmentView {
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
 }
 
-export interface ContactView {
+export interface TerritorialContactView {
   readonly id: string;
   readonly factionA: FactionId;
   readonly factionB: FactionId;
@@ -152,6 +173,21 @@ export interface ContactView {
   readonly componentCount: number;
   readonly segmentIds: readonly SegmentId[];
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
+}
+
+export type OperationalContactKind =
+  | "TERRITORIAL"
+  | "LAND_COMBAT"
+  | "NAVAL_ENCOUNTER"
+  | "AMPHIBIOUS";
+
+export interface OperationalContactView {
+  readonly id: string;
+  readonly factionA: FactionId;
+  readonly factionB: FactionId;
+  readonly kinds: readonly OperationalContactKind[];
+  readonly area: CellSelector;
+  readonly segmentIds: readonly SegmentId[];
 }
 
 export type OperationKind = "ATTACK" | "NEUTRAL_EXPANSION" | "COUNTER_RESPONSE";
@@ -173,7 +209,7 @@ export interface StructureView {
   readonly id: StructureId;
   readonly ownerId: FactionId;
   readonly type: StructureType;
-  readonly level: 1 | 2 | 3 | 4 | 5;
+  readonly level: StructureLevel;
   readonly cellId: CellId;
   readonly active: boolean;
   readonly constructionRemainingTicks?: number;
@@ -187,6 +223,10 @@ export interface UnitView {
   readonly type: MobileUnitType;
   readonly cellId: CellId;
   readonly active: boolean;
+  /** True only for Tank/Heavy-Artillery/Warship units the owner may MOVE_UNIT. */
+  readonly repositionable: boolean;
+  /** Present when a legally observable controller-issued move is still active. */
+  readonly movementDestinationCellId?: CellId;
   readonly health?: number;
   readonly maxHealth?: number;
   readonly rank?: number;
@@ -254,8 +294,16 @@ export interface SegmentsApi {
 }
 
 export interface ContactsApi {
-  list(): readonly ContactView[];
-  between(a: FactionId, b: FactionId): readonly ContactView[];
+  territorial(): readonly TerritorialContactView[];
+  territorialBetween(
+    a: FactionId,
+    b: FactionId,
+  ): readonly TerritorialContactView[];
+  operational(): readonly OperationalContactView[];
+  operationalBetween(
+    a: FactionId,
+    b: FactionId,
+  ): readonly OperationalContactView[];
 }
 
 export interface FactionsApi {
@@ -283,12 +331,12 @@ export interface NavigationApi {
   path(
     from: CellId,
     to: CellId,
-    movementClass: "LAND" | "TANK" | "HEAVY_ARTILLERY" | "NAVAL" | "TRANSPORT",
+    movementClass: MovementClass,
     maxCells?: number,
   ): readonly CellId[] | undefined;
   reachable(
     from: CellId,
-    movementClass: "LAND" | "TANK" | "HEAVY_ARTILLERY" | "NAVAL" | "TRANSPORT",
+    movementClass: MovementClass,
     maxDistance: number,
   ): CellSelector;
 }
@@ -305,9 +353,161 @@ export interface GrowthCalculation {
   readonly growthPerSecond: number;
 }
 
+export interface CaptureCalculation {
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly inputAttackingPressure: number;
+  readonly inputDefendingPressure: number;
+  readonly effectiveAttackingPressure: number;
+  readonly effectiveDefendingPressure: number;
+  readonly advantage: number;
+  readonly acquisitionProgressMultiplier: number;
+  readonly requiredProgress: number;
+  readonly progressPerSecond: number;
+  readonly estimatedSecondsToCapture?: number;
+}
+
+export interface SettlementCalculation {
+  readonly targetCellId: CellId;
+  readonly inputPressure: number;
+  readonly effectivePressure: number;
+  readonly acquisitionProgressMultiplier: number;
+  readonly requiredProgress: number;
+  readonly progressPerSecond: number;
+  readonly estimatedSecondsToSettle?: number;
+  readonly populationCost: number;
+}
+
 export interface CounterResponseCalculation {
   readonly attackingPopulationLost: number;
   readonly respondingPopulationLost: number;
+  readonly attackEffectiveness: number;
+  readonly responseEffectiveness: number;
+}
+
+export interface EffectiveActionCost {
+  /** FFY that must be available for the action to satisfy affordability. */
+  readonly ffyRequired: number;
+  /** FFY actually consumed when the action commits. */
+  readonly ffySpent: number;
+  /** Available Population permanently consumed when the action commits. */
+  readonly populationSpent: number;
+}
+
+export interface ActionQuote {
+  readonly legal: boolean;
+  readonly failureCode?: DecisionFailureCode;
+  readonly detail?: string;
+  readonly cost: EffectiveActionCost;
+}
+
+export interface StructureBuildQuote extends ActionQuote {
+  readonly structure: StructureType;
+  readonly cellId: CellId;
+  readonly resultingLevel: StructureLevel;
+  readonly buildTicks: number;
+}
+
+export interface StructureUpgradeQuote extends ActionQuote {
+  readonly structureId: StructureId;
+  readonly currentLevel: StructureLevel;
+  readonly resultingLevel: StructureLevel;
+  readonly buildTicks: number;
+}
+
+export interface UnitBuildQuote extends ActionQuote {
+  readonly requestedUnit: PurchasableUnitType;
+  readonly resultingUnit: MobileUnitType;
+  readonly producerId: StructureId;
+  readonly buildTicks: number;
+  readonly ownershipCap?: number;
+}
+
+export interface MoveUnitQuote extends ActionQuote {
+  readonly unitId: UnitId;
+  readonly destination: CellId;
+}
+
+export interface TransportEmbarkQuote extends ActionQuote {
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly populationCommitted: number;
+  readonly resultingUnit: "TRANSPORT_SHIP";
+}
+
+export interface WeaponLaunchQuote extends ActionQuote {
+  readonly launcherId: StructureId | UnitId;
+  readonly weapon: StrategicWeaponType;
+  readonly targetCellId: CellId;
+  readonly chargeConsumed: boolean;
+}
+
+export interface TerrainMechanicsSpec {
+  readonly terrain: TerrainType;
+  readonly hasFallout: boolean;
+  readonly conquerable: boolean;
+  readonly populationBearing: boolean;
+  readonly persistentStructureBuildable: boolean;
+  readonly acquisitionProgressMultiplier: number;
+  readonly offensivePressureMultiplier: number;
+  readonly defensivePressureMultiplier: number;
+  readonly movementMultipliers: Readonly<
+    Partial<Record<MovementClass, number>>
+  >;
+}
+
+export interface StructureMechanicsSpec {
+  readonly type: StructureType;
+  readonly level: StructureLevel;
+  readonly populationGrowthAdditiveMultiplier?: number;
+  readonly offensivePressureMultiplier?: number;
+  readonly defensivePressureMultiplier?: number;
+  readonly coverageRadius?: number;
+  readonly repairRadius?: number;
+  readonly repairRateHpPerSecond?: number;
+  readonly simultaneousRepairCapacity?: number;
+  readonly chargeCapacity?: number;
+  readonly rechargeTicks?: number;
+  readonly interceptionRange?: number;
+  readonly observationRadius?: number;
+  readonly weaponAccess?: readonly StrategicWeaponType[];
+}
+
+export type UnitAttackKind =
+  | "DAMAGE_UNIT"
+  | "DAMAGE_POPULATION"
+  | "INTERCEPT_TRAIN"
+  | "CAPTURE_TRADE_SHIP";
+
+export interface UnitAttackSpec {
+  readonly kind: UnitAttackKind;
+  readonly rangeCells: number;
+  readonly cooldownTicks?: number;
+  readonly damage?: number;
+  readonly targetUnitTypes?: readonly MobileUnitType[];
+}
+
+export interface UnitMechanicsSpec {
+  readonly type: MobileUnitType;
+  readonly directlyPurchasable: boolean;
+  readonly repositionable: boolean;
+  readonly movementClass: MovementClass;
+  readonly baseSpeedCellsPerSecond: number;
+  readonly maxHealth?: number;
+  readonly repairRetreatHealthFraction?: number;
+  readonly maximumRank?: number;
+  readonly attacks: readonly UnitAttackSpec[];
+}
+
+export interface StrategicWeaponMechanicsSpec {
+  readonly type: StrategicWeaponType;
+  readonly projectileSpeedCellsPerSecond: number;
+  readonly innerRadius: number;
+  readonly outerRadius: number;
+  readonly maxWarheads: number;
+  readonly distributionRadius?: number;
+  readonly minimumWarheadSpacing?: number;
+  readonly usesRemaining?: number;
 }
 
 export interface MechanicsApi {
@@ -316,36 +516,79 @@ export interface MechanicsApi {
     capacity: number,
     factionId?: FactionId,
   ): GrowthCalculation;
-  captureAdvantage(
+
+  capture(
+    sourceCellId: CellId,
+    targetCellId: CellId,
     attackingPressure: number,
     defendingPressure: number,
-  ): number;
+    attackerId?: FactionId,
+    defenderId?: FactionId,
+  ): CaptureCalculation;
+
+  settlement(
+    targetCellId: CellId,
+    pressure: number,
+    factionId?: FactionId,
+  ): SettlementCalculation;
+
   counterResponse(
     attackingPopulation: number,
     respondingPopulation: number,
     attackerId?: FactionId,
     responderId?: FactionId,
   ): CounterResponseCalculation;
-  settlementPopulationCost(cellId: CellId, factionId?: FactionId): number;
-  structureCost(
-    type: StructureType,
-    level: 1 | 2 | 3 | 4 | 5,
+
+  terrainSpec(
+    terrain: TerrainType,
+    hasFallout: boolean,
     factionId?: FactionId,
-  ): number;
-  structureBuildTicks(type: StructureType, level: 1 | 2 | 3 | 4 | 5): number;
-  unitCost(type: MobileUnitType, factionId?: FactionId): number;
-  weaponCost(type: StrategicWeaponType, factionId?: FactionId): number;
-  canBuildStructure(
+  ): TerrainMechanicsSpec;
+
+  structureTypeSpec(
+    type: StructureType,
+    level: StructureLevel,
+    factionId?: FactionId,
+  ): StructureMechanicsSpec;
+  structureSpec(structureId: StructureId): StructureMechanicsSpec;
+
+  unitTypeSpec(
+    type: MobileUnitType,
+    factionId?: FactionId,
+  ): UnitMechanicsSpec;
+  unitSpec(unitId: UnitId): UnitMechanicsSpec;
+
+  weaponSpec(
+    type: StrategicWeaponType,
+    factionId?: FactionId,
+  ): StrategicWeaponMechanicsSpec;
+
+  structureBuildQuote(
     type: StructureType,
     cellId: CellId,
     factionId?: FactionId,
-  ): boolean;
-  canMoveUnit(unitId: UnitId, targetCellId: CellId): boolean;
-  canLaunchWeapon(
+  ): StructureBuildQuote;
+  structureUpgradeQuote(
+    structureId: StructureId,
+  ): StructureUpgradeQuote;
+  unitBuildQuote(
+    type: PurchasableUnitType,
+    producerId: StructureId,
+    factionId?: FactionId,
+  ): UnitBuildQuote;
+  moveUnitQuote(unitId: UnitId, destination: CellId): MoveUnitQuote;
+  transportEmbarkQuote(
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+    factionId?: FactionId,
+  ): TransportEmbarkQuote;
+  weaponLaunchQuote(
     launcherId: StructureId | UnitId,
     type: StrategicWeaponType,
     targetCellId: CellId,
-  ): boolean;
+    targetFactionId?: FactionId,
+  ): WeaponLaunchQuote;
 }
 
 export interface RulesView {
@@ -362,6 +605,8 @@ export interface ControllerLimitsView {
   readonly policyRulesPerDecision: number;
   readonly debugItemsPerDecision: number;
   readonly logBytesPerDecision: number;
+  readonly eventsPerDecision: number;
+  readonly teamSignalPayloadBytes: number;
 }
 
 export interface RandomApi {
@@ -371,12 +616,17 @@ export interface RandomApi {
 
 export type DecisionFailureCode =
   | "INVALID_TARGET"
+  | "INVALID_SOURCE"
+  | "INVALID_PRODUCER"
+  | "INVALID_LAUNCHER"
   | "INSUFFICIENT_FFY"
   | "INSUFFICIENT_AVAILABLE_POPULATION"
   | "NO_LONGER_OWNED"
   | "OUT_OF_RANGE"
   | "TARGET_DESTROYED"
   | "COMMITMENT_LIMIT"
+  | "OWNERSHIP_CAP"
+  | "CONFLICTING_PROPOSAL"
   | "INVALID_DIRECTIVE"
   | "INVALID_COMMAND"
   | "RUNTIME_ERROR"
@@ -384,18 +634,26 @@ export type DecisionFailureCode =
   | "MEMORY_LIMIT"
   | "SANDBOX_VIOLATION";
 
-export interface CommandReceipt {
-  readonly key: CommandKey;
-  readonly accepted: boolean;
-  readonly code?: DecisionFailureCode;
+export interface DecisionFailure {
+  readonly code: DecisionFailureCode;
+  /** Present when one keyed command/directive is the canonical cause. */
+  readonly key?: CommandKey | DirectiveKey;
   readonly detail?: string;
 }
 
+/**
+ * Receipt for the previous normal controller decision.
+ *
+ * Game-facing directives and commands form one atomic proposal evaluated against
+ * the same authoritative pre-decision snapshot. accepted=true means the complete
+ * proposal committed. accepted=false means none of its game-facing changes did.
+ * A successfully validated memory replacement commits independently as defined by
+ * docs/CONTROLLER_MEMORY.md.
+ */
 export interface DecisionReceipt {
   readonly decisionNumber: number;
   readonly accepted: boolean;
-  readonly code?: DecisionFailureCode;
-  readonly commands: readonly CommandReceipt[];
+  readonly failure?: DecisionFailure;
   readonly faultCount: number;
   readonly faulted: boolean;
 }
@@ -446,6 +704,12 @@ export type ControllerEvent =
       readonly weapon: StrategicWeaponType;
       readonly cellId: CellId;
       readonly reason: string;
+    }
+  | {
+      readonly type: "TEAM_SIGNAL_RECEIVED";
+      readonly fromFactionId: FactionId;
+      readonly channel: string;
+      readonly payload: JsonValue;
     };
 
 export interface EventsApi {
@@ -471,7 +735,33 @@ export interface DebugRegion {
   readonly label?: string;
 }
 
-export type DebugItem = DebugPoint | DebugLine | DebugRegion;
+export interface DebugMetric {
+  readonly kind: "METRIC";
+  readonly name: string;
+  readonly value: number | string | boolean;
+}
+
+export type DebugSubject =
+  | { readonly kind: "FACTION"; readonly id: FactionId }
+  | { readonly kind: "SEGMENT"; readonly id: SegmentId }
+  | { readonly kind: "OPERATION"; readonly id: OperationId }
+  | { readonly kind: "UNIT"; readonly id: UnitId }
+  | { readonly kind: "STRUCTURE"; readonly id: StructureId }
+  | { readonly kind: "CELL"; readonly id: CellId };
+
+export interface DebugAnnotation {
+  readonly kind: "ANNOTATION";
+  readonly subject: DebugSubject;
+  readonly label: string;
+  readonly value?: number | string | boolean;
+}
+
+export type DebugItem =
+  | DebugPoint
+  | DebugLine
+  | DebugRegion
+  | DebugMetric
+  | DebugAnnotation;
 
 export interface LandOperationDirective {
   readonly kind: "LAND_OPERATION";
@@ -498,24 +788,10 @@ export interface CounterResponseDirective {
   readonly population: number;
 }
 
-export type UnitOrder =
-  | { readonly kind: "MOVE"; readonly destination: CellId }
-  | { readonly kind: "PATROL"; readonly region: CellSelector }
-  | { readonly kind: "RAID"; readonly region: CellSelector }
-  | { readonly kind: "TARGET_UNIT"; readonly unitId: UnitId };
-
-export interface UnitOrderDirective {
-  readonly kind: "UNIT_ORDER";
-  readonly key: DirectiveKey;
-  readonly unitId: UnitId;
-  readonly order: UnitOrder;
-}
-
 export type PersistentDirective =
   | LandOperationDirective
   | DefensePriorityDirective
-  | CounterResponseDirective
-  | UnitOrderDirective;
+  | CounterResponseDirective;
 
 export interface DirectiveChanges {
   readonly set?: readonly PersistentDirective[];
@@ -538,10 +814,39 @@ export interface UpgradeStructureCommand {
 export interface BuildUnitCommand {
   readonly kind: "BUILD_UNIT";
   readonly key: CommandKey;
-  readonly unit: MobileUnitType;
-  readonly producerId?: StructureId;
-  readonly cellId?: CellId;
-  readonly population?: number;
+  readonly unit: PurchasableUnitType;
+  readonly producerId: StructureId;
+}
+
+/**
+ * Strategic repositioning only. Once moving/arrived, autonomous unit logic owns
+ * roaming, target acquisition, pursuit, firing/capture/interception, and repair
+ * retreat. No patrol/raid/target-unit controller modes exist in V1.
+ */
+export interface MoveUnitCommand {
+  readonly kind: "MOVE_UNIT";
+  readonly key: CommandKey;
+  readonly unitId: UnitId;
+  readonly destination: CellId;
+}
+
+/**
+ * Creates one Transport operation carrying the committed Population from a legal
+ * embark source toward a legal landing target. Pathing and landing are autonomous.
+ */
+export interface EmbarkTransportCommand {
+  readonly kind: "EMBARK_TRANSPORT";
+  readonly key: CommandKey;
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly population: number;
+}
+
+/** Abort an active owned Transport and return it by autonomous legal routing. */
+export interface ReturnTransportCommand {
+  readonly kind: "RETURN_TRANSPORT";
+  readonly key: CommandKey;
+  readonly unitId: UnitId;
 }
 
 export interface LaunchWeaponCommand {
@@ -575,11 +880,22 @@ export type ControllerCommand =
   | BuildStructureCommand
   | UpgradeStructureCommand
   | BuildUnitCommand
+  | MoveUnitCommand
+  | EmbarkTransportCommand
+  | ReturnTransportCommand
   | LaunchWeaponCommand
   | RelinquishCommand
   | TeamSignalCommand
   | CapitulateCommand;
 
+/**
+ * One normal callback result.
+ *
+ * memory is validated/committed under the separate Controller Memory contract.
+ * directives + commands are one atomic game-facing proposal. If any game-facing
+ * part is illegal, none of those game-facing changes commit. debug/log are
+ * diagnostics and do not create simulation state.
+ */
 export interface ControllerDecision<
   M extends ControllerMemory = ControllerMemory,
 > {
@@ -627,6 +943,28 @@ export interface SpawnFactionView {
   readonly influenceCenters: readonly CellId[];
 }
 
+export type SpawnOriginValidationCode =
+  | "WRONG_ORIGIN_COUNT"
+  | "INVALID_CELL"
+  | "OUTSIDE_INFLUENCE"
+  | "SPAWN_INELIGIBLE"
+  | "DUPLICATE_ORIGIN";
+
+export interface SpawnOriginValidation {
+  readonly valid: boolean;
+  readonly code?: SpawnOriginValidationCode;
+  readonly slotIndex?: number;
+}
+
+/**
+ * Local Phase-3 validation only. Foreign exact-origin spacing/conflict acceptance
+ * cannot be predicted here because all factions resolve simultaneously.
+ */
+export interface SpawnOriginApi {
+  isValidOriginChoice(cellId: CellId, slotIndex: number): boolean;
+  validateOriginChoices(origins: readonly CellId[]): SpawnOriginValidation;
+}
+
 export interface SpawnBaseContext<
   M extends ControllerMemory = ControllerMemory,
 > {
@@ -661,6 +999,7 @@ export interface SpawnOriginContext<
   readonly phase: "ORIGIN";
   readonly influenceCenters: readonly CellId[];
   readonly revealedFactions: readonly SpawnFactionView[];
+  readonly spawn: SpawnOriginApi;
 }
 
 export interface SpawnInfluenceDecision<
@@ -684,11 +1023,13 @@ export interface SpawnOriginDecision<
 /**
  * V1 player-controller entry contract.
  *
- * All callbacks execute against immutable deterministic snapshots. Returned
- * changes are proposals only; the authoritative match validates and commits
- * them transactionally. Omitted persistent directives remain active until
- * explicitly ended. Module/global state is not guaranteed to survive between
- * callbacks; use the explicit JSON-like memory object instead.
+ * All callbacks execute against immutable deterministic snapshots. Normal
+ * directives/commands form one atomic game-facing proposal. Omitted persistent
+ * directives remain active until explicitly ended. Module/global state is not
+ * guaranteed to survive between callbacks; use explicit controller memory.
+ *
+ * The three spawn callbacks are invoked only for Strategic Spawn. Random and
+ * Fixed Spawn bypass player-controller spawn choice hooks entirely.
  */
 export interface OpenFufuController<
   M extends ControllerMemory = ControllerMemory,
