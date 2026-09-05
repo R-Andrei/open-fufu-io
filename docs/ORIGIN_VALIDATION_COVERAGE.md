@@ -4,11 +4,11 @@
 
 This file is the **canonical owner for Origin trait validation coverage, mechanical dependency traces, required integration seams, external validation dependencies, and explicit Origin-interaction test obligations**.
 
-It does **not** own Origin mechanics, costs, builder legality, subsystem baselines, or unresolved gameplay semantics. Those remain with their existing canonical owners:
+It does **not** own Origin mechanics, costs, builder legality, subsystem baselines, or unresolved gameplay semantics. Those remain with their canonical owners:
 
-- Origin trait mechanics/costs/composition: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
+- Origin mechanics/costs/composition: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
 - game-wide Population/territory/combat invariants: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
-- migration validation architecture and deployment eligibility: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
+- migration validation architecture/deployment eligibility: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
 - Strategic Spawn: [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md);
 - FFY/Train/Trade economy: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
 - terrain/persistent structures/baseline Tank: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
@@ -16,522 +16,584 @@ It does **not** own Origin mechanics, costs, builder legality, subsystem baselin
 - combat tuning: [`COMBAT_TUNING.md`](./COMBAT_TUNING.md);
 - Minor Factions: [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md).
 
-Trait-effect wording in this file is explanatory shorthand only. If it disagrees with the Origin catalogue or a focused mechanic owner, the mechanic owner wins and this registry must be updated.
+Trait-effect wording here is explanatory shorthand only. If it disagrees with a mechanic owner, the mechanic owner wins and this registry must be corrected.
 
 ---
 
 # 1. Coverage model
 
-Do not model coverage as a flat `trait -> domains[]` tag list. Each trait is audited through four relationship classes:
+Do not reduce coverage to `trait -> domains[]`. Every trait audit distinguishes:
 
-## 1.1 Direct transformation
+1. **Direct transformation** — the subsystem whose rule/value/permission/state the trait directly changes. That subsystem owns conformance validation.
+2. **Required integration seam** — a subsystem boundary crossed by trait-specific state/event flow that requires explicit integration coverage.
+3. **External semantic dependency** — canonical state/mechanics the trait reads without owning. Unresolved dependencies may make validation `BLOCKED`/`UNAVAILABLE`.
+4. **Ordinary downstream consumption** — once canonical state is produced correctly, ordinary consumers do not gain redundant trait-specific tests merely because the state originated from an Origin.
 
-The trait directly changes a value, rule, permission, event, lifecycle, or state owned by a gameplay subsystem. That subsystem owns the corresponding Origin-conformance validation.
+For each trait also identify:
 
-## 1.2 Required integration seam
+- meaningful same-hook/cross-system Origin interactions;
+- negative assertions/non-effects needed to prevent over-broad implementation;
+- mechanic-definition holes that prevent honest certification.
 
-The trait's direct transformation produces or consumes state across a subsystem boundary, and correctness at that boundary is not proven by either subsystem in isolation.
-
-Examples:
-
-```text
-Spawn output -> Population initialization
-structure capture -> FFY event generation
-Fort field -> land-combat pressure
-```
-
-A required seam receives explicit integration coverage.
-
-## 1.3 External semantic dependency
-
-The trait reads or depends on another canonical mechanic without owning that mechanic. If the dependency is unresolved or unavailable, the trait's affected conformance may be `BLOCKED`/`UNAVAILABLE` under the validation status model in `OPENFRONT_INTEGRATION_PLAN.md`.
-
-## 1.4 Ordinary downstream consumption
-
-Do **not** recursively tag every subsystem that later consumes ordinary valid game state created by a trait. Once a seam has produced canonical state correctly, ordinary downstream consumers are covered by their normal subsystem invariants unless another trait creates a direct interaction.
-
-Example:
-
-```text
-P01 -> larger Initial Territory -> larger Capacity/Starting Population
-```
-
-requires Spawn -> Population-initialization coverage. It does **not** make P01 a special-case combat, defense, or economy mechanic merely because those systems later consume ordinary Population values.
+Mechanic holes are recorded here only as blockers/references. This file must not invent the missing gameplay rule.
 
 ---
 
-# 2. Trait audit procedure
-
-For every `Pxx`/`Nxx` trait, record:
-
-1. the canonical value/state/action the trait directly changes;
-2. the subsystem(s) owning that mechanic;
-3. outputs crossing into another subsystem that require explicit seam validation;
-4. external canonical state the trait reads/depends upon;
-5. other traits modifying the same effective hook/state that require explicit interaction consideration;
-6. ordinary downstream consequences that must **not** become redundant trait-specific validation;
-7. any discovered mechanic-definition hole that prevents honest certification.
-
-A mechanic-definition hole is recorded here only as a **certification blocker/reference**. This registry must not invent the missing gameplay rule.
-
----
-
-# 3. P01–P10 coverage
+# 2. P01–P10 coverage
 
 ## P01 — Domain Expansion
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** Strategic Spawn.
-- Changes the faction's final modified Initial-Territory population-bearing quota from the ordinary value by the P01 modifier.
-- Spawn must use the modified total as the actual footprint target, not apply the modifier after territory generation.
+- Strategic Spawn.
+- Modifies the final Initial-Territory population-bearing quota; Spawn must generate against the modified total rather than apply the bonus after footprint resolution.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Spawn -> territorial ownership / Population initialization**
+- `Spawn -> territorial ownership -> Population initialization`.
+- Final ownership must contain the modified population-bearing quota when reachable legal geography permits it.
+- Capacity must reflect those owned population-bearing cells.
+- Starting Population must use the final modified Initial Territory. With the ordinary 1,000 baseline, current values imply `1,150 Capacity / 575 Starting Population` when all quota cells are population-bearing.
+- Depends on faction-effective population-bearing classification used by Spawn quota accounting.
 
-After Spawn resolves the final population-bearing cells:
+**Explicit interactions**
 
-- ownership must contain the modified quota when legal reachable geography permits it;
-- Population Capacity must reflect the resulting owned population-bearing cells;
-- Starting Population must be calculated from the **final modified Initial Territory** under the game-wide initialization rule.
+- `P01 + P39`: split the **modified total** quota; do not apply P01 independently to two ordinary quotas. Current result: `575 + 575`, one global Starting Population pool of `575`.
+- `P01 + P54`: star geometry preserves the modified total quota.
+- Inspect P48 when audited because it changes faction-specific population-bearing classification.
+- `P01 + P39 + P54` is not currently builder-legal (`22` positive points), so it is not a required public runtime combination.
 
-For the ordinary 1,000-cell baseline, P01 therefore implies the expected initialization case:
+**Ordinary propagation / non-effects**
 
-```text
-Initial Territory     = 1,150 population-bearing cells
-Population Capacity   = 1,150
-Starting Population   = 575
-```
-
-provided the generated quota cells are population-bearing under that faction's effective classification.
-
-### External semantic dependencies
-
-- faction-specific effective population-bearing classification used by Spawn quota accounting;
-- ordinary Starting-Population initialization semantics.
-
-### Explicit interactions to cover
-
-- **P01 + P39:** P39 must split the **modified total** quota rather than apply P01 independently to each ordinary footprint. For the current values, total 1,150 divides into 575 + 575 and Starting Population remains one global 575 pool.
-- **P01 + P54:** P54 geometry must preserve the P01-modified total quota; P54 must not reset the target to the ordinary value.
-- **P48:** inspect when P48 is audited because it changes faction-specific population-bearing classification for owned Shallow Water and may therefore affect Spawn quota accounting/initialization semantics.
-
-`P01 + P39 + P54` is not currently builder-legal because positive spend exceeds the public 20-point cap; runtime certification must respect builder legality rather than test impossible public builds as if they were required combinations.
-
-### Ordinary downstream consumption — no P01-specific validator
-
-Once correct ownership, Capacity, and Starting Population exist, ordinary growth, automatic defense, commitments, and other Population consumers should handle those values through their normal invariants.
+- Once ownership/Capacity/Starting Population are correct, growth, defense, commitments, etc. consume ordinary valid Population state; they are not P01-specific mechanics.
 
 ---
 
 ## P02 — The Era of Humans
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** game-wide Population Growth.
-- Replaces the ordinary Population-utilization growth curve `U(u)` while leaving the baseline Capacity exponent, base-growth equation, and unrelated explicit growth modifiers to their normal owners unless the canonical trait definition says otherwise.
+- Game-wide Population Growth.
+- Replaces the ordinary utilization curve `U(u)` while leaving base Capacity scaling and unrelated explicit growth modifiers on their normal hooks.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Population utilization curve -> final growth modifier pipeline**
+- Replacement utilization must still compose through the ordinary final-growth pipeline with terrain-share growth, City growth, and other explicit growth modifiers.
+- Reads `Total Population`, `Population Capacity`, and the canonical growth-composition order.
 
-Validation must prove that the replacement utilization curve still composes with ordinary explicit Population-Growth sources such as:
+**Explicit interactions**
 
-- terrain-share growth modifiers;
-- City-derived growth modifiers;
-- other separately surfaced growth modifiers.
+- `P02 + N01`: P02 changes utilization; N01 changes City-derived growth. Neither may replace the other's hook.
+- Inspect P48 later because Capacity affects base growth and utilization; this may be ordinary state propagation rather than a special implementation path.
 
-P02 must not erase, duplicate, or reorder unrelated growth contributions merely because it replaces `U(u)`.
+**Blocker**
 
-### External semantic dependencies
-
-- `Total Population`;
-- `Population Capacity`;
-- the canonical final Population-Growth composition order.
-
-### Explicit interactions to cover
-
-- **P02 + N01:** P02 changes utilization behavior while N01 changes City Population-Growth contribution. Each must remain confined to its own hook in the final growth calculation.
-- **P48:** inspect when P48 is audited because changing Capacity changes both base growth and utilization. This may prove to be ordinary state propagation rather than a special P02 implementation path.
-
-### Certification blocker / mechanic-definition finding
-
-The catalogue currently describes an accepted "30–70% profile". Certification requires the actual replacement curve/anchors to be canonically available to implementation; this validation registry does not invent them.
-
-### Ordinary downstream consumption
-
-Population produced by the resulting valid growth calculation is ordinary Available/Total Population and does not create P02-specific obligations for unrelated consumers.
+- The canonical implementation must have the actual accepted `30–70%` replacement curve/anchors. Validation must not invent them.
 
 ---
 
 ## P03 — Imagine Breaker
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** land-combat effective defensive-pressure composition.
-- When the P03 holder attacks, hostile **Fort-derived defensive-pressure contribution** is ignored.
-- P03 must not remove unrelated defensive-pressure sources.
+- Land-combat effective defensive-pressure composition.
+- Removes hostile **Fort-derived** defensive-pressure contribution for attacks by the P03 holder; unrelated defensive sources remain.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Fort effective field -> land-combat defensive pressure**
+- `Fort effective field -> land-combat defensive pressure`.
+- Test outside Fort coverage, inside coverage without an automatic defender, and inside coverage with a real automatic defender.
+- Depends on effective Fort coverage/magnitude and the rule that Forts do not manufacture defenders.
 
-Validation must cover:
+**Explicit interactions**
 
-- target outside Fort coverage -> P03 has no Fort contribution to remove;
-- target inside Fort coverage with no automatic defender -> the Fort already contributes no defensive pressure and P03 creates no special behavior;
-- target inside Fort coverage with an actual automatic defender -> P03 removes the Fort-derived contribution;
-- terrain/Command-Post/other non-Fort defense remains intact unless separately modified.
+- `P03 + P09`: ignore the effective P09-modified Fort contribution.
+- `P03 + N08`: P03 becomes inert against an already-zero Fort contribution.
+- `P03 + N10`: reduced Fort coverage changes where a contribution exists.
+- Negative assertion: non-Fort defense such as later P51 Command-Post defense must not be removed.
 
-### External semantic dependencies
+**Ordinary propagation**
 
-- effective Fort coverage;
-- effective Fort defensive-pressure magnitude;
-- ordinary rule that Fort pressure applies only when a real automatic defender exists.
-
-### Explicit interactions to cover
-
-- **P03 + P09:** P03 must ignore the effective P09-modified Fort contribution, not merely the baseline magnitude/coverage.
-- **P03 + N08:** N08 already removes Fort defensive pressure; P03 becomes mechanically inert with respect to that removed source without creating an exception.
-- **P03 + N10:** reduced Fort coverage changes where a Fort contribution exists for P03 to ignore.
-- **Non-Fort defense negative assertion:** later defensive sources such as P51 Command-Post defense must not be accidentally filtered by P03 merely because they contribute to the same final defensive-pressure axis.
-
-### Ordinary downstream consumption
-
-Any resulting faster capture progress is ordinary combat output and does not require a separate P03 territorial-ownership validator.
+- Faster resulting capture progress is normal combat output, not a separate P03 territory mechanic.
 
 ---
 
 ## P04 — Level 0
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** active counter-response combat.
-- Fixes only the **response-side counter-response effectiveness** hook at `1.0`.
-- The attack-side effectiveness calculation remains ordinary unless another explicit rule changes it.
+- Active counter-response combat.
+- Fixes only response-side counter-response effectiveness at `1.0`; attack-side effectiveness remains ordinary.
 
-### Required integration seams
+**Required seams / dependencies**
 
-No separate subsystem seam is currently required. The core conformance suite must cover representative attacker/response commitment relationships:
+- No separate subsystem seam currently required.
+- Test parity, small/large attacker advantage, and small/large responder advantage.
+- Depends on canonical `A/R` imbalance calculation and deterministic casualty/residual accounting.
 
-- parity;
-- attacker larger than response;
-- response larger than attacker;
-- small imbalance;
-- extreme imbalance.
+**Explicit interactions**
 
-The critical assertion is that P04 removes response-side imbalance bonus/penalty while leaving the attack-side calculation ordinary.
-
-### External semantic dependencies
-
-- canonical counter-response `A/R` imbalance calculation and deterministic residual/casualty accounting.
-
-### Explicit interactions to cover
-
-No mandatory Pxx/Nxx interaction has been identified yet. Future Echo/ruleset transformations of the same surfaced counter-response hooks belong to the general effective-rule/composition validation layer unless they create a specific mechanical interaction.
+- No mandatory Pxx/Nxx pair identified yet. Generic Echo/ruleset modifications of the same surfaced hooks belong to effective-rule composition validation unless a specific interaction emerges.
 
 ---
 
 ## P05 — Big Shot
 
-### Direct transformation
+**Direct transformation / owner**
 
-P05 is cross-domain by construction:
+- Cross-domain by construction.
+- Trigger: territorial/structure capture lifecycle.
+- Output: FFY Economy, as a Military/conquest event.
 
-- **trigger owner:** territorial/structure capture lifecycle;
-- **output owner:** FFY economy event generation.
+**Required seams / dependencies**
 
-A qualifying successful enemy-structure capture generates a **Military / conquest FFY event**.
+- `successful qualifying enemy-structure transfer -> exactly one P05 conquest FFY event -> ordinary Military/conquest modifier pipeline`.
+- Failed capture, structureless capture, or destruction instead of transfer must not fire P05.
+- Depends on canonical structure-transfer event identity plus the P05 event's base value and event location where spatial FFY rules consume it.
 
-### Required integration seams
+**Explicit interactions**
 
-**Successful structure ownership transfer -> P05 conquest FFY event**
+- `P05 + N17`: N17 destroys instead of transfers; P05 must not fire.
+- `P05 + P34`: captured Factory transformation and P05 event must coexist on one ownership transition.
+- Inspect P14/P24 after P05 event-location semantics are closed.
 
-At minimum validate:
+**Blocker**
 
-- failed capture -> no P05 event;
-- captured cell with no qualifying enemy structure -> no P05 structure event;
-- successful qualifying structure transfer -> exactly the canonical P05 event;
-- capture prevented / structure destroyed instead of transferred -> no capture-dependent P05 event.
-
-The generated event must then enter the ordinary Military/conquest FFY modifier pipeline rather than use a duplicate private payout system.
-
-### External semantic dependencies
-
-- canonical structure capture/transfer event identity;
-- canonical P05 base event value;
-- canonical P05 event location, if location-sensitive FFY modifiers can consume the event.
-
-### Explicit interactions to cover
-
-- **P05 + N17:** N17 destroys a structure the holder would otherwise capture; the catalogue explicitly requires capture-dependent Origin effects not to fire, so P05 must not generate the event.
-- **P05 + P34:** a conquered Factory may simultaneously become a P34-transformed captured Factory while P05 generates the conquest event; both effects must coexist without duplicate/missing ownership transition.
-- **P14 / P24:** inspect after P05 event-location semantics are canonically closed because those traits condition FFY yield on spatial location.
-
-### Certification blocker / mechanic-definition finding
-
-The currently inspected canonical material identifies the event family but does not close the P05 event's base-value rule or location semantics. Validation can map this dependency now but must not invent those mechanics.
+- The inspected canonical material identifies the P05 event family but does not close its base-value rule or location semantics.
 
 ---
 
 ## P06 — See You, Space Cowboy
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** Trade Ship physical movement/lifecycle in the FFY/Trade subsystem.
-- Applies `+25%` Trade Ship speed to the baseline physical vessel speed.
+- Trade Ship physical movement/lifecycle in the FFY/Trade subsystem.
+- Applies `+25%` physical Trade Ship speed.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Trade Ship motion -> Warship pursuit/capture**
+- `Trade Ship motion -> Warship pursuit/capture` must consume the modified physical speed.
+- Depends on ordinary route/movement and Warship pursuit/capture geometry.
 
-The modified speed must be consumed by the actual physical movement simulation used by Warship pursuit and Trade-Ship capture. This proves the surfaced modifier is not a dead/display-only value.
+**Non-effects**
 
-### Required non-effect assertions
+- Must not by itself modify planned route length, raw cargo, dispatch cadence, destination policy, or payout multipliers.
 
-P06 must not by itself modify:
+**Explicit interactions**
 
-- planned route length;
-- raw cargo value, which is route-length based;
-- dispatch interval/cadence;
-- destination-selection policy;
-- payout multipliers.
-
-### External semantic dependencies
-
-- ordinary Trade Ship route/movement model;
-- ordinary Warship pursuit/capture geometry.
-
-### Explicit interactions to cover
-
-No dedicated P06 + P08 case is required merely because both are trade traits: speed and wartime payout are independent hooks. Capture/piracy traits such as P30/N14/N16 should be inspected when those traits are audited for any genuine same-lifecycle interaction.
+- No dedicated P06+P08 case is required: movement speed and wartime payout are independent hooks.
+- Revisit capture/piracy traits P30/N14/N16 when audited if they create a genuine same-lifecycle interaction.
 
 ---
 
 ## P07 — Galaxy Express 999
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** Factory Train dispatch scheduling / Train economy.
-- Each Factory tracks its own count of normal primary Train dispatches; every fourth normal primary dispatch simultaneously launches one additional bonus Train.
-- The bonus Train must not occupy/delay the primary slot and must receive an independently generated deterministic ordinary route.
+- Factory Train dispatch scheduler / Train economy.
+- Each Factory has its own normal-primary-dispatch count; every fourth dispatch adds one simultaneous bonus Train.
+- Bonus Train does not consume/delay the primary slot and receives an independently generated deterministic ordinary route.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Persistent Factory lifecycle -> Train service scheduler**
+- `persistent Factory lifecycle -> per-Factory P07 scheduler`.
+- `bonus Train -> ordinary Train route/event/dwell/destruction/interception/replay lifecycle`.
+- Expected primary dispatch sequence: `1,1,1,2,1,1,1,2...`, independently per Factory.
+- Train destruction must not reset the Factory's sequence.
 
-The P07 per-Factory dispatch state must attach to the correct physical Factory lifecycle.
+**Explicit interactions**
 
-**Bonus Train -> ordinary Train lifecycle/economy**
+- `P07 + P33`: bonus Trains must generate ordinary qualifying Train events and therefore eligible P33 Population gains.
+- Inspect P34's `2x ordinary Factory effect` against the explicit P07 scheduler.
+- N09 may prevent building Factories but does not suppress P07 for a legally acquired Factory.
+- N17 may prevent such acquisition by destroying the Factory instead.
 
-A bonus Train must use the ordinary Train systems for:
+**Blocker**
 
-- route generation;
-- station events;
-- dwell;
-- destruction;
-- interception;
-- replay/determinism.
-
-The expected primary-dispatch sequence includes:
-
-```text
-#1 -> 1 Train
-#2 -> 1
-#3 -> 1
-#4 -> 2
-#5 -> 1
-#6 -> 1
-#7 -> 1
-#8 -> 2
-```
-
-with independent counters per Factory. Train destruction must not reset the sequence.
-
-### External semantic dependencies
-
-- persistent Factory identity/lifecycle;
-- normal primary Train dispatch identity;
-- canonical deterministic ordinary Train route generation.
-
-### Explicit interactions to cover
-
-- **P07 + P33:** extra Trains can generate extra qualifying Train events and therefore P33 Population events; the bonus Train must be treated as an ordinary qualifying Train.
-- **P34:** inspect how `2x ordinary Factory effect` for conquered Factories composes with P07's explicit per-fourth-dispatch throughput transformation.
-- **N09:** inability to build Factories does not by itself suppress P07 if a Factory is acquired through another legal path.
-- **N17:** may prevent conquest acquisition by destroying the structure instead.
-
-### Certification blocker / mechanic-definition finding
-
-The per-Factory counter's ownership-transfer semantics should be canonically explicit before certification: if a physical Factory changes owner, validation must know whether the normal-primary-dispatch sequence persists with that Factory or resets under the new owner. This registry does not choose the rule.
+- Per-Factory primary-dispatch counter behavior across Factory ownership transfer should be canonically explicit before certification.
 
 ---
 
 ## P08 — Tea Time
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** FFY external-trade calculation.
-- Changes the ordinary earning-side wartime external-trade multiplier from `0.50x` to `1.00x`.
-- Applies wherever the canonical external wartime trade multiplier is consumed, including maritime Trade Ship completion and external Train station trade.
+- FFY external-trade calculation.
+- Replaces the earning-side wartime external-trade multiplier `0.50x -> 1.00x` wherever that canonical hook is consumed, including maritime and rail external trade.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**`atWar` lifecycle -> maritime external-trade payout**
+- `atWar lifecycle -> maritime external-trade payout`.
+- `atWar lifecycle -> rail external-trade payout`.
+- Test peace, entry, sustained/refreshed war, expiration/exit, and both trade channels.
+- Depends on canonical symmetric `atWar` lifecycle/timeout.
 
-**`atWar` lifecycle -> rail external-trade payout**
+**Explicit interactions**
 
-When the canonical lifecycle exists, validation must include at minimum:
+- Inspect N14/N16 when audited because they snapshot/use owner-side voyage value around hostile capture.
+- No bespoke P06/P07 pair is required when those traits independently change speed/count.
 
-- peace;
-- transition into `atWar`;
-- sustained/refreshed `atWar`;
-- expiration/exit from `atWar`;
-- both maritime and rail external trade.
+**Blocker/status**
 
-### External semantic dependencies
-
-- canonical symmetric `atWar` lifecycle and timeout.
-
-Until that mechanic is closed/implemented, affected P08 conformance is legitimately `BLOCKED`/`UNAVAILABLE`; validation must not invent a temporary hostility timeout solely to make the test pass.
-
-### Explicit interactions to cover
-
-- **N14/N16:** inspect when audited because they snapshot/use owner-side Trade-voyage value around capture; whether P08 influences those values must follow the canonical `Vowner` definition.
-
-No bespoke P06/P07 combination test is required when those traits merely alter speed/count while P08 independently alters the wartime payout hook.
+- Affected conformance remains `BLOCKED`/`UNAVAILABLE` until canonical `atWar` semantics are closed/implemented; validation does not invent a temporary timeout.
 
 ---
 
 ## P09 — Wall Maria
 
-### Direct transformations
+**Direct transformations / owners**
 
-- **Owner:** persistent Fort structure profile / transaction semantics for Fort cost and Fort coverage.
-- **Owner:** land-combat integration for the resulting Fort defensive-pressure contribution.
+- Persistent Fort profile/transaction: Fort coverage area, Fort FFY cost.
+- Fort defensive-pressure profile, consumed by land combat.
 
-P09 modifies three distinct Fort properties:
+**Required seams / dependencies**
 
-- Fort coverage area;
-- Fort defensive pressure;
-- Fort FFY cost.
+- `Fort effective field -> automatic-defense / land-combat pressure`: outside coverage, inside with no defender, inside with real defender.
+- `effective Fort price -> canonical structure affordability/payment transaction`.
+- Depends on level-dependent Fort baselines, defender presence, and structure cost-composition order.
 
-### Required integration seams
+**Explicit interactions**
 
-**Fort effective field -> automatic-defense / land-combat pressure**
+- P03 ignores the P09-enhanced Fort contribution.
+- P18 consumes Fort coverage; P09 changes the qualifying area.
+- P24 consumes Fort area for event-location qualification.
+- P50 consumes effective Fort defensive magnitude and coverage; P09 changes both.
+- N08 removes Fort defensive benefit; N10 modifies the same coverage axis.
+- Inspect P21 because ordinary affordability/legality is checked before its first-purchase zero-consumption rule.
 
-Validation must prove:
+**Blockers / mechanic-expression findings**
 
-- outside effective Fort coverage -> no Fort defensive effect;
-- inside coverage with no automatic defender -> Fort does not manufacture a defender;
-- inside coverage with a real automatic defender -> effective P09 Fort pressure applies through the ordinary defensive-pressure pipeline.
-
-**Fort transaction -> structure affordability/payment**
-
-The effective reduced Fort cost must be used by the canonical structure purchase/upgrade transaction. This is a structure transaction obligation; it does not make P09 a generic FFY-income mechanic.
-
-### External semantic dependencies
-
-- canonical level-dependent Fort coverage and defensive-pressure baselines;
-- automatic-defender presence;
-- structure transaction/cost composition order.
-
-### Explicit interactions to cover
-
-- **P03:** P03 must ignore the effective P09-enhanced Fort defensive contribution.
-- **P18:** increased effective Fort coverage changes which attacking source cells qualify for P18.
-- **P24:** increased Fort area changes which spatial FFY events qualify for P24.
-- **P50:** P50 consumes the Fort's effective defensive-pressure magnitude and existing coverage to create offense; P09 changes both inputs.
-- **N08:** removes Fort defensive-pressure benefit.
-- **N10:** modifies Fort coverage area on the same structural axis.
-- **P21:** inspect transaction composition because P21 still requires ordinary affordability/legality before zeroing the first successful purchase's FFY consumption.
-
-### Certification blocker / mechanic-expression findings
-
-Before implementation/certification, the canonical mechanic representation must make unambiguous:
-
-- how authored `+10% Fort coverage area` maps to deterministic raster coverage when the baseline registry exposes radius values;
-- how authored `+9% Fort defensive pressure` composes with level-dependent baseline Fort defensive-pressure values.
-
-This registry records the need; it does not choose those formulas.
+- `+10% Fort coverage area` needs deterministic representation against radius-based baseline data.
+- `+9% Fort defensive pressure` needs unambiguous composition against level-dependent baseline Fort values.
 
 ---
 
 ## P10 — Scorpion's Tail
 
-### Direct transformation
+**Direct transformation / owner**
 
-- **Owner:** strategic-weapon projectile/motion mechanics.
-- Applies `+100%` to the canonical projectile class or classes covered by the trait's `warhead projectile speed` definition.
+- Strategic-weapon projectile/motion mechanics.
+- Applies `+100%` speed to the canonical projectile class(es) covered by `warhead projectile speed`.
 
-### Required integration seams
+**Required seams / dependencies**
 
-**Projectile motion -> SAM interception**
+- `projectile motion -> SAM interception`.
+- `projectile motion -> MIRV separation` where the affected class participates; changing speed must preserve canonical physical separation semantics while changing elapsed time.
+- `projectile motion -> replay/determinism`.
+- Depends on canonical projectile classification, deterministic motion, physical-entry interception, and MIRV carrier/separation semantics.
 
-The modified physical speed must reduce travel/interception time through the ordinary interception simulation rather than bypassing it.
+**Non-effects**
 
-**Projectile motion -> MIRV separation**
+- Does not by itself change blast geometry/effect, weapon cost, launcher legality, MIRV target distribution, or payload count.
 
-Where the affected projectile participates in MIRV carrier/separation semantics, changing speed must preserve the canonical physical separation position/fraction while changing elapsed travel time, unless the final canonical projectile classification excludes the carrier.
+**Blocker**
 
-**Projectile motion -> replay/determinism**
+- Canonical rules must identify whether `warhead projectile speed` includes Atom/Hydrogen projectiles, the pre-separation MIRV carrier, and/or separated MIRV warheads.
 
-Same bound inputs/version/seed must reproduce identical projectile trajectories, separation/interception outcomes, and authoritative results.
+---
 
-### Required non-effect assertions
+# 3. P11–P20 coverage
 
-P10 alone must not change:
+## P11 — Level Upper
 
-- blast geometry/effect;
-- weapon FFY cost;
-- launcher legality;
-- MIRV target distribution;
-- payload/warhead count.
+**Direct transformations / owners**
 
-### External semantic dependencies
+- Population lifecycle: tracks **peak Total Population reached during the match** as an entitlement input.
+- Persistent SAM structure legality: each full `25,000` peak Population permanently unlocks one SAM ownership/build slot.
+- Persistent SAM transaction: P11 SAM FFY cost is `0`; ordinary non-FFY legality remains.
 
-- canonical strategic-projectile classification;
-- ordinary deterministic projectile motion;
-- SAM physical-entry interception semantics;
-- MIRV carrier/separation semantics where applicable.
+**Required seams / dependencies**
 
-### Certification blocker / mechanic-definition finding
+- `Population initialization/growth/loss -> monotonic peak-Population tracker -> permanent SAM-slot entitlement`.
+- Starting Population contributes to the initial peak; later losses must not revoke already unlocked slots.
+- `SAM-slot entitlement -> structure ownership/build legality` must reject owning/building beyond the currently unlocked permanent slot count while permitting legal zero-FFY purchases within it.
+- SAM charge/range/interception behavior remains the ordinary SAM subsystem unless another trait changes it.
 
-The trait wording `warhead projectile speed` must canonically define whether it includes:
+**Explicit interactions**
 
-- Atom/Hydrogen projectiles;
-- the pre-separation MIRV carrier;
-- post-separation MIRV warheads.
+- `P11 + N07`: N07's one-of-each-structure cap and P11's unlocked-SAM-slot cap both apply; effective ownership legality must satisfy both rather than treating either as an override.
+- `P11 + P40`: P11 controls cost/ownership entitlement while P40 transforms the SAM's charge/range/recharge profile. Same-domain projection coverage must include the combined effective SAM state.
+- `P11 + P27`: inspect when P27 is audited because it changes SAM target legality while P11 changes how many SAMs may exist and their cost.
+- `P11 + P21`: first-SAM purchase remains a purchase even though P11 makes its FFY price zero; P21 must not change P11's permanent slot entitlement or create an extra SAM slot.
 
-The baseline strategic-weapon owner distinguishes carrier speed from post-separation warhead speed, so validation must not guess the affected set.
+**Ordinary propagation / non-effects**
 
-### Explicit interactions to cover
+- Population changes after peak tracking are ordinary Population state. P11 does not modify growth merely because growth may unlock future slots.
 
-Later strategic-weapon/SAM traits must be inspected as they are audited, especially any trait altering weapon-family access, MIRV use, launcher identity, or SAM interception. No speculative all-pairs matrix is created here.
+---
+
+## P12 — Somewhere Not Here
+
+**Direct transformation / owner**
+
+- Naval/amphibious Transport lifecycle.
+- Applies `+25%` Transport Ship movement speed.
+
+**Required seams / dependencies**
+
+- `Transport physical movement -> Warship interception/destruction` must consume the modified speed.
+- `Transport arrival -> ordinary amphibious landing engagement` occurs sooner in elapsed time but uses the same political/capture rules.
+- Abort/return movement also uses the effective Transport speed unless a focused owner explicitly defines another movement profile.
+
+**Non-effects**
+
+- P12 alone does not change Transport cap, embarked Population, embarkation FFY cost, landing casualties, landing legality, or return-loss percentage.
+
+**Explicit interactions**
+
+- P32/P37/N13/N15 all alter the Transport lifecycle on other axes. Their combined effective Transport projections should be runtime-covered when legal, but no special P12-only interaction formula is required merely because speed coexists with armor, cost, landing-Fort, or landing-loss transformations.
+
+---
+
+## P13 — Mountain Training Arc
+
+**Direct transformation / owner**
+
+- Land-combat terrain defensive-pressure composition.
+- Adds the canonical P13 Mountain defensive-pressure effect when the defended target cell is Mountain.
+
+**Required seams / dependencies**
+
+- `target base terrain -> Mountain defensive modifier -> final local defensive pressure`.
+- Must preserve the distinction between terrain defense and Fort/Command/other defensive sources.
+- Depends on canonical Mountain terrain identity and the ordinary pressure-composition pipeline.
+
+**Explicit interactions**
+
+- `P13 + P03` negative assertion: P03 removes Fort-derived defense only and must not remove Mountain defense.
+- Fort/Command defensive sources and P13 may coexist on one target; representative pressure-composition property tests should cover multiple independent sources without creating an all-pairs Origin matrix.
+
+**Non-effects**
+
+- P13 does not change Mountain capture-speed multiplier, traversability, spawn eligibility, FFY event location, or terrain identity.
+
+---
+
+## P14 — 60 Billion Double Dollars
+
+**Direct transformation / owner**
+
+- FFY event-yield calculation with a terrain-location condition.
+- Qualifying FFY events whose canonical event location is Desert receive the P14 `+33%` yield contribution through the ordinary FFY modifier pipeline.
+
+**Required seams / dependencies**
+
+- `canonical FFY event -> event location -> base-terrain lookup -> Desert qualification -> FFY yield composition`.
+- Fallout overlay must not erase underlying Desert identity because Fallout preserves base terrain.
+- Depends on each event family having a canonical spatial location when it is eligible for location-conditioned modifiers.
+
+**Explicit interactions**
+
+- `P14 + P24`: an event may be both on Desert and inside Fort coverage; both eligible ordinary yield percentages must compose through the canonical same-axis FFY rule.
+- `P14 + N11`: a Desert event inside an applicable SAM area still follows N11's explicit hard-zero semantics after ordinary yield composition; P14 must not resurrect a hard-zero event.
+- Revisit P05 once P05 event-location semantics are closed.
+
+**Non-effects**
+
+- P14 does not alter Desert share, territory ownership, Desert capture speed, or non-spatial FFY events with no qualifying Desert location.
+
+---
+
+## P15 — The High Ground
+
+**Direct transformation / owner**
+
+- Land-combat source offensive-pressure composition.
+- Adds the canonical P15 offensive-pressure effect when an engagement lane's attacking **source cell** is Highland.
+
+**Required seams / dependencies**
+
+- `attacking source cell terrain -> Highland qualification -> final lane offensive pressure`.
+- Depends on canonical source-cell terrain identity and ordinary pressure composition.
+
+**Explicit interactions**
+
+- P18, P19, P50, Command-Post offense, and terrain offense may all contribute to the same final lane pressure. Validation should include representative multi-source composition/property cases rather than pairwise tests for every offensive modifier.
+- Negative terrain assertion: P15 applies from the source cell's Highland identity; target terrain does not trigger it.
+
+**Non-effects**
+
+- Does not change Highland traversal, capture speed, target defense, or territory ownership rules.
+
+---
+
+## P16 — Poison Taster
+
+**Direct transformation / owner**
+
+- Terrain/acquisition progress.
+- Ignores only the ordinary Fallout capture/settlement resistance multiplier for the P16 holder; underlying terrain remains unchanged.
+
+**Required seams / dependencies**
+
+- `Fallout overlay + underlying conquerable terrain -> capture/settlement multiplier -> final acquisition progress`.
+- Must work for otherwise legal hostile capture and neutral settlement without changing settlement Population cost or ordinary pressure.
+- Depends on canonical Fallout overlay semantics and underlying terrain acquisition rules.
+
+**Explicit interactions**
+
+- `P16 + N05`: N05's hard prohibition on capturing Fallout still prevents capture; P16 does not convert an illegal action into a legal one.
+- `P16 + N18`: canonical legal inversion — P16 removes Fallout penalty while N18 continues to halve **non-Fallout** acquisition only.
+- `P16 + P35` and `P16 + P44`: those traits create Fallout; P16 affects later acquisition of Fallout by the holder when otherwise legal. The creation mechanics remain owned by P35/P44 domains.
+
+**Non-effects**
+
+- No change to Fallout terrain identity, Capacity classification, traversal, structure legality, pressure, or nuclear casualties.
+
+---
+
+## P17 — Ten Billion Percent
+
+**Direct transformation / owner**
+
+- Persistent-structure upgrade transaction pricing.
+- Effective upgrade-cost multiplier is `0.99^S`, where `S` is the holder's current owned persistent-structure count.
+
+**Required seams / dependencies**
+
+- `current structure ownership registry -> S -> deterministic effective upgrade price -> ordinary affordability/payment transaction`.
+- Ownership changes through construction, capture, destruction, and grants must update the ordinary structure count consumed by P17.
+- P17 applies to upgrades, not arbitrary structure purchases unless another canonical rule explicitly consumes the upgrade-price hook.
+
+**Explicit interactions**
+
+- `P17 + N06`: N06 forbids FFY upgrade spending; P17 may compute a lower price but must not bypass the prohibition.
+- `P17 + P09`: Fort upgrades may have both P09 Fort-cost modification and P17 structure-count upgrade modification; they must compose through the canonical structure price pipeline rather than duplicate price calculations.
+- `P17 + P41`: P41 is a direct L5 **purchase**, not an upgrade action. Validation must follow P41's canonical definition of its `95% of cumulative ordinary` price rather than automatically applying P17 as though P41 executed four upgrade transactions.
+- N07/N17/P20 and other ownership-changing mechanics influence `S` only through the canonical current structure registry unless a later explicit interaction says otherwise.
+
+**Implementation requirement**
+
+- `0.99^S` and final FFY pricing must use deterministic numeric/rounding representation; certification compares canonical results rather than platform-dependent floating behavior.
+
+---
+
+## P18 — The Best Defense
+
+**Direct transformation / owner**
+
+- Land-combat source offensive-pressure composition.
+- An attacking lane receives P18's `+100%` offense when its **source cell** lies inside at least one self/fixed-teammate Fort area.
+- Multiple qualifying Forts do not multiply P18.
+
+**Required seams / dependencies**
+
+- `Fort coverage query + immutable team membership -> source-cell qualification -> final lane offensive pressure`.
+- Must distinguish self/fixed-teammate Fort areas from enemy Fort areas.
+- Depends on effective Fort coverage and fixed-team membership.
+
+**Explicit interactions**
+
+- `P18 + P09`: P09 expands effective Fort coverage and therefore P18 qualification area.
+- `P18 + N10`: N10 contracts Fort coverage and therefore P18 qualification area.
+- `P18 + N08`: N08 removes Fort defensive-pressure bonus but does **not** remove the Fort area itself; P18 should still qualify from the remaining Fort coverage unless another rule says the structure is inactive/nonexistent.
+- `P18 + P50`: both can add offensive pressure from Fort-related state; combined cases must prove they remain distinct effects and obey the canonical pressure-composition rule rather than one replacing the other.
+
+**Non-effects**
+
+- P18 does not make Forts attack autonomously, create defenders, or apply based on the target cell.
+
+---
+
+## P19 — The Weak Die First
+
+**Direct transformation / owner**
+
+- Land-combat offensive-pressure composition.
+- Adds `+5%` offensive pressure per **distinct currently active other faction** with current Territorial Contact.
+
+**Required seams / dependencies**
+
+- `territorial ownership adjacency -> current Territorial Contact graph -> distinct active-faction count -> final offensive-pressure contribution`.
+- Multiple disconnected Contact components with the same faction count once.
+- Contact disappearance removes the contribution; reappearing contact restores it.
+- A fixed teammate counts because `other faction` is literal; team membership does not create an exclusion.
+- An active Minor Faction/Goon with current contact counts exactly once.
+- Depends on canonical Territorial Contact derivation and active-territorial-faction lifecycle.
+
+**Explicit integration obligation**
+
+- `P19 <-> Minor Factions`: cover 0/1/many Goon contacts, multiple components to one Goon, disappearance/elimination, and reappearance. Minor Factions provide ordinary contact/lifecycle state; P19 remains a land-combat trait rather than making Minor Factions an Origin-owned subsystem.
+
+**Issue-boundary note**
+
+- Full Minor-Faction integration requires the relevant deterministic placement/lifecycle/contact implementation to exist. The unresolved Minor-Faction attack-commitment policy in #34 is **not** itself part of P19 arithmetic and should not be falsely treated as a blocker for synthetic/contact-count unit cases.
+
+**Other pressure interactions**
+
+- P15/P18/P50/etc. may coexist on the same lane and belong to representative generic pressure-composition coverage rather than a bespoke all-pairs P19 matrix.
+
+---
+
+## P20 — A Miracle Is Merely a Miscalculation
+
+**Direct transformation / owners**
+
+- Pre-match/start-state initialization: grants one free Missile Silo.
+- Persistent-structure lifecycle: the result must be a normal canonical Missile Silo after the grant resolves.
+- Strategic-weapon subsystem consumes the resulting Silo level/charges/access exactly as it would any other legal persistent Silo.
+
+**Required seams / dependencies**
+
+- `resolved Initial Territory / start-state grant placement -> valid owned persistent Missile Silo -> ordinary Silo lifecycle/weapon access/charges`.
+- Grant occurs as a **grant**, not a purchase; no FFY purchase transaction is performed.
+- Depends on canonical start-state grant placement, resulting Silo level/activation state, and initial charge/readiness semantics.
+
+**Explicit interactions**
+
+- `P20 + P21`: catalogue explicitly states the P20 grant does **not** consume P21's first-Silo purchase entitlement.
+- `P20 + P53`: explicitly legal; P53 must count the granted Silo's ready persistent charges exactly when those charges are canonically ready, creating the corresponding passive FFY source.
+- `P20 + N07`: the granted Silo counts toward N07's one-of-each-structure ownership cap; no hidden exemption for a free grant.
+- `P20 + N06`: if the granted Silo begins below L5, N06's upgrade-spending prohibition applies normally to later attempted upgrades.
+- `P20 + P39` / multi-origin profiles: placement/uniqueness of this singular start-state grant is a real spawn/start-state interaction and is explicitly part of the unresolved #32 spawn-semantics work.
+
+**Blockers / mechanic-definition findings**
+
+- #32 must close ordering/uniqueness/placement semantics for singular Origin start-state grants under multi-origin and Random/Fixed spawn profiles.
+- The canonical structure/start-state rules must make the P20 grant's resulting Silo level, active/completed state, placement rule, and initial charge/readiness state explicit enough to produce one deterministic expected start state. This registry does not infer those details from the word `free`.
 
 ---
 
 # 4. Running mechanic-closure findings
 
-These are **not #31 validation-design decisions**. They are mechanic-definition questions discovered because honest certification requires a canonical answer.
+These are **not #31 validation-design decisions**. They are mechanic-definition questions discovered because honest certification needs a canonical expected result.
 
 | Trait | Finding | Validation consequence |
 | --- | --- | --- |
-| P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot be finalized without the intended curve. |
-| P05 | Structure-capture FFY event base value and location semantics are not closed in the inspected canonical material. | P05 payout and spatial-modifier integration cannot be fully certified. |
-| P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle scenario cannot have a canonical expected result until defined. |
-| P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot be finalized by guesswork. |
-| P10 | `warhead projectile speed` must identify the exact affected strategic-projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
+| P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot finalize without the intended curve. |
+| P05 | Structure-capture FFY event base value and location semantics are not closed in the inspected canonical material. | P05 payout and spatial-modifier integration cannot fully certify. |
+| P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle lacks a canonical expected result until defined. |
+| P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
+| P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
+| P20 | Singular start-state grant placement/uniqueness under multi-origin/Random/Fixed profiles is unresolved in #32; resulting Silo level/activation/initial charge state must also be explicit. | P20 start-state and P20+P39/P53 certification cannot fully finalize until those semantics are closed. |
 
-As later batches discover further blockers, append them here rather than silently resolving them in validation metadata.
+Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S`, must also be testable, but they do not become new gameplay mechanics unless the canonical monetary rules need a semantic rounding decision.
+
+---
+
+# 5. Emerging validation boundaries — provisional
+
+Do not freeze the final domain catalogue until all traits are audited, but P01–P20 currently reveal recurring owners/seams around:
+
+- Spawn / pre-match initialization;
+- Population initialization, growth, and peak-state tracking;
+- land combat / pressure / counter-response;
+- terrain/acquisition;
+- persistent structures / ownership / transaction pricing;
+- FFY economy / physical Trade and Train logistics;
+- naval/amphibious physical lifecycle;
+- strategic projectiles / SAM interception;
+- cross-system state/event seams such as Spawn -> Population, structure capture -> FFY, Fort field -> combat, Population peak -> SAM entitlement, and start-state grant -> persistent structure.
+
+These are evidence from the completed traces, not yet a final taxonomy.
 
 ---
 
 ## Next work items
 
-- audit P11–P20 using the same dependency-trace procedure;
+- audit P21–P30 using the same dependency-trace procedure;
 - continue through P54 and N01–N18 in bounded batches;
-- derive the final validation-domain catalogue from the completed traces rather than forcing traits into a preselected taxonomy;
+- derive the final validation-domain catalogue from completed traces rather than forcing traits into a preselected taxonomy;
 - derive the explicit interaction registry from actual same-hook/cross-system dependencies;
-- convert accepted coverage into executable validation metadata/tests only after the relevant canonical mechanics are implementation-ready.
+- route mechanic-definition blockers to their canonical owners/issues without solving them inside validation metadata;
+- convert accepted coverage into executable validation metadata/tests only after relevant mechanics are implementation-ready.
