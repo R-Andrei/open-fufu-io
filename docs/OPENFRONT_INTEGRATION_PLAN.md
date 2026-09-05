@@ -1,32 +1,36 @@
 # Open Fufu — Canonical OpenFront Integration Plan
 
-## Status and authority
+## Status and ownership
 
-This document is the **single canonical Open Fufu integration, migration, and upgrade plan** for transforming the current OpenFront fork into Open Fufu.
+This document is the **canonical owner for transforming the current OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deployment implications, and integration validation.
 
-The target game design is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), which remains the single canonical Open Fufu design contract and takes precedence over this document if the two ever conflict.
+It does **not** restate target gameplay mechanics. Those belong to the focused canonical owners listed in [`README.md`](./README.md). The high-level target game is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
-Concrete accepted provisional terrain, persistent-structure, and Factory-produced land-unit data is maintained in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). This migration plan must implement that registry rather than re-derive numerical defaults from inherited OpenFront behavior.
+Inherited OpenFront architecture documents remain current-state evidence only.
 
-This document defines **how the existing OpenFront codebase should be reused, adapted, replaced, or extended to reach that target**.
-
-Future accepted migration decisions must update this file rather than creating competing Open Fufu upgrade-plan documents. Older inherited OpenFront architecture/refactor documents remain useful evidence of the current/upstream implementation but are not normative for Open Fufu.
-
-No gameplay implementation is authorized merely by the existence of this plan. Major migration stages still require explicit implementation approval.
-
-Sections marked **Accepted** are settled migration direction. **Open** items remain to be decided or measured before implementation reaches them.
+No gameplay implementation is authorized merely by this plan.
 
 ---
 
-## 1. Audit conclusion — Accepted
+# 1. Migration strategy
 
 The current fork is a strong basis for Open Fufu and should **not** be rewritten from scratch.
 
-The migration strategy is:
+Retain OpenFront's useful dense map/cell engine, deterministic Execution machinery, pathfinding/connectivity infrastructure, generic unit/structure lifecycle plumbing, renderer foundations, lobby/network infrastructure, and performance tooling where they fit the target design.
 
-> Keep OpenFront's dense cell/map engine, deterministic Execution machinery, pathfinding, generic units/structures, substantial naval/rail/strategic-weapon infrastructure, renderer foundations, useful lobby/network infrastructure, and test/performance tooling. Replace client authority, old combat/resource semantics, mutable diplomacy, and inherited progression assumptions. Adapt the existing scalar troop/attack shape into Open Fufu's global Population plus sparse operation/frontage model rather than building a dense faction-by-cell Population field. Build a deliberately smaller public controller observation/directive API rather than exposing inherited mutable `Game`/`Player`/`Unit` internals. Replace/extend the inherited spawn phase with Open Fufu's deterministic three-phase strategic spawn protocol, public spawn-profile transformations, and Initial Territory footprint generation. Extend the inherited terrain substrate with the accepted Open Fufu terrain library and Fallout overlay semantics. Adapt inherited structure/upgrading infrastructure into Open Fufu's deliberate eight-structure level-1-through-level-5 system, public Fort concept, Observation/Command Posts, launcher tier gates, and explicit naval/structure effects. Add the Factory-produced Tank as the sole baseline persistent land military unit and implement Heavy Artillery/Radioactive Munitions as typed Origin transformations of that same unit. Add Open Fufu's versioned **Origin** faction-identity system and the **Echo** system as 12,927 fixed mechanical collectible identities with rerolled EchoScore-weighted acquisition magnitudes, deterministic generated names, duplicate Pareto progression, accumulated match rewards, saved Echo Sets, pending reward settlement, Middle Fingers duplicate/Gacha currency, and the 10/100-Middle-Finger Gacha Store with paid-pull-only 50-pull power-12 Lucky+ pity through explicit typed/versioned rules rather than hidden faction bonuses. Keep production account/progression records in runtime/private data while the compact reusable Echo naming grammar/configuration may live as ordinary versioned game data. V1 Echoes require no anime quote/subtitle/MAL import pipeline.
+Replace or substantially adapt inherited assumptions that conflict with Open Fufu, especially:
 
-A useful inherited seam already exists between high-level inputs and deterministic `Execution` objects that mutate game state.
+- browser/client simulation authority;
+- turn relay as authoritative simulation;
+- inherited troop/gold/population formulas;
+- inherited land-combat semantics;
+- mutable diplomacy;
+- inherited victory/progression assumptions;
+- unrestricted engine objects as a player-controller API;
+- inherited spawn semantics;
+- inherited bot cheats/privileged state.
+
+A useful implementation seam already exists between high-level input and deterministic state mutation.
 
 Current conceptual path:
 
@@ -41,93 +45,58 @@ human input
 Target conceptual path:
 
 ```text
-controller observation / pre-match spawn hooks
+legal controller observation / pre-match hooks
 → transactional controller decision
 → validated persistent directives + one-shot commands
 → deterministic simulation work
 → canonical Game mutation
 ```
 
-Origins and Echoes modify the explicit rule-bearing configuration consumed by the same authoritative simulation; they do not bypass the controller/action contract.
+Origins, Echoes, terrain, structures, units, and rulesets feed the same explicit rule-bearing simulation. They do not bypass the controller/action boundary.
 
 ---
 
-## 2. Accepted subsystem classification
+# 2. Migration ownership matrix
 
-| Area | Migration classification |
-| --- | --- |
-| Dense cell/map representation | **Keep / Adapt** |
-| Deterministic tick and Execution machinery | **Keep / Adapt** |
-| Pathfinding, water connectivity, rail graph | **Keep / Adapt for expanded terrain/traversal rules** |
-| Generic unit/build lifecycle | **Keep / Adapt internally** |
-| Renderer, camera, map visualization foundations | **Keep heavily** |
-| Lobby/roster/socket/routing/telemetry infrastructure | **Keep / Adapt** |
-| Current spawn-selection phase | **Replace / Adapt into three-phase strategic spawning plus public spawn-profile variants and Random/Fixed modes** |
-| Initial territory footprint generation | **New / Adapt ownership/spawn plumbing; support one- and two-origin profiles** |
-| Client-authoritative simulation | **Replace** |
-| Turn relay as simulation authority | **Replace** |
-| Client hash/winner/live-stat consensus as authority | **Remove** |
-| Scalar `troops` storage concept | **Adapt into global whole-integer Population** |
-| Fractional mechanical Population costs | **New deterministic faction-level residual accounting where explicitly required** |
-| Current `Attack` object/lifecycle shape | **Reuse selectively** |
-| Current `AttackExecution` combat semantics | **Replace substantially; retain neutral time/cost concept only through explicit Open Fufu rules** |
-| Inherited mutable `Game`/`Player`/`Unit` as player API | **Do not expose** |
-| Public controller observation/directive contract | **New** |
-| Serializable geographic selector/query layer | **New / adapt existing map algorithms** |
-| Generic pathfinding/connected-components/legality helpers | **Reuse behind safe public QoL APIs** |
-| Private controller visual debug annotations | **New** |
-| Bounded deterministic team signal channel | **New** |
-| Inherited worker/troop-derived passive gold | **Replace with flat universal `1,000 FFY/s` floor; no Population taxation/assignment** |
-| Current troop growth/capacity formulas | **Replace** |
-| Global Easy/Medium/Hard gameplay difficulty scalar | **Remove** |
-| Existing Nation-AI behavior-composition pattern | **Keep selectively as reference/internal strategy components** |
-| Official-AI simulation cheats / privileged information | **Remove** |
-| Mutable alliances/relations diplomacy | **Remove** |
-| Current partial-territory/overtime/doomsday victory rules | **Replace / Remove** |
-| Dense defensive Population allocation field | **Do not build** |
-| Desired/actual cell Redeployment subsystem | **Do not build** |
-| Deployment/Redeployment Rate system | **Do not build** |
-| Available/Committed Population accounting | **New / Adapt scalar troop plumbing** |
-| Sparse offensive operations with spatial intent | **New / Adapt attack plumbing** |
-| One-to-one engaged frontage lanes | **New / Adapt border plumbing** |
-| Binary automatic cell defense (0/1 per threatened cell) | **New** |
-| Controller defensive priorities/weights | **New** |
-| Active direct counter-responses against hostile operations | **New** |
-| Capture-coupled ordinary hostile land casualties | **New** |
-| Neutral settlement cost/progress | **New explicit Open Fufu rule; baseline 1 Population per captured neutral population-bearing cell** |
-| Expanded Open Fufu terrain library | **New / Adapt terrain enum/storage/pathing/rendering for Plains, Highland, Mountain, Desert, Forest, Tundra, Marsh, Shallow Water, Deep Water, Impassable** |
-| Fallout terrain behavior | **Adapt into overlay/state over underlying conquerable terrain rather than replacement terrain/phantom defense** |
-| Inherited Defense Post public concept | **Adapt/rename to Fort; reuse useful internals** |
-| Persistent structure levels | **Adapt to universal hard cap 1–5 with deliberate type-specific effects** |
-| Observation Post | **New visibility/observation structure with level-scaled radius** |
-| Command Post | **New planned offensive-support structure with source-pressure/coverage progression and 10s build/upgrade telegraph** |
-| Missile Silo weapon access | **Adapt to L1 Atom / L3 Hydrogen / L5 MIRV plus level-scaled charges** |
-| SAM upgrades | **Adapt to level-scaled range/charges plus rule-transformable single-charge shield profile** |
-| Factory-produced Tank | **New sole baseline persistent land military unit; autonomous strategic control, Train raiding, Population attack, anti-armor combat, terrain-specific traversal** |
-| Heavy Artillery Origin transformation | **New typed Tank-profile transformation; not a second baseline unit** |
-| Radioactive Munitions Origin transformation | **New typed Population-attack territorial-neutralization/Fallout hook for Tank/Heavy Artillery** |
-| Warship construction time | **Adapt purchase lifecycle so Warships require 5s construction at Port instead of instant activation** |
-| MIRV inherited power | **Adapt to canonical L5-gated `50m` static-cost / up-to-250-warhead / 750-cell distribution model in `NAVAL_AND_STRATEGIC_WEAPONS.md`** |
-| Transport FFY cost | **New additive embarkation-cost modifier surface; baseline 0 FFY** |
-| Successful landing → granted Fort Origin rule | **New typed amphibious result hook** |
-| Warship-as-Silo Origin rule | **New typed launcher-equivalence hook using Warship rank as effective Silo level** |
-| Immutable strategic Segments | **New** |
-| Runtime-derived Contacts | **New** |
-| Secure operational visibility/observation model | **New; integrate Observation Post coverage** |
-| Player controller runtime/sandbox | **New** |
-| Controller publishing/certification/memory/diagnostics | **New** |
-| Typed Origin/Echo rule-composition hooks | **New** |
-| Official + Custom Origin definitions/creator | **New** |
-| Exhaustive Origin-catalogue combination deployment gate | **New** |
-| Open Fufu Echo identity catalogue/owned rolls/Echo Sets/rewards/pending settlement/Gacha Store | **New** |
-| Deterministic Echo generated-name grammar/configuration | **New; small versioned character-pool/stat-token/descriptor configuration, no quote corpus required** |
-| Open Fufu-owned SQLite persistence | **New; include pre-provisioned external identities and opaque server-side sessions** |
+| OpenFront/current area | Migration action | Open Fufu target owner |
+| --- | --- | --- |
+| Dense raster map/cells | Keep/adapt | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
+| Deterministic tick/Execution machinery | Keep/adapt | this plan + `OPEN_FUFU_DESIGN.md` |
+| Client-authoritative simulation | Replace | this plan |
+| Browser rendering/camera/map visualization | Keep heavily | this plan |
+| Pathfinding/water/rail graph | Keep/adapt | target subsystem owners |
+| Generic unit/build lifecycle | Keep/adapt internally | target subsystem owners |
+| Current spawn selection | Replace/adapt | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
+| Map strategic regions | Add | [`SEGMENTS.md`](./SEGMENTS.md) |
+| Scalar troop state | Adapt into global Population | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
+| Current Attack/combat semantics | Reuse structure selectively; replace rules | `OPEN_FUFU_DESIGN.md`, [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
+| Persistent defensive allocation / redeployment model | Do not build | `OPEN_FUFU_DESIGN.md` |
+| Inherited worker/troop gold | Replace | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
+| Terrain/public terrain semantics | Extend/translate | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
+| Structures / Defense Post | Adapt/extend | `TERRAIN_AND_STRUCTURES.md` |
+| Factory land unit | Add baseline Tank chassis | `TERRAIN_AND_STRUCTURES.md` |
+| Origin unit/structure transformations | Add typed rule hooks | [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) |
+| Naval/amphibious/strategic weapons | Keep/adapt | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
+| Trade Ships / Factory Trains / piracy economy | Keep/adapt | `FFY_ECONOMY.md` |
+| Origin system | Add | `ORIGIN_TRAIT_CATALOGUE.md`, [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
+| Echo system | Add | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
+| Existing bots | Reuse strategy ideas selectively; replace privileged behavior | [`official-ai/README.md`](./official-ai/README.md) |
+| Mutable alliances/relations | Remove/replace | `OPEN_FUFU_DESIGN.md` |
+| Operational visibility | Replace with authoritative projection | `OPEN_FUFU_DESIGN.md` + target structure/controller contracts |
+| Public controller surface | Add | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
+| Controller persistent memory | Add | [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md) |
+| External identity/authentication | Replace | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
+| Open Fufu service/browser/game protocol | Add | **canonical target owner not yet established** |
+| Open Fufu runtime persistence | Add | this plan |
+| Proprietary OpenFront assets | Replace/remove after dependency audit | this plan |
+
+This table identifies ownership. It does not substitute for the source-level current-owner traceability work required before implementation of each migration area.
 
 ---
 
-## 3. Core/headless boundary — Accepted
+# 3. Headless core boundary
 
-OpenFront's shared deterministic core should remain the simulation foundation, but it must become genuinely browser-independent.
+OpenFront's shared deterministic core should remain the simulation foundation but must become browser-independent.
 
 Required dependency direction:
 
@@ -143,62 +112,80 @@ core-derived legal observations
 controller runtime / participant protocol
 ```
 
-Existing imports from `src/client` into shared simulation code should be removed or moved behind neutral formatting/event interfaces.
+Imports from browser/client presentation code into shared simulation code must be removed or placed behind neutral interfaces.
 
-### Acceptance condition
+## Acceptance condition
 
-A Node/headless process can load a map, bind exact terrain/structure/mobile-unit/Origin/Echo/ruleset configuration, resolve a configured spawn phase including any legal one-origin/two-origin spawn profile, run a complete match, determine its result, produce a replay record, and replay that match without importing DOM/browser presentation code.
+A Node/headless process can:
+
+- load the exact versioned map/rules/configuration required by a match;
+- execute pre-match initialization/spawn;
+- run the complete authoritative simulation;
+- determine the result;
+- produce a deterministic replay record;
+- replay the match;
+- run without DOM/browser presentation imports.
 
 ---
 
-## 4. Server authority and process topology — Accepted
+# 4. Authoritative server and process topology
 
-Each live match has exactly **one canonical authoritative server simulation**. Browsers never determine simulation progress, canonical hashes, winner state, authoritative statistics, or spawn resolution.
+Each live match has exactly **one canonical server simulation**. Browsers never determine simulation progress, winner state, canonical hashes, spawn resolution, or authoritative statistics.
 
-### 4.1 V1 process model
+## 4.1 V1 process model
 
-The accepted V1 topology is **one OS child process per active authoritative match**.
+Use **one OS child process per active authoritative match**.
 
 ```text
-Browser / Foof
-      |
-   HTTPS / WS
-      |
-Open Fufu gateway/API/lobby
-      |
-Match supervisor
-   |       |       |
-Match A  Match B  Match C
-process  process  process
+Browser / external integration
+            |
+         HTTPS / WS
+            |
+Open Fufu gateway / API / lobby
+            |
+      match supervisor
+        |    |    |
+        A    B    C
+      process process process
 ```
 
-Reasons include independent V8 heaps/GC, match-level crash containment, simple process termination/resource accounting, straightforward profiling/logging, multi-core CPU use, and acceptable fixed overhead for the expected small deployment.
+This gives match-level crash containment, independent V8 heaps/GC, simple termination/resource accounting, straightforward profiling, and natural multi-core use.
 
-Worker threads or pooled multi-match processes remain possible future optimizations only if measurements justify changing the topology.
+Worker-thread or pooled multi-match processes are future optimizations only if measurements justify them.
 
-### 4.2 Expected operating envelope
+## 4.2 Planning envelope
 
-Planning assumptions:
+Initial deployment assumptions:
 
-- **1–3 concurrent matches** is normal;
-- **4** should be rare;
-- **5** should be very rare;
-- higher numbers are not a useful V1 design target;
-- total live human/browser participants/viewers across the service are expected to be roughly **5 or fewer** most of the time.
+- 1–3 concurrent matches: normal;
+- 4: rare;
+- 5: very rare;
+- roughly five or fewer simultaneous human/browser participants/viewers most of the time.
 
-### 4.3 Benchmark before capacity claims
+These assumptions are capacity-planning inputs, not gameplay rules.
 
-Benchmark the real authoritative Open Fufu simulation on Fufubox for at least 1, 3, and 5 simultaneous matches, controller runtime overhead, observer delta construction, spawn-resolution overhead, Origin/Echo rule-projection overhead, and accelerated certification/batch mode.
+## 4.3 Required benchmark
 
-Record mean/p50/p95/p99/max tick time, missed 100 ms tick budgets at provisional 10 Hz, CPU, RSS/PSS/heap, GC, active operation/frontage counts, observer bandwidth, and controller runtime cost.
+Before making capacity claims, benchmark representative authoritative Open Fufu builds at 1, 3, and 5 concurrent matches, including controller runtime and observer projection overhead.
 
-The existing `tests/perf/fullgame` tooling is a strong starting point but will need adaptation.
+Record at minimum:
+
+- mean/p50/p95/p99/max tick time;
+- missed simulation tick budgets;
+- CPU;
+- RSS/PSS/heap;
+- GC behavior;
+- active operation/frontage counts;
+- observation/delta bandwidth;
+- controller-runtime cost.
+
+Adapt the inherited full-game performance harness where useful.
 
 ---
 
-## 5. Controller-runtime isolation — Accepted V1 baseline
+# 5. Player-controller runtime isolation
 
-Player controller code must not execute with unrestricted access inside the canonical match process.
+Player controller code must not execute with unrestricted access inside the authoritative match process.
 
 ```text
 Authoritative Match
@@ -209,31 +196,29 @@ controller worker-process pool
        |
 V8 isolate (`isolated-vm`)
        |
-proposed transactional decision
+proposed decision
        |
 validation
        |
 canonical commit/reject
 ```
 
-The V1 sandbox architecture is settled: use **`isolated-vm` inside separate dedicated controller-runtime worker processes**. The match processes themselves never host untrusted user isolates.
+The V1 isolation target is **`isolated-vm` inside dedicated controller-runtime worker processes**. Match processes themselves do not host untrusted user isolates.
 
-Do not grant untrusted code Node capabilities such as `require`, `process`, filesystem/network access, arbitrary host references, environment variables, or system/real time. Controller-persistent game-facing state lives only in the explicit serialized controller-memory object; mutable module/global state is not trusted persistence.
+Untrusted controller code receives no Node `require`, process access, filesystem/network access, environment variables, host object references, uncontrolled entropy, or system/real time.
 
-`isolated-vm` is the V1 implementation target, not one option in an unresolved runtime bake-off. QuickJS/WASM is retained only as a future contingency if concrete maintenance, security, or runtime-compatibility evidence gives a reason to replace `isolated-vm` without changing the controller API or deterministic game contract.
+Controller-persistent game-facing state uses the explicit memory contract in [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md); isolate/module globals are not trusted persistence.
 
-For the current Node 24 deployment, pin an `isolated-vm` release compatible with that Node major and obey its process-launch requirements. The current upstream compatibility guidance maps Node 24 to the 6.x/5.x lines and requires `--no-node-snapshot` for Node 20+; re-verify these operational compatibility details whenever the deployed Node major or `isolated-vm` version changes. This is deployment compatibility, not an open sandbox-architecture decision.
+For the deployed Node major, pin a compatible `isolated-vm` release and obey its documented process-launch requirements. Runtime compatibility details must be reverified when the Node or `isolated-vm` major changes.
 
-### 5.1 Accepted V1 controller runtime limits
-
-The initial controller runtime limits are:
+## 5.1 V1 runtime limits
 
 | Limit | V1 default |
 | --- | ---: |
 | Persistent controller memory | **128 KiB** |
-| `isolated-vm` heap limit | **32 MiB per controller isolate** |
+| `isolated-vm` heap | **32 MiB per isolate** |
 | Normal `decide()` execution | **20 ms max** |
-| Strategic Spawn hook execution | **50 ms max** |
+| Spawn hook execution | **50 ms max** |
 | Initial module evaluation | **100 ms max** |
 | Serialized returned decision | **256 KiB max** |
 | Queries per decision | **128** |
@@ -241,1244 +226,290 @@ The initial controller runtime limits are:
 | Directive updates per decision | **128** |
 | One-shot commands per decision | **64** |
 | Total policy/weight rules | **256** |
-| Debug overlay objects | **256 per decision** |
+| Debug objects | **256 per decision** |
 | Controller log text | **8 KiB per decision** |
-| Observable events delivered | **512 per decision**, then deterministic truncation; overflow is summarized in diagnostics/replay |
+| Observable events delivered | **512 per decision** |
 | Team-signal payload | **1 KiB** |
 
-Twenty milliseconds is intentionally not microscopic: normal controllers run only twice per simulation second, outside the authoritative match process, and expensive map work should use the bounded native/query helpers instead of JavaScript loops over the 4.8-million-cell raster.
+These are versioned runtime defaults and may be retuned only through an explicit runtime-contract change.
 
-These are **accepted V1 defaults**, not permanent universal constants. Benchmark-driven changes later must be explicit/versioned runtime-limit changes rather than silently changing an existing deployment contract.
+## 5.2 Runtime faults
 
-### 5.2 Runtime-fault semantics
+Ordinary gameplay/stale-state rejection is a structured result, not a controller runtime fault.
 
-Ordinary stale-state or gameplay-legality command rejection produces a receipt and is **not** a controller runtime fault.
+Runtime faults include:
 
-The following are runtime faults:
-
-- uncaught controller exception;
+- uncaught exception;
 - execution timeout;
-- malformed whole decision/output;
+- malformed whole output;
 - isolate/controller memory-limit violation;
 - sandbox violation.
 
-A runtime fault discards the current invocation's temporary output/memory changes and leaves the previous successfully committed directives active. Existing valid operations continue under ordinary simulation rules.
+A runtime fault discards temporary output/memory from that invocation and preserves the previous committed controller state/directives.
 
-The deterministic V1 circuit breaker is:
+V1 circuit breaker:
 
 ```text
 5 consecutive normal-runtime faults
 OR
 20 total normal-runtime faults in one match
-→ controller FAULTED for the remainder of that match
+→ controller FAULTED for the rest of that match
 ```
 
-A non-faulting normal invocation breaks a consecutive-fault run. No replacement AI takes over. Strategic Spawn hook failure instead uses the already-specified deterministic legal spawn fallback and does **not by itself** fault the controller for normal match play.
+A non-faulting normal invocation resets the consecutive count. No replacement AI takes over. Pre-match spawn-hook failure uses the canonical deterministic spawn fallback rather than automatically faulting normal match play.
 
-### 5.3 Worker-pool deployment baseline
+## 5.3 Worker pool
 
-Worker-pool sizing is deployment configuration rather than replay/game determinism. The accepted initial Fufubox baseline is:
+Initial Fufubox deployment baseline:
 
 ```text
 4 controller worker processes
-1 controller callback executing at a time per worker
+1 callback executing at a time per worker
 ```
 
-A worker process may service different controller isolates over time; do **not** create one permanent OS process per controller. Because controller-persistent state is external/serialized, a worker may be killed and recreated without losing trusted game-facing state.
+A worker may service different controller isolates over time. Do not create one permanent OS process per controller.
 
-Recycle an idle worker when either condition is met:
+Recycle an idle worker when:
 
-- process RSS exceeds **512 MiB**; or
-- the worker has been alive for roughly **1 hour** and is idle.
+- RSS exceeds **512 MiB**; or
+- it has been alive for roughly **1 hour** and is idle.
 
-Later pool-size or recycling tuning based on measured Fufubox load is ordinary deployment tuning and does not reopen the sandbox architecture.
+Worker-pool sizing/recycling is deployment configuration rather than replay/game determinism.
 
-### 5.4 Deterministic parallel execution
+## 5.4 Deterministic parallelism
 
-Controllers at the same decision tick or the same simultaneous spawn phase may execute concurrently against immutable snapshots of the same canonical pre-state. Completion order must not create gameplay advantage; results are collected and committed/resolved deterministically.
-
-
-### 5.5 Controller-memory codec and lifecycle — Accepted V1
-
-Implement the exact controller-memory contract from [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md): canonical compact UTF-8 JSON; recursively sorted object keys; finite JSON values only; whole-object replacement; **131,072 canonical uncompressed bytes** maximum; no cross-match persistence.
-
-The trusted runtime state is the canonical serialized representation, not a mutable JavaScript object surviving inside a worker/isolate. Decode a fresh immutable projection for each callback; validate/canonicalize returned memory before accepting it.
-
-Once a callback/output/memory is structurally valid, valid returned memory commits independently of later ordinary gameplay legality rejection. Runtime faults, malformed whole outputs, invalid memory, and memory/quota violations discard all newly proposed output and preserve the previous successfully committed memory/directives. Spawn hooks use the same memory lifecycle and carry successfully committed memory forward into the first normal decision.
-
-Do not write controller memory to SQLite every decision and do not include controller-memory snapshots in the canonical archival replay.
----
-
-## 6. Tick, decision, and Execution model — Accepted
-
-Retain the deterministic Execution pattern rather than replacing it wholesale.
-
-Open Fufu distinguishes lifecycle/admin commands, pre-match spawn lifecycle decisions, controller strategic decisions, and simulation state transitions.
-
-A normal controller invocation operates against one immutable legal observation. Callback/output/memory validity is resolved first: valid controller memory may commit independently. Game-facing directive/action mutations then retain their transactional final-desired-set validation. Ordinary gameplay rejection does not roll back valid memory; a runtime/malformed-output fault discards all newly proposed output.
-
-Population commitment changes take effect immediately on successful decision commit; no land Deployment/Redeployment queue exists.
-
-A controller decision is interpreted as a **proposed final decision set**, not a source-order sequence of direct canonical mutations. Reducing one commitment and increasing another in the same decision validates against the resulting final state. One-shot commands do not normally create objects that may then be consumed by another command in that same decision.
-
-Provisional cadence remains:
-
-```text
-simulation: 10 Hz
-controller decisions: 2 Hz
-```
-
-Accelerated simulations execute the same logical ticks without real-time waiting.
+Controllers may execute concurrently against immutable snapshots of the same canonical pre-state. Completion order must never create gameplay advantage; collected results commit/resolve deterministically.
 
 ---
 
-## 6A. Public controller API contract — Accepted
+# 6. Controller decision integration
 
-The public controller API is a deliberate game-facing contract and must **not** be the inherited `Game`, `Player`, `GameMap`, `Unit`, or `Execution` API.
+Retain the useful deterministic Execution pattern rather than replacing it wholesale.
 
-The design principle is:
+Open Fufu distinguishes:
 
-> Expose legal facts, legality, geometry, generic algorithms, actual rules, and pure mechanical calculations generously; do not expose strategic judgments, hidden canonical state, or future-state optimization oracles.
+- lifecycle/admin commands;
+- pre-match spawn decisions;
+- controller strategic decisions;
+- deterministic simulation transitions.
 
-### 6A.1 Conceptual context surface
+A normal controller callback observes one immutable legal projection and submits a proposed final decision set. The authoritative runtime validates and commits game-facing effects transactionally.
 
-The V1 TypeScript controller surface is defined in `src/core/controller/ControllerApi.ts`; the public context covers:
+Persistent directives remain active until changed/ended. One-shot commands execute once. Source order inside one returned decision must not be treated as imperative mutation order unless an individual command contract explicitly says otherwise.
+
+Population commitment changes are immediate on successful decision commit; there is no generic land deployment/redeployment queue.
+
+Provisional cadence:
 
 ```text
-game
-me
-factions
-cells
-segments
-contacts
-operations
-structures
-units
-navigation
-economy
-rules
-mechanics
-events
-lastDecision
-random
-limits
-memory
-directives
-commands
-debug
+simulation:           10 Hz
+controller decisions:  2 Hz
 ```
 
-Own/private data and enemy/operational data are projected through the canonical visibility model before entering this contract.
+Accelerated/headless simulation executes the same logical ticks without real-time waiting.
 
-Faction observations expose public Origin identity/traits and effective mechanical modifier sheets. Controllers should not need to reverse-engineer an opponent's Origin or relevant Echo-derived mechanical effects from outcomes.
+The public TypeScript surface is [`ControllerApi.ts`](../src/core/controller/ControllerApi.ts). Its detailed contract reconciliation is separate from this migration plan; this document owns the runtime adapter and authoritative integration around that public surface, not a duplicate API definition.
 
-### 6A.2 Persistent directives and one-shot commands
-
-Model ongoing strategic intent as persistent directives and discrete actions as one-shot commands.
-
-Persistent examples:
-
-- attack/neutral-expansion operations;
-- defense-priority policy;
-- counter-responses;
-- unit movement/patrol/targeting.
-
-One-shot examples:
-
-- build/upgrade;
-- unit purchase/construction;
-- strategic-weapon launch;
-- deliberate relinquishment;
-- team signal;
-- capitulation.
-
-Persistent directives remain active if omitted from later decisions. Controllers may use bounded stable string keys for their own directives while the engine retains immutable internal IDs for replay/incoming-operation identity.
-
-Setting an operation to `N` Population changes its current commitment immediately if valid; later casualties do not cause automatic refill back to `N`.
-
-### 6A.3 Geographic selector/query layer
-
-Reuse/adapt the efficient existing map substrate and graph algorithms behind a safe public layer.
-
-Provide serializable bounded selectors/regions composable from mechanical predicates such as cell IDs, owner, Segment, terrain/fallout, coast/shoreline, population-bearing/conquerable state, simple geometry, and set union/intersection/difference.
-
-Persistent 10 Hz simulation work consumes compiled selector data rather than invoking arbitrary controller callbacks over the map.
-
-Provide bounded deterministic QoL queries such as:
-
-- neighbors/adjacency;
-- boundary extraction;
-- connected components/flood fill;
-- distance;
-- generic land/naval/rail/path-class reachability and pathfinding;
-- nearest/reachable queries;
-- owner/terrain/Segment summaries and histograms;
-- legal structure sites;
-- legal coast/transport destinations.
-
-These are factual/mechanical services, not strategy. Do not add `weakestPoint`, `bestTarget`, `bestNukeTarget`, `optimalCounterSize`, `safestTradeRoute`, or equivalent strategic scoring.
-
-Permit bounded batch/materialized cell access for advanced controllers without encouraging whole-map object allocation every decision.
-
-### 6A.4 Segments and Contacts
-
-Expose Segments as first-class strategic query objects with factual summaries/selectors and adjacency. Expose Territorial Contacts as factual boundary/contact geometry with components, size, involved Segments and terrain summaries.
-
-Do not create an engine-level strategic `Front` object or score contacts for strategic value.
-
-### 6A.5 Offensive and defensive policy surfaces
-
-Land attack directives should distinguish:
-
-- **engagement priority** for selecting legal frontage when Population cannot cover every candidate lane; and
-- **pressure weighting** for distributing finite committed Population across engaged geometry.
-
-Both have deterministic defaults; advanced policy is expressed through bounded selector/weight rules rather than huge per-cell maps.
-
-Defense exposes only priorities deciding which cells receive scarce one-Population automatic defenders. It cannot set passive defensive quantities.
-
-Counter-response commands/directives identify one incoming operation and Population commitment; the engine owns the nonlinear exchange formula.
-
-### 6A.6 Rules and pure mechanics calculators
-
-Expose current ruleset/feature flags and exact public mechanical values. Expose pure deterministic calculators for published arithmetic/geometry such as growth, neutral-settlement progress/effective cost including residual semantics, capture advantage, counter-response exchange, terrain effects, structure/unit/weapon costs and legality, construction times, structure level gates, Transport embarkation costs, movement/pathing classes, range/blast geometry, spawn legality, and explicit terrain/structure/Origin/Echo modifiers.
-
-Growth calculators use the faction's actual Origin-defined growth profile where applicable rather than forcing controllers to duplicate a transformed curve.
-
-Calculators may use only supplied/legal information. They must not become hidden-state oracles or future-state simulators.
-
-### 6A.7 Public game concepts, not inherited implementation classes
-
-Even if OpenFront internally represents structures, ships, trains, missiles, Tanks, etc. through shared `UnitImpl` machinery, the public API should expose game-level **structures**, **mobile units**, and **weapons** as coherent public concepts.
-
-The public defensive structure concept is **Fort**, even if inherited `DefensePost` classes/names remain temporarily useful internally during migration.
-
-Movement APIs are intent-oriented: the controller selects destination/patrol/raid/target while the engine handles mechanical pathfinding/motion and autonomous local target/firing behavior. Do not expose Tank/Heavy-Artillery turret/fire cadence as frame-by-frame micro controls.
-
-Major actions should have corresponding factual legality/cost/range/level/construction-time helpers so users are not forced to submit blind actions merely to learn rules.
-
-### 6A.8 Events and decision receipts
-
-Build a bounded typed event stream for legally observable meaningful changes since the previous controller invocation. This avoids forcing every controller to diff complete snapshots to notice captures, neutral-settlement Population costs, losses, completed/upgraded structures, completed mobile-unit construction, Tank/Warship combat or repair, amphibious Fort grants, operation lifecycle changes, FFY changes, hostility, defeat/capitulation, or strategic-weapon events.
-
-Expose structured `lastDecision`/receipt information for transaction acceptance/rejection and per-command failures.
-
-Persistent directives expose lifecycle/status and obvious dead directives are automatically terminated/cleaned by the engine with deterministic events/reasons.
-
-### 6A.9 Deterministic randomness
-
-Sandbox randomness is deterministic and match-bound. Support ordinary ergonomic deterministic `Math.random()` behavior and a keyed deterministic random facility so unrelated random calls need not perturb stable decisions.
-
-Never expose uncontrolled entropy or system time.
-
-### 6A.10 Controller limits and performance guardrails
-
-`ControllerLimitsView` exposes the deterministic structural limits that controller code may reasonably plan around:
-
-| Public limit | V1 value |
-| --- | ---: |
-| `persistentMemoryBytes` | **131,072** |
-| `queriesPerDecision` | **128** |
-| `materializedCellsPerDecision` | **25,000** |
-| `directiveUpdatesPerDecision` | **128** |
-| `commandsPerDecision` | **64** |
-| `policyRulesPerDecision` | **256** |
-| `debugItemsPerDecision` | **256** |
-| `logBytesPerDecision` | **8,192** |
-
-The runtime additionally enforces the accepted **512 observable events per decision** and **1 KiB team-signal payload** bounds. `EventsApi.sinceLastDecision` therefore contains at most 512 typed events. Overflow handling is deterministic; any omitted-event summary belongs to diagnostics/replay rather than inventing an undeclared `ControllerEvent` variant in the already-defined V1 TypeScript contract.
-
-Heap limits, callback time limits, module-evaluation time, and the whole serialized-decision size limit are sandbox/runtime enforcement rather than a gameplay-readable countdown. In particular, do not expose remaining wall-clock CPU time as a value on which controller strategy can branch.
-
-### 6A.11 Debugging surface
-
-Implement private bounded debug output as first-class authoring infrastructure, not only text logs. Support concepts equivalent to named metrics, cell/region/Segment highlights, and operation/unit/structure annotations for the controller owner in live/replay debugging.
-
-Debug output never affects simulation and never becomes public gameplay information.
-
-### 6A.12 Team coordination and information
-
-Fixed teammates receive the union of legally observable team operational information. Provide a small bounded deterministic JSON-like team signal channel delivered on a later deterministic decision boundary to avoid same-tick ordering races.
-
-Do not provide unrestricted shared mutable controller memory.
-
-### 6A.13 Public mechanical modifiers
-
-Project strategically relevant active mechanical modifier sheets publicly, consistent with the canonical transparent-mechanics rule. Public projection includes the selected Origin and full Origin-trait sheet; relevant effective Echo/terrain/structure effects are surfaced so controllers do not need to infer hidden arithmetic.
-
-This includes effective neutral-settlement cost, effective Transport embarkation cost, effective spawn profile, effective structure-level transformations, Observation/Command Post effects, Tank/Heavy-Artillery profile, radioactive Population-attack behavior, launcher-equivalence rules, SAM range/charge/cooldown rules, and strategic-weapon level requirements where altered by public mechanics.
-
-### 6A.14 SDK and multi-file authoring
-
-Allow multi-file local TypeScript controller projects that are compile/typechecked/bundled/certified into an immutable artifact.
-
-The official SDK may provide neutral helpers/builders for selectors, priorities, deterministic math and ordinary collection ergonomics. It must not ship privileged doctrine such as weakest-enemy selection or best-target strategy.
-
-### 6A.15 Three-phase Strategic Spawn — Accepted
-
-Replace the final Open Fufu ordinary spawn flow with three deterministic pre-match phases:
-
-```text
-static map/config
-→ Phase 1 broad influence choice
-→ reveal all Phase-1 influence areas
-→ Phase 2 optional broad re-pick
-→ reveal all final influence areas
-→ Phase 3 exact origin inside final influence area
-→ simultaneous origin resolution + reveal
-→ deterministic Initial Territory footprint generation
-→ match start
-```
-
-#### Phase 1
-
-Every participant gets the same public static map/ruleset/spawn-legality view, **every participant's surfaced Origin, Initial Territory value, Starting Population effects, effective spawn profile, and other strategically relevant public spawn-affecting modifiers**, and simultaneously submits the influence anchor(s) required by that profile using the ruleset-defined shape/scale.
-
-Ordinary factions submit one broad influence area/anchor. The accepted split-origin trait requires **two areas, each 50% of the ordinary area**. If the ordinary shape is circular, each split area uses approximately 70.71% of the ordinary radius; it is area, not radius, that is halved.
-
-These areas are **non-exclusive search spaces**, not ownership reservations. Overlap is legal and expected, including overlap between one faction's own two split areas.
-
-After all Phase-1 choices resolve, reveal every Phase-1 influence area to every participant.
-
-#### Phase 2
-
-Every participant receives exactly one simultaneous opportunity to keep or revise the influence choice(s) required by its public spawn profile using the revealed Phase-1 intent of everyone else.
-
-Do not stream Phase-2 revisions live. All participants choose against the same Phase-1 reveal; then reveal all final influence areas together. This prevents draft-order advantage and endless reactive counter-picking.
-
-A split-origin faction revises its pair in the same one Phase-2 transaction; it receives no extra sequential counter-pick.
-
-#### Phase 3
-
-Every ordinary participant simultaneously chooses one exact legal spawn-origin cell inside its final influence area while knowing every final influence area.
-
-A split-origin faction chooses **one exact legal origin in each final influence area**, simultaneously. Its two origins may be close or far apart; do not impose a hidden separation rule merely to force a particular playstyle.
-
-Resolve duplicate/conflicting exact-origin submissions deterministically from the same pre-state, reveal final origins, generate starting footprint(s), then begin normal simulation/controller decisions.
-
-The public API exposes the specialized pre-match lifecycle hooks already defined in `src/core/controller/ControllerApi.ts`: `chooseInfluence`, `reconsiderInfluence`, and `chooseOrigins`. They represent the faction's effective spawn profile rather than hard-coding exactly one anchor/origin into the protocol. Remaining work is runtime projection, validation, fallback, and transactional wiring, not another TypeScript contract-design pass.
-
-Spawn-hook failure/missing output must use a deterministic legal fallback appropriate to the profile rather than faulting the controller for the match.
-
-### 6A.16 Random and Fixed spawn modes — Accepted
-
-Retain explicit alternatives:
-
-- **Random Spawn:** match-seeded deterministic legal spawn selection that bypasses strategic controller choices;
-- **Fixed Spawn:** exact configured starts for benchmarks, certification, debugging, scenarios/tournaments, and reproducible tests.
-
-All exact final starts are revealed before the first normal match decision because ownership is globally visible once play begins.
-
-Any mode that permits Origin spawn-profile mechanics must define deterministic Random/Fixed equivalents for the split-origin profile; scenario/fixed configuration may instead explicitly disable such modifiers where the ruleset publicly says so.
-
-### 6A.17 Initial Territory footprint — Accepted
-
-Add a surfaced **Initial Territory** starting-state quantity representing the target number of population-bearing cells each faction should own at match start.
-
-The base comes from the ruleset. Explicit allowed Origin traits or other surfaced starting-state modifiers may change this quantity without changing Capacity-per-cell.
-
-After exact origins resolve, deterministically grow compact connected roughly circular footprints outward from all origins **simultaneously** across legal population-bearing cells.
-
-For a split-origin faction, compute the faction's final Initial Territory quota after all ordinary modifiers, split it approximately equally between its two ordered origins, and grow both footprints simultaneously with all other factions. A deterministic primary/secondary rule handles any odd-cell remainder. The footprints may touch/merge normally.
-
-Required invariants:
-
-- influence-area overlap does not consume or reserve Initial Territory;
-- competing footprints are resolved independently of controller/process execution order;
-- when topology permits, continue outward so every faction receives its full Initial Territory quota despite nearby competing footprints;
-- final owned cells produce ordinary starting Capacity at one Capacity per population-bearing cell;
-- Initial Territory does not itself determine starting current Population;
-- the split-origin trait does **not** create local Population stores or duplicate Starting Population; the faction retains one unchanged global Starting Population pool;
-- Origin/Echo rules may explicitly alter Starting Population without changing Capacity-per-cell;
-- Initial Territory bonuses apply to the final faction quota before split, rather than once per split footprint;
-- a larger Initial Territory value does not automatically enlarge broad influence area(s) unless an explicit separate rule says so;
-- footprint generation and collision/tie-breaking are deterministic/versioned;
-- singular granted starting structures/effects use a public deterministic primary-origin rule unless the granting mechanic specifies otherwise.
-
-Strategic Spawn's ordinary radius, spacing, controller-hook fallbacks, conflict graph/priority, nearest legal displacement, simultaneous footprint growth, star rasterization, diagnostics, replay encoding, and resolver-version rules are now accepted in `STRATEGIC_SPAWN.md`. Remaining work is implementation/validation against that specification rather than choosing those algorithms during coding.
+Controller memory uses only the canonical semantics from [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md).
 
 ---
 
-## 7. Map, cells, terrain, and Segments — Accepted
+# 7. Map, spawn, Segments, and terrain migration
 
-Retain/adapt the current dense integer `TileRef`/typed-array map substrate, compact terrain/state storage, deterministic adjacency, ownership mutation, water/pathfinding, authored map compilation/loading, impassables, and map-scale optimized iteration.
+## 7.1 Dense map substrate
 
-### 7.1 Segment layer — Accepted V1 generation contract
+Retain/adapt OpenFront's compact integer cell references, typed-array map storage, deterministic adjacency, ownership mutation, water/pathfinding primitives, authored map loading, and optimized iteration.
 
-Add compact immutable Segment identity for every real map cell, including water and impassable terrain, plus immutable membership/adjacency and efficient runtime factual summaries.
+The target cell/Population invariants are owned by `OPEN_FUFU_DESIGN.md`.
 
-Implement [`SEGMENTS.md`](./SEGMENTS.md) as the source of truth:
+## 7.2 Strategic Spawn
 
-- each Segment is cardinally 4-connected;
-- geography/terrain/topology coherence outranks size;
-- **~4,096 cells is a soft target only**, with no hard minimum/maximum/aspect-ratio/compactness constraint;
-- meaningful narrow/irregular features may remain correspondingly narrow/irregular;
-- large featureless regions use deterministic geography-aware balanced subdivision toward the target;
-- meaningless raster fragments may be absorbed deterministically without erasing useful geographic features;
-- no match seed participates;
-- stable IDs are assigned by smallest member `CellId` order;
-- compiled membership + `segmentGeneratorVersion` are part of the map artifact/hash and are never regenerated under a newer algorithm for an old map version;
-- V1 exposes existing terrain summaries and does not require semantic `RIVER`/`RIDGE`/`STRAIT` geographic tags.
+Replace the inherited spawn phase with the deterministic protocol, resolver, fallback, conflict resolution, Initial Territory generation, replay binding, and profile semantics defined exclusively by [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md).
 
-Dynamic terrain/state changes such as Fallout/Deep-Water conversion do not regenerate Segment membership. Runtime terrain summaries may change over the fixed membership.
+Migration work is to wire that contract into:
 
-A temporary amphibious defensive state must not masquerade as a terrain type. The accepted fortified-landing design uses a real granted Fort instead, so terrain remains geography rather than short-lived tactical status.
+- pre-match participant/controller lifecycle;
+- authoritative map ownership initialization;
+- Origin effective spawn profiles;
+- Random/Fixed alternatives;
+- replay/diagnostics;
+- browser participant state.
 
-### 7.2 Canonical terrain translation
+Do not re-derive spawn geometry in this plan.
 
-The inherited OpenFront terrain substrate must be extended/reinterpreted to match `TERRAIN_AND_STRUCTURES.md`.
+## 7.3 Segments
 
-Canonical V1 base terrain concepts are:
+Add the immutable map-compiled Segment layer defined exclusively by [`SEGMENTS.md`](./SEGMENTS.md).
 
-```text
-Plains
-Highland
-Mountain
-Desert
-Forest
-Tundra
-Marsh
-Shallow Water
-Deep Water
-Impassable
-```
+Migration work includes compiler integration, map-artifact/version/hash binding, efficient runtime queries/summaries, and controller projection.
 
-`Deep Water` replaces the inherited generic public `Ocean` role. Fallout is **not** another mutually exclusive base-terrain enum; implement it as a persistent overlay/state on legal conquerable terrain so the underlying terrain's Capacity, traversal, buildability, offense/defense, and terrain-share identity remain queryable.
+## 7.4 Terrain
 
-Required distinctions include:
+Translate the inherited terrain substrate to the canonical base-terrain/Fallout model in [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md).
 
-- Tundra is conquerable but non-population-bearing, unbuildable, and not spawn-footprint eligible;
-- Shallow Water is conquerable, non-population-bearing, unbuildable, ordinary-land-operation traversable, and naval traversable;
-- Deep Water is naval traversable but unconquerable and not ordinary-land traversable;
-- Mountain remains ordinary Population-based land-operation terrain but is a hard barrier to Tanks/Heavy Artillery;
-- Shallow Water likewise blocks Tanks/Heavy Artillery even though ordinary territorial operations may cross it;
-- optional water nukes create Deep Water, not Shallow Water.
+Map compilation, pathing classes, ownership bookkeeping, rendering, observation projection, and replay must all consume the same versioned terrain semantics rather than independent switch-table copies.
 
-Store the accepted provisional terrain values as versioned ruleset data rather than scattering them through switch statements that controllers must reverse-engineer.
-
-### 7.3 Future procedural maps
-
-Procedural/random map generation is new and must deterministically produce the same canonical terrain identities plus immutable Segment model from seed/version.
+Procedural/random map generation, if introduced, must produce the same canonical terrain/Segment artifact model deterministically from seed/version.
 
 ---
 
-## 8. Ownership and neutral expansion — Accepted
+# 8. Population, operations, defense, and combat migration
 
-Retain/adapt low-level cell ownership and incremental territory/border bookkeeping. Existing `conquer()`/`relinquish()`-style primitives remain useful internally.
+The global Population model, Capacity invariant, operation/frontage model, automatic defense, counter-response semantics, ordinary capture casualties, and game-wide land-combat invariants are owned by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). Exact capture/counter-response arithmetic is owned by [`COMBAT_TUNING.md`](./COMBAT_TUNING.md).
 
-Initial Territory footprint assignment is a pre-match ownership initialization path, distinct from neutral expansion and combat conquest.
+Migration direction:
 
-Neutral expansion becomes an operation using ordinary Population and spatial intent. Neutral cells have **no automatic Population defender**, but settlement retains explicit progress/time and Population expenditure rather than becoming instant/free map paint.
+- adapt useful scalar troop storage into one global whole-integer Population state;
+- add explicit Available/Committed/Transport accounting;
+- keep fractional recurring mechanics in deterministic residual state where canonical rules require them;
+- reuse Attack identity/lifecycle/border plumbing where useful, but replace inherited combat semantics;
+- represent land action as sparse operations/frontage rather than a dense faction×cell Population field;
+- derive binary automatic defense ephemerally from active threatened geometry and Available Population;
+- add controller defensive priorities without persistent defensive allocation;
+- add active counter-response as a separate operation-vs-operation commitment;
+- remove inherited global defender/casualty/difficulty bonuses that are not part of the target rules;
+- ensure same-faction operation fragmentation cannot manufacture pressure;
+- ensure newly captured cells cannot create same-tick conquest chains;
+- keep neutral-settlement accounting distinct from hostile combat.
 
-Baseline Open Fufu rule:
-
-```text
-successfully acquired neutral population-bearing cell
-→ expansion commitment loses 1 Population
-→ ownership/Capacity transfer occurs
-```
-
-There is no neutral defender-side Population casualty because Terra Nullius is not a defending faction.
-
-Conquerable **non-population-bearing** terrain such as Tundra/Shallow Water still requires acquisition progress/time but has zero baseline neutral-settlement Population cost because the 1-Population settlement rule is scoped to population-bearing cells.
-
-Typed Origin/Echo/ruleset hooks may alter settlement progress/speed; structural settlement-cost changes such as the accepted Origin trait changing cost to `0.5 Population/cell` use their own typed hook. Implement fractional costs through deterministic faction-level residual accounting that survives ending/recreating expansion operations, preventing operation-churn exploits.
-
-Neutral Fallout follows the underlying terrain's population-bearing classification and additionally applies its explicit acquisition-resistance/progress rule.
+Simulation cost must scale primarily with active strategic work/frontage rather than full faction×map products.
 
 ---
 
-## 9. Population state — Accepted
+# 9. Structures, economy, units, naval, and strategic weapons
 
-### 9.1 Global whole-integer Population
+Do not maintain target mechanics in this plan. Implement each subsystem from its owner:
 
-Adapt OpenFront's useful scalar troop-storage shape into one global deterministic whole-integer Population value per faction.
+- terrain, persistent structures, baseline Tank: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
+- FFY, Factory Trains, Trade Ships, piracy: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
+- Warships, Transports, strategic weapons: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
+- Origin transformations of those systems: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
 
-Faction Population state centers on:
+Migration work should reuse OpenFront infrastructure where compatible:
 
-```text
-Total Population
-Available Population
-Committed offensive Population
-Committed counter-response Population
-Population aboard transports
-Population Capacity
-Growth state
-```
+- generic spatial structure build/upgrade/capture lifecycle;
+- generic unit identity/movement/health/deletion state;
+- rail graph and physical Train movement/events;
+- water connectivity and naval pathing;
+- missile trajectory/interception infrastructure;
+- SAM targeting/interception machinery;
+- physical Trade Ship world traffic;
+- naval patrol/combat/repair lifecycle.
 
-```text
-Total
-= Available
-+ attacks/expansion operations
-+ counter-responses
-+ transports
-```
+Public game concepts must not be forced to mirror inherited internal class names. In particular, inherited implementation ancestry may remain temporarily useful while the public target concept is different.
 
-No separate Reserve pool exists.
-
-### 9.2 Capacity from owned cells
-
-```text
-Capacity = owned population-bearing cells
-```
-
-Population-bearing classification comes from the canonical terrain data. Ordinary population-bearing land contributes exactly one Capacity while owned; Tundra and Shallow Water explicitly contribute zero despite being conquerable. Fallout preserves the underlying terrain's classification.
-
-Existing incremental territory counts should make this a cheap derived/read value, but victory/conquerable-territory accounting must remain separate from population-bearing/Capacity accounting because some conquerable terrain contributes zero Capacity.
-
-Remove/avoid City Capacity bonuses, Echo/Origin max-Population or Capacity-per-cell bonuses, terrain Capacity multipliers, and hidden faction Capacity multipliers. Cities move to growth effects.
-
-A surfaced Initial Territory modifier is allowed because it changes **starting ownership count of population-bearing cells**. Starting current Population remains a separate configured quantity unless an explicit surfaced Origin/Echo/ruleset rule ties it to Capacity or modifies its starting percentage.
-
-### 9.3 Representation and fractional residuals
-
-Authoritative Population values/controllers' allocations should normally use `uint32`-compatible non-negative whole integers.
-
-Use deterministic fixed-point/residual state only where formulas or explicit mechanics require sub-unit precision. Fractional recurring costs such as `0.5 Population` neutral settlement do not expose fractional Available/Committed Population to controllers.
-
-The neutral-settlement residual is faction-level persistent match state, not disposable operation-local state. Certification/replay/hash state must include it wherever required for determinism.
+Typed effective-rule hooks should carry Origin/Echo/ruleset transformations rather than hard-coded pairwise compatibility exceptions in unit/structure implementations.
 
 ---
 
-## 10. No defensive occupancy field — Accepted
+# 10. Origins, Echoes, and Official AI
 
-Do not implement persistent defensive Population on cells, Segments, Contacts, or fronts.
+## 10.1 Origins
 
-Available Population is one finite automatic defensive pool. Automatic assignment is ephemeral per tick and **binary per threatened owned cell**: zero or one Population, never more than one. One Available Population unit may participate in automatic defense on at most one threatened cell in that tick.
+Origins are declarative versioned rule data. Implement catalogue/builder/runtime projection from:
 
-If Available Population exceeds the number of threatened cells, every threatened cell may receive one defender and the surplus remains Available; it does not stack into higher passive pressure. Capacity therefore creates no free or unbounded defense. If Available Population is zero, baseline Population defense is zero even if territory remains.
+- [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
+- [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md).
 
-Simulation should iterate primarily over active operations, their engaged frontier lanes/cells, ephemeral threatened-cell defense assignment, active counter-responses, units, structures, and economic events rather than `factions × map cells`.
+Production validation must enforce the public builder/catalogue rules without hidden pairwise compatibility tables. Effective Origin rules must serialize/hash deterministically and project through the ordinary rules/controller surface.
 
-No dense Population matrix should exist.
+The exhaustive Origin deployment gate remains part of the migration dependency spine and validation work. Its exact staging relative to runtime mechanic completion is handled in the sequencing batch rather than duplicated as trait mechanics here.
+
+## 10.2 Echoes
+
+Implement Echo identity, acquisition, retained rolls, duplicate settlement, rewards, generated naming, Echo Sets, Middle Fingers, and Gacha only from [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
+
+The public source repository may contain reusable Echo contracts/algorithms/versioned naming configuration. Live account progression remains runtime/private persistence.
+
+This plan owns only the persistence/runtime integration required to support that canonical subsystem.
+
+## 10.3 Official AI
+
+Treat inherited Nation AI as behavioral/implementation reference, not as the target public contract.
+
+Official PvE AI must consume lawful Open Fufu observations/actions and must not retain simulation cheats, hidden information access, or privileged gameplay rules.
+
+The Official-AI subsystem is owned by [`official-ai/README.md`](./official-ai/README.md) and its canonical child/configuration files. Echo reward consequences are owned by `ECHO_CATALOGUE.md`.
+
+Official AI may run as trusted operational code and therefore need not use the hostile-code sandbox, but trusted execution must not imply gameplay-information privilege.
 
 ---
 
-## 11. Offensive operations, frontage, automatic defense, and land combat — Accepted
+# 11. Visibility, browser synchronization, participant protocol, and replay
 
-The OpenFront `Attack` concept is structurally closer to the target now, but its existing combat semantics are not authoritative.
+## 11.1 Authoritative projection
 
-### 11.1 Reuse selectively
+OpenFront's replicated full client simulation cannot securely enforce hidden operational information.
 
-Potentially reuse/adapt attack identity, owner/target linkage, committed scalar Population, lifecycle/execution plumbing, border/actionability helpers, deterministic cell traversal, capture notifications, and the useful fact that inherited neutral conquest already consumes attacker resources/time.
-
-Do not inherit old global defender formulas, old casualty formulas, exact inherited neutral troop-loss coefficients, bulk-conquest shortcuts, hidden large-faction bonuses, bot difficulty modifiers, or mutable-relation side effects.
-
-### 11.2 Operation model
-
-Conceptually:
-
-```text
-committedPopulation
-target
-spatialIntent
-activeFrontGeometry
-```
-
-Population commitment changes are instantaneous at controller decision commit.
-
-### 11.3 One-to-one engagement lanes
-
-Resolve each operation's legal intent into one-to-one source→adjacent-target engagement lanes each tick.
-
-Within one faction's resolved frontage:
-
-- a source cell attacks at most one target cell in that tick;
-- the same target cell is not duplicated by multiple source cells from that faction;
-- other hostile factions may independently contest the same target cell;
-- newly captured cells do not create additional same-tick lanes.
-
-The number of engaged lanes is bounded by committed Population:
-
-```text
-engagedFrontage <= committedPopulation
-```
-
-If 800 Population is committed against a selected 1,000-cell legal frontier, at most 800 lanes engage. If 100k Population is committed across only 300 lanes, the excess Population creates concentration/pressure on those 300 lanes.
-
-Operation pressure is distributed over engaged lanes according to controller weighting.
-
-### 11.4 Binary contact-surface automatic defense and defensive priorities
-
-For a defender, derive the distinct owned target cells currently pressed by incoming engaged hostile lanes.
-
-Automatic passive defense is binary:
-
-```text
-0 or 1 Population per threatened owned cell
-```
-
-and therefore:
-
-```text
-automaticallyDefendedCells
-= min(AvailablePopulation, threatenedOwnedCells)
-```
-
-If Tanya has 100,000 Available Population and 1,000 threatened cells, at most 1,000 Population participates in automatic cell defense that tick. The remaining 99,000 remains Available and creates no extra passive cell pressure.
-
-When Available Population is lower than the threatened surface, defense slots are apportioned across incoming contacts/operations approximately in proportion to engaged lane counts. A 300-lane Fufu attack plus a 100-lane Ski attack therefore receives a 3:1 share of Tanya's scarce defense slots before selecting the actual defended cells.
-
-The controller may provide defensive priorities/weights over legal cells/Segments/terrain/objectives. Those priorities choose **which cells receive scarce one-Population defenders**; they do not choose raw defensive Population quantities.
-
-The default policy is deterministic **Even Spread**. Equal-priority cells use seeded deterministic tie-breaking, with deterministic rotation allowed so the same arbitrary holes need not remain undefended forever.
-
-A cell contested by multiple hostile operations still consumes at most one automatic defense slot. The same Available Population may not be duplicated across cells or opponents.
-
-Terrain, Forts, Origins, Echoes, and other explicit modifiers change the effectiveness of the one defender, not its Population count.
-
-### 11.5 Direct active counter-responses
-
-A targeted counter-response removes Population from Available and commits it against one incoming hostile operation. It does **not** add extra passive defenders to cells and cannot raise a threatened cell above the one-defender automatic cap.
-
-Counter-response combat is a separate direct operation-vs-operation Population exchange and may cause casualties without any cell changing owner.
-
-For incoming attack Population `A` and counter-response Population `R`, use a shared exchange volume based on the smaller force:
-
-```text
-B = k × min(A, R)
-```
-
-Then derive scale-free relative imbalance:
-
-```text
-d = (R - A) / (R + A)
-s = sign(d) × |d|^p
-```
-
-with `p > 1`; provisional V1 starts at `p = 2`.
-
-Let `M` be the maximum relative casualty-efficiency ratio between the advantaged and disadvantaged side; provisional V1 starts at `M = 1.5`. Define:
-
-```text
-h = (M - 1) / (M + 1)
-
-responseMultiplier = 1 + h × s
-attackMultiplier   = 1 - h × s
-```
-
-and resolve both casualty directions simultaneously from the same pre-tick state:
-
-```text
-attackPopulationLost   = B × responseMultiplier
-responsePopulationLost = B × attackMultiplier
-```
-
-Use deterministic fixed-point/residual handling and cap casualties at the Population actually present.
-
-Implement **attack-side** and **response-side** effectiveness curves/parameters as distinct ruleset hooks even though their V1 defaults mirror one another. Origin/Echo/ruleset modifiers may address those hooks explicitly without replacing the core formula with arbitrary player code.
-
-A counter-response is tied to one incoming hostile operation; its committed Population cannot be duplicated across targets. Ending/changing it is immediate on a successful controller decision and returns surviving Population to Available.
-
-Exact `k`, final `M`, final `p`, and explicit side-specific modifier values are tuning data.
-
-### 11.6 Capture throughput
-
-Freeze engagement geometry at tick start. A target cell changes owner at most once per tick and one lane yields at most one capture that tick.
-
-Therefore an operation with 300 engaged lanes cannot capture more than 300 cells in one tick. Actual capture count is usually lower according to pressure advantage, terrain, structures, and tuning.
-
-### 11.7 Capture-coupled ordinary hostile land casualties
-
-Delete the previous continuous ordinary hostile cell-capture casualty direction such as `2AD/(A+D)`.
-
-For each **automatically defended population-bearing hostile cell** that changes owner under baseline rules:
-
-- previous owner loses the 1 current Population defending that cell;
-- winning attacker loses 1 current Population from the capturing offensive commitment;
-- previous owner Capacity -1;
-- winner Capacity +1.
-
-The consumed defender is normally removed from Available Population. The accepted elastic-defense Origin trait instead preserves that automatic defender and leaves/returns it Available; attacker casualty, ownership transfer, and Capacity transfer remain unchanged.
-
-A hostile-owned undefended capture causes no ordinary cell-capture Population casualty. This does **not** apply to Terra Nullius: neutral settlement follows §8 and consumes its explicit baseline settlement cost even though there is no neutral defender.
-
-Conquerable non-population-bearing cells may still receive a real automatic defender and therefore still incur the ordinary defender/attacker one-for-one capture casualties when successfully captured, but they transfer zero Capacity.
-
-Stalled/failed ordinary hostile cell pressure does not independently create Population attrition.
-
-Other explicit mechanics such as counter-response combat, neutral settlement, nukes, Tank Population attacks, and transport destruction may reduce Population without ordinary hostile defended-cell capture.
-
-### 11.8 Multi-faction handling
-
-Aggregate same-faction local pressure before resolution. Resolve all claimants from the same pre-state; strongest successful claimant wins a contested cell deterministically. The cell still flips only once.
-
-For a defended capture, the ordinary casualty pair applies only between the previous owner and the winning claimant, subject to any explicit defender-survival rule. **Unsuccessful third-party claimants lose no Population merely because they also contested that cell.**
-
-### Acceptance conditions
-
-- same Population cannot be duplicated across operations/cells/opponents;
-- 800 committed Population cannot produce more than 800 simultaneous engagement lanes;
-- same-faction operation fragmentation cannot manufacture pressure;
-- newly captured cells cannot chain-capture within one tick;
-- one threatened cell receives at most one automatic defensive Population;
-- one Available Population unit automatically defends at most one threatened cell per tick;
-- surplus Available Population does not stack passive defense above one per cell;
-- defensive priorities affect cell selection, not automatic defensive quantity;
-- counter-responses attack incoming committed Population directly rather than stacking passive defense;
-- counter-response force advantage is scale-free, nonlinear, shallow near parity, and bounded by an explicit maximum relative casualty-efficiency ratio;
-- attack-side and response-side counter-combat curves remain separately addressable rule hooks;
-- zero Available Population means zero baseline Population defense;
-- neutral population-bearing settlement takes progress/time and consumes one baseline Population per captured cell;
-- conquerable non-population-bearing settlement still takes progress/time but consumes zero baseline settlement Population;
-- fractional settlement modifiers cannot be exploited by operation recreation;
-- defender-survival traits never duplicate defenders or erase the winning attacker's ordinary defended-capture casualty.
-
----
-
-## 12. Population growth and Cities — Accepted
-
-Replace current OpenFront troop growth/cap formulas.
-
-Canonical direction:
-
-```text
-BaseGrowth
-= Gref × Capacity^0.75
-
-ActualGrowth
-= BaseGrowth
-× utilizationMultiplier
-× explicitGrowthModifiers
-```
-
-Cities contribute to growth, **not Capacity**. Population-growth Origin traits/Echoes may contribute explicit growth modifiers, and Origin traits may replace the ordinary utilization profile through typed/versioned rule data, but Capacity/max Population remains territory-derived.
-
-City structure level from 1 through 5 scales the City's explicit Growth contribution. The accepted fully-developed-City Origin transformation affects purchase/starting level and price, not the Capacity invariant.
-
-If Capacity is zero, growth is zero and no division by zero occurs.
-
-Remove passive worker-gold coupling from Population entirely.
-
----
-
-## 13. Structures — Accepted
-
-Retain useful generic spatial structure lifecycle infrastructure: build legality, construction duration, under-construction state, ownership/capture, levels/upgrades, health/destruction where relevant, and type-specific behavior.
-
-### 13.1 Public structure concepts and hard five-level model
-
-The canonical V1 public structures are:
-
-- City;
-- **Fort** (adapt inherited Defense Post internals as useful, but expose Fort as the Open Fufu concept);
-- Port;
-- Factory;
-- Missile Silo;
-- SAM Launcher;
-- **Observation Post**;
-- **Command Post**.
-
-All eight are upgradeable and have legal levels **1–5 only**. Level 5 is a hard maximum. Build at level 1 unless an explicit surfaced rule grants another starting level.
-
-Remove/override inherited effectively unbounded upgrade behavior.
-
-Every structure uses the accepted fixed cost-by-type-and-target-level table from `TERRAIN_AND_STRUCTURES.md`. Do **not** preserve OpenFront's inherited constructed-level scaling as the authoritative price model, and specifically remove the inherited shared Port/Factory price counter. Each L2–L5 upgrade takes the same authored construction time as that structure's L1 build. New structures remain inactive until completion; an upgrading structure continues at its previous completed level until the new level activates atomically.
-
-Canonical progression direction:
-
-| Structure | Migration direction |
-| --- | --- |
-| City | level scales explicit Population Growth contribution; never Capacity |
-| Fort | level scales both automatic-defender pressure modifier and coverage area |
-| Port | level scales passive naval repair radius and passive repair speed; preserve useful docked/fast repair at low levels |
-| Factory | level scales Factory-driven industrial/train FFY event value and simultaneous Tank/Heavy-Artillery repair capacity |
-| Missile Silo | level scales charge capacity; L1 Atom, L3 Hydrogen, L5 MIRV |
-| SAM Launcher | level scales ordinary interception range and charge capacity |
-| Observation Post | level scales legally revealable tactical observation radius |
-| Command Post | level scales ordinary land source offensive-pressure support and coverage radius |
-
-The accepted provisional level values, build/upgrade times, and prices are versioned data in the canonical registry, not open-ended implementation guesses.
-
-Whether Port level also retains inherited Trade-Ship-frequency scaling is open translation work; do not rely on it as the sole reason Port levels matter.
-
-No structure recreates hidden global Military Power.
-
-### 13.2 Fort implementation
-
-Reuse/adapt Defense Post area/range and local-defense plumbing where useful, but translate it into Fort semantics under the one-Population automatic-defense model.
-
-A Fort never creates phantom defenders. Its effect requires an actual automatic defender in the cell and modifies that defender's effectiveness.
-
-Implement the accepted provisional L1→L5 pressure/radius data from the canonical registry. Same-type overlapping Forts use the strongest applicable effect rather than adding percentages.
-
-The accepted fortified-amphibious-landing Origin trait needs a deterministic path to grant a normal permanent **level-1 Fort** after a successful landing without treating that grant as a purchase.
-
-### 13.3 City direct-L5 purchase transformation
-
-Implement the accepted Origin rule as a typed City-purchase transformation:
-
-- purchased City level is fixed to 5;
-- levels 1–4 are unavailable as purchase results for that faction;
-- price is 95% of the ordinary cumulative L1 build + L2–L5 upgrade prices;
-- under the accepted provisional City table this is `1.995m FFY`;
-- this is one build/purchase transaction, not four upgrade-spend events;
-- captured lower-level Cities retain their existing level and may use ordinary upgrades unless another rule forbids them.
-
-This transformation must compose deterministically with free-first-purchase and no-upgrade-spend traits according to the canonical design, without a compatibility exception.
-
-### 13.4 SAM transformed shield profile
-
-Keep/adapt the existing automatic SAM targeting/interception infrastructure. Controllers should not need a new one-off Origin-only interception action.
-
-Ordinary SAMs use one interception charge per completed level and the accepted provisional range/recharge table from the registry.
-
-Support a typed Origin transformation that changes SAM rules to:
-
-- substantially larger interception range (`+50%` provisional);
-- exactly one charge regardless of level;
-- doubled ordinary recharge cooldown (provisional);
-- upgrades still improve range but never add charges.
-
-Target selection remains automatic and legally observable through normal SAM mechanics; a bait weapon can therefore consume the single charge, but the structure itself is not permanently sacrificed.
-
-### 13.5 Observation Post implementation
-
-Add a persistent spatial Observation Post with accepted L1→L5 radius `40 / 55 / 70 / 85 / 100`, 5-second build/upgrade time, and the canonical cost table.
-
-Its coverage participates in the authoritative visibility projection. It reveals only state the observation rules designate legally revealable—e.g. hostile mobile units, structures, and manifested operations—and must never bypass controller-memory/private-state boundaries.
-
-Coverage is boolean; overlapping Observation Posts do not multiply information.
-
-### 13.6 Command Post implementation
-
-Add a persistent Command Post with accepted 10-second build/upgrade time, L1→L5 source-offensive-pressure support `+3 / +6 / +9 / +12 / +15%`, coverage radius `30 / 35 / 40 / 45 / 50`, and the canonical cost table.
-
-The effect checks the **attacking source cell** of ordinary Population-based land engagement lanes. It does not modify Tank/Heavy-Artillery weapon damage, Warships, strategic weapons, or unrelated FFY effects.
-
-Same-type overlapping Command Posts use the strongest applicable effect rather than stacking. The 10-second duration is intentional telegraphing and must not be optimized away into instant pre-attack placement.
-
----
-
-## 14. Generic units, naval, amphibious, trade, rail, and armor — Accepted
-
-Retain/adapt the generic unit framework internally: stable IDs, ownership, movement, target state, health, deletion, construction, upgrades where applicable, and type-specific runtime state. Do not expose this shared inherited implementation abstraction directly as the player-controller contract.
-
-### Transport ships
-
-Current transport payload maps naturally to committed Population. Carried Population is not Available for defense; a legal landing joins local offensive engagement. Transport destruction can explicitly kill carried Population.
-
-The baseline Transport embarkation FFY cost is **0**. Implement a typed **additive embarkation-cost modifier** surface for Origin/ruleset effects rather than absolute replacement prices.
-
-Accepted combination example:
-
-```text
-base Transport embarkation cost          0 FFY
-fortified-landing Origin modifier      +250 FFY
-existing Transport-cost drawback       +500 FFY
-both together                           750 FFY
-```
-
-The fortified-landing trait creates its permanent level-1 Fort **only after a successful landing establishes the relevant land position**. Destruction/abort before successful landing creates no Fort. Because it is a grant rather than a purchase, it does not consume a separate free-Fort-purchase entitlement.
-
-### Trade ships and Ports
-
-Retain the physical world-event model:
-
-```text
-Port
-→ TradeShip
-→ physical route
-→ arrival/capture
-→ FFY event
-```
-
-Replace alliance/embargo assumptions with fixed-team/FFA/`atWar` rules.
-
-Adapt Port levels to the canonical naval-support progression: increasing passive repair radius and passive repair speed while preserving a useful close/docked fast-repair identity. Exact future retuning and whether trade spawning also scales with level remain tuning/translation work.
-
-### Trains and rail
-
-Retain useful physical/economic rail infrastructure and stop/arrival events. There is no hidden or explicit V1 land Deployment Rate for rail to modify.
-
-Factory level feeds explicit Factory-driven industrial/train FFY event value rather than a hidden general multiplier.
-
-A Train must expose/retain a deterministic snapshotted **current pending cargo FFY value** suitable for Tank interception. When a hostile Tank destroys/intercepts the Train before that payout, remove the Train, cancel the pending ordinary payout, and grant 100% of the snapshotted current cargo value to the Tank owner as the land-raiding FFY event. Previously earned Train FFY is never clawed back.
-
-### Warships
-
-Retain/adapt patrol, combat, transport interception, piracy, retreat/repair, health, and veterancy where compatible.
-
-A purchased Warship now has a **5-second construction phase at its Port** before becoming active; remove the inherited effective instant-spawn behavior. A trait that changes Warship purchase resource/cost—such as population-funded Warships—does not bypass this time unless explicitly stated.
-
-Add a generic typed **launcher-equivalence** hook for the accepted Origin mechanic that makes Warships count as Missile Silos. For such a Warship:
-
-```text
-effective Silo level = max(1, Warship rank/veterancy)
-```
-
-This allows ordinary rank-3 maximum Warships to reach Hydrogen legality but not MIRV; a separate +2 maximum-rank trait can produce a rank-5/MIRV-capable Warship without any hidden compatibility exception.
-
-Do not hard-code this interaction into generic Warship code if it can live cleanly in effective-rule/launcher capability projection.
-
-### Tanks
-
-Add the **Tank** as the sole baseline persistent land military unit. One runtime Tank represents an armored formation rather than a literal one-vehicle simulation.
-
-Canonical production/lifecycle direction:
-
-- produced by an active owned Factory;
-- **5-second construction time**;
-- one concurrent Tank build per Factory;
-- progressive active-count price curve from the canonical registry;
-- health-bearing, with automatic retreat/repair behavior at Factories;
-- no direct territorial capture and no carried Population;
-- autonomous local pathing/target selection/firing under controller-assigned patrol/raid/area/target intent;
-- no per-shot/turret/frame-by-frame controller micro.
-
-Canonical baseline combat/economic roles:
-
-- fight hostile Tanks/Heavy Artillery;
-- intercept hostile Trains and capture their pending cargo value;
-- directly attack hostile Population, causing current-Population casualties without capturing the cell.
-
-Implement the terrain movement table from `TERRAIN_AND_STRUCTURES.md`. Mountain, Shallow Water, Deep Water, and Impassable are hard Tank barriers; other traversable terrains apply explicit speed multipliers. Neutral/Terra-Nullius cells do not form Tank transit corridors; ownership/hostility must make the path legal.
-
-### Heavy Artillery — P43 Tank transformation
-
-Do **not** add a second normally purchasable Artillery unit. P43 transforms the Tank profile for the entire faction.
-
-Accepted provisional transformation:
-
-```text
-build time             5s → 10s
-purchase cost          ×1.50
-final movement         ×0.50
-range                   30 → 45
-max health              1000 unchanged
-anti-armor              1000 damage / 12s
-Population attack       1000 Population / 12s
-Train raiding           disabled
-movement barriers       same as Tank
-projectiles             may cross terrain the unit itself cannot traverse
-```
-
-Preserve the intended emergent matchup without hidden ratio modifiers: one prepared Artillery beats one Tank; one Artillery loses to two Tanks after the opening shot; two Artillery are intended to lose to three Tanks after their opening volley; exposed/reloading Artillery is Tank-favored.
-
-### Radioactive Munitions — P44 Population-attack transformation
-
-Implement P44 as a typed post-success hook on **Population attacks only**. It never triggers from anti-armor combat or Train interception.
-
-After ordinary Population damage resolves:
-
-- Tank form: inspect target-centered Manhattan radius 2 and neutralize/apply Fallout to up to **10** eligible enemy-owned population-bearing cells;
-- Heavy-Artillery form: inspect target-centered Manhattan radius 5 and neutralize/apply Fallout to up to **50** eligible enemy-owned population-bearing cells.
-
-Skip structure-occupied and non-population-bearing cells. Order eligible candidates deterministically by distance then stable tile ID. If too few valid cells exist inside the radius, affect fewer cells rather than expanding the search.
-
-Capacity loss comes from neutralization/removal of ownership, not from Fallout itself. P44 adds no second direct Population-damage multiplier. P43 and P44 must compose normally because both are ordinary independent legal traits.
-
----
-
-## 15. Strategic weapons and SAM — Accepted
-
-Retain deterministic launch/trajectory/interception infrastructure: silos, missile flight, warning/visibility where allowed, SAM interception, detonation geometry, and structure/unit/terrain effects.
-
-Replace old scalar-troop/attack-stack casualty handling and mutable-alliance side effects.
-
-### 15.1 Missile Silo levels and weapon gates
-
-Adapt Missile Silo upgrade/charge plumbing to the universal level-1-through-level-5 structure model.
-
-Canonical weapon requirement:
-
-```text
-Silo L1+ → Atom Bomb
-Silo L3+ → Hydrogen Bomb
-Silo L5  → MIRV
-```
-
-Higher Silo level also increases ordinary launch-charge capacity. A newly built or freely granted Silo starts at level 1 unless the granting effect explicitly states otherwise.
-
-Strategic-weapon legality must resolve against the selected physical launcher. The controller/API should be able to identify the launcher used rather than silently selecting an arbitrary Silo when launcher state matters.
-
-A free/granted MIRV does not bypass the L5 launcher requirement or other ordinary non-price legality. Preserve any explicitly authored affordability/precondition semantics while consuming zero FFY on the actual granted purchase/launch where that is the trait's rule.
-
-Warship launchers use the effective-level rule in §14.
-
-### 15.2 MIRV rebalancing
-
-Retain MIRV as an exceptional late-game strategic threat, but reduce inherited devastation moderately in addition to the L5 access gate.
-
-Do not blindly preserve the inherited ~350-warhead configuration. Benchmark/playtest a lower starting range, roughly **250–300 warheads** as an initial tuning candidate, and/or corresponding spread/effect adjustments.
-
-The target is still `MIRV is terrifying`, not `a much smaller faction can reliably erase a dominant leader regardless of prior strategic state`.
-
-### 15.3 Standard nuclear fallout
-
-The current OpenFront source already provides a useful political pattern to retain and translate:
-
-```text
-owned affected population-bearing land
-→ owner relinquishes cell
-→ cell becomes neutral
-→ ordinary mode applies Fallout overlay
-→ underlying terrain remains queryable/conquerable according to its base rules
-```
-
-Open Fufu standard nuclear semantics are therefore:
-
-- each affected owned population-bearing land cell is relinquished and becomes neutral;
-- the former owner loses 1 current Total Population per such affected owned cell, capped at zero;
-- the former owner's Capacity falls by 1 because ownership of that population-bearing cell was lost;
-- Fallout remains an overlay and applies explicit capture resistance/capture-speed effects instead of phantom defensive Population;
-- a later faction gains Capacity from reconquest only if the underlying terrain is population-bearing.
-
-Do **not** blindly inherit OpenFront's exact current fallout coefficient; use the accepted provisional Fallout/base-terrain data from the canonical registry and keep future retuning versioned.
-
-### 15.4 Optional water-nuke mode — Accepted V1
-
-Retain Water Nukes as a **default-OFF optional V1 ruleset** and implement the canonical geometry from `NAVAL_AND_STRATEGIC_WEAPONS.md` / `OPEN_FUFU_DESIGN.md` rather than inheriting unspecified OpenFront terrain destruction.
-
-For every Atom, Hydrogen, or individual MIRV-warhead explosion, the ordinary **fully affected inner blast zone** is also the permanent Deep-Water conversion core. The irregular outer blast annulus keeps standard neutralization + Fallout behavior. Accepted core/fringe radii are Atom `12 / 30`, Hydrogen `80 / 100`, and MIRV warhead `12 / 18`, with surfaced blast-geometry modifiers applying consistently.
-
-Eligible land and Shallow Water in the core become Deep Water after ordinary nuclear casualty/destruction resolution; existing Deep Water remains Deep Water and Impassable terrain is unchanged. Converted cells are unowned, non-population-bearing, non-buildable, excluded from ordinary conquerable territory, and carry no Fallout overlay. Overlapping cores resolve as a deterministic union.
-
-Terrain mutation immediately updates traversal/pathing, naval connectivity, coast/shore classification, Capacity, and victory-denominator behavior. Segment IDs remain immutable and the runtime does not regenerate Segments. `RulesView` exposes the versioned ruleset value needed for controllers to know Water Nukes are enabled.
-
-There is no hidden anti-cheese exception: canal-cutting, coastline reshaping, land deletion, isolation, and denominator reduction are legitimate consequences when the option is enabled.
-
----
-
-## 16. Teams, diplomacy, `atWar`, defeat, capitulation, and victory — Accepted
-
-Retain fixed pre-match teams. Remove mutable alliance/relation diplomacy. FFA opponents remain legally attackable regardless of `atWar`; `atWar` is symmetric recent-hostility state rather than a permission gate.
-
-Trade with enemies remains possible with the canonical explicit wartime penalty rather than ordinary embargo prohibition. Do not inherit troop/gold donations automatically.
-
-Fixed teammates share legal operational observations and may exchange bounded deterministic delayed team signals through the public controller contract.
-
-### Defeat
-
-After all same-tick ownership changes resolve, **zero owned population-bearing territory means immediate defeat**, regardless of remaining Population, operations, fleets, Tanks, Artillery, or transports. No comeback/dispossessed state exists.
-
-### Resignation/capitulation
-
-A resigned/capitulated faction becomes a passive territorial remnant and keeps its owned territory, static structures, and surviving Population.
-
-On resignation/capitulation:
-
-- growth becomes permanently zero;
-- controller decisions permanently stop;
-- active land offensive/counter-response operations cease and surviving Population returns to Available;
-- all mobile units are removed immediately, including Warships, Tanks/Heavy Artillery, Trade Ships, Trains, and Transport Ships;
-- Population aboard removed transports returns to Available rather than dying;
-- removed mobile units provide no FFY/resource refund;
-- in-flight offensive projectiles/strategic weapons are cancelled/removed;
-- static passive effects may continue where explicitly legal;
-- static active behaviors stop, including missile launches, SAM firing, trade/train/unit spawning, and other autonomous strategic actions;
-- remaining Available Population continues ordinary passive defense;
-- territory remains capturable normally;
-- no new strategic actions occur.
-
-Replace old partial-territory/overtime/doomsday victory rules with the canonical 100%-territory/opposition-defeated rules. Reward settlement is separate from victory: defeat preserves the Echo rolls already accumulated by the relevant solo or fixed-human-team reward entity, while victory adds the explicit +5-roll bonus.
-
-Detailed lobby UI/UX remains later product work.
-
----
-
-## 16A. Official PvE AI migration — Accepted
-
-The existing OpenFront Nation-AI code is useful as **behavioral reference and as an example of composing reusable strategy components**, not as the target gameplay contract.
-
-Retain/reuse selectively:
-
-- the general pattern of composing aggression, economy, construction, naval, armor/raiding, retaliation, target-selection, and strategic-weapon behaviors;
-- useful strategy-neutral helper logic that can be moved behind the Open Fufu observation/action contract;
-- creator-authored preset/version concepts where they remain compatible.
-
-Do not preserve:
-
-- direct unrestricted access to canonical `Game` state when that exposes information a player controller cannot legally observe;
-- global troop/Population reads that bypass the canonical visibility contract;
-- Easy/Medium/Hard simulation modifiers or difficulty-dependent resource cheats;
-- hidden reaction-speed, income, growth, omniscience, or legality advantages.
-
-Official PvE AI should consume the same legal gameplay observation/action contract as player controllers, including Observation-Post visibility, Tank/Heavy-Artillery rules, and the same effective spawn-profile protocol in modes that use strategic spawning. It may execute as trusted code and therefore need not use the hostile-code sandbox, but trusted execution must not create gameplay-information or rules privileges.
-
-Official AI factions bind an Origin and Echo loadout through the same legal mechanics. Official Origins are ordinary legal Origin builds from the same deployed trait catalogue, with no creator-only hidden points, traits, formulas, or bonuses.
-
-The provisional V1 character-based preset roster, each character's shared allowed Origin pool, provisional 1–5 difficulty target, and difficulty-derived reward semantics are maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). Human controller/Origin/Echo Set choices lock before the match seed resolves each AI preset's allowed Origin; the selected AI Origin is then surfaced before Strategic Spawn. The randomly selected Origin does not alter the preset's bound difficulty or reward contribution.
-
-Exact official AI implementations are creator-owned, immutable/versioned when bound to a match, and may reuse internal strategy components without turning those components into privileged player-facing policy APIs. Difficulty belongs to the implemented controller's competence rather than lore power. For reward accounting, defeating an Official AI contributes total Echo rolls equal to that bound preset difficulty: the ordinary qualifying-opponent `+1` plus a special-AI bonus of `difficulty - 1`. Do **not** maintain a second per-character Echo-reward bonus field/table; if a preset's difficulty is later retuned after implementation/playtesting, the defeat reward follows that same versioned source of truth.
-
----
-
-## 17. Visibility and participant viewing — Accepted
-
-OpenFront's client-replicated full simulation cannot securely enforce hidden operational information.
-
-The authoritative match process generates legal controller/browser projections **before** information reaches the gateway/browser.
+The authoritative match process must generate legal projections **before** information reaches a controller, gateway, or browser:
 
 ```text
 canonical match state
     |
-    ├─ Fufu legal observation
-    ├─ Ski legal observation
-    └─ official-AI legal observation
+    ├─ participant A legal projection
+    ├─ participant B legal projection
+    └─ official-AI legal projection
 ```
 
-Use the same underlying projection rules for player controllers, official AI, and browser participant views. Fixed teammates receive the legal union of their team's observable operational state.
+Use one projection model for player controllers, official AI, and participant browser views. Team visibility combines only what the target rules explicitly permit.
 
-Observation Post coverage is one explicit input to legally revealable tactical/operational state. Implement it server-side in the projection/visibility layer; it must not become browser-only hiding or a controller-side inferred hack.
+All derived queries/calculators operate on legal projected information and must not become side-channel oracles.
 
-Public projection includes the selected Origin and full mechanical Origin-trait sheet plus strategically relevant active mechanical modifier sheets so hidden arithmetic does not need to be reverse-engineered from outcomes.
+## 11.2 Browser synchronization
 
-That public mechanical projection includes spawn-profile changes, Initial Territory/Starting Population effects, neutral-settlement cost, Transport embarkation cost, structure-level transformations, Observation/Command Post values, Tank/Heavy-Artillery profile, Radioactive-Munitions footprint rules, launcher equivalence/weapon level requirements, and other strategically relevant Origin/Echo rules.
+Retain OpenFront rendering/camera/map visualization heavily where useful, but remove browser authority.
 
-All derived query/calculator APIs operate strictly over legal projected information and must not create side-channel visibility leaks.
-
-During Strategic Spawn, the pre-match information projection is explicitly phase-dependent: all participants' surfaced Origins, Initial Territory values, Starting Population effects, effective spawn profiles, and other strategically relevant public spawn modifiers are visible before Phase 1; Phase 1 choices are hidden until all are committed; the full Phase-1 influence set is then public for Phase 2; Phase-2 revisions are hidden until all are committed; final influence areas are then public for Phase 3; and exact origin(s) are revealed after simultaneous resolution before normal play begins.
-
-There is **no ordinary third-party live spectator mode**. Users may view only matches they are actually participating in, including their own PvE matches, from their legal participant perspective.
-
-Internal benchmark/certification/development tooling may use trusted omniscient observation where needed.
-
-The gateway forwards legal projections rather than mirroring full secret state for client-side filtering.
-
----
-
-## 18. Browser synchronization and rendering — Accepted
-
-Keep OpenFront's rendering/camera/map/unit visualization foundations heavily where useful. Remove authoritative browser simulation responsibility.
-
-The browser becomes primarily:
-
-```text
-participant match viewer
-controller editor
-debugger / private controller-overlay viewer
-replay viewer
-Origin creator / Origin selection UI
-Echoes collection / Echo Sets UI
-Echo reward-batch / pending-settlement / duplicate-comparison UI
-Gacha Store / paid-pull pity presentation UI
-lobby / strategic-spawn UI
-```
-
-Live connection/reconnect uses:
+Live/reconnect synchronization should use:
 
 ```text
 authoritative legal snapshot
 → incremental observer deltas
-→ fresh snapshot on resync if needed
+→ fresh snapshot on resync when needed
 ```
 
-Do not require a reconnecting browser to replay the entire historical turn stream.
+A reconnecting browser should not replay the entire historical action stream merely to reconstruct current state.
 
-Controller debug annotations are private participant/developer data, not public match state. They should be recorded/streamed through bounded dedicated diagnostics channels rather than mixed into authoritative gameplay state.
+Browser roles include match viewing, controller authoring/debugging, replay, Origin/Echo workflows, lobby/spawn UI, and diagnostics. Exact subsystem UI semantics come from their canonical owners.
 
-Strategic spawn selections/reveals should be represented as explicit pre-match state/protocol messages rather than pretending they are ordinary simulation ticks. The UI must display one or two areas/origins according to each faction's public spawn profile without special manual intervention.
+## 11.3 Participant/service protocol
 
-The Echo UI must implement the settled card/collection language: a searchable/filterable/favoritable **Echoes** grid; Echo Sets referencing identity IDs; deterministic generated names; tier-family border colors with continuous EchoScore gradients; responsive hover/focus card expansion with touch-safe alternatives; deliberately dull gray/white Questionable presentation with no special aura/effects; restrained animated Lucky glow; and intentionally excessive Cheater pink/violet/rainbow/radiant-beam presentation. The identity-level character/stat naming components remain recognizable across quality treatments and duplicate upgrades, while magnitude adjective(s) change with the retained roll.
+The concrete external/browser/game service API and participant protocol require one canonical contract. Do not distribute endpoint/event-envelope/reconnect semantics across unrelated subsystem documents.
 
-Generated names are derived from a stable identity-level character possessive and concrete-stat token(s), plus polarity-aware magnitude descriptor(s). Mixed names use the accepted `with a side of` grammar. Exact mechanical modifiers remain displayed directly and are authoritative; the flavor name never replaces the stat sheet. Avoid mechanically assembling awkward scope prefixes into phrases such as `Naval Guitar Solo` when a deliberate concrete-key token/override would read better.
+This migration plan establishes the architectural boundary but does not own that missing protocol definition.
 
-Large acquisition batches must group repeated identities, eliminate dominated duplicate rolls, and show only surviving incomparable Pareto-frontier choices. The current retained copy is the first/default choice when it survives; if it is dominated, the deterministic highest-EchoScore survivor may be the UI default without redefining Pareto superiority. The result remains a persistent pending settlement through reconnect until accepted, and V1 blocks another reward-bearing match or additional Gacha pulls while one remains unresolved.
+## 11.4 Replay
 
-Gacha presentation must reflect the actual settled mechanics: 10 Middle Fingers per pull, 100 Middle Fingers per ten-pull with no bonus/discount, one sequential paid-pull pity counter across singles/batches, Lucky+ at `EchoScore >= 1.00`, power-12 rescue toward the 50th-pull hard guarantee, match rewards having no effect on Gacha pity, and no Cheater guarantee.
+The canonical archival replay is a compact deterministic record of exact versioned match bindings, authoritative pre-match/spawn resolution, and committed simulation-affecting inputs/actions required to reproduce the match from tick zero.
 
-The renderer/UI must gain clear state for the new terrain identities, Observation/Command Posts, Tank/Heavy-Artillery construction/combat/repair, and the difference between ordinary owned terrain, neutralized Fallout patches, and Deep/Shallow Water.
+Ordinary playback does not re-execute historical player controllers and does not require controller-memory snapshots or periodic full-world-state checkpoints.
 
-Observer publishing must be optional in headless certification/batch simulations.
+Detailed controller logs/debug annotations remain separate bounded diagnostic artifacts rather than canonical replay state.
 
 ---
 
-## 19. Replay, records, and crash behavior — Accepted direction
+# 12. Authentication and identity integration
 
-Preserve deterministic archive/replay philosophy but make the server the source of canonical state/hashes.
+Implement authentication, identity linking, sessions, OAuth-provider boundary, provisioning/revocation, CSRF/Origin enforcement, and WebSocket session binding from the canonical [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) only.
 
-Archive exact committed controller decisions/operation changes so ordinary replay does **not** need to re-execute historical untrusted controller code. A stronger verification/debug mode may separately re-run archived controller/runtime versions and compare outputs.
+Migration consequences:
 
-Record/bind the exact terrain/structure/unit ruleset version, Origin definition/version, Origin-trait catalogue identity where required, equipped Echo **identity IDs plus the exact retained magnitude configuration used for the match**, Echo mechanical-identity catalogue version, Echo naming/presentation version where historical wording/presentation needs it, applicable acquisition/roll-rules version, and enough spawn inputs/resolution identity to reproduce the same Strategic/Random/Fixed spawn outcome and Initial Territory footprint(s) without relying on later code defaults.
+- remove inherited auth/session assumptions that conflict with that contract;
+- keep admission policy outside Open Fufu;
+- give match processes only internal game-facing participant identity/configuration;
+- never pass OAuth tokens, browser cookies, integration credentials, or external roles into match processes;
+- prevent external systems from writing Open Fufu persistence directly as an integration mechanism.
 
-Replay/hash state must include rule-bearing residual/effective state such as faction-level fractional neutral-settlement residuals, mobile-unit construction state, Tank/Heavy-Artillery health/repair/targets, and any deterministic Radioactive-Munitions footprint resolution needed to affect later outcomes.
-
-Retain enough bounded controller debug annotation/log history to support the programming debugger/replay experience without making debug output simulation-authoritative.
-
-V1 may treat an authoritative match-process crash as:
-
-```text
-match aborted
-no progression reward
-detailed crash record retained
-```
-
-Architect records so later replay-to-last-tick/checkpoint recovery remains possible, but crash-resume is not V1-required.
+Do not duplicate endpoint/cookie/OAuth details here.
 
 ---
 
-## 19A. FFY modifier translation — Accepted
+# 13. Persistence — canonical V1 runtime architecture
 
-FFY remains event-driven, but Origin/Echo build modifiers should not expose every individual FFY event as a separate public build-stat axis.
+Open Fufu owns its persistent runtime state.
 
-Translate FFY modifier plumbing into a **small set of broad source families**, conceptually around:
+Use **SQLite** through Node's built-in **`node:sqlite`** API for V1. Do not add an ORM solely to wrap this service.
 
-- generic/overall FFY;
-- military/conquest FFY;
-- naval/trade FFY;
-- industrial FFY.
-
-Exact final naming/mapping is implementation/tuning work. Individual event identity is still preserved internally for simulation, replay, diagnostics, and reward attribution.
-
-Factory level scales explicit Factory-driven industrial/train FFY event value through this economic-event system rather than recreating passive generic income. The base Factory-event payout itself is expected to be materially stronger than inherited OpenFront's current very weak Factory economy; exact FFY event amounts remain balance work.
-
-Tank Train interception produces a land-raiding FFY event from the intercepted Train's snapshotted pending cargo value. It should map to an appropriate broad economic family while retaining precise event identity for replay/diagnostics.
-
-Transport embarkation cost is an FFY **cost**, not an FFY income-source family. Compose Transport-cost traits additively on their dedicated cost hook.
-
-Identity-defining exceptions such as changing/removing the ordinary wartime trade penalty may exist as explicit curated Origin traits. Do not create a generic arbitrary-formula facility for players, and do not rely on hidden Origin/Echo incompatibility rules to preserve intended tradeoffs; curate the deployed catalogues accordingly.
-
----
-
-## 20. Authentication, identity, sessions, and external provisioning — Accepted V1
-
-Implement the canonical contract in [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md).
-
-The core responsibility split is closed:
-
-```text
-external authority decides admission
-        ↓ generic integration API
-pre-provisioned provider-qualified identity in Open Fufu
-
-browser proves identity through configured provider adapter
-        ↓
-Open Fufu checks its own linked identity
-        ↓
-internal user + Open Fufu session
-```
-
-Open Fufu must remain blind to **why** an identity was provisioned. Do not import Fufubox users, Fufu Control roles, Foof permissions, firewall grants, approval reasons, or another product's authorization model into game state. Fufubox/Fufu Control/Foof may be current provisioners, but Open Fufu does not call them during normal login and must remain movable to another host without them.
-
-V1 browser identity proof uses a replaceable provider-adapter boundary with one production adapter: **Discord OAuth2 Authorization Code flow**, stable numeric Discord user ID, random `state`, PKCE/S256, server-side exchange, and short-lived transient OAuth state. A successful OAuth callback never auto-creates a player: `(provider, provider_subject)` must already exist and be active in `linked_identities` or access is denied.
-
-V1 machine provisioning is the deliberately small generic surface:
-
-```text
-POST /api/integration/v1/identities/provision
-POST /api/integration/v1/identities/revoke
-```
-
-Provision is idempotent; a first provision creates the local user/link, reprovisioning a revoked identity restores the same local account, and revoke disables that login path plus active sessions without deleting game progression/history. External systems never write Open Fufu SQLite directly.
-
-Authenticate integration callers with one or more named Open-Fufu-owned opaque 256-bit bearer credentials supplied from private runtime secret configuration. Browser sessions cannot call the integration surface. V1 does not need a Fufu-style service-role database merely for these two endpoints.
-
-V1 browser sessions are opaque 256-bit random tokens stored only as SHA-256 verifiers in SQLite. Use the production cookie `__Host-openfufu_session` with `Secure`, `HttpOnly`, `SameSite=Lax`, `Path=/`, no `Domain`, and a **30-day absolute TTL**. Do not preserve the inherited refresh-cookie → 15-minute JWT chain, browser bearer-token storage, or `persistentID` development fallback.
-
-Authenticated browser mutations use the session cookie plus same-origin/Origin checks and `X-Open-Fufu-CSRF`; the CSRF value may be HMAC-derived from the raw session token with a dedicated server secret. V1 exposes no credentialed cross-origin browser API.
-
-WebSocket upgrade authenticates from the Open Fufu session cookie plus Origin validation, then binds the internal user/session identity for later message authorization. Do not put JWTs, Discord tokens, or session tokens in WebSocket query strings.
-
-Match processes receive only internal game-facing participant identity/configuration and never Discord tokens, browser cookies, integration credentials, external roles, or admission-policy data. Existing sessions and running matches do not depend on Discord/Fufu/Foof availability after session establishment.
-
-## 21. Persistence — Accepted V1 SQLite baseline
-
-Open Fufu owns its persistent state rather than depending on OpenFront's external account/archive backend.
-
-Use **SQLite** as the V1 authoritative structured runtime store through Node's built-in **`node:sqlite`** API. Do not add Prisma, Sequelize, or another ORM/database abstraction layer merely to wrap this small service.
-
-Every normal writable connection applies the accepted startup baseline:
+Every normal writable connection applies:
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -1488,7 +519,7 @@ PRAGMA busy_timeout = 5000;
 PRAGMA wal_autocheckpoint = 1000;
 ```
 
-Schema changes use explicit SQL migrations committed to Git. The intended persistence source layout is:
+Schema changes use explicit SQL migrations committed to Git.
 
 ```text
 src/server/persistence/
@@ -1498,7 +529,7 @@ src/server/persistence/
         0002_...
 ```
 
-The accepted runtime-data layout is:
+Runtime layout:
 
 ```text
 data/
@@ -1508,32 +539,13 @@ data/
     backups/
 ```
 
-`node:sqlite` supplies the prepared statements, transactions, and online-backup capability needed by this V1 design. Persistence implementation should use those primitives directly rather than introducing an ORM layer.
+Reusable rule-bearing game data remains versioned source/game content rather than being duplicated wholesale into relational rows. Runtime/private account/progression records live in SQLite/files as specified below.
 
-### 21.0 Public source versus private/runtime data
+## 13.1 V1 relational schema
 
-The public `open-fufu-io` repository defines the reusable game implementation and data contracts. For Echoes, the compact generated-name grammar/configuration may also live in public/versioned game data; it is not a 12,927-row authored-name corpus and does not require a private copyrighted quote pack.
+The initial V1 persistence model has **17 core tables**.
 
-Public source should contain things such as:
-
-- semantic stat/type definitions and stable identifiers;
-- schemas and migrations;
-- deterministic Echo identity-generation/materialization logic;
-- EchoScore, acquisition, Pareto/duplicate, reward, Gacha, pity, and validation algorithms;
-- generated-name grammar and the accepted magnitude descriptor table;
-- versioned shape-character pools and concrete-stat token mappings once authored;
-- UI/rendering implementation;
-- synthetic/sample fixtures sufficient for development/tests.
-
-The live installation consumes the structured runtime/private records defined by the accepted V1 schema below. Official rulesets, terrain/structure/unit registries, Origin catalogue content, Official Origins, Echo identity/naming catalogues, and similar reusable rule-bearing definitions remain versioned game data in Git/data rather than being duplicated wholesale into relational tables. Historical matches retain exact version/hash bindings and the accepted Origin/Echo/spawn snapshots needed to interpret old results.
-
-**V1 does not require or store an Echo anime-dialogue corpus, Echo-to-line assignments, MAL source catalogue, or quote/subtitle import metadata.** Authored anime dialogue/reference content is instead a much smaller Origin-trait / Official-Origin content concern and can use an implementation-appropriate authoring/revision workflow when that content is produced.
-
-### V1 relational schema — Accepted
-
-The initial V1 persistence model is **17 core tables**. Internal relational keys use SQLite integer primary keys where applicable; externally surfaced entities use random NanoID-style `public_id` values. Published/version-bound historical records are immutable where stated below.
-
-#### 1. `schema_migrations`
+### 1. `schema_migrations`
 
 ```text
 version              INTEGER PRIMARY KEY
@@ -1542,7 +554,7 @@ applied_at_ms        INTEGER NOT NULL
 app_git_sha          TEXT NOT NULL
 ```
 
-#### 2. `users`
+### 2. `users`
 
 ```text
 id                   INTEGER PRIMARY KEY
@@ -1552,11 +564,7 @@ created_at_ms        INTEGER NOT NULL
 deleted_at_ms        INTEGER
 ```
 
-Use integer primary keys internally and random NanoID-style `public_id` values externally.
-
-#### 3. `linked_identities`
-
-Discord is the immediate provider; the representation deliberately permits later providers.
+### 3. `linked_identities`
 
 ```text
 provider             TEXT NOT NULL
@@ -1568,11 +576,7 @@ revoked_at_ms        INTEGER
 PRIMARY KEY(provider, provider_subject)
 ```
 
-The row is retained across revocation so re-provisioning the same provider/subject restores the same local Open Fufu user rather than creating a duplicate account. Active login requires `revoked_at_ms IS NULL`. Admission rationale/policy is deliberately not stored here; see `AUTH_AND_IDENTITY.md`.
-
-#### 4. `controller_projects`
-
-The mutable logical controller project shown in the editor.
+### 4. `controller_projects`
 
 ```text
 id                   INTEGER PRIMARY KEY
@@ -1584,9 +588,7 @@ updated_at_ms        INTEGER NOT NULL
 archived_at_ms       INTEGER
 ```
 
-#### 5. `controller_drafts`
-
-One current autosaved draft per project; do not create an unbounded row history for every editor autosave.
+### 5. `controller_drafts`
 
 ```text
 project_id           INTEGER PRIMARY KEY REFERENCES controller_projects(id)
@@ -1594,9 +596,9 @@ source_package_json  TEXT NOT NULL
 updated_at_ms        INTEGER NOT NULL
 ```
 
-#### 6. `controller_versions`
+### 6. `controller_versions`
 
-Published controller versions are immutable.
+Published versions are immutable.
 
 ```text
 id                         INTEGER PRIMARY KEY
@@ -1616,11 +618,7 @@ created_at_ms              INTEGER NOT NULL
 UNIQUE(project_id, version_no)
 ```
 
-Once published, source and bundle never mutate. A match binds exactly one `controller_versions.id` for a controller-backed faction.
-
-#### 7. `custom_origins`
-
-Official Origin definitions stay in versioned game content. User-created Origin definitions require persistence:
+### 7. `custom_origins`
 
 ```text
 id                    INTEGER PRIMARY KEY
@@ -1634,28 +632,26 @@ created_at_ms         INTEGER NOT NULL
 archived_at_ms        INTEGER
 ```
 
-A used Custom Origin definition is effectively immutable; editing creates a new definition/version rather than changing historical meaning.
+A used Custom Origin definition is immutable for historical meaning; edits create a new definition/version.
 
-#### 8. `echo_inventory`
-
-EchoScore is **not authoritative stored state**. It is a fractional derived quality value on the V1 `-1.00 .. +1.50` scale, computed from the retained rolled modifier magnitudes under the bound Echo catalogue/version. Persist the rolled magnitudes and catalogue version; recompute EchoScore when needed for presentation, sorting, quality classification, pity qualification, or validation. Do not introduce a second integer/fixed-point EchoScore representation merely because the current modifier maxima happen to use small integer percentages.
+### 8. `echo_inventory`
 
 ```text
 user_id                 INTEGER NOT NULL REFERENCES users(id)
 echo_catalogue_version  TEXT NOT NULL
 echo_identity_id        INTEGER NOT NULL
 magnitudes_json         TEXT NOT NULL
-tier                    TEXT NOT NULL
-favorite                INTEGER NOT NULL DEFAULT 0
-acquired_at_ms          INTEGER NOT NULL
-updated_at_ms           INTEGER NOT NULL
+tier                     TEXT NOT NULL
+favorite                 INTEGER NOT NULL DEFAULT 0
+acquired_at_ms           INTEGER NOT NULL
+updated_at_ms            INTEGER NOT NULL
 
 PRIMARY KEY(user_id, echo_catalogue_version, echo_identity_id)
 ```
 
-The composite key enforces one retained Echo configuration per identity per catalogue version. Generated display names are not stored; they are deterministic from identity + retained magnitudes + naming version.
+Derived Echo quality/score is recomputed from retained magnitudes and the bound catalogue rather than stored as a second authority.
 
-#### 9. `echo_sets`
+### 9. `echo_sets`
 
 ```text
 id                    INTEGER PRIMARY KEY
@@ -1666,7 +662,7 @@ created_at_ms         INTEGER NOT NULL
 updated_at_ms         INTEGER NOT NULL
 ```
 
-#### 10. `echo_set_members`
+### 10. `echo_set_members`
 
 ```text
 echo_set_id             INTEGER NOT NULL REFERENCES echo_sets(id)
@@ -1677,9 +673,7 @@ echo_identity_id         INTEGER NOT NULL
 PRIMARY KEY(echo_set_id, slot_index)
 ```
 
-Echo Sets reference Echo identity IDs, not historical acquisition instances. A retained-roll replacement therefore propagates automatically to every set using that identity.
-
-#### 11. `progression`
+### 11. `progression`
 
 ```text
 user_id                     INTEGER PRIMARY KEY REFERENCES users(id)
@@ -1689,15 +683,13 @@ gacha_rules_version         TEXT NOT NULL
 updated_at_ms               INTEGER NOT NULL
 ```
 
-#### 12. `reward_settlements`
-
-Match/Gacha settlement must survive retries and process crashes without double-applying rewards.
+### 12. `reward_settlements`
 
 ```text
 id                   INTEGER PRIMARY KEY
 public_id            TEXT UNIQUE NOT NULL
 user_id              INTEGER NOT NULL REFERENCES users(id)
-source_type          TEXT NOT NULL   -- MATCH / GACHA
+source_type          TEXT NOT NULL
 source_id            TEXT NOT NULL
 rules_version        TEXT NOT NULL
 status               TEXT NOT NULL
@@ -1708,21 +700,11 @@ applied_at_ms        INTEGER
 UNIQUE(user_id, source_type, source_id)
 ```
 
-The uniqueness constraint makes processing idempotent. One SQLite transaction performs:
+Apply one settlement atomically in one SQLite transaction so partial inventory/currency/pity/audit updates cannot commit independently.
 
-```text
-settlement pending
-→ modify Echo inventory
-→ modify Middle Fingers / pity
-→ append audit events
-→ settlement applied
-```
+### 13. `echo_events`
 
-A process death before commit rolls the entire transaction back.
-
-#### 13. `echo_events`
-
-Append-only reward/acquisition audit trail; current inventory is **not** derived by replaying this log.
+Append-only audit trail; current inventory is not reconstructed by replaying it.
 
 ```text
 id                       INTEGER PRIMARY KEY
@@ -1741,7 +723,7 @@ pity_after               INTEGER
 created_at_ms            INTEGER NOT NULL
 ```
 
-#### 14. `matches`
+### 14. `matches`
 
 ```text
 id                        INTEGER PRIMARY KEY
@@ -1764,9 +746,7 @@ started_at_ms             INTEGER
 ended_at_ms               INTEGER
 ```
 
-#### 15. `match_factions`
-
-Do not hide faction bindings in one giant match JSON blob.
+### 15. `match_factions`
 
 ```text
 match_id                 INTEGER NOT NULL REFERENCES matches(id)
@@ -1785,11 +765,11 @@ eliminated_at_tick       INTEGER
 PRIMARY KEY(match_id, slot)
 ```
 
-The **snapshot** fields are intentional. Historical matches retain enough exact bound Origin/Echo/spawn data to remain understandable without assuming a future checkout interprets an old ID exactly as the old build did.
+Snapshots intentionally preserve exact bound historical interpretation without assuming future catalogues still interpret an ID identically.
 
-#### 16. `replays`
+### 16. `replays`
 
-Replay payloads live as files; SQLite stores metadata and integrity information.
+Replay payloads live as files; SQLite stores metadata/integrity.
 
 ```text
 match_id             INTEGER PRIMARY KEY REFERENCES matches(id)
@@ -1802,40 +782,28 @@ expires_at_ms        INTEGER
 pinned               INTEGER NOT NULL DEFAULT 0
 ```
 
-Ordinary file layout:
+Ordinary layout:
 
 ```text
 data/replays/YYYY/MM/<match-public-id>.ofr.zst
 ```
 
-The canonical V1 replay payload is intentionally **minimal**. It stores the exact versioned match bindings, authoritative Strategic Spawn record, and the committed simulation-affecting game-facing input/action stream needed to replay the deterministic simulation from match start. It does not periodically serialize the 4.8-million-cell world for seeking.
+Do not put large replay/debug payloads into SQLite merely because SQLite supports BLOBs.
 
-Replay playback/seek therefore fast-forwards simulation from tick zero (without needing to render intermediate frames). V1 has no periodic full-state seek checkpoints in the archival `.ofr.zst` format.
-
-Do not archive controller-memory snapshots, verbose controller logs/debug overlays, rejected no-effect proposals, browser render frames, or redundant per-tick derived state in the canonical replay. Detailed controller logs remain separate short-retention artifacts. Playback does not need to re-execute player controller code because committed game-facing outputs are already recorded.
-
-Do not put multi-megabyte replay/debug payloads into SQLite BLOBs merely because SQLite can store them.
-
-#### 17. `sessions`
-
-V1 browser sessions are local Open Fufu operational state. Store only a verifier of the high-entropy cookie token:
+### 17. `sessions`
 
 ```text
 id                   INTEGER PRIMARY KEY
 user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
 token_sha256         BLOB NOT NULL UNIQUE CHECK(length(token_sha256) = 32)
-created_at_ms        INTEGER NOT NULL
-expires_at_ms        INTEGER NOT NULL
-revoked_at_ms        INTEGER
+created_at_ms         INTEGER NOT NULL
+expires_at_ms         INTEGER NOT NULL
+revoked_at_ms         INTEGER
 ```
 
-The browser holds the raw 256-bit random token in the `__Host-openfufu_session` HttpOnly cookie. SQLite never needs the plaintext token. Expired/revoked session rows may be removed by ordinary cleanup and are not permanent account history.
+Authentication/session behavior itself remains owned by `AUTH_AND_IDENTITY.md`.
 
-Integration/provisioner bearer credentials remain private deployment secrets rather than relational user/session rows in V1.
-
-### Accepted indexes
-
-Add indexes for the known V1 query patterns rather than shotgun-indexing every foreign key before measurements justify it:
+## 13.2 Accepted indexes
 
 ```text
 controller_versions(project_id, version_no DESC)
@@ -1849,12 +817,14 @@ sessions(user_id, expires_at_ms)
 sessions(expires_at_ms)
 ```
 
-### Retention and backups — Accepted V1 baseline
+Add further indexes only when measured query patterns justify them.
+
+## 13.3 Retention and backups
 
 Keep indefinitely:
 
 - user/account state;
-- controller published versions referenced by matches;
+- published controller versions referenced by matches;
 - Origin/Echo progression;
 - match metadata/results;
 - reward audit;
@@ -1866,9 +836,9 @@ File retention:
 - ordinary replay: **90 days**;
 - pinned/benchmark replay: **indefinite**;
 - detailed controller diagnostic logs: **7 days**;
-- replay metadata may remain after the replay file expires.
+- replay metadata may remain after replay-file expiry.
 
-Use the SQLite online-backup mechanism for routine database backups and retain:
+Routine SQLite backups:
 
 ```text
 7 daily
@@ -1876,511 +846,166 @@ Use the SQLite online-backup mechanism for routine database backups and retain:
 6 monthly
 ```
 
-Create an automatic database backup immediately before every schema migration. Replay files are separate files and therefore require separate backup handling if a retained replay is intended to survive loss of the primary data directory; backing up `open-fufu.sqlite3` does not back up `data/replays/`.
+Create an automatic database backup immediately before every schema migration.
 
-The schema, index set, file layout, and retention/backup baseline above are **closed V1 specifications**. Remaining persistence work is implementation: write `Database.ts`, migration `0001_initial.sql`, transaction helpers, cleanup/backup jobs, and tests.
-
-### 21.1 Origin definitions and production validation
-
-Origins are declarative/versioned data, not executable player code.
-
-Production needs ordinary structural validation for Custom Origins, including:
-
-- all trait IDs exist in the bound deployed catalogue/version;
-- the Origin obeys the published Origin Point budget;
-- it obeys the published maximum trait count;
-- it obeys the published maximum drawback-refund allowance;
-- the serialized definition is well formed.
-
-Production must **not** maintain a hidden pairwise compatibility matrix, trait-family exclusion table, or emergency rule saying an otherwise public-legal combination is forbidden because two traits interact badly.
-
-Hard invariant:
-
-> If traits are present in a deployed catalogue, every combination satisfying the public point/trait-count/drawback-refund rules is a valid selectable Origin.
-
-This includes the accepted interactions among fractional neutral settlement, additive Transport cost, fortified landings, defender survival, split spawning, structure-level transformations, free/granted structures/weapons, Warship launcher equivalence, Warship construction delay, Tank transformations, Radioactive Munitions, and upgrade-spend constraints.
-
-If that invariant cannot be maintained, the catalogue/version is defective and must be corrected before deployment.
-
-Official Origins use exactly the same deployed catalogue and public builder constraints as Custom Origins. They receive no hidden points, creator-only traits, or privileged rule hooks.
-
-### 21.2 Accepted catalogue mechanics now requiring typed rule data
-
-The current accepted design passes introduce concrete catalogue mechanics that the rule schema must be able to represent without executable player code, including:
-
-- neutral settlement cost `0.5 Population/cell` with faction-level residual accounting — **provisional 5 points**;
-- fortified amphibious landing: `+250 FFY` Transport embarkation and successful-landing permanent L1 Fort — **provisional 7 points**;
-- automatic defender survives defended-cell capture — **10 points**;
-- split strategic origin: two half-area influence regions/origins and split Initial Territory, unchanged global Starting Population — **10 points**;
-- giant single-charge SAM shield: provisional +50% range, one charge, 2× cooldown — **provisional 6 points**;
-- purchased Cities direct to L5 at 95% cumulative ordinary L1→L5 cost — **provisional 6 points**;
-- P43 Heavy Artillery: transform every Tank into the accepted slower/longer-range/high-alpha/no-Train-raiding profile with 10s construction — **provisional 8 points**;
-- P44 Radioactive Munitions: successful Population attacks neutralize/apply Fallout to the deterministic 10-cell Tank / 50-cell Heavy-Artillery footprints — **provisional 9 points**.
-
-The concrete catalogue is maintained in `ORIGIN_TRAIT_CATALOGUE.md`. Provisional point balancing may change through testing without changing these accepted mechanic identities.
-
-### 21.3 Echo identity, ownership, rewards, collection, generated naming, and Gacha Store migration
-
-The collectible system formerly referred to as **items** is canonically **Echoes**. Implement the model in [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md), not the retired magnitude-specific or dialogue-assignment catalogue model.
-
-The persistent mechanical identity registry contains exactly **12,927 fixed identities** derived from the accepted 93 concrete stat+scope keys and three shapes. Mechanical identity fixes identity ID, shape, concrete key(s), and polarity. The production rows should be deterministically derivable/materializable from the versioned key catalogue and shape rules rather than maintained as 12,927 hand-authored source-code constants. Magnitudes are **acquisition-instance data** and reroll whenever that identity is acquired.
-
-Implement the Echo display name as a deterministic function of identity + acquired/retained magnitudes + naming version. The naming configuration contains shape-specific anime-character possessive pools, one deliberately authored token/noun phrase per concrete stat key (or explicit concrete-key override), the accepted polarity-aware magnitude descriptors, and fixed grammar/order rules.
-
-Accepted magnitude descriptors:
-
-```text
--6 Catastrophic
--5 Cursed
--4 Wretched
--3 Dreadful
--2 Shoddy
--1 Questionable
-+1 Decent
-+2 Good
-+3 Great
-+4 Amazing
-+5 Fantastic
-+6 Absurd
-```
-
-Descriptor sign follows **beneficial/harmful polarity rather than raw arithmetic sign**. For example, a beneficial `-4%` build-cost modifier uses `Amazing`; a harmful `+4%` build-cost modifier uses `Wretched`.
-
-Accepted templates:
-
-```text
-Single:
-<Character>'s <positive descriptor> <stat token>
-
-Dual positive:
-<Character>'s <descriptor1> <stat token1> of <descriptor2> <stat token2>
-
-Mixed:
-<Character>'s <positive descriptor> <positive stat token>
-with a side of <negative descriptor> <harmful stat token>
-```
-
-Character/stat words remain stable for the identity under the naming version; magnitude adjective(s) may change when the retained roll changes. Dual stat order must be deterministic. Avoid mechanical-sounding scope-prefix assembly such as `Naval Guitar Solo` merely because a key is Warship-scoped; deliberately authored concrete-key phrases/overrides are preferred. Examples such as `Guitar Solo` remain illustrative until deliberately assigned in the naming config.
-
-Ordinary acquisition must follow the settled probability pipeline:
-
-1. choose shape `50% mixed / 35% dual / 15% single`;
-2. choose uniformly among all registered identities in that selected shape;
-3. enumerate that identity's legal integer magnitude configurations;
-4. calculate EchoScore from signed `x/M` normalized contributions;
-5. sample magnitudes using the published EchoScore weighting curve, including the gentler negative-score anchors;
-6. derive the Trash / Questionable / Decent / Not Bad / Lucky / Cheater rolled-quality tier.
-
-EchoScore may drive roll sampling, presentation, sorting, Middle Fingers salvage, and Gacha qualification, but must never override Pareto duplicate choice.
-
-Persist at most one retained magnitude configuration per account+identity. Owned identities remain eligible to drop/pull again. Every duplicate awards **Middle Fingers** according to the newly acquired duplicate's tier:
-
-```text
-Trash         1 Middle Finger
-Questionable  2 Middle Fingers
-Decent        3 Middle Fingers
-Not Bad       4 Middle Fingers
-Lucky         6 Middle Fingers
-Cheater       8 Middle Fingers
-```
-
-Then compare the new roll with the retained roll using canonical Pareto rules: strict dominance auto-upgrades, strict inferiority auto-rejects, and incomparable rolls require player choice. Batch acquisition processing groups repeated identities, reduces them to the Pareto frontier, and shows only surviving incomparable candidates. Persist unresolved results as a pending settlement through reconnect; V1 must not allow another reward-bearing match or further Gacha pulls while such a settlement remains unresolved.
-
-Implement match rewards as an accumulated roll pool attached to the canonical reward entity:
-
-- start at 0;
-- +1 for each qualifying opponent defeated while the reward entity remains active, regardless of kill credit;
-- for an Official AI, add `difficulty - 1` special-AI rolls beyond its ordinary +1, so its total defeat contribution equals the bound/versioned preset difficulty from `OFFICIAL_AI_PRESETS.md`;
-- +5 for victory;
-- defeat preserves accumulated rolls;
-- every accumulated roll becomes an Echo acquisition.
-
-There is no independent per-character special-AI reward-bonus table. Reward resolution reads the bound Official AI preset difficulty used by that match; random Origin selection does not change the value.
-
-For fixed human teams, the human team is the reward entity and each human teammate receives the **full** final pool rather than a divided share; one human's early elimination does not stop team reward accumulation while another human teammate remains active.
-
-Implement the **Gacha Store** exactly as the settled V1 baseline:
-
-```text
-1 pull   = 10 Middle Fingers
-10 pulls = 100 Middle Fingers
-```
-
-There is no ten-pull discount or bonus. A ten-pull is ten sequential single pulls sharing one pity counter.
-
-Lucky-or-better is `EchoScore >= 1.00`. Pity is **paid-pull-only**: match reward acquisitions neither advance nor reset it. After `n` consecutive non-Lucky+ paid pulls, use the power-12 rescue curve:
-
-```text
-r(n) = (n / 49)^12
-P_lucky+(n) = P0 + (1 - P0) × r(n)
-```
-
-with the 50th consecutive paid pull guaranteed Lucky-or-better if the ordinary roll does not qualify. Any natural or rescued paid Lucky/Cheater resets the counter. Rescue/guarantee samples from the ordinary generator conditioned on `EchoScore >= 1.00`. There is **no Cheater pity or guarantee**.
-
-The browser collection surface is **Echoes**, not Inventory. Implement the settled card grid, generated-name/character/stat-token search where useful, multi-select mechanical filtering, favorites, useful quality sorting, no unknown silhouettes, and multiple saved seven-Echo configurations provisionally named **Echo Sets** referencing identity IDs. Replacing a retained duplicate roll automatically updates every Echo Set that references that identity and may also change the generated magnitude adjective(s) shown for that same identity.
-
-V1 has **no Echo dialogue-line/voice-line assignments, MAL Echo source catalogue, or quote/subtitle harvesting/import pipeline**. Authored anime dialogue/reference content belongs to the much smaller Origin-trait / Official-Origin presentation surface for V1 and may use its own lightweight curation process independently of Echo implementation.
-
-Do not preserve stale persistence/UI/API naming merely because inherited or provisional code called these records `items`; internal transitional database/type names may be migrated pragmatically, but the public game concept is Echo.
+Replay files require separate backup handling when retained replay payloads must survive primary-data loss.
 
 ---
 
-## 22. Deployment and maintenance — Accepted simple model
+# 14. Deployment, assets, and licensing
 
-Open Fufu does **not** require zero-downtime old/new-build draining for V1.
+## 14.1 Deployment
 
-Planned deployments may use ordinary maintenance windows:
+V1 does not require zero-downtime old/new-build draining.
+
+Planned maintenance may use:
 
 ```text
 announce maintenance
-ask players not to begin long matches beforehand
 stop Open Fufu
 deploy / migrate
 restart
 verify health
 ```
 
-Do not add multi-build draining/routing complexity unless future usage genuinely requires it.
+Do not add multi-build draining/routing complexity unless future usage requires it.
 
-Historical replay/version identity remains necessary even though live deployment may use downtime.
+## 14.2 Authoritative resource packaging
 
-A candidate Origin trait catalogue may deploy only after its exhaustive legal-combination test gate succeeds.
+Inherited production packaging may assume the server never loads map/game resources. That assumption must be removed.
 
----
+Authoritative/headless processes require deterministic access to the exact map artifact and every rule-bearing static input bound to a match. Browser-only assets should not be copied into match processes when unnecessary.
 
-## 23. Build, tests, benchmarks, and performance tooling — Accepted direction
+## 14.3 Proprietary assets
 
-Retain useful TypeScript/build/test infrastructure where compatible but expect substantial changes.
+The inherited `proprietary/` directory is not a safe long-term dependency. Do not delete it until references are audited and replacements exist.
 
-Useful inherited foundations include TypeScript checking, Vite/browser build, Node server tooling, Vitest, server/lobby tests, full-game performance tooling, GC/heap profiling, replay harnesses, map/pathfinding algorithms, and the Go map generator.
+Current relevant inventory:
 
-Remove tests that assert intentionally removed OpenFront behavior and replace them with Open Fufu invariants.
+- `proprietary/fonts/OpenFront.ttf`;
+- OpenFront/favicon/logo images under `proprietary/images/`;
+- inherited music under `proprietary/sounds/music/`.
 
-### 23.1 Authoritative map packaging
+Replacement work is Open Fufu branding/favicon/logo, an original or permissively licensed UI font, original/permissively licensed music, removal of code/build references, then directory deletion.
 
-Current OpenFront production packaging assumes the server does not simulate and may therefore omit server-side map binaries/resources. That assumption is incompatible with Open Fufu authority.
+Git history preserves the removed assets' repository history; the active tree should not retain obsolete dependencies for archival purposes.
 
-The authoritative match runtime must have deterministic access to the exact map binary/data, Segment metadata, terrain/structure/mobile-unit ruleset data, Origin/Echo data, and other rule-bearing static inputs bound to the match. Build/deployment work must therefore:
+## 14.4 Licensing
 
-- package or otherwise make those authoritative resources available to match processes;
-- version/hash them as part of match identity;
-- ensure Strategic/Random/Fixed spawn resolution, live, headless, certification, and replay execution load the same rule-bearing data;
-- avoid blindly copying unrelated browser-only assets into the match runtime when they are not needed.
-
-Do not preserve a Docker/build optimization whose premise is “the server never loads maps.”
-
-### 23.2 Required performance/logic coverage
-
-Performance and simulation tests should cover:
-
-- process-per-match overhead;
-- 1/3/5 simultaneous authoritative matches;
-- `isolated-vm` controller worker-pool overhead;
-- controller observation construction and serialization;
-- selector/query/materialization budgets;
-- generic geographic helper determinism;
-- visibility-safe derived queries with no hidden-information oracle leakage;
-- transaction/final-set semantics independent of directive call ordering;
-- persistent directive lifecycle and controller-owned keys;
-- event-stream correctness;
-- deterministic normal and keyed randomness;
-- debug annotation bounds and no simulation effect;
-- team shared observation and delayed signal ordering;
-- Origin identity/trait sheets and relevant effective modifier projection;
-- deterministic Origin rule composition and hashing/version binding;
-- every Official Origin being an ordinary legal build under the same deployed catalogue/public constraints;
-- **exhaustive enumeration of every Origin trait combination legal under the candidate catalogue's published point budget, trait-count limit, and drawback-refund limit before deployment**;
-- every exhaustively enumerated legal Origin constructing/serializing/hashing successfully;
-- exhaustive Origin combinations producing no non-finite, negative, structurally invalid, or engine-unsafe rule values;
-- all exhaustively enumerated Origin growth profiles remaining mathematically valid;
-- Origin offense/defense/counter-response/FFY/start-state/structure/naval/settlement/Tank hooks staying inside deliberate engine-safe domains;
-- representative Origin + Echo compositions preserving canonical invariants;
-- no hidden combination exclusion table being necessary for any deployed catalogue;
-- Echo mechanical identity registry cardinality exactly `93 + C(93,2) + 93×92 = 12,927`, with dual identity order-insensitivity, mixed polarity distinction, and same-key mixed pairs rejected;
-- deterministic Echo identity derivation/materialization from the versioned concrete-key catalogue and shape rules, without requiring 12,927 hand-authored source constants;
-- development/test environments being able to run against synthetic/sample Echo naming configuration without any anime quote corpus;
-- Echo acquisition shape selection using `50% mixed / 35% dual / 15% single` independently of raw per-shape identity cardinality;
-- uniform identity selection within each selected shape, including statistical/property tests that no stat-family/scope/owned-state weighting leaks into V1;
-- Echo magnitude rolls using whole integer percentages and the published dual-positive ceilings;
-- EchoScore calculation from signed normalized `x/M` contributions and exact weighting against every legal magnitude configuration for an identity;
-- positive magnitude-weight anchors following `10^(-2S)` and negative anchors using logarithmic weight interpolation;
-- aggregate deterministic enumeration reproducing the expected current natural Lucky+ rate of approximately 2.50% within an appropriate exact/tolerance test derived from the current registry;
-- exact rolled-quality tier boundaries: Trash / Questionable / Decent / Not Bad / Lucky / Cheater;
-- repeated acquisition of one Echo identity rerolling magnitudes while preserving mechanical identity and stable character/stat naming components under the bound naming version;
-- deterministic generated-name character token selection from the correct shape-specific pool;
-- concrete-stat token mapping/override stability under a naming version and avoidance of schema-prefix-dependent identity changes;
-- magnitude descriptors changing deterministically with the acquired/retained roll;
-- descriptor lookup following beneficial/harmful polarity rather than naive arithmetic sign, including beneficial negative-percentage cost/cooldown/time cases;
-- deterministic dual-positive stat-token display order;
-- exact mixed-name grammar using the accepted `with a side of` connector and positive component first;
-- naming-version binding reproducing historical wording where required;
-- Questionable versus Cheater presentation changing only quality treatment, not mechanical identity/stable naming components, with no mechanically required information hidden behind hover;
-- one retained roll per account+identity, exact Middle Fingers salvage `1/2/3/4/6/8` by newly acquired tier regardless of source/retention, and correct Pareto auto-upgrade/auto-reject/player-choice semantics including harmful-axis direction;
-- batch duplicate grouping/Pareto-frontier reduction showing no dominated candidates and preserving Middle Fingers count;
-- pending settlement persistence through disconnect/reconnect, deterministic default selection, atomic acceptance, and blocking of another reward-bearing match/Gacha pull until resolution;
-- match reward pool starting at zero, +1 qualifying-opponent accounting independent of kill credit, and Official-AI total defeat contribution exactly equal to the bound/versioned preset difficulty (`D1→1`, `D2→2`, `D3→3`, `D4→4`, `D5→5`) with no independent per-character reward-bonus field/table, plus +5 victory;
-- solo reward accumulation stopping after solo elimination, while defeat preserves already-earned rolls;
-- fixed-human-team reward entity persistence through one human's early elimination, full final pool to every human teammate, and no reward division;
-- every earned reward roll producing an actual Echo acquisition rather than a keep-best filter;
-- Gacha Store exact 10-Middle-Finger single / 100-Middle-Finger ten-pull pricing with no hidden discount/bonus and sequential single/batch equivalence;
-- one shared paid-pull pity counter across singles and ten-pulls;
-- match reward acquisitions neither advancing nor resetting Gacha pity;
-- Lucky+ qualification exactly `EchoScore >= 1.00`, with any natural/rescued paid Lucky/Cheater resetting pity;
-- power-12 soft-pity calculation `r(n)=(n/49)^12` and effective Lucky+ probability composition against the current natural `P0`;
-- hard pity guaranteeing the 50th consecutive paid pull after 49 non-Lucky+ misses;
-- rescue/guarantee selecting only from the ordinary acquisition distribution conditioned on Lucky+ rather than statistical unusualness;
-- no Cheater guarantee or progressive Cheater pity;
-- Echo Sets referencing identity IDs so retained-roll replacement propagates automatically;
-- Echo collection generated-name/character/stat-token search, mechanical filter/favorite behavior, and tier/card rendering semantics at the browser/UI test layer;
-- explicit absence of Echo dialogue-assignment/MAL/source-import dependencies from V1 persistence and deployment;
-- Strategic Spawn Phase-1 projection including all participants' public Origins, Initial Territory values, Starting Population effects, effective spawn profiles, and relevant spawn modifiers;
-- Strategic Spawn Phase-1 simultaneous choice/reveal for ordinary one-area and split two-area profiles;
-- split-origin half-area geometry (`50% area`, not `50% radius`) and deterministic public representation;
-- Phase-2 single reconsideration round with no live reaction to Phase-2 submissions, including pair-wise split-origin revision;
-- Phase-3 simultaneous exact-origin resolution, including two submitted origins for split-origin factions;
-- split-origin starts using one unchanged global Starting Population pool rather than local pools;
-- split-origin final Initial Territory modifiers applied once to the faction total before approximately equal footprint division;
-- deterministic primary/secondary origin semantics for singular granted start-state structures/effects;
-- overlapping broad influence areas without territorial reservation;
-- deterministic spawn-hook fallback behavior for each spawn profile;
-- Random and Fixed spawn modes;
-- Initial Territory Origin/ruleset modifiers changing starting ownership rather than Capacity-per-cell;
-- simultaneous compact footprint generation and full-quota preservation where topology permits;
-- spawn collision/tie resolution independent of controller execution order;
-- whole-integer controller-visible Population accounting;
-- canonical terrain identities and terrain-property serialization/hash stability;
-- Plains/Highland/Mountain/Desert/Forest/Tundra/Marsh/Shallow/Deep/Impassable acquisition/traversal/effect values matching the registry;
-- Tundra and Shallow Water contributing zero Capacity while remaining conquerable;
-- Tundra/Shallow neutral acquisition taking progress/time but zero baseline Population settlement cost;
-- Fallout preserving underlying terrain identity and applying the versioned acquisition multiplier;
-- baseline neutral population-bearing settlement taking nonzero progress/time and exactly 1 Population per successfully captured cell;
-- `0.5 Population/cell` settlement modifier using deterministic faction-level residuals;
-- repeated create/end expansion operations being unable to erase fractional settlement debt;
-- 800-Population / 1,000-cell offensive frontage cap;
-- one-to-one source/target engagement-lane resolution;
-- low-Population binary defense, e.g. 800 Available across 1,000 threatened cells gives exactly 800 one-Population defenders and 200 undefended cells;
-- surplus-Population defense cap, e.g. 100,000 Available across 1,000 threatened cells still gives exactly 1,000 one-Population defenders, not 100 per cell;
-- 300:100 contact-surface apportionment when defense slots are scarce;
-- deterministic Even Spread and controller defensive-priority ordering;
-- multi-operation overlap without duplicate automatic defenders on one cell;
-- zero-Available-Population defense;
-- direct counter-response Population accounting/casualties and capped nonlinear ratio scaling;
-- same-faction offensive operation aggregation;
-- no same-tick chain conquest;
-- hostile capture-coupled casualties distinct from neutral settlement costs;
-- elastic-defense trait preserving defender while attacker still loses 1 Population and ownership/Capacity transfer normally;
-- defended non-population-bearing conquerable cells still using ordinary capture casualties while transferring zero Capacity;
-- third-party same-cell claimant casualty-free behavior;
-- universal persistent-structure level bounds exactly 1–5 across **all eight structures**;
-- build-at-L1 default and rejection of L6/unbounded inherited upgrades;
-- fixed structure type+target-level price tables and removal of the shared Port/Factory inherited price counter;
-- upgrades taking the same authored duration as the structure's L1 build and retaining previous completed-level effect until completion;
-- City level scaling Growth only;
-- Fort exact provisional coverage/defensive-pressure progression without creating Population;
-- Factory level scaling configured industrial/train FFY event value and Tank repair capacity;
-- Port level scaling passive repair radius/rate;
-- Observation Post exact radius progression and visibility-projection behavior;
-- Command Post `10s` telegraphed build/upgrade, `3/6/9/12/15%` source-offense progression, and `30/35/40/45/50` coverage;
-- normal SAM level scaling range/charges using `70/80/90/100/105` and 9s recharge;
-- giant-SAM trait enforcing exactly one charge, larger range, and longer cooldown without a new controller interception action;
-- Missile Silo L1/L3/L5 Atom/Hydrogen/MIRV gates and level-scaled charge capacity;
-- free starting Silo remaining L1 unless explicitly changed;
-- free/granted MIRV failing legality without an L5-equivalent launcher;
-- Warship-as-Silo effective level equal to rank, including rank-3 Hydrogen and rank-5 MIRV boundary cases;
-- baseline Warship purchase requiring **5s construction** before activation, including under purchase-resource transformations;
-- baseline Tank purchase requiring **5s construction** and Heavy Artillery **10s**;
-- Tank progressive active-count purchase-cost curve and destroyed-unit count release;
-- Tank terrain movement table, especially Mountain/Shallow-Water hard barriers and neutral-territory corridor prohibition;
-- Tank anti-armor, Train-interception, Population-attack, autonomous targeting and Factory-repair behavior;
-- one prepared Heavy Artillery beating one Tank but losing the intended 1v2 / 2v3 benchmark through actual alpha/reload/movement rather than hidden matchup modifiers;
-- P43 removing Train raiding, retaining Tank barriers, and allowing projectiles across barriers;
-- P44 triggering only on successful Population attacks;
-- P44 deterministic radius-2/up-to-10 and radius-5/up-to-50 eligible-cell neutralization/Fallout footprints;
-- P43+P44 combining into radioactive Heavy Artillery without a compatibility exception;
-- MIRV translated power being meaningfully below inherited baseline while remaining strategically severe;
-- baseline Transport embarkation cost 0 and additive cost stacking (`+250 + +500 = 750`);
-- fortified landing granting exactly one permanent L1 Fort only on successful landing and not consuming purchase-only entitlements;
-- direct-L5 City purchase costing 95% cumulative ordinary L1→L5 cost and remaining one purchase transaction for upgrade-spend interactions;
-- captured lower-level City behavior under the direct-L5 purchase trait;
-- normal neutral Fallout reconquest and Fallout capture resistance;
-- optional water-nuke Deep-Water conversion and victory-denominator updates;
-- capitulation removal of mobile units/projectiles including Tanks/Heavy Artillery, with transport Population return;
-- participant projection/deltas;
-- accelerated/headless runs;
-- long-match memory/GC under the additional persistent Tank/visibility/structure state.
-
-### 23.3 Origin-catalogue deployment gate
-
-Origin combination safety is resolved **before production deployment**, not by runtime compatibility rules.
-
-For each candidate Origin trait catalogue/version:
-
-1. enumerate every trait subset that is legal under the candidate public point budget, maximum trait count, and maximum drawback refund;
-2. construct the effective Origin rule configuration for every such combination;
-3. run the deterministic structural/mathematical invariant suite over every combination, including settlement residuals, Transport cost composition, structure transformations, launcher equivalence, spawn profiles, Tank/Heavy-Artillery transformation, Radioactive Munitions, and grant/purchase interaction semantics;
-4. verify all Official Origins are ordinary members of that same legal set;
-5. fail the candidate catalogue deployment if any legal combination fails.
-
-A failure means the candidate catalogue/public budget is revised—e.g. redesign, reprice, or remove a trait—and the exhaustive suite is rerun. Do **not** respond by adding a production-only incompatibility exception.
-
-Property/fuzz testing and representative Origin+Echo scenario testing may supplement this gate but do not replace exhaustive enumeration of legal Origin combinations.
-
-### Key performance invariant
-
-Simulation work must scale primarily with **active strategic work and engaged frontier geometry**, not full `factions × cells` products.
-
-No persistent defensive occupancy, dense Population matrices, land Deployment queues, or arbitrary user callbacks inside the 10 Hz map-resolution loop should exist.
-
-Faction-level fractional settlement residuals are scalar state, structure levels are bounded 1–5, Tank/Heavy-Artillery objects are sparse mobile units, and spawn footprint generation/Origin catalogue validation are bounded pre-match/deployment operations; none justify persistent dense per-tick spatial Population state.
+OpenFront code is AGPL-3.0; applicable source and attribution obligations must remain satisfied. Asset provenance/license review is separate from source-code license compliance.
 
 ---
 
-## 24. Proprietary assets — Accepted removal plan, do not delete yet
+# 15. Validation and performance
 
-The inherited `proprietary/` directory is not a safe long-term Open Fufu dependency and should eventually be removed/replaced, but **do not delete it until all references are identified and replacements are ready**.
+Retain/adapt useful TypeScript/build/test infrastructure, Vitest/server tests, full-game performance tooling, replay harnesses, map/pathfinding algorithms, and profiling tools.
 
-Current inventory:
+Remove tests that assert intentionally removed OpenFront behavior and replace them with Open Fufu owner-defined invariants.
 
-### Font
+The integration test strategy must cover:
 
-- `proprietary/fonts/OpenFront.ttf`
+- headless authoritative match execution;
+- deterministic replay from exact bound inputs/actions;
+- controller sandbox isolation/fault containment;
+- immutable legal observation projection;
+- transaction/decision commit semantics;
+- authoritative resource packaging/version binding;
+- cross-system Origin/Echo effective-rule composition;
+- spawn/Segment/map artifact determinism;
+- participant reconnect/snapshot/delta behavior;
+- persistence migrations/transactions/backup/cleanup;
+- authentication boundary integration without leaking credentials into matches;
+- long-match memory/GC;
+- representative 1/3/5-match capacity benchmarks.
 
-### Branding / logo / favicon images
+Subsystem-specific mechanical tests belong with their canonical owners and implementation modules rather than being copied into this plan.
 
-- `proprietary/images/Favicon.svg`
-- `proprietary/images/OF.png`
-- `proprietary/images/OF.webp`
-- `proprietary/images/OpenFront.png`
-- `proprietary/images/OpenFront.webp`
-- `proprietary/images/OpenFrontLogo.png`
-- `proprietary/images/OpenFrontLogo.svg`
-- `proprietary/images/OpenFrontLogoDark.svg`
+The key performance invariant is:
 
-### Music
-
-- `proprietary/sounds/music/evan.mp3`
-- `proprietary/sounds/music/of2.mp3`
-- `proprietary/sounds/music/of4.mp3`
-- `proprietary/sounds/music/openfront.mp3`
-- `proprietary/sounds/music/war.mp3`
-- `proprietary/sounds/music/win.mp3`
-
-No proprietary gameplay map corpus, unit-art library, or large gameplay-SFX collection was found in this directory during the audit.
-
-Replacement work focuses on Open Fufu branding/favicon/logo assets, an original/permissively licensed UI font, original/permissively licensed soundtrack, removing code/build references, then deleting `proprietary/`.
-
-Keep attribution/provenance review for the separate non-proprietary resource/map corpus.
+> Authoritative simulation work scales primarily with active strategic work and engaged geometry, not dense `factions × cells` state products.
 
 ---
 
-## 25. Licensing — Accepted constraint
+# 16. Migration dependency spine
 
-OpenFront code is AGPL-3.0 and applicable source/attribution obligations must be preserved. Non-proprietary map/resource assets have their own provenance/licenses and require continued attribution review.
-
-Do not conflate code licensing with permission to reuse inherited `proprietary/` assets.
-
----
-
-## 26. Migration dependency spine — Accepted high-level order
+Current high-level implementation order:
 
 ```text
 1. HEADLESS CORE CLEANUP
        ↓
 2. AUTHORITATIVE MATCH PROCESS + SUPERVISOR
        ↓
-3. OPEN FUFU FACTION / POPULATION / GROWTH + TYPED ORIGIN/ECHO RULE HOOKS
-   (including fractional settlement residuals and structure/spawn/unit rule profiles)
+3. OPEN FUFU FACTION / POPULATION + TYPED EFFECTIVE-RULE HOOKS
        ↓
-4. SEGMENTS + EXPANDED TERRAIN + CONTACT / OBSERVATION MODEL
-   (including Observation Post visibility semantics)
+4. SEGMENTS + TERRAIN + CONTACT / OBSERVATION MODEL
        ↓
-5. OFFENSIVE OPERATIONS + ENGAGED FRONTAGE + BINARY AUTOMATIC DEFENSE
-   + NEUTRAL SETTLEMENT ACCOUNTING
+5. LAND OPERATIONS + FRONTAGE + AUTOMATIC DEFENSE + SETTLEMENT
        ↓
-6. CONTROLLER API CONTRACT IMPLEMENTATION
-   (queries/selectors/directives/defense/counters/events/debug/team/spawn/unit hooks)
+6. CONTROLLER API RUNTIME INTEGRATION
        ↓
-7. ISOLATED-VM CONTROLLER WORKER POOL + CERTIFICATION
+7. CONTROLLER SANDBOX / WORKER POOL + CERTIFICATION
        ↓
 8. ORIGIN CATALOGUE / CREATOR + EXHAUSTIVE DEPLOYMENT GATE
-   + ECHO 12,927-IDENTITY REGISTRY / ECHOSCORE-WEIGHTED ACQUISITION RULES
+   + ECHO CORE REGISTRY / ACQUISITION
        ↓
-9. STRATEGIC / RANDOM / FIXED SPAWN RESOLVER + INITIAL TERRITORY FOOTPRINTS
-   (including accepted split-origin spawn profile)
+9. STRATEGIC / RANDOM / FIXED SPAWN + INITIAL TERRITORY
        ↓
-10. EIGHT-STRUCTURE + NAVAL / RAIL / WEAPON / ARMOR TRANSLATION
-    (Fort, Port repair, Factory FFY/Tank production+repair, Observation/Command Posts,
-     SAM, Silo gates, MIRV rebalance, 5s Warships, Tanks, P43/P44, amphibious Fort grants)
+10. STRUCTURE / ECONOMY / NAVAL / RAIL / STRATEGIC-WEAPON / ARMOR TRANSLATION
        ↓
-11. OFFICIAL PVE AI PRESETS + MATCH LIFECYCLE + REPLAY / PARTICIPANT PROTOCOL
-    + REWARD-ENTITY / ECHO ROLL-POOL SETTLEMENT
+11. OFFICIAL PVE AI + MATCH LIFECYCLE + REPLAY / PARTICIPANT INTEGRATION
        ↓
-12. SQLITE / EXTERNAL-IDENTITY PROVISIONING API / DISCORD PROVIDER ADAPTER / OPAQUE SESSIONS
-    + ECHO OWNED-ROLL+ECHO-SET / MIDDLE-FINGERS+PAID-PITY+PENDING-SETTLEMENT STATE / GAME API
+12. SQLITE + AUTH/IDENTITY INTEGRATION + GAME/SERVICE API
        ↓
-13. ECHO GENERATED-NAMING CONFIG + GENERATOR
-    (shape character pools, stat-token dictionary, polarity-aware descriptors, grammar/versioning)
+13. ECHO NAMING/PRESENTATION DATA
        ↓
-14. BROWSER EDITOR / DEBUG / ORIGIN CREATOR / ECHOES COLLECTION + ECHO SETS
-    / CARD PRESENTATION / DUPLICATE SETTLEMENT / GACHA STORE / FINAL LOBBY UX
+14. BROWSER EDITOR / DEBUG / ORIGIN / ECHO / LOBBY UX
 ```
 
-There is no V1 private Echo quote/MAL content-import stage. Authored anime dialogue/reference work belongs to the smaller Origin-trait / Official-Origin content pass and can proceed independently of Echo implementation.
-
-Some workstreams may overlap. Typed rule hooks should exist before Origin traits depend on them. The terrain/structure/unit/weapon and spawn rule schemas must be able to express the accepted catalogue mechanics before the exhaustive Origin deployment gate can be meaningful. Downstream systems must not force premature retuning onto otherwise settled mechanic shapes.
+Some workstreams may overlap. Typed rule hooks should exist before content depends on them. This sequence is itself part of the migration plan and must be corrected when sequencing analysis identifies an impossible validation dependency rather than worked around during implementation.
 
 ---
 
-## 27. OpenFront audit coverage cross-check — Accepted
+# 17. Migration audit coverage
 
-This table is a traceability check against the source-level OpenFront compatibility audit. It exists so later edits do not accidentally drop an inherited subsystem from the migration record.
+The migration must account for every inherited subsystem before implementation declares the transformation complete:
 
-| Original audit area | Canonical integration coverage |
+| Inherited area | Target migration concern |
 | --- | --- |
-| 1. Repository / architectural map | §§1–3, 23–25 |
-| 2. Simulation authority / client-server model | §4 |
-| 3. Tick loop / intents / Executions / deterministic transitions | §§3, 6, 19 |
-| 4. Map / cells / coordinates / terrain / topology | §§6A, 7, 23.1 |
-| 5. Ownership / neutral expansion | §§6A, 8, 9.3, 11.7 |
-| 6. Troops / gold / resources / player state | §§9, 12, 19A, 21 |
-| 7. Land combat / casualties / territorial capture | §§6A, 11, 14 |
-| 8. Spatial Population / Redeployment | §§9–11; superseded dense model explicitly rejected |
-| 9. Structures / spatial modifiers | §§6A, 13, 21 |
-| 10. Generic unit / mobile-object framework | §§6A, 14 |
-| 11. Naval / amphibious / trade / rail | §§6A, 14, 19A |
-| 12. Strategic weapons / interception | §§6A, 13.4, 14, 15 |
-| 13. Teams / alliances / diplomacy / `atWar` | §§6A, 16, 19A |
-| 14. Visibility / fog of war | §§6A, 13.5, 17 |
-| 15. Bots / official PvE AI / player-controller boundary | §§5, 6A, 16A, 17 |
-| 16. Match lifecycle / lobby / spawn / defeat / resignation / victory | §§4, 6A.15–17, 16, 18 |
-| 17. Replay / serialization / determinism / observability | §§3, 6, 6A, 19, 21, 23 |
-| 18. Browser rendering / interaction assumptions | §§17–18 |
-| 19. Persistence / identity / authentication / Foof boundary | §§20–21 |
-| 20. Build / deployment / tests / performance / licensing | §§22–25 |
+| repository/shared architecture | headless/core dependency direction |
+| simulation authority/networking | authoritative match process and gateway boundary |
+| ticks/Intents/Turns/Executions | deterministic controller-decision integration |
+| map/cells/terrain/topology | target map/terrain/Segment model |
+| ownership/neutral expansion | Population/operation rules |
+| troops/gold/resources/player state | Population + FFY replacement |
+| land combat/capture | target operation/combat model |
+| structures | target persistent-structure registry |
+| generic units | target mobile-unit concepts |
+| naval/amphibious/trade/rail | naval + FFY owners |
+| strategic weapons/SAM | strategic-weapon + structure owners |
+| teams/diplomacy/hostility | target fixed-team/game-wide rules |
+| visibility | authoritative legal projection |
+| bots | Official AI subsystem |
+| match lifecycle/lobby/spawn/victory | target design + spawn + service protocol |
+| replay/serialization/determinism | authoritative replay/version binding |
+| browser assumptions | observer/editor/debugger model |
+| persistence/authentication | SQLite owner + auth owner |
+| build/deployment/performance/assets/licensing | this plan |
 
-If a future audit finding does not map to this plan, update this same document rather than creating a third Open Fufu migration source.
+The concrete inherited **source-file owner → target owner** map remains a required implementation-traceability artifact for this same plan; it must be added here rather than creating another competing migration document.
 
 ---
 
-## 28. Remaining implementation/content/validation work
+# 18. Remaining migration work
 
-Most V1 gameplay mechanics and the controller-runtime/persistence architecture now have accepted implementation baselines. The remaining work below is implementation, content, validation, transport detail, or later benchmark-driven tuning rather than a reason to relabel closed architecture as TBD:
+The principal remaining work is implementation and the already-identified unresolved contract/mechanics closures, not creation of more overlapping documentation.
 
-1. **Controller API runtime wiring/certification** — the V1 TypeScript contract and controller-memory codec/lifecycle are now defined; remaining work is implementing the immutable observation projection, canonical memory adapter, validated directive/command adapter, sandbox bridge, certification harness, and later non-semantic ergonomic polish.
-2. **Origin content maintenance** — future additions/revisions and playtest repricing remain possible under the same builder/catalogue rules; the V1 trait/Official-Origin naming pass and duplicate cleanup are complete.
-3. **Official AI controller implementation/benchmarking** — implement the actual character-specific strategic controllers described by `OFFICIAL_AI_PRESETS.md`, verify every preset operates coherently across its allowed Origin pool, then benchmark/playtest against the provisional difficulty targets and retune controller strength or target labels without adding simulation cheats.
-4. **Echo visual/UI implementation** — implement the visual recipe renderer, card motion/effects, responsive/touch behavior, collection UI, reward settlement presentation, and other presentation work around the already-settled Echo mechanics/naming content.
-5. **Echo/runtime validation and later playtest tuning** — executable/property coverage for deterministic registry materialization, naming/versioning, distribution, scoring, Middle Fingers, rewards, Pareto settlement, Echo Set propagation, and Gacha pity; current V1 numbers remain the implementation baseline until testing gives a reason to retune them.
-6. **Real Fufubox performance capacity** after a representative authoritative simulation and controller runtime exist.
-7. **Controller-runtime benchmarking/hardening** — implement and measure the accepted `isolated-vm` worker-process baseline, enforce the accepted V1 limits, and retune them only if representative Fufubox evidence justifies an explicit versioned change. QuickJS testing is contingency work only if `isolated-vm` produces a concrete operational reason to investigate replacement.
-8. **Persistence implementation and migration coverage** — implement `node:sqlite`, migration `0001_initial.sql`, the accepted 17-table schema/index set, idempotent transactional settlements, opaque-session persistence/cleanup, online backups, replay/log cleanup, and persistence tests. The database architecture/schema/retention choices themselves are closed.
-9. **Authentication/integration implementation** — implement the closed `AUTH_AND_IDENTITY.md` contract: generic provision/revoke endpoints and integration credentials, Discord provider adapter, pre-provisioned identity lookup/revocation, opaque 30-day sessions, CSRF/Origin enforcement, WebSocket session binding, and security/integration tests. Admission policy and Fufubox/Fufu/Foof coupling are explicitly outside Open Fufu.
-10. **Post-implementation balance validation/retuning** of accepted provisional values across Population growth, combat/capture, FFY, Train/Trade economies, Origin traits, spawn geometry, terrain/structures, mobile/naval units, and strategic weapons. This is validation work, not an unanswered pre-implementation mechanics list.
-11. **Detailed lobby/UI/UX implementation polish**, including controller authoring/debug surfaces, Origin creator/preset presentation, spawn visualization, expanded terrain/structure/unit displays, Echoes/Gacha presentation, and match/replay diagnostics.
-12. **Replacement asset creation and final proprietary-directory removal.**
-13. **Controller-limit enforcement and diagnostics** — wire the accepted query/materialization/policy/log/debug/command/directive/event/team-signal limits into the runtime adapter and expose the structural subset through `ControllerLimitsView`; verify deterministic truncation and fault behavior. The V1 values are no longer open.
-14. **Strategic Spawn implementation/validation** — implement the now-closed `STRATEGIC_SPAWN.md` V1 resolver contract, including hook defaults, stable deterministic tie hashing, conflict components, nearest fallback, simultaneous footprint queues, replay/diagnostic encoding, version binding, and adversarial map validation.
-15. **Segment compiler implementation/validation** — implement the now-closed geography-first `SEGMENTS.md` compiler and map-artifact representation, then inspect representative generated maps for useful strategic segmentation without turning the soft 4,096-cell target into a hard geometry constraint.
-The following are no longer open design questions and must be implemented from their canonical documents rather than re-derived from inherited OpenFront behavior: the controller-memory codec/lifecycle (`CONTROLLER_MEMORY.md`), strategic Segment generation/representation (`SEGMENTS.md`), authentication/identity/session/provisioning contract (`AUTH_AND_IDENTITY.md`), minimal fast-forward replay model, the 4.8m-cell map raster, 1,000-cell/50% start, Population growth/utilization curve, capture-progress and counter-response constants (`COMBAT_TUNING.md`), FFY/Trade/Train economics (`FFY_ECONOMY.md`), the complete Strategic Spawn resolver/geometry/versioning contract (`STRATEGIC_SPAWN.md`), terrain/structures/Tank/Heavy-Artillery data (`TERRAIN_AND_STRUCTURES.md`), Warship/Transport/Port-repair and Atom/Hydrogen/MIRV plus default-OFF Water-Nuke geometry (`NAVAL_AND_STRATEGIC_WEAPONS.md`), Minor-Faction/Goon semantics (`MINOR_FACTIONS.md`), Official AI meta/reward settings, and the accepted Echo identity/naming/reward/Gacha rules.
+Before implementation begins in a subsystem:
 
-These remaining questions should be resolved by updating these same canonical documents rather than creating additional migration-plan documents.
+1. identify the inherited concrete source owners;
+2. identify the single target canonical owner;
+3. verify the target owner is mechanically/architecturally closed enough for implementation;
+4. implement through the dependency spine;
+5. validate against that owner and cross-system invariants;
+6. update this migration plan only for migration/sequencing/source-traceability changes.
+
+Do not copy focused subsystem mechanics back into this file as implementation notes.
