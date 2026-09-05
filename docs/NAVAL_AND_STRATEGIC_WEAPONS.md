@@ -168,7 +168,7 @@ Destroyed Warships stop counting toward the active-count curve.
 | Base naval-gun range | **130 cells** |
 | Base shell damage | **250 HP fixed** |
 | Base shell cooldown | **2 seconds** |
-| Strategic patrol/raid leash | **100 cells** |
+| Autonomous operating leash | **100 cells** |
 | Trade Ship capture distance | **5 cells** |
 | Automatic repair-retreat threshold | **50% max health** |
 
@@ -176,9 +176,13 @@ Baseline shell damage is deterministic.
 
 ## 3.2 Strategic/autonomous control
 
-Warship control is strategic rather than RTS micro. The controller assigns patrol/raid intent, anchor/area, or other legal targeting information; pathing, local pursuit, firing, and repair retreat remain autonomous.
+Warships are autonomous combat formations rather than RTS-micro units.
 
-Ordinary autonomous target priority within legal observation/intent is:
+The controller may issue a strategic **move destination**. An accepted move repositions the Warship and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, attack modes, or individual targets.
+
+Within ordinary operation the Warship wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, target acquisition, pursuit, firing, Trade-Ship capture behavior, and automatic repair retreat are simulation-owned.
+
+Ordinary autonomous target priority within legal observation is:
 
 ```text
 1. hostile Transport Ship
@@ -239,7 +243,11 @@ Transport Ships carry explicitly committed Population and are amphibious-operati
 
 The three-Transport cap prevents fragmentation of one invasion into very large numbers of tiny boats solely to saturate autonomous targeting.
 
-## 5.1 Amphibious landing
+## 5.1 Embark and autonomous travel
+
+The controller begins an amphibious operation by choosing a legal embark source, legal landing target, and Population commitment. The simulation creates the Transport and owns pathfinding/travel to that target; Transports do not accept generic controller movement orders.
+
+## 5.2 Amphibious landing
 
 Reaching a legal hostile/neutral landing coast does **not** award the target cell.
 
@@ -247,9 +255,11 @@ The Transport makes that local coast operationally actionable and its carried Po
 
 The Transport itself never bypasses political ownership resolution merely by arriving.
 
-## 5.2 Retreat / abort
+## 5.3 Retreat / abort
 
-A Transport may retreat toward a legal owned return point. On successful return:
+The controller may abort an active owned Transport. The simulation then routes it autonomously toward a legal owned return point; the controller does not choose a return path or micro-manage the vessel.
+
+On successful return:
 
 ```text
 25% of carried Population is lost
@@ -268,8 +278,10 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 
 - fleet-vs-fleet time-to-kill across ordinary ranks;
 - autonomous target priority around mixed Transport/Warship/Trade traffic;
+- Warship move-anchor/leash behavior without patrol/raid/target controller modes;
 - repair-retreat integration with canonical Port repair fields;
 - three-Transport amphibious throughput across representative coasts;
+- autonomous Transport travel/abort/return behavior;
 - Atom/Hydrogen blast impact on representative territories;
 - MIRV target saturation on compact, fragmented, coastal, and very large factions;
 - carrier interception versus post-separation SAM-charge saturation;

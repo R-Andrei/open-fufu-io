@@ -319,11 +319,13 @@ Baseline Plains movement speed is **5 cells/s**.
 
 Tanks may path through friendly traversable territory and traversable territory belonging to a faction they are legally hostile to. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
-## 3.3 Strategic control
+## 3.3 Strategic/autonomous control
 
-Tank control is strategic rather than RTS micro. The controller assigns patrol/raid area or target intent; pathing, local pursuit, firing, and repair retreat are autonomous.
+Tanks are autonomous combat formations rather than RTS-micro units.
 
-Baseline leash is **100 cells** from the assigned anchor. Tank attacks require legal observation.
+The controller may issue a strategic **move destination**. An accepted move repositions the Tank and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
+
+Within ordinary operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned. Tank attacks require legal observation.
 
 ## 3.4 Combat and raiding
 
