@@ -142,6 +142,10 @@ The library does not need a fixed quota of naval, economic, nuclear, defensive, 
 
 **O50 — Lucky Star** is intentionally only a 5-point build. P54 does not grant extra Initial Territory, Starting Population, or capture speed; it only changes the initial shape so a controller may have more neutral contact surface to spend Population through. Its low spend is therefore a deliberate reflection of a minor/flair-heavy opening advantage rather than an authoring oversight.
 
+### TODO — trap/deception Origin
+
+Explore a future **trap-oriented Origin** built around deliberately tempting enemy actions and punishing opponents who take the bait. Candidate fantasies include decoy/exposed military assets that detonate into a nuclear-like Fallout effect when destroyed or captured, and booby-trapped Cities/structures whose capture imposes a delayed or persistent penalty such as reduced Population Growth. Exact mechanics, counterplay, information rules, legality, trait decomposition, balance, and whether this becomes one Origin or several traits remain deliberately open.
+
 ---
 
 ## Implementation/content work still open

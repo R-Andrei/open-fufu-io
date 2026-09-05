@@ -1101,28 +1101,31 @@ Diplomacy does not change during a match, so the set of teammates/allies/opponen
 
 ### 13.2 AI difficulty bonuses
 
-Official AI reward contribution is derived from the bound/versioned Official AI preset's **difficulty**, which is maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md). That preset difficulty is the single per-character source of truth; the Echo system does not maintain a second per-character bonus field/table.
+Official/Baseline AI reward contribution is derived from that AI identity's bound/versioned **difficulty**. Character-preset difficulty is maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md); the generic Baseline AI has difficulty `0`. The Echo system does not maintain a second per-character bonus field/table.
 
-For defeating an Official AI preset:
+The ordinary qualifying-opponent roll and the AI difficulty bonus are deliberately separate:
 
 ```text
-ordinary qualifying-opponent roll = 1
-special-AI bonus                  = difficulty - 1
---------------------------------------------------
-total defeat contribution         = difficulty Echo rolls
+ordinary qualifying-opponent roll = +1
+AI difficulty bonus               = +difficulty
+------------------------------------------------
+total AI defeat contribution      = 1 + difficulty Echo rolls
 ```
 
 Therefore:
 
 ```text
-Difficulty 1 → 1 total roll
-Difficulty 2 → 2 total rolls
-Difficulty 3 → 3 total rolls
-Difficulty 4 → 4 total rolls
-Difficulty 5 → 5 total rolls
+Baseline AI, Difficulty 0 → 1 total roll
+Difficulty 1 character    → 2 total rolls
+Difficulty 2 character    → 3 total rolls
+Difficulty 3 character    → 4 total rolls
+Difficulty 4 character    → 5 total rolls
+Difficulty 5 character    → 6 total rolls
 ```
 
-The randomly selected allowed Origin does **not** change that value. Difficulty/reward belongs to the character/controller preset and is versioned with the preset/match record. If later playtesting changes a preset's difficulty target/rating, its special-AI defeat reward follows that same single source of truth rather than requiring a second reward-table edit.
+The primary rule is **one ordinary qualifying-opponent roll plus extra rolls equal to difficulty**. Difficulty does not redefine or replace the ordinary opponent reward.
+
+The randomly selected allowed Origin does **not** change that value. Difficulty/reward belongs to the character/controller preset or explicit Baseline-AI identity and is versioned with the match record. If later playtesting changes a character preset's difficulty target/rating, its AI bonus follows that same single source of truth rather than requiring a second reward-table edit.
 
 ### 13.3 Victory bonus
 
@@ -1542,7 +1545,8 @@ Any other design/integration documentation must be updated so none of the follow
 - generated Echo names are stored as 12,927 manually authored strings;
 - generated stat names are formed by mechanically prefixing schema scopes into awkward phrases by default;
 - duplicate/Gacha currency still needs a final name;
-- saved seven-Echo configurations still need a V1 name.
+- saved seven-Echo configurations still need a V1 name;
+- Official-AI bonus uses `difficulty - 1` or total AI defeat rolls equal difficulty rather than ordinary opponent reward plus a separate `+difficulty` bonus.
 
 The canonical replacement concepts are:
 
@@ -1566,6 +1570,8 @@ The canonical replacement concepts are:
 + pending batch settlement
 + all accumulated match rolls become drops
 + defeat preserves earned rolls
++ fixed human teams share reward accounting
++ AI defeat reward = ordinary +1 qualifying-opponent roll + difficulty bonus
 + fixed human teams share reward accounting
 + searchable/filterable Echoes collection and provisional Echo Sets
 + Gacha Store at 10 Middle Fingers single / 100 Middle Fingers ten-pull
@@ -1617,6 +1623,6 @@ The following are no longer open design questions for V1:
 - saved configuration name — Echo Sets provisionally;
 - visual identity rule — stable identity components plus roll-dependent naming adjectives and quality treatment;
 - collection concept — searchable/filterable/favoritable Echo card grid with multiple saved equipped sets and no unknown silhouettes;
-- Official AI reward contribution — bound preset difficulty is the single per-character source of truth, with total defeat rolls equal to difficulty (`1..5`) and no independent per-character reward-bonus table.
+- Official AI reward contribution — ordinary qualifying-opponent reward remains `+1`, and the bound AI difficulty independently contributes `+difficulty` bonus rolls; Baseline Difficulty 0 therefore adds no extra bonus and character difficulties `1..5` add `1..5` extra rolls.
 
 These implementation/content tasks are not reasons to reopen the accepted **12,927 stable mechanical identities + rerolled score-weighted magnitudes + deterministic generated naming + duplicate progression + all-earned-roll rewards + Middle Fingers Gacha Store** architecture.
