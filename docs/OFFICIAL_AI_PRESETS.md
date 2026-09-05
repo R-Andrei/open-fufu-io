@@ -27,10 +27,10 @@ Current content status:
 shared AI architecture/configuration contracts: closed
 Origin trait AI support:                    72 / 72 complete
 Official Origin AI configuration:            49 / 49 complete
-Baseline/character CharacterProfiles:         11 / 21 complete
+Baseline/character CharacterProfiles:         21 / 21 complete
 ```
 
-The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets. Baseline and the first 10 character profiles are complete; 10 character profiles remain to be authored.
+The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets. The first full CharacterProfile pass is complete. A fastfire character quirk/signature-move review remains intentionally open before final benchmarking/validation.
 
 Difficulty values below are creator-authored competence targets, not claims that unfinished implementations already achieve those ratings.
 
@@ -159,14 +159,14 @@ Difficulty controls only the extra AI bonus. Do not maintain an independent per-
 | **Kaiki Deishuu** | Monogatari | **3** | Avoids fair fights; economy first; opportunism; deception; makes wars profitable. | **Section 9** · **Woolong Hustle** · **The Fake Is of Far Greater Value** · **Hacker's Paradise** · **The Art of Surviving** |
 | **Misaka Mikoto** | A Certain Scientific Railgun | **3** | Direct force, infrastructure, ranged/area denial, fairly straightforward strategic reasoning. | **Railgun** · **Tokiwadai Ace** · **Watchtower** · **Ordinary Offensive Magic** |
 | **Edward Wong Hau Pepelu Tivrusky IV** | Cowboy Bebop | **2** | Weird geography, exploration, unconventional infrastructure, unpredictable priorities without literal randomness. | **Radical Edward** · **Hacker's Paradise** · **Light Music Club** · **Gemini** |
-| **Shaula** | Re:Zero | **3** | Long-range killing, defensive anchoring, exclusion zones, protects a chosen core. | **Hell's Snipe** · **Watchtower** · **Ordinary Offensive Magic** · **Serious Series** · **The Height of Magic** |
-| **Hirasawa Yui** | K-On! | **1** | Simple heuristics, economic comfort, teamwork/support structures, low urgency. | **Light Music Club** · **Fuwa Fuwa Time** · **Kessoku Band** · **Hero for Fun** |
-| **Saitama** | One-Punch Man | **2** | Almost insultingly simple strategic logic, but decisive commitment once he decides something matters. | **One Punch** · **Serious Series** · **Hero for Fun** · **Light Music Club** · **King of Apparitions** |
-| **Ferdinand** | Ascendance of a Bookworm | **5** | Infrastructure optimizer; ruthless efficiency; plans everything; hates waste. | **Efficiency Above All** · **There Is No Time to Waste** · **A Mere Ten Years** · **Kessoku Band** · **The Stars Are Within My Grasp** · **A Rational War** |
-| **Power** | Chainsaw Man | **2** | Chaotic aggression, greed, bravado, opportunistic violence. | **1000 IQ** · **Operation Super-Smart** · **If I Can Imagine It** · **Survival of the Fittest** · **Hero for Fun** |
-| **Reze** | Chainsaw Man | **3** | Deceptive positioning; explosive breakthroughs; amphibious/infiltration logic; sudden escalation. | **Bomb Girl** · **The Country Mouse** · **Serious Series** · **Section 9** · **The Dose Makes the Poison** |
-| **Hitori Gotou** | Bocchi the Rock! | **2** | Extreme risk aversion, concealment/isolation, defensive buildup, occasional panicked overcommit. | **Bocchi Time** · **Section 9** · **Kessoku Band** · **Gemini** · **Light Music Club** |
-| **Maomao** | The Apothecary Diaries | **4** | Analysis, experimentation, terrain/status exploitation, efficient response to observed problems. | **The Dose Makes the Poison** · **I Don't Know Everything** · **There Is No Time to Waste** · **The Art of Surviving** |
+| **Shaula** | Re:Zero | **3** | Long-range guardian; designates a protected core; signature tower/SAM geometry when viable; fights extraordinarily hard for that core. | **Hell's Snipe** · **Watchtower** · **Ordinary Offensive Magic** · **Serious Series** · **The Height of Magic** |
+| **Hirasawa Yui** | K-On! | **1** | Simple heuristics, economic comfort, teamwork/support structures, low urgency; heart-like infrastructure/rail layouts when viable. | **Light Music Club** · **Fuwa Fuwa Time** · **Kessoku Band** · **Hero for Fun** |
+| **Saitama** | One-Punch Man | **2** | Minimum-complexity strategic logic; low urgency until something matters; attacks with overwhelming concentrated force once committed. | **One Punch** · **Serious Series** · **Hero for Fun** · **Light Music Club** · **King of Apparitions** |
+| **Ferdinand** | Ascendance of a Bookworm | **5** | Infrastructure/system optimizer; ruthless efficiency; plans everything; hates waste. | **Efficiency Above All** · **There Is No Time to Waste** · **A Mere Ten Years** · **Kessoku Band** · **The Stars Are Within My Grasp** · **A Rational War** |
+| **Power** | Chainsaw Man | **2** | Coherently reckless aggression, greed, bravado, spectacle, and opportunistic violence. | **1000 IQ** · **Operation Super-Smart** · **If I Can Imagine It** · **Survival of the Fittest** · **Hero for Fun** |
+| **Reze** | Chainsaw Man | **3** | Deceptive positioning/infiltration followed by sudden explosive breakthrough or amphibious escalation. | **Bomb Girl** · **The Country Mouse** · **Serious Series** · **Section 9** · **The Dose Makes the Poison** |
+| **Hitori Gotou** | Bocchi the Rock! | **2** | Extreme risk aversion, concealment/isolation, unusually dense useful border Fort coverage, defensive buildup, occasional pressure-triggered panicked overcommit. | **Bocchi Time** · **Section 9** · **Kessoku Band** · **Gemini** · **Light Music Club** |
+| **Maomao** | The Apothecary Diaries | **4** | Causal-mechanics diagnosis, experimentation, terrain/status exploitation, and efficient response to confirmed mechanisms. | **The Dose Makes the Poison** · **I Don't Know Everything** · **There Is No Time to Waste** · **The Art of Surviving** |
 
 Target distribution:
 
@@ -197,17 +197,16 @@ The Difficulty-0 Baseline AI is not counted.
 
 ## Concrete content work still open
 
-The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, and first 10 character `CharacterProfile`s are closed for the current V1 design.
+The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, and all 20 first-pass character `CharacterProfile`s are closed for the current V1 design.
 
 Remaining content work proceeds in this order:
 
-1. define the remaining 10 character `CharacterProfile`s, including Origin adaptation and fidelity expectations;
-2. run the complete 20-character cross-profile consistency audit;
+1. run the fastfire **character quirk/signature-move pass** across all 20 characters, adding quirks only where they materially improve identity;
+2. run the complete 20-character cross-profile and character × allowed-Origin consistency audit;
 3. benchmark each character against its authored capability target;
 4. benchmark thematic/fidelity behavior separately;
-5. test every character × allowed-Origin pairing for coherent Origin usage and retained character identity;
-6. version/hash final preset/controller/Origin configuration for match/replay/reward records.
+5. version/hash final preset/controller/Origin configuration for match/replay/reward records.
 
-For reviewability, character mappings may be authored in batches of ten, but accepted content is appended to the single canonical `design/official-ai/character-configurations.config.ts`; batch shards must not be created.
+The quirk pass must use existing character-owned Expression/Goal/Arbiter/Persistence surfaces where possible. It must not create gameplay mechanics, Origin semantics, or a new shared subsystem merely to support cosmetic personality unless the existing architecture genuinely cannot represent a reusable requirement.
 
 The roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, provisional difficulty targets, additive difficulty-bonus reward rule, and generic Official-AI architecture/configuration are accepted V1 direction.
