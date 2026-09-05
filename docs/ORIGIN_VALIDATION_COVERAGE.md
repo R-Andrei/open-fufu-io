@@ -548,10 +548,11 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Required seams / dependencies**
 
-- `#32 resolved start-state location/order -> exact GRANT request -> canonical structure admission -> active completed L1 Missile Silo -> ordinary Silo weapon/charge lifecycle`.
+- `resolved exact origins -> Initial-Territory ownership -> exactly one P20 GRANT request at stable originSlot 0 -> canonical structure admission -> active completed L1 Missile Silo -> ordinary Silo weapon/charge lifecycle`.
+- The singular grant resolves after Initial-Territory ownership in every spawn mode and is **once per faction**, not once per origin/footprint. P39 therefore does not duplicate it.
 - Grant occurs as a **grant**, not a purchase; no FFY purchase transaction is performed and no P21 first-Silo entitlement is consumed.
-- Hard ownership limits such as N07 still apply to the grant.
-- #45 closes resulting level/activation/admission; exact start-state location/order remains #32 and initial charge/readiness state remains #46.
+- Generic #45 structure admission still applies, including hard ownership limits such as N07. If exact-cell admission rejects the grant, no Silo is created, Spawn searches no alternate cell, and the valid territorial start is not rolled back.
+- #45 closes resulting level/activation/admission; initial charge/readiness state remains #46-owned.
 
 **Explicit interactions**
 
@@ -559,12 +560,11 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P20 + P53`: explicitly legal; P53 must count the granted Silo's ready persistent charges exactly when #46 says those charges are canonically ready.
 - `P20 + N07`: the grant passes ordinary structure ownership admission and cannot bypass N07.
 - `P20 + N06`: the granted L1 Silo is immediately completed/active, but N06's upgrade-spending prohibition applies normally to later attempted upgrades.
-- `P20 + P39` / multi-origin profiles: placement/uniqueness of this singular start-state grant remains part of #32's spawn-semantics work.
+- `P20 + P39`: exactly one grant is requested at P39's stable primary `originSlot 0`; there is no secondary-core grant.
 
-**Remaining blockers / dependencies**
+**Remaining dependency**
 
-- #32 must close ordering/uniqueness/placement semantics for singular Origin start-state grants under multi-origin and Random/Fixed spawn profiles.
-- #46 must close initial ready-charge state for a newly granted Silo. #45 no longer blocks P20's resulting structure level, activation state, or generic admission lifecycle.
+- #46 must close initial ready-charge state for a newly granted Silo. #32 no longer blocks P20 placement, ordering, or multi-origin uniqueness, and #45 no longer blocks its resulting structure level, activation state, or generic admission lifecycle.
 
 ---
 
@@ -1089,31 +1089,33 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Direct transformations / owners**
 
-- Strategic Spawn public profile/protocol.
-- Requires two half-ordinary-area influence slots, two exact-origin slots, and two generated Initial-Territory footprints sharing one final faction quota.
+- Spawn mode-independent effective profile: two stable exact-origin slots and two generated Initial-Territory footprints sharing one final faction quota.
+- Strategic Spawn additionally uses two half-ordinary-area influence slots; Random and Fixed do not fabricate influence regions.
 - Starting Population remains one global pool.
 
 **Required seams / dependencies**
 
-- `Origin effective spawn profile -> Phase-1/2 influence hooks`: both slots are one simultaneous faction decision; each circular area is exactly 50% of ordinary area.
-- `Phase-3 exact origins -> deterministic resolver`: same-faction origins must be distinct legal cells but are exempt from foreign-faction 50-cell spacing against each other.
-- `final modified Initial-Territory total -> deterministic primary/secondary quota split -> simultaneous independent footprint growth -> one political faction ownership result`.
-- Odd one-cell quota remainder goes to the deterministic primary footprint.
-- Same-faction footprint conflict over one candidate cell must follow canonical footprint-slot ordering for queue accounting without duplicating political ownership.
+- Stable slot identity is canonical across all modes: `originSlot 0 = PRIMARY`, `originSlot 1 = SECONDARY`; geography never re-sorts them.
+- Strategic Spawn: both half-area influence slots are one simultaneous faction decision; Phase-3 submits two exact origins; same-faction origins must be distinct legal cells but are exempt from foreign-faction 50-cell spacing against each other.
+- Random Spawn: resolves exactly two distinct same-faction origins deterministically as one simultaneous allocation; own slots remain exempt from the foreign 50-cell rule while all foreign spacing remains canonical.
+- Fixed Spawn: requires exactly two authored legal distinct origins; wrong count, illegal terrain, duplicate own slots, or foreign-spacing violation rejects the fixture/configuration with no displacement, repair, fallback, or profile downgrade.
+- `final modified Initial-Territory total -> stable primary/secondary quota split -> simultaneous independent footprint growth -> one political faction ownership result`.
+- Odd one-cell quota remainder goes to `originSlot 0`.
+- Same-faction footprint conflict over one candidate cell follows canonical footprint-slot ordering for queue accounting without duplicating political ownership.
 - `final total Initial Territory -> Population initialization`: Starting Population is calculated once from the final total and never split into local pools.
-- Spawn diagnostics/replay must preserve both influence/origin/footprint identities and deterministic resolver versioning.
+- Replay/snapshot preserves spawn mode, effective profile, each stable origin slot/source/reason, per-footprint quota/shape/cell set/hash, and resolver version; Strategic-only phase submissions are recorded only in Strategic mode.
 
 **Explicit interactions**
 
 - `P39 + P01`: P01 modifies the **total** quota before P39 divides it; current ordinary baseline yields `575 + 575` and one global Starting Population of `575`.
-- `P39 + P54`: explicitly legal. Each split footprint uses the canonical star profile without duplicating total quota.
-- `P39 + P20`: singular starting-Silo grant placement/uniqueness remains owned by #32; once #32 selects the grant location/order, #45's generic grant admission/lifecycle applies.
+- `P39 + P54`: explicitly legal. Each stable split footprint consumes an independent `P54_STAR_V1` priority field without duplicating total quota.
+- `P39 + P20`: after Initial-Territory ownership, exactly one starting-Silo grant is requested at primary `originSlot 0`; #45 generic admission applies, no secondary grant exists, and failed exact-cell admission searches no alternate cell.
 - Inspect P48 when audited because faction-effective population-bearing classification can affect footprint quota accounting.
 - `P01 + P39 + P54` remains not builder-legal under current positive spend, so no public runtime certification case is required for that triple.
 
-**Blocker / issue dependency**
+**#32 closure status**
 
-- Strategic P39 semantics are substantially closed in `STRATEGIC_SPAWN.md`, but exact Random/Fixed interaction with spawn-transforming Origins remains unresolved under #32. P39 deployment certification for those spawn modes remains blocked until that owner defines the corresponding deterministic profiles.
+- P39 semantics are now canonically defined in Strategic, Random, and Fixed Spawn. Runtime certification may remain `UNAVAILABLE` until the concrete Spawn resolver/test harness exists, but P39 is no longer `BLOCKED` on undefined Random/Fixed or multi-origin singular-grant semantics.
 
 ---
 
@@ -1157,7 +1159,7 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle lacks a canonical expected result until #49 defines it. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
 | P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
-| P20 | Exact start-state grant placement/ordering remains #32-owned; initial charge readiness remains #46-owned. | P20's generic grant admission, L1 result, and immediate activation are closed by #45, but full start-state certification still depends on #32/#46. |
+| P20 | **Resolved by #32:** singular start-state placement/order is once per faction at stable primary `originSlot 0` after Initial-Territory ownership; #45 owns exact-cell admission/result. Initial charge readiness remains #46-owned. | Spawn/grant placement conformance is no longer blocked by #32; full Silo start-state certification still depends on #46 charge readiness. |
 | P24 | Qualifying Fort affiliation for `inside Fort areas` is not explicit. | Spatial FFY qualification cannot be certified for own/team/enemy Fort overlap cases without a canonical ownership/team boundary. |
 | P25 | `+50%` Hydrogen blast **area** lacks an exact deterministic inner/outer geometry transformation, including optional Water-Nukes core/fringe behavior. | P25 runtime/replay footprint certification cannot infer radii/raster rules from the percentage alone. |
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
@@ -1166,7 +1168,7 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | P34 | Capture-transfer trigger/fate is closed by #45; `2x ordinary Factory effect` and Factory-specific transformed provenance/counter lifecycle remain #49-owned. | P34's transfer prerequisite is canonical, but its transformed Factory projection still depends on #49. |
 | P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
 | P36 | Faction-level half-Population residual accounting does not define the eventual whole-Population debit destination/order across multiple concurrent expansion commitments. | P36 multi-operation settlement accounting cannot have one deterministic expected state yet. |
-| P39 | Random/Fixed Spawn interaction with spawn-transforming Origins remains unresolved under #32. | P39 certification is complete only for spawn modes whose deterministic transformed profile is canonically defined. |
+| P39 | **Resolved by #32:** Strategic/Random/Fixed two-origin semantics, stable slot identity, strict Fixed validation, deterministic Random resolution, quota split, replay binding, and P20 singular-grant interaction are canonical. | P39 semantic coverage is no longer blocked by #32; executable certification may remain unavailable until the Spawn runtime/harness exists. |
 
 The former P23 concurrent-cap and P37 grant-placement/lifecycle blockers are resolved by #45. Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
 
