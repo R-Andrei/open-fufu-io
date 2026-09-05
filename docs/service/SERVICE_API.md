@@ -75,7 +75,7 @@ Every retry-sensitive `POST` that creates a durable resource, spends account sta
 - `POST /lobbies`;
 - lobby start.
 
-Operations whose resource transition is naturally idempotent, such as leave/archive-style transitions, need not require a key merely because they use `POST`.
+Operations whose resource transition is naturally idempotent need not require a key merely because they use `POST`. In particular, repeated join by an already-present participant, repeated leave by an absent participant, and repeated archive of an already-archived resource must converge on the same canonical state rather than creating duplicate membership/effects.
 
 The key is scoped to authenticated caller + endpoint operation. Repeating the same key with the same canonical request returns the original result. Reusing it with a different request returns `409 idempotency_conflict`.
 
@@ -125,7 +125,7 @@ GET /official-ai-presets
 
 These endpoints return stable selectable IDs, the relevant version identity, and only the presentation/compatibility metadata needed to construct a legal lobby. They do **not** duplicate map mechanics, ruleset mechanics, AI behavior, allowed-Origin arithmetic, or other canonical subsystem rules.
 
-`GET /official-ai-presets` includes the Difficulty-0 Baseline and the currently selectable character presets under one explicit `ai_preset_version`. Exact preset identity, difficulty, allowed-Origin pools, and seeded Origin-selection behavior remain owned by [`../official-ai/OFFICIAL_AI_PRESETS.md`](../official-ai/OFFICIAL_AI_PRESETS.md) and its code-readable configuration.
+`GET /official-ai-presets` exposes the selectable Difficulty-0 Baseline entry plus the currently selectable character presets under one explicit `ai_preset_version`. The Baseline remains a distinct non-character entry; exact Baseline role, character preset identity/difficulty/allowed-Origin pools, and seeded Origin-selection behavior remain owned by [`../official-ai/OFFICIAL_AI_PRESETS.md`](../official-ai/OFFICIAL_AI_PRESETS.md) and its code-readable configuration.
 
 ---
 
@@ -211,7 +211,7 @@ POST   /reward-settlements/{settlement_id}/resolve
 POST   /gacha/pulls
 ```
 
-`GET /echoes` supports bounded filtering/sorting plus cursor pagination; it returns an opaque inventory reference, the retained roll, catalogue identity, tier/presentation data derivable for that roll, and favorite state. `PUT .../favorite` changes only that account presentation flag and does not alter Echo mechanics or the retained roll.
+`GET /echoes` supports bounded filtering/sorting plus cursor pagination; it returns an opaque inventory reference, the retained roll, catalogue identity, tier/presentation data derivable for that roll, and favorite state. `PUT .../favorite` accepts `{ "favorite": true|false }` and changes only that account presentation flag; it does not alter Echo mechanics or the retained roll.
 
 An Echo Set stores references to retained inventory identities/slots. It does not copy Echo mechanics.
 
@@ -281,7 +281,7 @@ The server validates compatibility against the lobby's bound candidate rules. Se
 
 `POST .../start` is authoritative. On success it freezes the lobby into one match, binds every required immutable/versioned input, and returns the created match resource. A start fails if required participants are not ready/valid, an account has a blocking pending settlement, or the lobby cannot form a deterministic match configuration.
 
-For Official-AI slots, match creation freezes the exact `ai_preset_version` and selected preset IDs, then performs the seeded AI-Origin selection/reveal order owned by [`../official-ai/OFFICIAL_AI_PRESETS.md`](../official-ai/OFFICIAL_AI_PRESETS.md) before Strategic Spawn begins.
+For Official-AI slots, match creation freezes the exact `ai_preset_version` and selected AI entry IDs. Character presets then perform the seeded allowed-Origin selection/reveal sequence owned by [`../official-ai/OFFICIAL_AI_PRESETS.md`](../official-ai/OFFICIAL_AI_PRESETS.md); the service does not invent that step for the distinct Difficulty-0 Baseline or any future AI entry whose canonical definition does not use a character allowed-Origin pool.
 
 Random/Fixed Spawn interactions with spawn-transforming Origins are not defined here; the service applies only combinations and resolved results permitted by [`../STRATEGIC_SPAWN.md`](../STRATEGIC_SPAWN.md).
 
