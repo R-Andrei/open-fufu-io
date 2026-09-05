@@ -995,7 +995,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Blocker / mechanic-definition finding**
 
-- The high-level design intentionally makes territorial abandonment a separate action but does not yet close enough of the generic abandonment contract for P35 certification when relinquished cells contain persistent structures or other ownership-bound state on relinquished cells; P35 should then add Fallout to that ordinary result rather than invent its own structure-disposal rule.
+- The high-level design intentionally makes territorial abandonment a separate action but does not yet close enough of the generic abandonment contract for P35 certification when relinquished cells contain persistent structures or other ownership-bound state. The canonical owner must define abandonment eligibility and the fate of structures/ownership-bound objects on relinquished cells; P35 should then add Fallout to that ordinary result rather than invent its own structure-disposal rule.
 
 ---
 
