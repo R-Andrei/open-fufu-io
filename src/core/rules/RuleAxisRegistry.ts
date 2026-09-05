@@ -201,6 +201,16 @@ function structuralAxis(
 }
 
 export const RULE_AXIS_REGISTRY = {
+  INITIAL_TERRITORY_QUOTA: standardScalarAxis(
+    "INITIAL_TERRITORY_QUOTA",
+    "COUNT",
+    "GLOBAL",
+    { echo: false },
+  ),
+  POPULATION_GROWTH_UTILIZATION_PROFILE: structuralAxis(
+    "POPULATION_GROWTH_UTILIZATION_PROFILE",
+    "GLOBAL",
+  ),
   POPULATION_GROWTH: standardScalarAxis("POPULATION_GROWTH", "RATIO", "GLOBAL"),
   STARTING_POPULATION_FRACTION: standardScalarAxis(
     "STARTING_POPULATION_FRACTION",
