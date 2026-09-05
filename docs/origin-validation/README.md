@@ -15,6 +15,11 @@ The coverage registry is split only for reviewability; all files below use the s
 
 Future batches should be added here rather than turning one registry file into an unreviewable monolith.
 
+The interaction registry must cover both:
+
+- **same-Origin interactions**, where multiple selected traits affect one effective mechanic; and
+- **cross-faction Origin interactions**, where one faction's trait changes state that another faction's trait explicitly queries.
+
 ## Authority rule
 
 Trait-effect wording in these coverage files is explanatory shorthand only. If it disagrees with a canonical mechanic owner, the mechanic owner wins and the coverage registry must be corrected. Coverage files must record unresolved mechanic questions as blockers; they must not silently solve them.
