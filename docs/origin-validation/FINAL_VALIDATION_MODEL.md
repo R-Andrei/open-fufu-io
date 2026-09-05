@@ -189,7 +189,7 @@ The full audit intentionally did not invent missing gameplay semantics inside #3
 | **#32 — Random/Fixed Spawn × spawn-transforming Origins** | Strategic Spawn profiles/resolver | P39/P54 Random/Fixed behavior, multi-origin singular grants including P20 ordering, exact resolver-v1 P54 star representation/constants |
 | **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition |
 | **#44 — structure-field geometry and affiliation** | effective Fort/SAM fields | area→geometry/raster conversion, P24 qualifying Fort affiliation, N11 qualifying SAM affiliation/effective P40 area |
-| **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved on the #45 branch:** generic structure acquisition/grants/capture resolver, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
+| **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved by #45:** generic structure acquisition/grants/capture resolver, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
 | **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
 | **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
 | **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
@@ -203,7 +203,7 @@ Closed dependencies and resolved downstream contracts are consumed directly from
 
 - **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
 - **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
-- **#45 branch** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #32/#46/#48/#49/#50 boundaries;
+- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #32/#46/#48/#49/#50 boundaries;
 - **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
 
 ---
@@ -223,6 +223,6 @@ The #31 design/documentation work is complete when all of the following are true
 - discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
 - neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
 
-All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of still-open downstream #32/#43–#51 contracts is owned by those systems/issues; #45's scoped mechanics are resolved by the current #45 branch. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
+All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of still-open downstream #32/#43–#51 contracts is owned by those systems/issues; #45's scoped mechanics are resolved by #45's canonical contract. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
 
 Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.
