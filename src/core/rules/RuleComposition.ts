@@ -199,6 +199,66 @@ export interface RuleAxisDefinition {
 
 export type RuleAxisRegistry = Readonly<Record<string, RuleAxisDefinition>>;
 
+/**
+ * Global semantic contract for provenance that may author each named stage.
+ * Axes still decide which stages exist; this table prevents provenance from
+ * silently masquerading as another layer merely because an axis accepts both.
+ */
+export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
+  STRUCTURAL_PROFILE: [
+    "BASE_RULESET",
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "UNIT_PROFILE",
+  ],
+  BASE_REPLACEMENT: ["BASE_RULESET", "RULESET_TRANSFORM", "ORIGIN"],
+  ORIGIN_FLAT: ["ORIGIN"],
+  ORIGIN_PERCENT: ["ORIGIN"],
+  ORIGIN_SCALAR: ["ORIGIN"],
+  ORIGIN_CAP: ["ORIGIN"],
+  ECHO_PERCENT: ["ECHO"],
+  ECHO_SCALAR: ["ECHO"],
+  CONTEXTUAL_PERCENT: [
+    "RULESET_TRANSFORM",
+    "TERRAIN",
+    "STRUCTURE",
+    "UNIT_PROFILE",
+    "SITUATIONAL",
+  ],
+  CONTEXTUAL_SCALAR: [
+    "RULESET_TRANSFORM",
+    "TERRAIN",
+    "STRUCTURE",
+    "UNIT_PROFILE",
+    "SITUATIONAL",
+  ],
+  CAPABILITY_ADD: ["RULESET_TRANSFORM", "ORIGIN", "UNIT_PROFILE", "SITUATIONAL"],
+  CAPABILITY_REMOVE: [
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "UNIT_PROFILE",
+    "SITUATIONAL",
+  ],
+  CAPABILITY_REPLACE: [
+    "BASE_RULESET",
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "UNIT_PROFILE",
+  ],
+  COMPONENT_SUPPRESSION: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
+  PERMISSION: [
+    "BASE_RULESET",
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "TERRAIN",
+    "STRUCTURE",
+    "UNIT_PROFILE",
+    "SITUATIONAL",
+  ],
+  FINAL_OVERRIDE: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
+  TERMINAL: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
+} as const satisfies Readonly<Record<RuleStageId, readonly RuleSourceKind[]>>;
+
 export type RuleValidationCode =
   | "AXIS_ID_MISMATCH"
   | "DUPLICATE_STAGE"
@@ -209,6 +269,7 @@ export type RuleValidationCode =
   | "SCOPE_KIND_MISMATCH"
   | "VALUE_UNIT_MISMATCH"
   | "SOURCE_KIND_NOT_ALLOWED"
+  | "SOURCE_KIND_NOT_ALLOWED_IN_STAGE"
   | "STAGE_NOT_ALLOWED"
   | "OPERATOR_NOT_ALLOWED"
   | "VALUE_REQUIRED"
@@ -631,6 +692,19 @@ export function validateRuleContributions(
       });
       continue;
     }
+    if (
+      !RULE_STAGE_ALLOWED_SOURCE_KINDS[stage.id].includes(
+        contribution.sourceKind as never,
+      )
+    ) {
+      issues.push({
+        code: "SOURCE_KIND_NOT_ALLOWED_IN_STAGE",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        stage: contribution.stage,
+        message: `${contribution.sourceKind} cannot author semantic stage ${contribution.stage}`,
+      });
+    }
     if (!stage.allowedOperators.includes(contribution.operator)) {
       issues.push({
         code: "OPERATOR_NOT_ALLOWED",
@@ -641,7 +715,13 @@ export function validateRuleContributions(
       });
     }
     validateValue(contribution, issues);
-    const key = `${contribution.axis}\0${canonicalJson(contribution.scope)}\0${contribution.stage}`;
+    const key = canonicalJson({
+      axis: contribution.axis,
+      scope: contribution.scope,
+      stage: contribution.stage,
+      condition: contribution.condition,
+      component: contribution.component,
+    });
     const group = groups.get(key);
     if (group === undefined) groups.set(key, [contribution]);
     else group.push(contribution);
@@ -753,6 +833,14 @@ function deterministicNumericSum(group: readonly RuleContribution[]): number {
     .reduce((total, value) => total + value, 0);
 }
 
+/** Apply an authored fixed-scale percentage without first materializing 1 + p as a float. */
+function applyBasisPointDelta(value: number, deltaBasisPoints: number): number {
+  return (
+    (value * (BASIS_POINTS_SCALE + deltaBasisPoints)) /
+    BASIS_POINTS_SCALE
+  );
+}
+
 /** Scope/condition eligibility is resolved by the owning subsystem before reduction. */
 export function reduceScalarRule(
   baseValue: number,
@@ -772,7 +860,7 @@ export function reduceScalarRule(
         const sum = deterministicNumericSum(group);
         if (operator === "ADD_FLAT") current += sum;
         else if (operator === "ADD_PERCENT") {
-          current *= 1 + sum / BASIS_POINTS_SCALE;
+          current = applyBasisPointDelta(current, sum);
         } else throw new Error(`SUM cannot apply ${operator}`);
         break;
       }
@@ -970,9 +1058,10 @@ export function composePressure(input: PressureCompositionInput): number {
   const command = strongestFieldBonus(fields, "COMMAND_POST");
   const structureBonus = 1 - (1 - fort) * (1 - command);
   return (
-    input.basePressure *
-    (1 + terrainBp / BASIS_POINTS_SCALE) *
-    (1 + ruleBp / BASIS_POINTS_SCALE) *
+    applyBasisPointDelta(
+      applyBasisPointDelta(input.basePressure, terrainBp),
+      ruleBp,
+    ) *
     (1 + structureBonus)
   );
 }
