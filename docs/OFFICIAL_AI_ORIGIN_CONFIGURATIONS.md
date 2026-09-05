@@ -22,9 +22,9 @@ A named-Origin configuration does **not** duplicate the entire derived `OriginSt
 ## Progress
 
 ```text
-Configured Official Origins: 30 / 49
-Current canonical roster coverage: first 30 in library/UI order
-Remaining Official Origins: 19
+Configured Official Origins: 40 / 49
+Current canonical roster coverage: first 40 in library/UI order
+Remaining Official Origins: 9
 ```
 
 O35 is retired; the canonical roster currently contains 49 active Official Origins.
@@ -267,6 +267,88 @@ N13 keeps amphibious projection risky despite the Origin's unusual relationship 
 
 ---
 
+## O37 — Hacker's Paradise
+
+P49 and P45 reuse `LAYERED_COUNTERINTELLIGENCE`: Observation Posts create blackout zones while owned Forest interiors provide concealed staging space. P17 adds long-horizon upgrade optimization, while N07 sharply constrains infrastructure count and makes every structure slot globally important.
+
+P17 + N07 does not require a special combination rule. The upgrade planner already reasons from the actual owned structure count, so the one-per-type cap simply limits how far the structure-count discount can scale. The AI must not forecast discounts from structures it can never legally own.
+
+**AI identity:** combine layered information denial with a small, carefully placed infrastructure base whose modernization is optimized around the real constrained structure count.
+
+## O38 — I Don't Know Everything
+
+P17 rewards sequencing construction before upgrades, P21 makes each structure type's first purchase consume no FFY while still requiring affordability, and P04 stabilizes response-side counter-response. The result is an infrastructure-preparation build with competent reactive warfare rather than a new transformed mechanic.
+
+N01 and N04 weaken City growth and Mountain FFY respectively, so economic optimization must use the actual terrain and demographic returns rather than assuming every efficient-looking build step compounds equally.
+
+**AI identity:** prepare efficiently, exploit first-purchase and upgrade sequencing, and respond to attacks without requiring a universal omniscient strategy.
+
+## O02 — Fuwa Fuwa Time
+
+Fast Trade Ships, full wartime trade, increased Train throughput, and direct-L5 City purchases create a concentrated high-throughput economy. N07 means only one of each structure type may be owned, turning the City and other infrastructure choices into unusually important placement decisions.
+
+No special combination hook is required. Trade, Train, direct-L5 City, and unique-structure support all act on ordinary economic/infrastructure candidates and can be composed by the existing planners.
+
+**AI identity:** build a compact rich city-state whose few structures deliver unusually high commercial, rail, and City value even during war.
+
+## O39 — A Mere Ten Years
+
+P17, P21, P41, and N07 create one of the strongest infrastructure-sequencing Origins in the library. The first purchase of a City remains subject to P21 affordability, but if legal it consumes no FFY and P41 makes the purchased City immediately level 5. N07 means this may also be the faction's only City.
+
+This still does not require a bespoke combination adapter. P21 already modifies first-purchase cost semantics, P41 already defines the resulting City state, and N07 already defines ownership scarcity. The ordinary infrastructure candidate can therefore carry all three consequences simultaneously, while P17 continues to optimize upgrades for structures that actually have legal upgrade paths.
+
+**AI identity:** turn a tiny infrastructure roster into immediately mature, highly optimized assets through careful purchase and upgrade sequencing.
+
+## O40 — Efficiency Above All
+
+A wide Population-utilization growth profile, structure-count upgrade discounts, and increased Train throughput reward systemic economic optimization. N07 limits the infrastructure roster to one of each type, so P17's discount must be calculated from the real constrained structure count rather than an imagined mass-building strategy.
+
+No combination support is needed because all four effects remain visible to the ordinary economy, infrastructure, and upgrade planners.
+
+**AI identity:** extract maximum efficiency from a deliberately small infrastructure network, balancing Population utilization, rail throughput, and the upgrade discount available from the structures that can legally exist.
+
+## O41 — There Is No Time to Waste
+
+P17, P07, and P41 create rapid continental development: more Train throughput, cheaper upgrades as the infrastructure base grows, and direct-L5 City purchases. P41 also means a newly purchased City has no ordinary paid City-upgrade path left for P17 to optimize; the AI must not invent one.
+
+N13 makes amphibious landings costly in Population, keeping the Origin's development advantage primarily continental unless a sea-borne operation remains worthwhile after the real landing loss.
+
+**AI identity:** accelerate mature land development and rail throughput without wasting planning effort on development paths that direct-L5 Cities have already bypassed.
+
+## O42 — The Stars Are Within My Grasp
+
+Larger Initial Territory provides a broader starting position, while P17 and P07 reward subsequent infrastructure/rail scaling. N01 weakens City growth and N04 reduces Mountain FFY, making the larger opening valuable without making every part of it equally productive.
+
+The ordinary spawn, economy, and infrastructure layers can compose these effects directly.
+
+**AI identity:** convert a broad opening footprint into fast infrastructure and rail scaling while steering development away from comparatively weak demographic/economic surfaces.
+
+## O07 — The Fake Is of Far Greater Value
+
+P30 transforms Warships into fast piracy platforms that cannot use ordinary naval gunfire against ships. P31 gives those Warships stronger Port repair sustain, while P06 improves the faction's own Trade Ship throughput. N13 makes amphibious landing projection costly.
+
+P30 + P31 does not need a dedicated combination hook. P30 already generates/evaluates piracy routes and transformed Warship behavior; P31 already values repair fields and repair-oriented retreat. A capable Naval planner can therefore route piracy around sustainable Port access without a new candidate type.
+
+**AI identity:** run a fast commerce-and-piracy economy whose Warships survive through prepared repair bases rather than conventional fleet combat.
+
+## O05 — The Country Mouse
+
+P37, P32, and P12 all feed the same amphibious planning stack: Transports are faster and armored, must embark from Ports, cost extra FFY to launch under P37, and successful landings create level-1 Forts. The combination is powerful but remains an ordinary amphibious candidate with richer route, survivability, cost, and beachhead consequences.
+
+N12 prevents Warship construction but does **not** suppress Transport/amphibious support. `NO_WARSHIPS_SUPPRESSES_WARSHIP_DEPENDENT_SUPPORT` only removes support belonging to Warship-dependent positive traits; P12, P32, and P37 remain fully active. N01 weakens City growth.
+
+**AI identity:** conduct fast armored Port-launched invasions that pay more upfront but arrive with durable fortified beachheads, despite having no conventional Warship fleet.
+
+## O43 — King of Apparitions
+
+P23 + P22 reuses `ELITE_SINGLE_FLAGSHIP_PROGRESSION`: one stronger Warship can progress beyond the normal rank ceiling. P31 then gives that unique flagship stronger Port repair sustain, while N07 means only one Port may be owned.
+
+No extra flagship-repair combination is necessary. P23/P22 already establish the extreme value of preserving the veteran flagship, P31 already values repair coverage and repair retreats, and N07 already makes Port placement globally scarce. Those independent support components converge on the same naval plan naturally.
+
+**AI identity:** preserve one irreplaceable veteran flagship around one exceptionally important naval base, treating both ship and Port as globally strategic assets.
+
+---
+
 ## Batch consistency results
 
 ### First 10
@@ -292,10 +374,20 @@ All third-batch Origins compose successfully after one reusable omission from th
 
 - O29 requires the existing `RADIOACTIVE_HEAVY_ARTILLERY` combination;
 - O32 requires the existing `POPULATION_SCALED_GIANT_SAM_NETWORK` combination;
-- O33 requires `REVERSIBLE_SCORCHED_EARTH` plus the new reusable `RADIOACTIVE_FALLOUT_ADVANCE` combination;
-- O34 also requires `RADIOACTIVE_FALLOUT_ADVANCE`, confirming that the new support belongs at trait-combination level rather than as named-Origin logic;
+- O33 requires `REVERSIBLE_SCORCHED_EARTH` plus the reusable `RADIOACTIVE_FALLOUT_ADVANCE` combination;
+- O34 also requires `RADIOACTIVE_FALLOUT_ADVANCE`;
 - 0/10 need named-Origin-specific support;
-- O26, O27, O29, O30, O33, and O34 contain N12, but none selects a Warship-dependent positive trait, so its generic suppression matcher removes no otherwise-active support;
-- no new strategic literal or named-Origin escape hatch was required.
+- O26, O27, O29, O30, O33, and O34 contain N12, but none selects a Warship-dependent positive trait, so its generic suppression matcher removes no otherwise-active support.
 
-Across the first 30 Origins, named-Origin-specific support remains **0/30**. The only architecture correction in this batch was adding one reusable P16+P44 combination that applies to multiple Origins.
+### Fourth 10
+
+All fourth-batch Origins compose successfully from the existing support system without adding another generic literal, trait hook, combination rule, suppression rule, or named-Origin escape hatch.
+
+- O37 reuses `LAYERED_COUNTERINTELLIGENCE`;
+- O43 reuses `ELITE_SINGLE_FLAGSHIP_PROGRESSION`;
+- O39's P21 + P41 + N07 interaction is deliberately handled through ordinary infrastructure-candidate composition rather than a bespoke combination rule;
+- O07's piracy + Port-repair interaction and O05's armored/fast/fortified amphibious interaction likewise remain ordinary planner composition rather than new candidate types;
+- O05 contains N12, but its selected positive traits are Transport/amphibious traits rather than Warship-dependent traits, so their support remains active;
+- 0/10 need named-Origin-specific support.
+
+Across the first 40 Origins, named-Origin-specific support remains **0/40**. The reusable support architecture continues to absorb substantial build variety without producing a characterless per-Origin controller layer.
