@@ -20,7 +20,7 @@ origin-configurations.config.ts
   rare named-Origin support when genuinely necessary
 
 character-configurations.config.ts
-  future Difficulty-0 Baseline and all character CharacterProfile mappings
+  Difficulty-0 Baseline and all character CharacterProfile mappings
 ```
 
 Do **not** create batch/range shards such as `*.p41-p50.config.ts` merely to make incremental authoring easier. Batches are a review process; accepted entries are appended to the canonical file. Internal constants/grouping inside one file are fine for readability.
