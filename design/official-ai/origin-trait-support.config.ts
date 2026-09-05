@@ -984,6 +984,20 @@ export const OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT = [
     ],
   },
   {
+    id: "FALLOUT_ACQUISITION_INVERSION",
+    match: { allTraitIds: ["P16", "N18"] },
+    addsThemes: ["EXPANSION", "POSITIONAL_CONTROL", "SPECIALIZATION"],
+    addsAffordances: ["EXPLOIT_TERRAIN"],
+    signalSupport: [
+      { evaluator: "TERRITORY", hookId: "P16_N18_FALLOUT_ACQUISITION_VALUE" },
+      { evaluator: "FORECAST", hookId: "P16_N18_RELATIVE_ACQUISITION_FORECAST" },
+    ],
+    plannerSupport: [
+      { domain: "EXPANSION", phase: "EVALUATE_CANDIDATES", hookId: "P16_N18_FALLOUT_EXPANSION_VALUE" },
+      { domain: "LAND_WAR", phase: "EVALUATE_CANDIDATES", hookId: "P16_N18_FALLOUT_CAPTURE_VALUE" },
+    ],
+  },
+  {
     id: "VETERAN_MOBILE_MIRV_PLATFORM",
     match: { allTraitIds: ["P22", "P29"] },
     addsThemes: ["NAVAL_PROJECTION", "DETERRENCE", "SPECIALIZATION"],
