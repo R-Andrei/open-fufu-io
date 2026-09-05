@@ -223,6 +223,6 @@ The #31 design/documentation work is complete when all of the following are true
 - discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
 - neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
 
-All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of still-open downstream #32/#43–#51 contracts is owned by those systems/issues; #45's scoped mechanics are resolved by #45's canonical contract. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
+All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#32, #43, #44, #46–#51) is owned by those systems/issues; #45's scoped mechanics are resolved by #45's canonical contract. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
 
 Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.
