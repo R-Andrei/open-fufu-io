@@ -413,7 +413,9 @@ Origins are declarative versioned rule data. Implement catalogue/builder/runtime
 
 Production validation must enforce the public builder/catalogue rules without hidden pairwise compatibility tables. Effective Origin rules must serialize/hash deterministically and project through the ordinary rules/controller surface.
 
-The exhaustive Origin deployment gate remains part of the migration dependency spine and validation work. Its exact staging relative to runtime mechanic completion is tracked separately and must be resolved by correcting §16 before implementation reaches that gate; this plan does not duplicate trait mechanics to solve the sequencing problem.
+Mechanical certification applies to the deployed trait catalogue and the distinct gameplay transformations/interactions that catalogue can produce, **not to each named Official or Custom Origin as a separate runtime artifact**. Creating or loading a legal named Origin from a certified catalogue requires only ordinary catalogue-version, trait-ID, builder-legality, canonical-composition, and serialization checks; live matches do not launch background/headless certification for previously unseen named combinations.
+
+Origin validation is distributed to the gameplay domains that own the affected mechanics. Catalogue/intrinsic validation belongs with the Origin layer; runtime conformance belongs with the relevant subsystem; genuine cross-domain interactions receive explicit integration coverage. The complete validation flow, status model, and deployment-eligibility predicate are defined in §15.2. There is no monolithic Origin runtime-validation phase in the dependency spine.
 
 ## 10.2 Echoes
 
@@ -990,6 +992,171 @@ Remove checks tied only to obsolete OpenFront deployment/release assumptions, pr
 
 This work should happen early enough that a green/red GitHub status becomes meaningful before Open Fufu implementation PRs depend on it.
 
+## 15.2 Origin validation and catalogue certification
+
+Origin validation is a **pre-live automated certification system**. Its purpose is to prove that the deployed trait catalogue, trait mechanics, meaningful trait interactions, and materially distinct Origin-driven gameplay transformations are safe, deterministic, and semantically correct before they reach production. It does not continuously re-prove mechanics during live matches.
+
+The certification unit is the **trait catalogue and the transformations it can produce**, not the population of named Origins created from it. Ten, five thousand, or five million named Custom Origins built from one certified catalogue do not create corresponding runtime-test obligations.
+
+### 15.2.1 Validation flow
+
+Use five layers, ordered from cheapest/broadest to most runtime-expensive:
+
+```text
+1. CATALOGUE / SCHEMA / INTRINSIC VALIDATION
+        ↓
+2. TRAIT → GAMEPLAY-DOMAIN CONFORMANCE
+        ↓
+3. EXPLICIT TRAIT / CROSS-DOMAIN INTERACTIONS
+        ↓
+4. GENERATED LEGAL-COMBINATION PROPERTY VALIDATION
+        ↓
+5. DISTINCT RUNTIME-PROJECTION CERTIFICATION
+        ↓
+   CATALOGUE VERSION CERTIFIED
+```
+
+#### Layer 1 — catalogue / schema / intrinsic validation
+
+The Origin layer owns checks that do not require a gameplay subsystem to execute the trait:
+
+- stable/unique trait IDs and valid references;
+- public builder budget/count/refund legality;
+- Official-Origin legality under the same public builder;
+- absence of hidden pairwise incompatibility/runtime-veto tables;
+- deterministic canonical ordering/composition independent of source selection order;
+- deterministic effective-profile serialization, hashing, and round-trip behavior;
+- valid enums/ranges/structural values, with no `NaN`, infinity, or otherwise invalid effective state;
+- exact catalogue/version binding.
+
+This layer may enumerate every builder-legal selection when computationally practical. If future catalogue growth makes exhaustive enumeration unreasonable, preserve exhaustive low-order/boundary coverage and use deterministic property-based/generated legal selections for the remaining structural space. This layer is cheap composition/invariant validation, not a full-match simulation per selection.
+
+#### Layer 2 — trait → gameplay-domain conformance
+
+Every deployed trait must declare the gameplay domain or domains whose mechanics it affects or interacts with, or be explicitly classified as intrinsic-only when no runtime mechanic is involved. The validation metadata must therefore provide a mechanically checkable coverage graph from each deployed trait to its conformance owner(s); an unowned trait is a certification failure rather than an implicit pass.
+
+A gameplay domain owns both its ordinary mechanic and the tests proving that the mechanic behaves correctly under the Origin transformations visible to that domain. Examples of possible domains include Spawn, land/combat, terrain/structures, economy/rail/trade, naval/strategic weapons, observation, and Minor-Faction interaction where a trait actually intersects those mechanics. The final domain catalogue and trait assignments belong to focused validation design/implementation work; this migration plan defines the ownership rule, not duplicated trait mechanics.
+
+The dependency is an intersection, not `Origin → subsystem` ownership:
+
+```text
+canonical gameplay mechanic ──┐
+                              ├─→ domain Origin-conformance tests
+Origin-derived transformation ┘
+```
+
+#### Layer 3 — explicit trait / cross-domain interactions
+
+Do not create an all-pairs compatibility test matrix. Dedicated combined tests are required only where traits can materially influence the same effective mechanic or where one Origin behavior genuinely crosses subsystem ownership boundaries.
+
+Required special interactions must be explicit validation metadata. Same-domain cases are owned by that domain; genuine cross-domain cases name all participating owners and become runnable when all required implementations exist. Unrelated traits rely on their independent domain conformance plus composition/property validation rather than redundant combined simulations.
+
+#### Layer 4 — generated legal-combination property validation
+
+Generate or enumerate large sets of builder-legal selections and cheaply assert properties such as:
+
+- builder acceptance and canonicalization;
+- deterministic composition independent of selected-trait input order;
+- stable serialization/hash and serialize/deserialize round trip;
+- complete trait/domain coverage resolution;
+- absence of unsupported transformations or invalid effective values.
+
+This layer protects the public promise that awkward, inert, unofficial, or previously unseen legal combinations remain supported. It **must not** turn each legal selection into a separate headless full-match test.
+
+#### Layer 5 — distinct runtime-projection certification
+
+For expensive runtime scenarios, each Origin-affected gameplay domain defines a canonical **Origin projection** containing every Origin-derived input that domain is allowed to observe. All legal/generated Origins are projected into those domain-specific states, canonicalized, and deduplicated. The domain executes its canonical runtime scenario suite once per materially distinct projection rather than once per complete named Origin.
+
+```text
+legal/generated Origins
+        ↓
+domain projection
+        ↓
+canonicalize + hash
+        ↓
+deduplicate equivalent domain states
+        ↓
+run domain runtime scenarios
+```
+
+Projection deduplication is valid only when the projection contains **all** Origin-derived information observable by that subsystem. Omitting an observable input and thereby merging mechanically different states is a validation defect.
+
+A domain's scenario suite should exercise mechanically distinct states/fallbacks/boundaries, not arbitrary full-game permutations. Exact scenarios remain owned by the subsystem that owns the underlying mechanic.
+
+### 15.2.2 Determinism and replay evidence
+
+Where an Origin interaction changes authoritative replayable state, determinism/replay assertions are part of that domain or cross-domain conformance evidence rather than a separate late Origin test phase. Same bound inputs, seed, versions, and Origin projection must produce the same authoritative result; where replay/regeneration exists, the independently reproduced state/output/hash must agree with the original execution.
+
+A domain cannot claim full conformance while required replay support is absent merely because the mechanical happy path passes.
+
+### 15.2.3 Validation status
+
+Each required validation unit reports one of:
+
+```text
+UNAVAILABLE  validator/system does not exist yet
+BLOCKED      validator exists or is planned, but a canonical dependency/semantic is unresolved
+FAIL         required validation executed and failed
+PASS         all required evidence for that unit is available and successful
+```
+
+`UNAVAILABLE` and `BLOCKED` are never aliases for `PASS`. This permits migration to proceed incrementally without pretending that unimplemented mechanics have already been certified.
+
+### 15.2.4 Catalogue deployment eligibility
+
+For candidate Origin catalogue version `C`, deployment eligibility is an aggregate release predicate over existing evidence, not another implementation/runtime-test phase:
+
+```text
+DEPLOYABLE(C)
+=
+  intrinsic catalogue validation PASS
+  AND complete trait → validation-domain coverage
+  AND every required domain conformance result PASS
+  AND every required explicit cross-domain interaction PASS
+  AND every required determinism/replay obligation PASS
+  AND all evidence binds the exact relevant catalogue/mechanic/version inputs
+```
+
+Any required `UNAVAILABLE`, `BLOCKED`, or `FAIL` result means the candidate is **not deployable**. There is no numbered "final Origin validation" subsystem after the gameplay implementations; deployment merely aggregates the conformance evidence those implementations already own.
+
+### 15.2.5 When validation runs
+
+Use three practical execution tiers; exact GitHub Actions/workflow wiring remains owned by the CI work in §15.1 rather than this contract.
+
+**Fast development/PR validation** should cover catalogue/schema/builder/composition/serialization/unit/coverage checks and other cheap relevant tests.
+
+**Domain integration validation** runs when a trait or affected gameplay subsystem changes and covers relevant headless scenarios, Origin-domain conformance, explicit interactions, and applicable determinism/replay assertions.
+
+**Catalogue/release certification** runs before deploying a new mechanical catalogue/build and aggregates broad generated-combination properties plus all affected domain/cross-domain certification evidence.
+
+Recertification should be dependency-driven:
+
+- adding/removing/changing a trait, builder rule, Origin composition algorithm, effective-rule schema, or mechanical Origin serialization/version contract triggers broad relevant Origin recertification;
+- changing one gameplay subsystem invalidates and reruns that domain's conformance plus dependent cross-domain/replay cases, not unrelated domain suites;
+- presentation-only changes such as display wording, icons, or editor layout do not trigger mechanical recertification.
+
+Validation evidence is valid only for the relevant versions it actually certified. The implementation may rerun suites rather than persist a complex certification database in V1, but stale evidence must never certify changed mechanical inputs accidentally.
+
+### 15.2.6 Live Origin validation
+
+Live creation/load/match-start validation remains deliberately cheap:
+
+- catalogue version is known and allowed;
+- selected trait IDs exist in that version;
+- public trait-count/point/refund rules pass;
+- canonical composition/effective profile can be produced deterministically;
+- serialized definition/profile is valid and bound to the match.
+
+A live server does **not** launch background fuzzing, projection certification, or a headless match merely because a legal named Origin combination is new. A legal Origin built from a certified catalogue is trusted mechanically.
+
+### 15.2.7 Neighboring validation boundaries
+
+Official-AI Origin support remains a separate validation layer. Mechanical certification asks whether the game implements an Origin correctly and safely; Official-AI validation asks whether AI understands/responds to those mechanics. The mandatory three-layer semantic audit still applies, but AI strategic quality is not the mechanical Origin deployment predicate.
+
+Origin/Echo composition remains part of integration validation, but large identity catalogues must use effect/projection equivalence and property coverage rather than a Cartesian `every Origin × every Echo identity × every runtime scenario` test explosion.
+
+CI/workflow selection, scheduling, and blocking-check policy remain owned by the GitHub Actions/CI migration work; §15.2 defines what evidence is meaningful, not how a particular CI provider executes it.
+
 ---
 
 # 16. Migration dependency spine
@@ -1011,14 +1178,17 @@ Current high-level implementation order:
        ↓
 7. CONTROLLER SANDBOX / WORKER POOL + CERTIFICATION
        ↓
-8. ORIGIN CATALOGUE / CREATOR + EXHAUSTIVE DEPLOYMENT GATE
+8. ORIGIN CATALOGUE / CREATOR + INTRINSIC / COMPOSITION VALIDATION
    + ECHO CORE REGISTRY / ACQUISITION
        ↓
 9. STRATEGIC / RANDOM / FIXED SPAWN + INITIAL TERRITORY
+   + SPAWN ORIGIN-CONFORMANCE
        ↓
 10. STRUCTURE / ECONOMY / NAVAL / RAIL / STRATEGIC-WEAPON / ARMOR TRANSLATION
+    + DOMAIN-OWNED ORIGIN-CONFORMANCE AS EACH DOMAIN IS IMPLEMENTED
        ↓
 11. OFFICIAL PVE AI + MATCH LIFECYCLE + REPLAY / PARTICIPANT INTEGRATION
+    + APPLICABLE CROSS-DOMAIN / REPLAY CONFORMANCE
        ↓
 12. SQLITE + AUTH/IDENTITY INTEGRATION + GAME/SERVICE API
        ↓
@@ -1027,9 +1197,11 @@ Current high-level implementation order:
 14. BROWSER EDITOR / DEBUG / ORIGIN / ECHO / LOBBY UX
 ```
 
-Some workstreams may overlap. Typed rule hooks should exist before content depends on them. This sequence is itself part of the migration plan and must be corrected when sequencing analysis identifies an impossible validation dependency rather than worked around during implementation.
+Some workstreams may overlap. Typed rule hooks should exist before content depends on them. Validation follows mechanic ownership: the Origin layer validates catalogue legality/composition, and each Origin-affected gameplay subsystem supplies its own conformance evidence when that subsystem exists. Genuine cross-domain cases become runnable when their participating systems exist.
 
-The known Origin exhaustive-gate ordering problem remains intentionally unresolved here. The dedicated sequencing work must correct this dependency spine before implementation reaches that gate rather than treating the current order as executable authority.
+There is deliberately **no second/final Origin implementation step** after the runtime domains. Origin-catalogue deployment eligibility is the aggregate release predicate in §15.2.4 over catalogue, domain, cross-domain, and determinism/replay evidence. The spine therefore does not require an impossible pre-implementation runtime certification and does not duplicate completed domain tests in a later monolithic gate.
+
+The shorthand spine does not imply that an Origin interaction may be ignored merely because its gameplay owner is not named as a standalone numbered step. Every deployed trait must still have complete validation ownership. In particular, unresolved or not-yet-implemented mechanics such as Random/Fixed Spawn interactions, canonical `atWar` behavior consumed by wartime Trade, or Minor-Faction behavior relevant to P19 can leave their affected conformance evidence `BLOCKED`/`UNAVAILABLE` without changing the Origin trait merely to make validation green. Their exact mechanics remain owned by their focused documents/issues.
 
 ---
 
