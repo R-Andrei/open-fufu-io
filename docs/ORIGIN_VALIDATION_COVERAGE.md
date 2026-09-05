@@ -843,7 +843,301 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 ---
 
-# 5. Running mechanic-closure findings
+# 5. P31–P40 coverage
+
+## P31 — Heart-Under-Blade
+
+**Direct transformations / owners**
+
+- Persistent Port repair field as consumed specifically by Warships.
+- Naval Warship repair lifecycle while inside an **owned active Port** repair field.
+- For Warships only, effective repair radius is `2.0x` the ordinary eligible Port radius and effective repair rate is `1.5x` the ordinary eligible Port rate.
+- The Warship may remain operational while receiving P31 repair.
+
+**Required seams / dependencies**
+
+- `owned active Port completed level -> ordinary Port repair field -> Warship-specific P31 radius/rate -> Warship HP restoration`.
+- Same-type overlapping Ports must retain the baseline strongest-applicable-field rule; P31 must not cause overlapping Ports to stack repair multiplicatively.
+- Repair must respect current/max-health accounting and must not over-heal. Warship rank/profile changes that alter max health remain ordinary Warship state consumed by repair.
+- `repair receipt -> operational Warship lifecycle`: movement, autonomous combat/capture, and any otherwise legal Warship capability must not be suppressed merely because P31 repair is occurring.
+
+**Explicit interactions**
+
+- `P31 + P29`: because the repaired Warship remains operational, a legal P29 strategic launch must not be disabled merely by simultaneous P31 repair; launcher legality/charges remain P29-owned.
+- `P31 + P23/P22`: increased max-health profiles/ranks change the amount of HP missing but not the P31 rate formula; representative projection coverage should verify repair against modified max health without creating a new repair rule.
+- `P31 + P32` negative assertion: P32 Transports become health-bearing and may use otherwise eligible ordinary naval repair, but P31 explicitly applies its enhanced radius/rate to **Warships only**.
+- P30/P42 and other Warship profile/transaction transformations do not alter P31 field eligibility unless their own mechanics say otherwise.
+
+**Non-effects**
+
+- P31 does not alter Port ownership, Port level, Warship repair-retreat threshold, repair for non-Warship naval units, or Port construction/upgrade rules.
+
+---
+
+## P32 — Armored Titan
+
+**Direct transformations / owners**
+
+- Amphibious Transport embark-source legality: Transport operations may embark only from an **owned active Port**.
+- Transport chassis/lifecycle: the normally fragile/no-health Transport becomes health-bearing with exactly `500 HP`.
+
+**Required seams / dependencies**
+
+- `owned active Port state -> Transport embark-source validation -> ordinary Transport creation/travel`.
+- `naval damage -> P32 Transport HP -> destruction only when HP is exhausted -> ordinary carried-Population destruction handling`.
+- Baseline Warship shell damage and any other legal damage source must resolve against the 500-HP chassis rather than use the baseline one-successful-shell instant-destruction shortcut.
+- `health-bearing Transport -> otherwise eligible Port repair`: P32 must enter the ordinary friendly naval repair pipeline where geometry/ownership permits it.
+- Active-Transport cap, carried-Population commitment, movement, landing, abort/return, and controller-directed hostility semantics remain ordinary unless another trait changes them.
+
+**Explicit interactions**
+
+- `P32 + P12`: P12 modifies speed; P32 modifies embark source and survivability. Combined effective Transport state must preserve both.
+- `P32 + P28`: Population theft occurs only on actual Transport destruction; damage that leaves the armored Transport alive must not trigger P28.
+- `P32 + P37`: Port-only embark legality and P37's embarkation cost/Fort-on-successful-landing behavior compose on one Transport lifecycle.
+- `P32 + N13`: N13's landing casualty applies on successful landing, not while taking ship damage in transit.
+- `P32 + N15`: N15 modifies the embarkation FFY transaction without changing P32's Port-only source requirement.
+- `P32 + P27`: if P27's eventual canonical target set includes Transports, anti-ship SAM damage must use P32's 500-HP health-bearing resolution.
+- `P32 + P31` negative assertion: P31's enhanced Port repair remains Warship-only; P32 receives ordinary eligible naval repair, not P31 multipliers.
+
+**Non-effects**
+
+- P32 does not grant generic controller movement orders, change the three-Transport cap, change carried-Population amount, or create a new automatic repair-retreat policy merely because the Transport now has HP.
+
+---
+
+## P33 — Misaka Network
+
+**Direct transformations / owners**
+
+- Cross-domain by construction: consumes the canonical Train economic-event lifecycle and produces Population for the **City owner**.
+- Each qualifying Train-triggered economic event at a City currently owned by the P33 holder also grants `20 x completed City level` Available Population, Capacity-capped.
+
+**Required seams / dependencies**
+
+- `Train physically triggers canonical station event -> current station identity/ownership -> completed City level -> P33 Population grant -> Capacity-capped Available Population`.
+- The Population recipient is the qualifying **City owner**, not necessarily the Train owner. A foreign Train can therefore create the P33 Population side effect for the City owner while the ordinary Industrial FFY event remains owned by the Train owner.
+- Repeated qualifying passes create repeated canonical Train events and therefore repeated independent P33 grant opportunities.
+- Train interception before the station event cancels that pending event and therefore produces no P33 grant for an event that never occurred.
+- Population grant amount is based on completed City level at event resolution and is clamped by current Population Capacity; the FFY event remains independently resolved through the economy pipeline.
+
+**Explicit interactions**
+
+- `P33 + P07`: P07 bonus Trains are ordinary Trains and their qualifying City events can trigger P33 normally.
+- `P33 + P41`: a purchased L5 City provides the ordinary completed level consumed by P33, producing `100` Population per qualifying event while Capacity permits.
+- `P33 + P08`: wartime modification of the Train's external FFY payout does not change P33's level-based Population amount.
+- `P33 + P14/P24/N11`: these traits modify **FFY yield** at a location; they do not cancel the Train event identity. A hard-zero FFY event under N11 still remains a Train-triggered economic event for P33 unless the canonical economy owner explicitly cancels the event itself rather than setting yield to zero.
+- Inspect P34 after its exact doubled-Factory scope is closed because any P34 change to Train throughput/event generation can change how often P33 is reached without changing the P33 formula.
+
+**Non-effects**
+
+- P33 does not alter Train routing, dwell, Industrial event ownership, FFY event value, City Population-Growth contribution, or Population Capacity itself.
+
+---
+
+## P34 — Spoils of the Empire
+
+**Direct transformations / owners**
+
+- Persistent Factory ownership/provenance: only a Factory **acquired by conquest** by the P34 holder receives the transformed state while owned by that holder.
+- The transformed Factory is intended to operate at `2x ordinary Factory effect`, which crosses the persistent-structure Factory owner and every focused subsystem that consumes a Factory effect.
+
+**Required seams / dependencies**
+
+- `successful enemy-Factory transfer -> new owner/provenance classification -> P34 effective Factory profile -> ordinary Factory consumers`.
+- Built or granted Factories remain ordinary.
+- If ownership leaves the P34 holder, the P34 transformation must not persist as an owner-independent permanent buff. A later qualifying conquest by a P34 holder may re-establish the transformed state through the same canonical ownership rule.
+- The conquest transition must remain one ordinary structure transfer for P05/N17 and other capture-dependent logic; P34 must not create a parallel synthetic Factory.
+
+**Explicit interactions**
+
+- `P34 + P05`: a qualifying conquered Factory can both trigger the ordinary P05 structure-capture event and enter P34's transformed Factory state.
+- `P34 + N09`: explicitly legal and potentially important; N09 prevents building Factories but a legally conquered Factory can still provide P34 behavior.
+- `P34 + N17`: N17 destroys instead of transferring the Factory, so P34 cannot activate on that prevented conquest.
+- `P34 + P07`: requires focused coverage once `2x ordinary Factory effect` defines whether/how Train service/throughput is doubled.
+- `P34 + P33`: if P34 increases Train event throughput, resulting additional ordinary events can drive P33; P33 itself remains event-driven rather than Factory-driven.
+- `P34 + P43`: if P34 affects Tank production/repair outputs, the transformed Heavy-Artillery chassis must consume those same canonical Factory hooks rather than receive a separate P34 implementation.
+
+**Blocker / mechanic-definition finding**
+
+- `2x ordinary Factory effect` is not one executable scalar in the current canonical Factory model. A Factory participates in Train production/service, Tank production, and Tank repair, while completed level also determines Train event value and simultaneous Tank-repair capacity. The mechanic owner must explicitly enumerate which of those outputs/timers/capacities/values are doubled and how. Validation must not decide whether `2x` means Train count, dispatch cadence, Train event value, Tank build throughput, Tank repair rate/capacity/radius, or some subset.
+
+---
+
+## P35 — It's a Matter of Visualization
+
+**Direct transformations / owners**
+
+- Deliberate territorial-abandonment lifecycle.
+- Terrain/Fallout overlay state.
+- A cell deliberately relinquished by the P35 holder becomes neutral and receives Fallout until the next successful capture; P35 itself creates no nuclear-casualty event.
+
+**Required seams / dependencies**
+
+- `accepted deliberate relinquishment -> political ownership removal -> ordinary Capacity/territorial consequences -> P35 Fallout overlay`.
+- Underlying base terrain must remain intact under the Fallout overlay.
+- The created Fallout persists through neutral state until the **next successful capture**, at which point ordinary successful-capture handling clears the P35-created temporary condition as canonically specified.
+- Relinquishment is not hostile capture: it must not trigger enemy-capture effects, automatic-defender capture casualties, or P05/P34/N17 capture-transfer behavior merely because ownership became neutral.
+
+**Explicit interactions**
+
+- `P35 + P16`: the holder can later ignore ordinary Fallout acquisition resistance when reacquiring otherwise legal P35 Fallout.
+- `P35 + N05`: deliberately relinquished cells become Fallout the holder cannot capture while N05 applies; the awkward self-denial is legal and requires no compatibility exception.
+- `P35 + N18`: N18 applies only to non-Fallout targets, so P35-created Fallout is exempt from N18's `0.50` non-Fallout post-multiplier while retaining ordinary Fallout acquisition behavior.
+- `P35 + P36`: a P35-created neutral population-bearing cell is still neutral settlement on reacquisition; P36 can modify the Population settlement-cost axis independently of the Fallout speed axis.
+- P44 can create the same ordinary Fallout overlay through a different trigger; shared terrain semantics should be tested once without conflating deliberate abandonment with Tank/Artillery attacks.
+
+**Blocker / mechanic-definition finding**
+
+- The high-level design intentionally makes territorial abandonment a separate action but does not yet close enough of the generic abandonment contract for P35 certification when relinquished cells contain persistent structures or other ownership-bound state. The canonical owner must define abandonment eligibility and the fate of structures/ownership-bound objects on relinquished cells; P35 should then add Fallout to that ordinary result rather than invent its own structure-disposal rule.
+
+---
+
+## P36 — Half-Priced Bento
+
+**Direct transformations / owners**
+
+- Neutral-settlement Population cost/accounting.
+- Replaces the ordinary `1 Population` cost of a qualifying neutral population-bearing settlement with `0.5 Population/cell`, using faction-level persistent deterministic residual accounting.
+
+**Required seams / dependencies**
+
+- `successful qualifying neutral acquisition -> P36 fractional settlement debt -> canonical Population debit -> surviving expansion/Population state`.
+- The residual belongs to the faction rather than an operation and survives ending/recreating expansion operations, so operation churn cannot erase half-cost debt.
+- Neutral terrain that ordinarily costs `0 Population` because it is non-population-bearing must not acquire a new P36 cost merely because P36 exists.
+- P36 changes settlement **cost**, not acquisition progress/speed, terrain identity, or hostile-capture casualties.
+
+**Explicit interactions**
+
+- `P36 + N18`: explicitly independent axes. P36 halves qualifying neutral settlement Population cost while N18 halves non-Fallout acquisition progress.
+- `P36 + P16`: on neutral Fallout, P16 may remove the Fallout speed penalty while P36 independently changes the qualifying Population settlement cost.
+- `P36 + P35`: reacquisition of P35-created neutral population-bearing Fallout can exercise both the P36 cost and Fallout acquisition rules.
+- Inspect P48 when audited because P48 changes faction-specific Shallow-Water population-bearing classification only after/while owned; validation must use the canonical classification timing rather than assume neutral Shallow Water suddenly inherits a P36 cost.
+
+**Blocker / mechanic-definition finding**
+
+- Faction-level residual accounting crosses operation-local Population commitments. If different expansion operations contribute successful half-cost settlements before the residual reaches a whole Population debit, the canonical model must specify which commitment/global pool is charged when accumulated fractional debt materializes and how same-tick multi-operation settlements are ordered or aggregated. The residual's persistence is defined; the debit destination/ordering across concurrent operations is not explicit enough to certify without guesswork.
+
+---
+
+## P37 — The City Mouse
+
+**Direct transformations / owners**
+
+- Transport embarkation transaction: contributes `+250 FFY` on the dedicated Transport embark-cost hook.
+- Amphibious landing -> persistent-structure grant: after a successful amphibious landing actually establishes land ownership, grant one permanent level-1 Fort at the landing location.
+
+**Required seams / dependencies**
+
+- `legal Transport embark -> effective additive embarkation cost -> ordinary payment/creation`.
+- `Transport arrival -> ordinary local territorial engagement -> successful ownership establishment -> exactly one P37 Fort grant`.
+- Destruction, abort, failed landing engagement, or arrival without successful ownership establishment grants no Fort.
+- The Fort is a **grant**, not a purchase; it does not consume P21's first-Fort purchase entitlement and must enter the ordinary persistent-structure lifecycle after the grant resolves.
+
+**Explicit interactions**
+
+- `P37 + N15`: transport-cost modifiers are explicitly additive; together they contribute `+750 FFY` relative to the ordinary Transport baseline.
+- `P37 + P21`: the landing-created Fort grant does not consume first-Fort purchase entitlement.
+- `P37 + P32`: embark source must satisfy P32's owned-active-Port restriction while the successful landing still resolves P37 normally.
+- `P37 + N13`: N13 landing Population loss and P37 Fort grant both occur only on a successful landing path; validation must preserve their canonical ordering without granting a Fort on a destroyed/failed Transport.
+- `P37 + N07`: repeated successful P37 landings can attempt to create additional Forts while N07 forbids owning more than one Fort. This requires the generic grant-vs-ownership-cap rule below rather than a hidden compatibility restriction.
+- Once legally created/active, the Fort is ordinary input to P03/P09/P18/P24/P50/N08/N10 and other Fort consumers; those downstream mechanics do not need a special P37 implementation.
+
+**Blocker / mechanic-definition finding**
+
+- The grant path needs canonical deterministic handling for structure conflicts and lifecycle: whether/how a Fort may be granted when the landing cell already contains a persistent structure, when ordinary buildability/placement would reject a purchased Fort, and whether the granted L1 Fort is immediately completed/active or enters ordinary construction timing.
+- The generic structure-grant contract must also define what happens when a grant would violate an ownership cap such as `P37 + N07`—for example, whether the grant is suppressed, fails in another deterministic way, or uses some other canonical rule. The landing itself must not become secretly illegal merely to avoid defining the grant result unless the mechanic owner explicitly says so.
+
+---
+
+## P38 — Return by Death
+
+**Direct transformations / owners**
+
+- Automatic-defense successful-capture casualty resolution.
+- Population accounting for the defending faction.
+- When a P38 holder's automatically defended cell is successfully captured, the one automatic defender survives and remains/returns Available instead of being lost.
+
+**Required seams / dependencies**
+
+- `automatic defender assignment -> successful ownership transfer -> ordinary capture casualty point -> P38 suppresses defender loss -> defender remains/returns Available`.
+- Ownership transfer remains ordinary.
+- The attacker's ordinary successful-capture consequences remain ordinary; P38 changes defender survival only.
+- The defender must survive exactly once under multi-faction/simultaneous resolution and must not be duplicated into Available Population while also remaining counted elsewhere.
+- Because automatic defense may cover owned conquerable `0 Capacity` terrain, P38 validation must include defended Tundra/Shallow-Water capture as well as ordinary population-bearing land rather than assuming P38 is Capacity-gated.
+
+**Explicit interactions**
+
+- `P38 + P47`: inspect when P47 is audited. P38 preserves the defender while P47 adds a separate post-capture casualty to the capturing faction on Marsh; neither should erase the other's independent casualty rule.
+- P03/P09/P13/P51 and other defensive-effect traits may change whether/when capture succeeds, but once a successful capture occurs they are ordinary upstream state rather than separate P38 pair mechanics.
+
+**Non-effects**
+
+- P38 does not prevent capture, refund the attacker's casualty, recreate ownership, create an extra automatic defender, or protect non-automatic committed counter-response Population.
+
+---
+
+## P39 — Stereo Separation
+
+**Direct transformations / owners**
+
+- Strategic Spawn public profile/protocol.
+- Requires two half-ordinary-area influence slots, two exact-origin slots, and two generated Initial-Territory footprints sharing one final faction quota.
+- Starting Population remains one global pool.
+
+**Required seams / dependencies**
+
+- `Origin effective spawn profile -> Phase-1/2 influence hooks`: both slots are one simultaneous faction decision; each circular area is exactly 50% of ordinary area.
+- `Phase-3 exact origins -> deterministic resolver`: same-faction origins must be distinct legal cells but are exempt from foreign-faction 50-cell spacing against each other.
+- `final modified Initial-Territory total -> deterministic primary/secondary quota split -> simultaneous independent footprint growth -> one political faction ownership result`.
+- Odd one-cell quota remainder goes to the deterministic primary footprint.
+- Same-faction footprint conflict over one candidate cell must follow canonical footprint-slot ordering for queue accounting without duplicating political ownership.
+- `final total Initial Territory -> Population initialization`: Starting Population is calculated once from the final total and never split into local pools.
+- Spawn diagnostics/replay must preserve both influence/origin/footprint identities and deterministic resolver versioning.
+
+**Explicit interactions**
+
+- `P39 + P01`: P01 modifies the **total** quota before P39 divides it; current ordinary baseline yields `575 + 575` and one global Starting Population of `575`.
+- `P39 + P54`: explicitly legal. Each split footprint uses the canonical star profile without duplicating total quota.
+- `P39 + P20`: singular starting-Silo grant placement/uniqueness is a real start-state interaction and remains owned by #32's unresolved multi-origin grant semantics.
+- Inspect P48 when audited because faction-effective population-bearing classification can affect footprint quota accounting.
+- `P01 + P39 + P54` remains not builder-legal under current positive spend, so no public runtime certification case is required for that triple.
+
+**Blocker / issue dependency**
+
+- Strategic P39 semantics are substantially closed in `STRATEGIC_SPAWN.md`, but exact Random/Fixed interaction with spawn-transforming Origins remains unresolved under #32. P39 deployment certification for those spawn modes remains blocked until that owner defines the corresponding deterministic profiles.
+
+---
+
+## P40 — Barrier Magic
+
+**Direct transformations / owners**
+
+- Persistent SAM effective profile/interception state.
+- Effective SAM range is `1.5x` ordinary range, charge capacity is exactly **one** at every completed level, and recharge cooldown is `2x` ordinary cooldown.
+- SAM targeting remains automatic; P40 creates no controller-driven interception action.
+
+**Required seams / dependencies**
+
+- `completed SAM level -> ordinary range -> P40 range multiplier -> physical interception coverage`.
+- `SAM charge state -> one-charge cap at every level -> interception expenditure -> doubled recharge -> ready state`.
+- Upgrading may change the ordinary range input but must never create extra charges while P40 is active.
+- Strategic-projectile entry into effective coverage must consume the transformed range/charge/recharge profile through the ordinary deterministic interception system.
+
+**Explicit interactions**
+
+- `P40 + P11`: P11 governs SAM ownership entitlement/FFY cost while P40 transforms each legally existing SAM's profile; neither bypasses the other.
+- `P40 + P27`: P27 ship attacks, once canonically defined, must use the same effective P40 range/one-charge/recharge resource rather than a parallel anti-ship charge pool.
+- `P40 + P10`: faster strategic projectiles and larger/slower-recharging single-charge SAM fields change the same interception scenario and should receive combined projection coverage when builder-legal.
+- `P40 + N11`: N11 consumes SAM Launcher area for FFY hard-zero qualification; when N11 is audited it should consume the **effective** P40 SAM area unless its canonical owner explicitly defines another coverage concept.
+
+**Implementation requirement / non-effects**
+
+- Fractional effective ranges such as `105 x 1.5 = 157.5` require deterministic fixed-point/distance comparison, but that is an implementation representation requirement rather than a new gameplay mechanic.
+- P40 does not change SAM ownership, cost, target families, projectile damage, or structure level; P27 remains the owner of any anti-ship permission.
+
+---
+
+# 6. Running mechanic-closure findings
 
 These are **not #31 validation-design decisions**. They are mechanic-definition questions discovered because honest certification needs a canonical expected result.
 
@@ -861,24 +1155,29 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
 | P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected result yet. |
 | P29 | Dynamic Warship-rank -> effective-Silo-level changes do not yet state new charge-slot readiness semantics. | P29 charge/cooldown certification is incomplete when rank changes launcher capacity. |
+| P34 | `2x ordinary Factory effect` does not enumerate which Factory outputs/timers/capacities/values are doubled. | P34 cannot produce a canonical Factory-domain projection or reliable P07/P33/P43 interaction expectations until the transformed effect set is explicit. |
+| P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
+| P36 | Faction-level half-Population residual accounting does not define the eventual whole-Population debit destination/order across multiple concurrent expansion commitments. | P36 multi-operation settlement accounting cannot have one deterministic expected state yet. |
+| P37 | Landing-Fort grants lack deterministic placement/activation/conflict semantics and a generic rule for grants that would violate ownership caps such as N07. | P37 landing-to-structure conformance cannot fully certify occupied/unbuildable/cap-conflict cases until the grant contract is closed. |
+| P39 | Random/Fixed Spawn interaction with spawn-transforming Origins remains unresolved under #32. | P39 certification is complete only for spawn modes whose deterministic transformed profile is canonically defined. |
 
-Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S`, must also be testable, but they do not become new gameplay mechanics unless the canonical monetary rules need a semantic rounding decision.
+Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
 
 ---
 
-# 6. Emerging validation boundaries — provisional
+# 7. Emerging validation boundaries — provisional
 
-Do not freeze the final domain catalogue until all traits are audited, but P01–P30 currently reveal recurring owners/seams around:
+Do not freeze the final domain catalogue until all traits are audited, but P01–P40 currently reveal recurring owners/seams around:
 
-- Spawn / pre-match initialization;
-- Population initialization, growth, peak-state tracking, and explicit Population transfers;
-- land combat / pressure / counter-response;
-- terrain/acquisition;
-- persistent structures / ownership / purchase-upgrade transaction pricing / spatial coverage;
-- FFY economy / physical Trade and Train logistics / location-conditioned events;
-- naval/amphibious physical lifecycle, Warship profile/rank/caps, and Transport destruction;
+- Spawn / pre-match initialization and multi-slot spawn profiles;
+- Population initialization, growth, peak-state tracking, settlement cost/residuals, automatic-defender survival, and explicit Population transfers;
+- land combat / pressure / counter-response / capture casualty resolution;
+- terrain/acquisition / deliberate abandonment / Fallout overlays;
+- persistent structures / provenance / ownership / grants / purchase-upgrade transactions / spatial coverage;
+- FFY economy / physical Trade and Train logistics / location-conditioned events / Train-event side effects;
+- naval/amphibious physical lifecycle, Warship profile/rank/caps/repair, Transport health/destruction/landing;
 - strategic weapon legality, launcher/charge state, projectile/blast geometry, and SAM interception/anti-ship behavior;
-- cross-system state/event seams such as Spawn -> Population, structure capture -> FFY, Fort field -> combat/economy, Population peak -> SAM entitlement, start-state grant -> persistent structure, Transport destruction -> Population transfer, and Warship state -> mobile strategic launcher.
+- cross-system state/event seams such as Spawn -> Population, structure capture -> FFY/Factory provenance, Fort/Port/SAM fields -> combat/economy/naval behavior, Population peak -> SAM entitlement, Train event -> Population, Transport destruction -> Population transfer, amphibious landing -> Fort grant, and Warship state -> mobile strategic launcher.
 
 These are evidence from the completed traces, not yet a final taxonomy.
 
@@ -886,7 +1185,7 @@ These are evidence from the completed traces, not yet a final taxonomy.
 
 ## Next work items
 
-- audit P31–P40 using the same dependency-trace procedure;
+- audit P41–P50 using the same dependency-trace procedure;
 - continue through P54 and N01–N18 in bounded batches;
 - derive the final validation-domain catalogue from completed traces rather than forcing traits into a preselected taxonomy;
 - derive the explicit interaction registry from actual same-hook/cross-system dependencies;
