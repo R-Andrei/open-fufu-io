@@ -4,18 +4,21 @@
 
 This document is the **canonical content registry for the provisional V1 Official PvE AI preset roster**.
 
+Official-AI work starts at [`README.md`](./README.md). The broad subsystem/father design is [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md).
+
 Related canonical documents:
 
-- [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) — game-design authority;
-- [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) — migration/implementation authority;
+- [`OPEN_FUFU_DESIGN.md`](../OPEN_FUFU_DESIGN.md) — game-design authority;
+- [`OPENFRONT_INTEGRATION_PLAN.md`](../OPENFRONT_INTEGRATION_PLAN.md) — migration/implementation authority;
 - [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md) — Official-AI architecture;
 - [`OFFICIAL_AI_CONFIGURATION.md`](./OFFICIAL_AI_CONFIGURATION.md) — shared AI configuration contract;
 - [`OFFICIAL_AI_ORIGIN_SUPPORT.md`](./OFFICIAL_AI_ORIGIN_SUPPORT.md) — generic Origin support/adaptation contract;
 - [`OFFICIAL_AI_TRAIT_SUPPORT.md`](./OFFICIAL_AI_TRAIT_SUPPORT.md) — trait-support rationale;
 - [`OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) — named-Origin AI rationale;
 - [`OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) — Baseline/character behavioral rationale;
-- [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) — Official Origin content/mechanics;
-- [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) — generic Echo reward semantics.
+- [`OFFICIAL_ORIGINS.md`](../OFFICIAL_ORIGINS.md) — Official Origin content/mechanics;
+- [`ORIGIN_TRAIT_CATALOGUE.md`](../ORIGIN_TRAIT_CATALOGUE.md) — Origin trait mechanics/costs;
+- [`ECHO_CATALOGUE.md`](../ECHO_CATALOGUE.md) — generic Echo reward semantics.
 
 Exact code-readable AI mappings live under `design/official-ai/` and are not duplicated here.
 
@@ -164,8 +167,19 @@ Difficulty controls only the extra AI bonus. Do not maintain an independent per-
 | **Ferdinand** | Ascendance of a Bookworm | **5** | Roster-best economy/infrastructure optimizer; extreme density, compounding, rail/factory/city packing, and minimal system waste. | **Efficiency Above All** · **There Is No Time to Waste** · **A Mere Ten Years** · **Kessoku Band** · **The Stars Are Within My Grasp** · **A Rational War** |
 | **Power** | Chainsaw Man | **2** | Coherently reckless aggression, greed, bravado, spectacle, opportunistic violence, and excessive commitment. | **1000 IQ** · **Operation Super-Smart** · **If I Can Imagine It** · **Survival of the Fittest** · **Hero for Fun** |
 | **Reze** | Chainsaw Man | **3** | Deceptive positioning/infiltration followed by sudden explosive breakthrough or amphibious escalation. | **Bomb Girl** · **The Country Mouse** · **Serious Series** · **Section 9** · **The Dose Makes the Poison** |
-| **Hitori Gotou** | Bocchi the Rock! | **2** | Exceptional D2 defense: Fort-heavy perimeter, layered fallback positions, optional Fallout safety barriers, poor proactive offense/economy, pressure-triggered panic. | **Bocchi Time** · **Section 9** · **Kessoku Band** · **Gemini** · **Light Music Club** · **Everything Will Turn to Ash** |
+| **Hitori Gotou** | Bocchi the Rock! | **2** | Exceptional D2 defense: Fort-heavy perimeter, layered fallback positions, optional Fallout safety barriers, poor proactive offense/economy, pressure-triggered panic. | **Bocchi Time** · **Kessoku Band** · **Section 9** · **Everything Will Turn to Ash** |
 | **Maomao** | The Apothecary Diaries | **4** | Causal-mechanics diagnosis, experimentation, terrain/status exploitation, and efficient response to confirmed mechanisms. | **The Dose Makes the Poison** · **I Don't Know Everything** · **There Is No Time to Waste** · **The Art of Surviving** |
+
+### Bocchi pool rationale
+
+Bocchi intentionally uses a **small four-Origin pool** rather than a broad generic one:
+
+- **Bocchi Time (O14)** — her own split-start identity; produces two defensive homelands and meaningful split-front anxiety;
+- **Kessoku Band (O15)** — Fort/Command-Post cross-support directly reinforces her defensive infrastructure behavior;
+- **Section 9 (O17)** — concealment and information denial reinforce her preference for safety, low exposure, and prepared defense;
+- **Everything Will Turn to Ash (O33)** — supplies the P35 scorched-earth/Fallout fallback capability used by her character-specific defensive adaptation.
+
+Origin selection remains uniform, so O33 appears in **25%** of Bocchi matches. Fallout is therefore a recognizable conditional part of her defensive repertoire, not a universal mechanic she receives regardless of Origin. `Gemini` and `Light Music Club` are removed from her pool because their strategic identity is less central and their inclusion diluted the intentionally authored defensive variants.
 
 Target distribution:
 
