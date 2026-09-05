@@ -203,6 +203,8 @@ export type RuleAxisRegistry = Readonly<Record<string, RuleAxisDefinition>>;
  * Global semantic contract for provenance that may author each named stage.
  * Axes still decide which stages exist; this table prevents provenance from
  * silently masquerading as another layer merely because an axis accepts both.
+ * Contextual stages intentionally admit Origins because provenance and semantic
+ * placement are independent dimensions (for example N18 is a late Origin rule).
  */
 export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
   STRUCTURAL_PROFILE: [
@@ -220,6 +222,7 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
   ECHO_SCALAR: ["ECHO"],
   CONTEXTUAL_PERCENT: [
     "RULESET_TRANSFORM",
+    "ORIGIN",
     "TERRAIN",
     "STRUCTURE",
     "UNIT_PROFILE",
@@ -227,6 +230,7 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
   ],
   CONTEXTUAL_SCALAR: [
     "RULESET_TRANSFORM",
+    "ORIGIN",
     "TERRAIN",
     "STRUCTURE",
     "UNIT_PROFILE",
@@ -692,11 +696,9 @@ export function validateRuleContributions(
       });
       continue;
     }
-    if (
-      !RULE_STAGE_ALLOWED_SOURCE_KINDS[stage.id].includes(
-        contribution.sourceKind as never,
-      )
-    ) {
+    const stageAllowedSources: readonly RuleSourceKind[] =
+      RULE_STAGE_ALLOWED_SOURCE_KINDS[stage.id];
+    if (!stageAllowedSources.includes(contribution.sourceKind)) {
       issues.push({
         code: "SOURCE_KIND_NOT_ALLOWED_IN_STAGE",
         axis: contribution.axis,
