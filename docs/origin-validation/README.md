@@ -36,7 +36,7 @@ P01–P54
 N01–N18
 ```
 
-The blocker review is complete. Every remaining mechanic-definition blocker discovered by the audit is routed to its canonical owner under #32 or #43–#51 rather than being solved inside validation metadata.
+The blocker review is complete. Every mechanic-definition blocker discovered by the audit was routed to its canonical owner rather than solved inside validation metadata. The #32 Spawn blockers and #45 admission blockers are now resolved by their canonical contracts; remaining unresolved closure routes are #43, #44, and #46–#51.
 
 The final validation-domain catalogue, admission/legality stage rule, interaction-registry requirements, blocker routing, and #31 completion criteria are frozen in [`FINAL_VALIDATION_MODEL.md`](./FINAL_VALIDATION_MODEL.md).
 
