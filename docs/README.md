@@ -7,7 +7,9 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Concern | Canonical owner |
 | --- | --- |
 | High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
-| OpenFront → Open Fufu migration, runtime topology, persistence, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
+| OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
+| HTTP/control-plane service API | [`service/SERVICE_API.md`](./service/SERVICE_API.md) |
+| Live participant/spectator stream protocol | [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) |
 | Combat/capture/counter-response tuning | [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
 | Terrain, persistent structures, and baseline Tank | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
 | Warships, Transports, and strategic weapons | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
@@ -23,10 +25,6 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Official PvE AI subsystem | [`official-ai/README.md`](./official-ai/README.md) |
 | Minor Factions / Goons | [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md) |
 
-## Unassigned target concern
-
-Open Fufu's external/browser/game service API and participant protocol do not yet have a canonical target contract. The inherited [`API.md`](./API.md) is not that owner.
-
 ## Inherited/current-state references
 
 These describe inherited OpenFront behavior or historical implementation context. They are useful migration evidence but are not Open Fufu target authorities:
@@ -41,4 +39,7 @@ These describe inherited OpenFront behavior or historical implementation context
 
 A subsystem that grows into several independently owned documents may use a directory `README.md` as an ownership/navigation gateway. A gateway must not duplicate mechanics from its child documents.
 
-The current example is [`official-ai/README.md`](./official-ai/README.md).
+Current gateways:
+
+- [`official-ai/README.md`](./official-ai/README.md)
+- [`service/README.md`](./service/README.md)

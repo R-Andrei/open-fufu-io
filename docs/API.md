@@ -1,6 +1,6 @@
 # API Usage
 
-> **Open Fufu status:** This is an inherited **OpenFront public API reference** for `api.openfront.io`, retained only as upstream/current-state evidence. It is **not** the Open Fufu service API contract. Open Fufu's target design is [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), and its migration/service boundaries are governed by [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). Do not implement new Open Fufu APIs from this file by default.
+> **Open Fufu status:** This is an inherited **OpenFront public API reference** for `api.openfront.io`, retained only as upstream/current-state evidence. It is **not** the Open Fufu service API contract. Open Fufu's target service boundary is owned by [`service/README.md`](./service/README.md); migration/runtime integration is owned by [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). Do not implement new Open Fufu APIs from this file by default.
 
 > **Warning:** Rate limits are very strict. Join the [Discord](https://discord.gg/K9zernJB5z) to request higher rate limits.
 

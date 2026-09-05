@@ -2,7 +2,7 @@
 
 ## Status and ownership
 
-This document is the **canonical owner for transforming the current OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deployment implications, and integration validation.
+This document is the **canonical owner for transforming the current OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deterministic version binding, inherited-source traceability, deployment implications, and integration validation.
 
 It does **not** restate target gameplay mechanics. Those belong to the focused canonical owners listed in [`README.md`](./README.md). The high-level target game is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
@@ -86,11 +86,11 @@ Origins, Echoes, terrain, structures, units, and rulesets feed the same explicit
 | Public controller surface | Add | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
 | Controller persistent memory | Add | [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md) |
 | External identity/authentication | Replace | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
-| Open Fufu service/browser/game protocol | Add | **canonical target owner not yet established** |
+| Open Fufu service/browser/game protocol | Add | [`service/README.md`](./service/README.md) |
 | Open Fufu runtime persistence | Add | this plan |
 | Proprietary OpenFront assets | Replace/remove after dependency audit | this plan |
 
-This table identifies ownership. It does not substitute for the source-level current-owner traceability work required before implementation of each migration area.
+This table identifies ownership. Concrete inherited source ownership is mapped in §17.1.
 
 ---
 
@@ -308,7 +308,7 @@ controller decisions:  2 Hz
 
 Accelerated/headless simulation executes the same logical ticks without real-time waiting.
 
-The public TypeScript surface is [`ControllerApi.ts`](../src/core/controller/ControllerApi.ts). Its detailed contract reconciliation is separate from this migration plan; this document owns the runtime adapter and authoritative integration around that public surface, not a duplicate API definition.
+The public TypeScript surface is [`ControllerApi.ts`](../src/core/controller/ControllerApi.ts). This document owns the runtime adapter and authoritative integration around that public surface, not a duplicate API definition.
 
 Controller memory uses only the canonical semantics from [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md).
 
@@ -394,7 +394,7 @@ Migration work should reuse OpenFront infrastructure where compatible:
 - missile trajectory/interception infrastructure;
 - SAM targeting/interception machinery;
 - physical Trade Ship world traffic;
-- naval patrol/combat/repair lifecycle.
+- autonomous naval movement/combat/repair lifecycle.
 
 Public game concepts must not be forced to mirror inherited internal class names. In particular, inherited implementation ancestry may remain temporarily useful while the public target concept is different.
 
@@ -413,7 +413,7 @@ Origins are declarative versioned rule data. Implement catalogue/builder/runtime
 
 Production validation must enforce the public builder/catalogue rules without hidden pairwise compatibility tables. Effective Origin rules must serialize/hash deterministically and project through the ordinary rules/controller surface.
 
-The exhaustive Origin deployment gate remains part of the migration dependency spine and validation work. Its exact staging relative to runtime mechanic completion is handled in the sequencing batch rather than duplicated as trait mechanics here.
+The exhaustive Origin deployment gate remains part of the migration dependency spine and validation work. Its exact staging relative to runtime mechanic completion is tracked separately and must be resolved by correcting §16 before implementation reaches that gate; this plan does not duplicate trait mechanics to solve the sequencing problem.
 
 ## 10.2 Echoes
 
@@ -421,7 +421,7 @@ Implement Echo identity, acquisition, retained rolls, duplicate settlement, rewa
 
 The public source repository may contain reusable Echo contracts/algorithms/versioned naming configuration. Live account progression remains runtime/private persistence.
 
-This plan owns only the persistence/runtime integration required to support that canonical subsystem.
+This plan owns only the persistence/runtime/version-binding integration required to support that canonical subsystem.
 
 ## 10.3 Official AI
 
@@ -459,23 +459,20 @@ All derived queries/calculators operate on legal projected information and must 
 
 Retain OpenFront rendering/camera/map visualization heavily where useful, but remove browser authority.
 
-Live/reconnect synchronization should use:
+Live/reconnect synchronization uses the semantic contract in [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md): authoritative legal snapshot, ordered incremental observer deltas, bounded resume, and fresh snapshot on resync when needed.
 
-```text
-authoritative legal snapshot
-→ incremental observer deltas
-→ fresh snapshot on resync when needed
-```
-
-A reconnecting browser should not replay the entire historical action stream merely to reconstruct current state.
+A reconnecting browser does not replay the entire historical action stream merely to reconstruct current state.
 
 Browser roles include match viewing, controller authoring/debugging, replay, Origin/Echo workflows, lobby/spawn UI, and diagnostics. Exact subsystem UI semantics come from their canonical owners.
 
 ## 11.3 Participant/service protocol
 
-The concrete external/browser/game service API and participant protocol require one canonical contract. Do not distribute endpoint/event-envelope/reconnect semantics across unrelated subsystem documents.
+The canonical external boundary is [`service/README.md`](./service/README.md):
 
-This migration plan establishes the architectural boundary but does not own that missing protocol definition.
+- [`service/SERVICE_API.md`](./service/SERVICE_API.md) owns HTTP/control-plane resources;
+- [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) owns the live participant/spectator stream.
+
+This migration plan owns only the runtime/process/persistence work needed to implement those contracts. It does not duplicate endpoint, message-envelope, or reconnect semantics.
 
 ## 11.4 Replay
 
@@ -649,7 +646,7 @@ updated_at_ms            INTEGER NOT NULL
 PRIMARY KEY(user_id, echo_catalogue_version, echo_identity_id)
 ```
 
-Derived Echo quality/score is recomputed from retained magnitudes and the bound catalogue rather than stored as a second authority.
+Derived Echo quality/score is recomputed from retained magnitudes and the bound catalogue rather than stored as a second authority. Generated display wording may use the currently selected naming configuration for ordinary account presentation; historical match/settlement presentation binds its naming version in the source record/payload when exact wording matters.
 
 ### 9. `echo_sets`
 
@@ -699,6 +696,8 @@ applied_at_ms        INTEGER
 
 UNIQUE(user_id, source_type, source_id)
 ```
+
+`rules_version` versions the **settlement application/state-machine contract**, not the gameplay/Echo/Gacha rules that produced the reward. `payload_json` snapshots the source-specific version bindings and deterministic generated result required to retry/resolve that settlement without consulting current defaults.
 
 Apply one settlement atomically in one SQLite transaction so partial inventory/currency/pity/audit updates cannot commit independently.
 
@@ -796,9 +795,9 @@ Do not put large replay/debug payloads into SQLite merely because SQLite support
 id                   INTEGER PRIMARY KEY
 user_id              INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE
 token_sha256         BLOB NOT NULL UNIQUE CHECK(length(token_sha256) = 32)
-created_at_ms         INTEGER NOT NULL
-expires_at_ms         INTEGER NOT NULL
-revoked_at_ms         INTEGER
+created_at_ms        INTEGER NOT NULL
+expires_at_ms        INTEGER NOT NULL
+revoked_at_ms        INTEGER
 ```
 
 Authentication/session behavior itself remains owned by `AUTH_AND_IDENTITY.md`.
@@ -849,6 +848,57 @@ Routine SQLite backups:
 Create an automatic database backup immediately before every schema migration.
 
 Replay files require separate backup handling when retained replay payloads must survive primary-data loss.
+
+## 13.4 Canonical version binding
+
+A version field has one defined responsibility. Current defaults are resolved only when creating a new match/transaction; retry/replay never silently substitutes today's default.
+
+| Binding | Canonical meaning | Bound when | Stored/anchored in | Primary consumers |
+| --- | --- | --- | --- | --- |
+| `game_git_sha` | exact Open Fufu implementation build for deterministic simulation | match creation | `matches` + replay | authoritative runtime/replay |
+| `map_id` + `map_hash` | exact compiled map artifact, including map-compiled strategic data | match creation | `matches` + replay | simulation/spawn/replay |
+| `ruleset_version` | game-wide simulation rules not owned by a narrower catalogue/resolver | match creation | `matches` | simulation/replay |
+| `controller_api_version` | public controller observation/action/runtime contract | controller publication and match creation | `controller_versions`, `matches` | certification/controller runtime/replay interpretation |
+| `origin_catalogue_version` | complete Origin rules package for trait definitions and Official-Origin definitions selectable under that package | match creation / Custom-Origin definition creation | `matches`, `custom_origins`; exact selected definition snapshot in `match_factions` | effective rules/spawn/simulation/replay |
+| `echo_catalogue_version` | complete **mechanical** Echo package: identities, roll/acquisition/quality/Pareto/duplicate rules and match-reward arithmetic | match creation or acquisition transaction | `matches`, `echo_inventory`, `echo_events`, settlement payload | Echo loadout/effective rules/reward generation/acquisition |
+| `echo_naming_version` | generated Echo naming/presentation grammar only; never mechanical magnitude/quality meaning | match creation or acquisition presentation snapshot | `matches`; settlement/replay payload when historical wording matters | historical presentation/replay/result UI |
+| `ai_preset_version` | Official-AI roster, preset difficulty, allowed-Origin pool and selection metadata | match creation | `matches` + selected preset snapshot/reference | Official AI runtime and match reward difficulty input |
+| `spawn_resolver_version` | deterministic spawn conflict/fallback/footprint resolver algorithm identity where independently versioned | match creation | `matches` + spawn/replay snapshot | spawn/replay |
+| `gacha_rules_version` | paid-Gacha purchase/pity policy only | each paid Gacha transaction; progression records active account version | `progression` + settlement payload | Gacha affordability/pity transition |
+| `reward_settlements.rules_version` | settlement payload/application/state-machine schema; **not** reward-generation rules | settlement creation | `reward_settlements` | idempotent resolution/application |
+| `replays.format_version` | replay container/record schema | replay creation | `replays` + file header | replay reader |
+
+No separate `echo_acquisition_rules_version` is required in V1: `echo_catalogue_version` deliberately owns the complete mechanical Echo acquisition/reward contract. If that package ever becomes independently deployable in incompatible parts, split it with a schema/version migration rather than changing the meaning of an existing field.
+
+Likewise, `echo_naming_version` is not required on every inventory row because ordinary collection presentation may use the current naming configuration. Exact historical wording is preserved only where it matters by the match/replay/settlement source binding.
+
+### 13.4.1 Match reward settlement
+
+At match creation, freeze all match bindings above. At match end, reward generation uses **that match's** `echo_catalogue_version` and, for Official AI, the bound `ai_preset_version` difficulty. It must never read the current AI preset or current Echo reward formula.
+
+Before exposing a reward batch, create one durable `reward_settlements` row whose payload contains at minimum:
+
+- source match public ID/user;
+- exact match reward inputs and relevant match-bound versions;
+- deterministic acquisition seed/input needed to reproduce the rolls;
+- generated Echo identity/magnitude/tier candidates;
+- duplicate/Pareto choices still requiring player resolution;
+- relevant naming version/presentation snapshot when exact result wording must survive deployment change.
+
+Retrying or resolving the settlement consumes that payload. It does not reroll and does not re-evaluate reward count under current rules.
+
+### 13.4.2 Gacha settlement
+
+A paid Gacha request snapshots the then-active:
+
+- `gacha_rules_version`;
+- `echo_catalogue_version`;
+- naming version needed for its result presentation;
+- pity state before the transaction.
+
+The complete generated batch and resulting pity transition are written to the settlement/audit payload before player resolution. A process restart/retry cannot change the rolls, pity result, or duplicate choices.
+
+Changing the deployed active `gacha_rules_version` must not silently reinterpret or reset a persisted pity counter created under another version. A rules change that requires different pity-state meaning uses an explicit deterministic progression migration. Until that migration is complete, a paid pull either continues under the stored still-supported account version or rejects with a stable version-migration error; it never applies new rules to old pity state by accident.
 
 ---
 
@@ -913,6 +963,7 @@ The integration test strategy must cover:
 - cross-system Origin/Echo effective-rule composition;
 - spawn/Segment/map artifact determinism;
 - participant reconnect/snapshot/delta behavior;
+- service-resource/idempotency behavior;
 - persistence migrations/transactions/backup/cleanup;
 - authentication boundary integration without leaking credentials into matches;
 - long-match memory/GC;
@@ -923,6 +974,21 @@ Subsystem-specific mechanical tests belong with their canonical owners and imple
 The key performance invariant is:
 
 > Authoritative simulation work scales primarily with active strategic work and engaged geometry, not dense `factions × cells` state products.
+
+## 15.1 GitHub Actions / CI migration
+
+The current `.github/workflows/` and their pass/fail status are inherited OpenFront infrastructure and are **not yet authoritative Open Fufu acceptance gates**.
+
+Before implementation work relies on CI status, audit every inherited workflow as `keep`, `adapt`, or `remove`, then establish an Open Fufu PR baseline that covers at least:
+
+- TypeScript compile/typecheck, including public controller-contract type fixtures;
+- relevant unit/integration tests for migrated target behavior;
+- deterministic replay/headless checks once those target runtimes exist;
+- repository hygiene that remains applicable to Open Fufu.
+
+Remove checks tied only to obsolete OpenFront deployment/release assumptions, proprietary assets, or intentionally removed mechanics. Keep useful inherited tests only when they validate still-supported infrastructure/behavior.
+
+This work should happen early enough that a green/red GitHub status becomes meaningful before Open Fufu implementation PRs depend on it.
 
 ---
 
@@ -963,9 +1029,11 @@ Current high-level implementation order:
 
 Some workstreams may overlap. Typed rule hooks should exist before content depends on them. This sequence is itself part of the migration plan and must be corrected when sequencing analysis identifies an impossible validation dependency rather than worked around during implementation.
 
+The known Origin exhaustive-gate ordering problem remains intentionally unresolved here. The dedicated sequencing work must correct this dependency spine before implementation reaches that gate rather than treating the current order as executable authority.
+
 ---
 
-# 17. Migration audit coverage
+# 17. Migration audit coverage and source traceability
 
 The migration must account for every inherited subsystem before implementation declares the transformation complete:
 
@@ -991,7 +1059,33 @@ The migration must account for every inherited subsystem before implementation d
 | persistence/authentication | SQLite owner + auth owner |
 | build/deployment/performance/assets/licensing | this plan |
 
-The concrete inherited **source-file owner → target owner** map remains a required implementation-traceability artifact for this same plan; it must be added here rather than creating another competing migration document.
+## 17.1 Concrete inherited source-owner map
+
+Paths below identify the principal current owners/entry points to inspect; they are not claims that every helper used by the concern is listed.
+
+| Concern | Principal inherited source owner(s) | Current role | Target owner | Migration consequence | Validation |
+| --- | --- | --- | --- | --- | --- |
+| Server lobby / turn relay / reconnect | `src/server/GameServer.ts`, `GameManager.ts`, `MasterLobbyService.ts`, `SocketIngress.ts`, `src/core/Schemas.ts`, `ZbinWire.ts` | admits clients, queues Intents, broadcasts Turns, reconnects clients, encodes current wire | this plan + `service/*` | retain useful ingress/lobby/wire plumbing, but remove Turn relay/client consensus as simulation authority; route live viewers through target participant projection | authoritative server match continues with zero browsers; reconnect snapshot/resume tests |
+| Browser-local simulation | `src/core/GameRunner.ts`, `src/core/worker/Worker.worker.ts`, `WorkerClient.ts`, `WorkerMessages.ts` | browser worker reconstructs Game and executes received Turns locally | this plan | move GameRunner-like execution server-side/headless; remove `GameRunner` client/HUD dependency; browser worker may remain presentation/decoding only | headless full match without DOM/client imports; browser receives projection only |
+| Core state / mutation substrate | `src/core/game/Game.ts`, `GameImpl.ts`, `PlayerImpl.ts`, `UnitImpl.ts`, `UnitGrid.ts`, `GameUpdates.ts` | current canonical state interfaces, ownership/player/unit mutation and update generation | high-level/focused mechanics owners + this plan | retain/adapt efficient state containers/indexes; replace inherited troop/gold/diplomacy/mechanics semantics | owner invariants + deterministic state/replay tests |
+| Intent → Execution dispatch | `src/core/execution/ExecutionManager.ts`, `src/core/GameRunner.ts` | converts inherited Turn Intents into deterministic Executions | this plan + `ControllerApi.ts` | keep Execution seam; replace external Intent/Turn authority with validated controller decisions + simulation transitions | atomic decision tests; deterministic execution ordering |
+| Map / terrain substrate | `GameMap.ts`, `GameMapLoader.ts`, `BinaryLoaderGameMapLoader.ts`, `FetchGameMapLoader.ts`, `TerrainMapLoader.ts`, `Maps.gen.ts` | dense map storage/loading/topology | `OPEN_FUFU_DESIGN.md`, `TERRAIN_AND_STRUCTURES.md`, `SEGMENTS.md` | retain/adapt compact cell/map infrastructure; compile target terrain and Segment artifacts into exact map binding | map hash, terrain, Segment determinism |
+| Land attacks / retreat | `AttackImpl.ts`, `AttackExecution.ts`, `RetreatExecution.ts`, `PlayerImpl.ts` | current sparse attacks, border resolution, troop transfer/casualties | `OPEN_FUFU_DESIGN.md`, `COMBAT_TUNING.md` | reuse identity/lifecycle/border machinery selectively; replace rules with operations/frontage/automatic defense/counter-response/capture model | combat fixtures + anti-fragmentation/same-tick-chain tests |
+| Spawn | `SpawnExecution.ts`, `SpawnTimerExecution.ts`, `execution/utils/PlayerSpawner.ts`, `GameRunner.init()` | inherited player/random spawn phase and placement | `STRATEGIC_SPAWN.md` | replace behavior with Strategic/Random/Fixed protocol and versioned resolver; reuse only suitable map-placement primitives | spawn resolver/reveal/fallback/footprint tests |
+| Persistent structures | `ConstructionExecution.ts`, `UpgradeStructureExecution.ts`, `CityExecution.ts`, `DefensePostExecution.ts`, `FactoryExecution.ts`, `PortExecution.ts`, `UnitImpl.ts` | inherited build/upgrade/unit-backed structure lifecycle | `TERRAIN_AND_STRUCTURES.md` | reuse generic construction/unit plumbing where compatible; translate structure registry and remove inherited-only semantics | structure cost/time/placement/effect fixtures |
+| Warships / Transport | `WarshipExecution.ts`, `MoveWarshipExecution.ts`, `TransportShipExecution.ts`, `TransportShipUtils.ts`, `WaterManager.ts`, water pathfinders | naval movement/combat/pathing and amphibious transport | `NAVAL_AND_STRATEGIC_WEAPONS.md` | reuse motion/water/pathing infrastructure; replace controller/control and exact target mechanics | autonomous targeting, move-only control, embark/landing/return tests |
+| Trade / rail economy | `TradeShipExecution.ts`, `TrainExecution.ts`, `TrainStationExecution.ts`, `RailNetworkImpl.ts`, `Railroad.ts`, `TrainStation.ts`, rail pathfinder | physical Trade Ships, Trains, stations and rail graph | `FFY_ECONOMY.md` | retain useful physical traffic/rail graph; replace timing/cargo/FFY/piracy rules with canonical owner | deterministic routes/events/payout/interception tests |
+| Strategic weapons / SAM | `NukeExecution.ts`, `MIRVExecution.ts`, `MissileSiloExecution.ts`, `SAMLauncherExecution.ts`, `SAMMissileExecution.ts`, `ShellExecution.ts`, air/parabola pathfinders | projectile, launch, interception and blast infrastructure | `NAVAL_AND_STRATEGIC_WEAPONS.md`, `TERRAIN_AND_STRUCTURES.md` | reuse trajectory/interception infrastructure selectively; replace costs/access/blast/charge semantics | weapon geometry/interception/charge/replay tests |
+| Inherited major AI | `NationExecution.ts`, `game/NationCreation.ts`, `execution/nation/*`, `execution/utils/AiAttackBehavior.ts` | privileged engine-level Nation/bot behavior | `official-ai/README.md` | retain algorithms/strategy ideas only; target Official AI must consume the lawful controller observation/action surface | same-information/action parity + character/Origin validation |
+| Inherited simple tribes | `TribeExecution.ts`, `TribeSpawner.ts` | simple non-human territorial actors | `MINOR_FACTIONS.md` | possible implementation ancestry only; replace with canonical Minor-Faction mechanics | deterministic placement/behavior tests after the Minor-Faction mechanics are closed |
+| Visibility / client deltas | `GameUpdates.ts`, `GameUpdateUtils.ts`, `WorkerClient.ts`, `WorkerMessages.ts`, `ZbinWire.ts` | current full-client simulation update/packing and worker bridge | `OPEN_FUFU_DESIGN.md`, `service/PARTICIPANT_PROTOCOL.md` | reuse packing/encoding ideas where useful, but generate viewer-specific legal projections server-side | hidden-information, snapshot/delta/gap/resync tests |
+| Lobby/account HTTP schemas | `src/core/ApiSchemas.ts`, `src/core/Schemas.ts`, inherited `docs/API.md`, server route modules | inherited OpenFront HTTP/game/lobby contracts | `service/SERVICE_API.md`, `AUTH_AND_IDENTITY.md` | treat old routes/schemas as evidence only; implement target resources/auth boundary instead of extending inherited public API by default | service contract/idempotency/authorization tests |
+| Replay / archive | `src/server/Archive.ts`, `tests/replay/ReplayGame.ts`, `src/core/Schemas.ts`, `GameRunner.ts` | uploads client-produced GameRecord; headless harness replays archived Turns/hashes | this plan + `service/SERVICE_API.md` | keep deterministic replay-harness technique, replace external archive/client-consensus record with server-authored bound replay artifact | exact-version replay hash equivalence + retention/integrity tests |
+| Authentication / join authorization | `JoinVerify.ts`, `IntentAuthorization.ts`, `Roster.ts`, inherited identity fields in `Schemas.ts` | inherited admission/session/intent authority | `AUTH_AND_IDENTITY.md` | replace conflicting auth assumptions; pass only resolved internal participant identity into match runtime | auth/session/Origin/CSRF/WS integration tests |
+| Build / deploy / assets / licensing | `.github/workflows/`, `Dockerfile`, `package.json`, `vite.config.ts`, `build.sh`, `build-deploy.sh`, `deploy.sh`, `nginx.conf`, `supervisord.conf`, `LICENSE-ASSETS`, `LICENSING.md`, `proprietary/`, `resources/` | inherited CI/release/deploy packaging, browser/server build assumptions, runtime process config, and asset/license inputs | this plan | audit each workflow/build/deploy path as keep/adapt/remove; package authoritative server resources; remove or replace proprietary asset dependencies only after reference audit; preserve required source/asset licensing obligations | reproducible target build/deploy, authoritative resource-loading test, asset-reference/provenance audit, meaningful Open Fufu CI baseline |
+| Victory / stats | `WinCheckExecution.ts`, `Stats.ts`, `StatsImpl.ts`, current finalization in `GameServer.ts` | inherited victory/stat collection and client-assisted final reporting | `OPEN_FUFU_DESIGN.md` + this plan | replace target victory semantics and make result/stat production server-authoritative | deterministic terminal result/stat/replay tests |
+
+A row marked `add` in §2 with no inherited principal owner is a genuinely new subsystem; do not invent an OpenFront owner merely to fill the table. Origins, Echo progression, Segments, controller sandbox/runtime, and Open Fufu persistence are primarily new systems, though they integrate with the inherited seams above.
 
 ---
 
@@ -1001,7 +1095,7 @@ The principal remaining work is implementation and the already-identified unreso
 
 Before implementation begins in a subsystem:
 
-1. identify the inherited concrete source owners;
+1. consult §17.1 for inherited principal source owners and inspect neighboring call sites as needed;
 2. identify the single target canonical owner;
 3. verify the target owner is mechanically/architecturally closed enough for implementation;
 4. implement through the dependency spine;
