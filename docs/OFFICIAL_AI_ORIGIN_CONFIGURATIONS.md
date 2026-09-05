@@ -22,12 +22,14 @@ A named-Origin configuration does **not** duplicate the entire derived `OriginSt
 ## Progress
 
 ```text
-Configured Official Origins: 40 / 49
-Current canonical roster coverage: first 40 in library/UI order
-Remaining Official Origins: 9
+Configured Official Origins: 49 / 49
+Canonical roster coverage: complete in library/UI order
+Remaining Official Origins: 0
 ```
 
-O35 is retired; the canonical roster currently contains 49 active Official Origins.
+O35 is retired; the canonical roster contains 49 active Official Origins.
+
+The V1 named-Origin AI-support phase is closed. Future Origin roster or trait-composition changes must update the gameplay owner, exact AI configuration, affected reusable trait/combination support, and this rationale in the same change.
 
 ---
 
@@ -145,7 +147,7 @@ Reduced City growth and Mountain FFY further discourage treating all geography a
 
 ## O04 — Right of Conquest
 
-This is the batch's only Origin that activates explicit reusable combination support, and it activates two entries.
+This Origin activates two reusable combination entries.
 
 `CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates at double effect. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
 
@@ -167,7 +169,7 @@ Heavy Artillery replaces Tanks, Highland offense improves favorable staging, and
 
 The controller must still respect Heavy Artillery's low mobility, long reload, close-range vulnerability, and expensive failure. P19's contact bonus should therefore encourage useful theaters and pressure, not unsupported artillery spread across every possible border.
 
-N12 prevents Warship construction and N01 weakens City growth. As with O21, the generic no-Warships suppression rule has no positive Warship-dependent support to remove in this Origin.
+N12 prevents Warship construction and N01 weakens City growth. The generic no-Warships suppression rule has no positive Warship-dependent support to remove in this Origin.
 
 **AI identity:** use positional long-range artillery to exploit selected high-value fronts, growing stronger from useful contact without confusing more fronts with automatically better strategy.
 
@@ -175,7 +177,7 @@ N12 prevents Warship construction and N01 weakens City growth. As with O21, the 
 
 P03 reduces the value of enemy Fort defensive pressure while P43 supplies long-range Heavy Artillery and P15 rewards Highland offensive staging. These mechanics compose directly: artillery planners use final effective target/terrain values and can prefer standoff positions from which prepared defenses matter less.
 
-N12 removes self-built Warships and N01 weakens City growth. Again, no selected positive Warship support is present for the generic N12 suppression rule to remove.
+N12 removes self-built Warships and N01 weakens City growth. No selected positive Warship support is present for the generic N12 suppression rule to remove.
 
 No dedicated P03+P43 combination hook is needed because neither trait creates a new candidate form when combined; P43 already generates artillery plans and the ordinary effective combat model already reflects the Fort-pressure bypass.
 
@@ -243,7 +245,7 @@ N11 does not require a third bespoke combination rule. Its existing infrastructu
 
 This Origin activates two reusable Fallout combinations.
 
-`REVERSIBLE_SCORCHED_EARTH` covers P16 + P35: deliberately relinquished cells become Fallout, while P16 makes later reacquisition comparatively easy. The newly added `RADIOACTIVE_FALLOUT_ADVANCE` covers P16 + P44: Radioactive Munitions can create Fallout during offensive territorial neutralization, while P16 prevents the faction from suffering the ordinary Fallout-capture resistance when following through that contaminated geography.
+`REVERSIBLE_SCORCHED_EARTH` covers P16 + P35: deliberately relinquished cells become Fallout, while P16 makes later reacquisition comparatively easy. `RADIOACTIVE_FALLOUT_ADVANCE` covers P16 + P44: Radioactive Munitions can create Fallout during offensive territorial neutralization, while P16 prevents the faction from suffering the ordinary Fallout-capture resistance when following through that contaminated geography.
 
 The combination support is reusable rather than Origin-specific because O34 shares the P16+P44 loop.
 
@@ -349,45 +351,126 @@ No extra flagship-repair combination is necessary. P23/P22 already establish the
 
 ---
 
-## Batch consistency results
+## O03 — Railgun
+
+P07 + P33 activates `TRAIN_POPULATION_ENGINE_ACCELERATION`: the deterministic extra Train throughput directly increases the frequency of Train-triggered City Population events. P02's wider Population-utilization growth band then makes the resulting demographic engine easier to operate across a broad utilization range.
+
+P02 does not need a second dedicated combination rule with P33. The P33 demographic forecast already reads the real effective growth state, while the existing P07+P33 combination owns the genuinely transformed Train-throughput loop. N12 keeps the build continental and N01 weakens ordinary City growth.
+
+**AI identity:** run a continental rail-demographic engine in which more Train service produces more Population while broad utilization tolerances keep that Population productive.
+
+## O44 — Hero for Fun
+
+P21 makes each structure type's first purchase consume no FFY when legally affordable, P36 halves neutral-settlement Population cost, and P01 starts the faction with more territory. These are mutually reinforcing land-development advantages but remain ordinary infrastructure/expansion candidates using real effective costs.
+
+N12 removes Warship construction and N01 weakens City growth. No new combination support is needed.
+
+**AI identity:** convert a stronger opening into cheap continental expansion and efficient first infrastructure purchases without depending on naval or City-heavy scaling.
+
+## O06 — Gemini
+
+P39 creates two starting cores, P01 increases the total Initial-Territory quota that is ultimately split between them, and N07 allows only one of each structure type across the entire faction.
+
+This is strategically demanding but does not require a new combination candidate. P39 already owns paired spawn evaluation; N07 already treats each structure type as a globally scarce asset. Infrastructure planning must therefore choose which core receives a unique structure by comparing both cores rather than pretending each has an independent slot.
+
+**AI identity:** exploit two enlarged footholds while treating every infrastructure role as one globally scarce choice shared between both homelands.
+
+## O45 — Tokiwadai Ace
+
+P11 unlocks zero-FFY SAM ownership slots from peak Population, while P27 lets those same SAMs attack ships. N11 makes SAM coverage economically costly because FFY events inside it yield zero.
+
+No additional P11+P27 combination hook is needed: P27 already evaluates anti-ship coastal placement and P11 already evaluates the value of unlocked free SAM slots. The same SAM candidate naturally carries both consequences, while N11 prices its coverage footprint.
+
+**AI identity:** grow into a free coastal strategic-defense network that can also deny ships, while placing each SAM carefully enough not to sterilize valuable economic space.
+
+## O46 — 1000 IQ
+
+P19 increases offense with active Territorial Contacts while P44 turns successful armor Population attacks into radioactive territorial shaping. These incentives reinforce aggressive multi-contact pressure but do not create a new transformed action when combined.
+
+The AI must still respect P19's split-front risk and P44's self-geometry risk. N13 makes amphibious landings Population-expensive.
+
+**AI identity:** exploit useful geopolitical contact with radioactive offensive pressure without confusing maximum border exposure with maximum strategic value.
+
+## O47 — Operation Super-Smart
+
+P28 rewards destruction of hostile Transports by transferring their carried Population, while P38 preserves automatic defenders when defended cells are captured. The two mechanics improve Population retention from different directions and compose without a bespoke loop.
+
+N12 prevents building Warships but does not suppress P28. P28 values enemy Transports as targets; it does not require the faction to own Warships. N01 weakens City growth.
+
+**AI identity:** preserve its own defending Population and opportunistically steal hostile invasion Population while remaining a largely continental faction.
+
+## O48 — Girls' Last Tour
+
+P52 turns empty Population Capacity into passive FFY, P02 widens the maximum-efficiency Population-utilization band, and P36 makes neutral Capacity cheap to acquire. Together they create a strong underpopulation economy.
+
+No new combination hook is required. P52's existing Capacity-acquisition and Population-expenditure hooks already evaluate the actual effective settlement cost and demographic forecast, so P36 and P02 change those calculations directly rather than creating a separate candidate type. N02 weakens Plains offense and N12 removes Warship construction.
+
+**AI identity:** spread cheaply, deliberately remain underpopulated when profitable, and balance demographic growth against the FFY value of empty Capacity.
+
+## O49 — Third Impact
+
+P53 makes each ready persistent Missile-Silo charge generate passive FFY, and P20 provides a free starting level-1 Missile Silo. Because that starting Silo is an ordinary active persistent Silo, its ready charge can immediately participate in P53 income. No P20+P53 combination adapter is required: P53 already reads actual owned ready charges and therefore naturally sees the starting state.
+
+P16 + N18 does require reusable combination support and activates `FALLOUT_ACQUISITION_INVERSION`. N18 halves acquisition progress on non-Fallout cells, while P16 removes ordinary Fallout acquisition resistance. The resulting relative rule is intentional: ordinary land remains at 0.5× progress while Fallout is acquired at 1.0× before terrain-specific differences. Expansion and land-war planners therefore need to recognize Fallout as comparatively privileged acquisition terrain rather than merely another contaminated penalty surface.
+
+N12 removes Warship construction.
+
+**AI identity:** bootstrap an economy from ready strategic stockpiles, treat firing a charge as both a military and income decision, and operate in a territorial regime where irradiated ground can become easier to consume than ordinary land.
+
+## O50 — Lucky Star
+
+P54 changes only Initial-Territory geometry into the canonical thin five-point star while preserving the same final territory quota. No extra Population, territory, settlement speed, or capture-speed benefit exists.
+
+The SpawnPlanner must value the real frontage, exposure, directional reach, and neutral-contact opportunities created by the star rather than treat the unusual geometry as free power.
+
+**AI identity:** exploit unusual opening reach and boundary geometry while respecting the exposure created by a thin, non-compact start.
+
+---
+
+# Batch consistency and full-library audit
 
 ### First 10
 
-All first ten configured Origins compose successfully from the completed trait-support catalogue.
-
-- 3/10 need reusable **trait-combination** support: O12, O15, O17;
-- 0/10 need named-Origin-specific support;
-- 0/10 remove any support through suppression.
+- O12, O15, and O17 require reusable trait-combination support.
+- No named-Origin-specific support is required.
 
 ### Second 10
 
-All next ten configured Origins also compose successfully from the existing trait-support catalogue.
-
-- 1/10 needs reusable **trait-combination** support: O04;
-- O04 requires two reusable combination entries: `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`;
-- 0/10 need named-Origin-specific support;
-- O21, O24, and O25 contain N12, so the generic no-Warships suppression matcher applies, but none contains a Warship-dependent positive support entry; therefore no otherwise-active support contribution is removed.
+- O04 requires `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`.
+- No named-Origin-specific support is required.
 
 ### Third 10
 
-All third-batch Origins compose successfully after one reusable omission from the trait-wide sweep was corrected.
-
-- O29 requires the existing `RADIOACTIVE_HEAVY_ARTILLERY` combination;
-- O32 requires the existing `POPULATION_SCALED_GIANT_SAM_NETWORK` combination;
-- O33 requires `REVERSIBLE_SCORCHED_EARTH` plus the reusable `RADIOACTIVE_FALLOUT_ADVANCE` combination;
-- O34 also requires `RADIOACTIVE_FALLOUT_ADVANCE`;
-- 0/10 need named-Origin-specific support;
-- O26, O27, O29, O30, O33, and O34 contain N12, but none selects a Warship-dependent positive trait, so its generic suppression matcher removes no otherwise-active support.
+- O29 requires `RADIOACTIVE_HEAVY_ARTILLERY`.
+- O32 requires `POPULATION_SCALED_GIANT_SAM_NETWORK`.
+- O33 requires `REVERSIBLE_SCORCHED_EARTH` and `RADIOACTIVE_FALLOUT_ADVANCE`.
+- O34 requires `RADIOACTIVE_FALLOUT_ADVANCE`.
+- No named-Origin-specific support is required.
 
 ### Fourth 10
 
-All fourth-batch Origins compose successfully from the existing support system without adding another generic literal, trait hook, combination rule, suppression rule, or named-Origin escape hatch.
+- O37 reuses `LAYERED_COUNTERINTELLIGENCE`.
+- O43 reuses `ELITE_SINGLE_FLAGSHIP_PROGRESSION`.
+- The other substantial interactions remain ordinary planner composition rather than new candidate types.
+- No named-Origin-specific support is required.
 
-- O37 reuses `LAYERED_COUNTERINTELLIGENCE`;
-- O43 reuses `ELITE_SINGLE_FLAGSHIP_PROGRESSION`;
-- O39's P21 + P41 + N07 interaction is deliberately handled through ordinary infrastructure-candidate composition rather than a bespoke combination rule;
-- O07's piracy + Port-repair interaction and O05's armored/fast/fortified amphibious interaction likewise remain ordinary planner composition rather than new candidate types;
-- O05 contains N12, but its selected positive traits are Transport/amphibious traits rather than Warship-dependent traits, so their support remains active;
-- 0/10 need named-Origin-specific support.
+### Final 9
 
-Across the first 40 Origins, named-Origin-specific support remains **0/40**. The reusable support architecture continues to absorb substantial build variety without producing a characterless per-Origin controller layer.
+- O03 reuses `TRAIN_POPULATION_ENGINE_ACCELERATION`.
+- O49 requires the new reusable `FALLOUT_ACQUISITION_INVERSION` combination.
+- O48's underpopulation/growth/cheap-settlement loop remains correctly expressible through P52's existing rules-aware support rather than a bespoke combination.
+- O45's free anti-ship SAM network likewise composes through existing P11/P27/N11 support.
+- No named-Origin-specific support is required.
+
+## Global result
+
+The complete 49-Origin V1 library is represented in the canonical AI Origin config in the same library/UI order as `OFFICIAL_ORIGINS.md`.
+
+- **49 / 49** active Official Origins have exact AI configuration entries.
+- **12 / 49** Origins require at least one reusable trait-combination support entry.
+- **0 / 49** require named-Origin-specific AI support.
+- The reusable combination-support registry now contains **13** definitions after the Origin-wide audit exposed the P16+P44 and P16+N18 omissions from the initial trait-only sweep.
+- No current Official Origin selects a positive trait whose AI support is actually removed by a suppression rule. Suppression remains necessary for the broader legal Custom-Origin space and future content.
+- No character personality, Doctrine, Arbiter, Expression, or Persistence behavior is encoded here; those remain character-owned.
+
+The Origin configuration phase is therefore closed. Character configuration can now consume a complete, concrete Origin-support layer without reopening named-Origin mechanics unless a later content change genuinely changes the underlying roster or trait rules.
