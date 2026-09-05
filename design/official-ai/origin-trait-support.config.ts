@@ -529,8 +529,8 @@ const TRAIT_SUPPORT_P01_P40 = [
     ],
     plannerSupport: [
       { domain: "SPAWN", phase: "ENRICH_INPUT", hookId: "P39_TWO_ORIGIN_SEMANTICS" },
-      { domain: "SPAWN", phase: "AUGMENT_CANDIDATES", hookId: "P39_SPLIT_SPAWN_CANDIDATES" },
-      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P39_SPLIT_SPAWN_PAIR_VALUE" },
+      { domain: "SPAWN", phase: "AUGMENT_CANDIDATES", hookId: "P39_STRATEGIC_SPLIT_SPAWN_CANDIDATES" },
+      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P39_STRATEGIC_SPLIT_SPAWN_PAIR_VALUE" },
     ],
   },
   {
@@ -784,7 +784,7 @@ const TRAIT_SUPPORT_P51_N06 = [
     ],
     plannerSupport: [
       { domain: "SPAWN", phase: "ENRICH_INPUT", hookId: "P54_STAR_FOOTPRINT_SEMANTICS" },
-      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P54_STAR_SPAWN_POSITION_VALUE" },
+      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P54_STRATEGIC_STAR_SPAWN_POSITION_VALUE" },
     ],
   },
   { traitId: "N01", mode: "GENERIC", themes: [], affordances: [], cautions: [], synergyTags: ["POPULATION_GROWTH"], signalSupport: [], plannerSupport: [] },
@@ -800,7 +800,7 @@ const TRAIT_SUPPORT_P51_N06 = [
     synergyTags: ["FALLOUT"],
     signalSupport: [
       { evaluator: "TERRITORY", hookId: "N05_UNCAPTURABLE_FALLOUT_GEOMETRY" },
-      { evaluator: "THREAT", hookId: "N05_FALLOUT_BARRIER_THREAT" },
+      { evaluator: "THREAT", hookId: "N05_FALLOUT_OWNERSHIP_BARRIER_FORECAST" },
       { evaluator: "FORECAST", hookId: "N05_FALLOUT_OWNERSHIP_BARRIER_FORECAST" },
     ],
     plannerSupport: [
@@ -1091,7 +1091,7 @@ export const OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT = [
     ],
     plannerSupport: [
       { domain: "SPAWN", phase: "ENRICH_INPUT", hookId: "P39_P54_SPLIT_STAR_SPAWN_SEMANTICS" },
-      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P39_P54_SPLIT_STAR_PAIR_VALUE" },
+      { domain: "SPAWN", phase: "EVALUATE_CANDIDATES", hookId: "P39_P54_STRATEGIC_SPLIT_STAR_PAIR_VALUE" },
     ],
   },
 ] as const;
