@@ -21,15 +21,17 @@ GitHub automation may delete merged pull-request branches automatically. Agents 
 When an agent/thread takes ownership of a GitHub issue, the claim must be uniquely identifiable. A generic comment such as `claimed`, `in progress`, or `working on this` is insufficient because another concurrent agent could reasonably interpret it as its own claim.
 
 - Create a unique claim/work-session ID and post it in the issue before substantive work begins. A recommended shape is `OF-ISSUE<issue>-<YYYYMMDD>-<unique-suffix>`; any equally unambiguous unique identifier is acceptable.
-- The issue claim comment must name the claim ID and state that other agents/threads must not work the same scope unless the user explicitly coordinates parallel work or transfers ownership.
-- Assignee state alone is not a sufficient concurrency lock. Agents must inspect issue comments for an existing active claim ID before beginning work.
+- At claim time, also assign the GitHub issue to the GitHub account that owns/is performing the claimed work. An active issue claim normally requires **both** the matching assignee state and the unique claim comment; neither one alone is sufficient. If the available GitHub tooling genuinely cannot modify assignees, the claim comment must explicitly record that limitation and name the intended assignee instead of silently omitting assignment.
+- The issue claim comment must name the claim ID, identify the assigned GitHub account, and state that other agents/threads must not work the same scope unless the user explicitly coordinates parallel work or transfers ownership.
+- Before beginning substantive work, inspect **both** the issue assignee state and issue comments for an existing active claim ID. If either indicates another active owner, do not create a competing claim or overlapping branch until ownership is resolved.
 - If another active claim ID already owns the same issue/scope, do not create a competing branch or make overlapping changes. Resolve ownership first. If a claim appears stale or ambiguous, treat it as active until its status is verified rather than assuming it is abandoned.
 - Every remote branch created as a consequence of a claimed issue must be attributable to that issue and claim. Prefer branch names containing both the issue number and claim ID, for example `issue-31/of-issue31-20260905-7c4a9e-<purpose>`.
 - Immediately after creating such a remote branch, add or update an issue comment that records the exact branch name and purpose under the same claim ID. If one claim uses multiple branches, list every active branch so parallel agents can see the complete work surface.
 - Pull requests must reference the issue and preserve the claim/branch traceability in their description when practical.
+- When work is transferred, update both the claim comment/state and GitHub assignee so they identify the new owner. When work is abandoned while the issue remains open, clear the abandoning owner's assignee state and update the issue comment so the scope is visibly available again. A closed issue may retain its historical assignee.
 - When work is merged, abandoned, transferred, or split into explicitly coordinated scopes, update the issue so the ownership state is clear. Branch cleanup still follows the remote-branch hygiene rules above.
 
-The goal is that an agent inspecting the issue can determine, without inference, **who/what work session owns it, which remote branches belong to that work, and whether overlapping work is safe**.
+The goal is that an agent inspecting the issue can determine, without inference, **who/what work session owns it, which GitHub account is responsible, which remote branches belong to that work, and whether overlapping work is safe**.
 
 ## Three-layer gameplay/Origin/character-AI synchronization invariant
 
@@ -224,10 +226,8 @@ For the current Official-AI design this means, unless architecture is explicitly
 ```text
 design/official-ai/origin-trait-support.config.ts
   all exact trait-support mappings, additive combination support, and support-suppression rules
-
 design/official-ai/origin-configurations.config.ts
   all exact named Official-Origin AI mappings
-
 design/official-ai/character-configurations.config.ts
   Baseline and all exact character AI mappings once authored
 ```
