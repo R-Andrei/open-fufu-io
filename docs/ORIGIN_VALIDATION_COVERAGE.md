@@ -324,7 +324,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Explicit interactions**
 
-- `P11 + N07`: N07's one-of-each-structure cap and P11's unlocked-SAM-slot cap both apply; effective ownership legality must satisfy the stricter result rather than treating either as an override.
+- `P11 + N07`: P11's unlocked-SAM entitlement and N07's one-per-type ownership rule are both mandatory hard ownership constraints; an acquisition must satisfy both. Canonical normalization/composition of multiple cap-valued rule sources remains owned by #43 rather than this validation registry.
 - `P11 + P40`: P11 controls cost/ownership entitlement while P40 transforms the SAM's charge/range/recharge profile. Same-domain projection coverage must include the combined effective SAM state.
 - `P11 + P27`: inspect when P27 is audited because it changes SAM target legality while P11 changes how many SAMs may exist and their cost.
 - `P11 + P21`: first-SAM purchase remains a purchase even though P11 makes its FFY price zero; P21 must not change P11's permanent slot entitlement or create an extra SAM slot.
@@ -995,7 +995,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Blocker / mechanic-definition finding**
 
-- The high-level design intentionally makes territorial abandonment a separate action but does not yet close enough of the generic abandonment contract for P35 certification when relinquished cells contain persistent structures or other ownership-bound state. The canonical owner must define abandonment eligibility and the fate of structures/ownership-bound objects on relinquished cells; P35 should then add Fallout to that ordinary result rather than invent its own structure-disposal rule.
+- The high-level design intentionally makes territorial abandonment a separate action but does not yet close enough of the generic abandonment contract for P35 certification when relinquished cells contain persistent structures or other ownership-bound state on relinquished cells; P35 should then add Fallout to that ordinary result rather than invent its own structure-disposal rule.
 
 ---
 
@@ -1047,8 +1047,9 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P37 + P21`: the landing-created Fort grant does not consume first-Fort purchase entitlement.
 - `P37 + P32`: embark source must satisfy P32's owned-active-Port restriction while the successful landing still resolves P37 normally.
 - `P37 + N13`: N13 landing Population loss and P37 Fort grant both occur only on a successful landing path; exact N13 casualty order remains #50-owned, but no Fort appears on destroyed/failed Transport paths.
-- `P37 + N07`: if the holder already occupies its one Fort slot, the exact-cell grant is rejected and skipped; the landing remains successful.
-- If a captured structure survives/transfers on the landing cell, that final occupancy blocks the P37 grant. P37 never searches a nearby fallback cell.
+- Successful transfer of a captured landing-cell structure leaves that cell occupied and therefore blocks the exact-cell P37 Fort grant; no nearby fallback is searched.
+- `P37 + N17`: if N17 resolves the captured landing-cell structure as `DESTROYED_ON_CAPTURE`, final occupancy may become empty and P37 then evaluates the Fort grant normally. The Fort appears only if its own placement and ownership admission pass.
+- `P37 + N07` has two independent admission points: N07 may reject and destroy an incoming captured structure of some type, freeing the landing cell for the later P37 Fort attempt, while N07 may separately reject the Fort itself when the holder's Fort slot is already occupied. Destruction/freeing of the captured object never bypasses the Fort's own cap.
 - Once legally created/active, the Fort is ordinary input to P03/P09/P18/P24/P50/N08/N10 and other Fort consumers; those downstream mechanics do not need a special P37 implementation.
 
 **Resolved mechanic-definition result (#45)**
