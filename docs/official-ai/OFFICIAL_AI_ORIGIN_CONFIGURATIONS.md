@@ -73,7 +73,7 @@ The Origin is defined by Hydrogen-only strategic-weapon specialization with larg
 
 ## O14 — Bocchi Time
 
-The split-start trait replaces ordinary Strategic Spawn with two half-area regions and two origins. Trait support already owns pair generation/evaluation, so no named-Origin support is necessary.
+P39 gives the faction two starting cores in every spawn mode. Strategic Spawn evaluates and chooses the pair; Random and Fixed Spawn instead provide the resolved pair, after which ordinary two-core position and isolation reasoning applies. Trait support owns those reusable semantics, so no named-Origin support is necessary.
 
 **AI identity:** use two starting footholds coherently while respecting split-front and isolated-core risk.
 
@@ -369,9 +369,9 @@ N12 removes Warship construction and N01 weakens City growth. No new combination
 
 ## O06 — Gemini
 
-P39 creates two starting cores, P01 increases the total Initial-Territory quota that is ultimately split between them, and N07 allows only one of each structure type across the entire faction.
+P39 gives two starting cores in every spawn mode, P01 increases the total Initial-Territory quota that is split between them, and N07 allows only one of each structure type across the entire faction. Only Strategic Spawn asks the controller to choose/evaluate the origin pair; Random and Fixed Spawn provide the resolved pair and then use the same two-core reasoning.
 
-This is strategically demanding but does not require a new combination candidate. P39 already owns paired spawn evaluation; N07 already treats each structure type as a globally scarce asset. Infrastructure planning must therefore choose which core receives a unique structure by comparing both cores rather than pretending each has an independent slot.
+This is strategically demanding but does not require a new combination candidate. P39 owns the reusable split-core semantics; N07 already treats each structure type as a globally scarce asset. Infrastructure planning must therefore choose which core receives a unique structure by comparing both cores rather than pretending each has an independent slot.
 
 **AI identity:** exploit two enlarged footholds while treating every infrastructure role as one globally scarce choice shared between both homelands.
 
@@ -419,9 +419,7 @@ N12 removes Warship construction.
 
 ## O50 — Lucky Star
 
-P54 changes only Initial-Territory geometry into the canonical thin five-point star while preserving the same final territory quota. No extra Population, territory, settlement speed, or capture-speed benefit exists.
-
-The SpawnPlanner must value the real frontage, exposure, directional reach, and neutral-contact opportunities created by the star rather than treat the unusual geometry as free power.
+P54 changes Initial-Territory geometry into the canonical thin five-point star in every spawn mode while preserving the same final territory quota. Strategic Spawn chooses/evaluates the star's position; Random and Fixed Spawn instead provide a resolved origin, after which the same frontage, exposure, directional-reach, and neutral-contact reasoning applies. No extra Population, territory, settlement speed, or capture-speed benefit exists.
 
 **AI identity:** exploit unusual opening reach and boundary geometry while respecting the exposure created by a thin, non-compact start.
 
