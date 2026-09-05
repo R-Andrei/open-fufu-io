@@ -16,6 +16,21 @@ These instructions apply to automated coding/documentation agents working in thi
 
 GitHub automation may delete merged pull-request branches automatically. Agents must still follow the policy above for non-PR temporary branches and for any cleanup case the automation does not cover.
 
+### Issue claims and branch coordination
+
+When an agent/thread takes ownership of a GitHub issue, the claim must be uniquely identifiable. A generic comment such as `claimed`, `in progress`, or `working on this` is insufficient because another concurrent agent could reasonably interpret it as its own claim.
+
+- Create a unique claim/work-session ID and post it in the issue before substantive work begins. A recommended shape is `OF-ISSUE<issue>-<YYYYMMDD>-<unique-suffix>`; any equally unambiguous unique identifier is acceptable.
+- The issue claim comment must name the claim ID and state that other agents/threads must not work the same scope unless the user explicitly coordinates parallel work or transfers ownership.
+- Assignee state alone is not a sufficient concurrency lock. Agents must inspect issue comments for an existing active claim ID before beginning work.
+- If another active claim ID already owns the same issue/scope, do not create a competing branch or make overlapping changes. Resolve ownership first. If a claim appears stale or ambiguous, treat it as active until its status is verified rather than assuming it is abandoned.
+- Every remote branch created as a consequence of a claimed issue must be attributable to that issue and claim. Prefer branch names containing both the issue number and claim ID, for example `issue-31/of-issue31-20260905-7c4a9e-<purpose>`.
+- Immediately after creating such a remote branch, add or update an issue comment that records the exact branch name and purpose under the same claim ID. If one claim uses multiple branches, list every active branch so parallel agents can see the complete work surface.
+- Pull requests must reference the issue and preserve the claim/branch traceability in their description when practical.
+- When work is merged, abandoned, transferred, or split into explicitly coordinated scopes, update the issue so the ownership state is clear. Branch cleanup still follows the remote-branch hygiene rules above.
+
+The goal is that an agent inspecting the issue can determine, without inference, **who/what work session owns it, which remote branches belong to that work, and whether overlapping work is safe**.
+
 ## Three-layer gameplay/Origin/character-AI synchronization invariant
 
 Open Fufu has three strategically coupled design/runtime layers that must remain synchronized:
