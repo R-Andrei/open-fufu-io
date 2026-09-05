@@ -343,7 +343,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Upgrade FFY cost | AXIS | `structure.transaction.upgradeCost[type]`; separate from build cost because Echoes distinguish them and P17 applies to upgrades. |
 | Build/upgrade duration | AXIS | `structure.transaction.constructionTime[type]`; Echoes specialize. |
 | Resulting purchased level/profile | STRUCTURAL AXIS / CUSTOM transaction | P41 direct-L5 City purchase changes transaction shape, not four hidden upgrades. |
-| Structure ownership cap | AXIS / hard constraint | `structure.ownershipCap[type]`; N07, P11 entitlement interaction. Admission/reservation semantics are subsystem-owned. |
+| Structure ownership cap | AXIS / hard constraint | `structure.ownershipCap[type]`; N07/P11 supply effective limits, while canonical acquisition admission and atomic slot reservation are owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Structure type build permission | AXIS / hard constraint | e.g. N09 Factory prohibition; separate from terrain eligibility and price. |
 | City Growth contribution magnitude | AXIS | `structure.effect.cityGrowth[level]`; N01 Origin then Echo specialization. |
 | Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area must remain area until geometry projection (#44). |
@@ -375,7 +375,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Final movement speed | AXIS-derived profile | Base speed × terrain/profile transforms × later Echo specialization according to axis order. |
 | Max health | AXIS | Rank/profile/Origin/Echo contributions as applicable. |
 | Repair-retreat threshold | PARAMETER | 50% baseline; no current generic modifier. |
-| Ownership cap | AXIS / constraint | P23 Warship cap; Tank baseline none. |
+| Ownership cap | AXIS / constraint | P23 Warship cap; Tank baseline none. Warship build admission/reservation is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. |
 | Maximum rank | AXIS | Warship baseline 3, P22 +2. |
 | Attack range by attack identity | AXIS | Separate attack IDs prevent naval-gun range from modifying Trade capture distance or strategic launch semantics. |
 | Numeric attack damage | AXIS | Separate from binary Train interception/destruction. |
@@ -402,7 +402,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Transport health/profile | STRUCTURAL AXIS | Baseline fragile/no pool; P32 -> 500 HP health-bearing. |
 | Landing Population survival/casualty | AXIS + lifecycle boundary | N13 50% death; exact application/rounding point is subsystem blocker. |
 | Return Population survival fraction | AXIS-capable / baseline | 75%; no current modifier. |
-| Successful-landing structure grant | CUSTOM lifecycle | P37; not a scalar modifier. |
+| Successful-landing structure grant | CUSTOM lifecycle | P37 emits an exact-cell L1 Fort grant after successful landing/capture resolution; generic grant admission is owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Transport-destruction Population theft | CUSTOM lifecycle | P28. |
 
 ## 8.7 Strategic weapons and launchers
@@ -506,10 +506,10 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P17 | DYNAMIC MULTIPLIER | `structure.transaction.upgradeCost`: `0.99^S`, `S=current owned structures`; deterministic evaluation/no per-modifier rounding. |
 | P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in qualifying self/team Fort area; one qualification regardless of overlapping Fort count. |
 | P19 | DYNAMIC CONDITIONAL PRESSURE | `+5%` offense per distinct active other faction with current Territorial Contact; includes Goons and fixed teammate under current literal rule. |
-| P20 | CUSTOM start grant | one free starting Missile Silo; placement/level/readiness/start-profile semantics remain external blockers. |
+| P20 | CUSTOM start grant | one free starting Missile Silo; #32 owns exact start-state placement/order; canonical grant admission materializes an immediate active completed L1 Silo, while initial charge readiness remains strategic-weapon-owned. |
 | P21 | CUSTOM transaction override | first successful purchase per structure type passes ordinary legality + affordability, then consumes `0 FFY`; grant/capture not purchase. |
 | P22 | FLAT AXIS | `unit.maximumRank[WARSHIP] +2`. |
-| P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`. |
+| P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`; canonical Warship build admission/reservation enforces the cap transactionally. |
 | P24 | CONDITIONAL FFY | event inside qualifying Fort area `+20%`; Fort affiliation blocker remains external. |
 | P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection external. |
 | P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
@@ -520,14 +520,14 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P31 | CONDITIONAL PROFILE/SCALARS | Warship-specific effective Port repair radius `2×`, rate `1.5×`, operational while repairing; consumes effective Port field and strongest-overlap rules. |
 | P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
 | P33 | CUSTOM event side effect | qualifying Train event at owned City also grants `20 × City level` Available Population, Capacity-capped. |
-| P34 | STRUCTURAL/CONDITIONAL CUSTOM | conquered Factory `2× ordinary Factory effect`; exact transformed effect set unresolved in #49. |
+| P34 | STRUCTURAL/CONDITIONAL CUSTOM | conquered Factory `2× ordinary Factory effect`; only successful canonical capture transfer establishes conquest provenance; exact transformed effect set remains #49-owned. |
 | P35 | CUSTOM territorial lifecycle | deliberate relinquishment -> neutral Fallout; ordinary abandonment semantics external. |
 | P36 | AXIS + residual lifecycle | neutral settlement Population cost `0.5/cell`; faction-level persistent residual accounting. |
-| P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing -> L1 Fort grant; grant placement/admission lifecycle external. |
+| P37 | MIXED | Transport embark cost flat `+250 FFY`; after successful amphibious landing/capture resolution, attempt one exact-cell active completed L1 Fort grant through canonical structure admission; failed grant does not roll back landing. |
 | P38 | CUSTOM capture consequence | automatic defender survives successful capture and remains/returns Available. |
 | P39 | STRUCTURAL SPAWN PROFILE | two half-area influence regions, two origins, split one final quota; one global Population pool. |
 | P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`. |
-| P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; construction duration blocker external. |
+| P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; fresh construction targets L5 directly and completes after the canonical City build duration without hidden intermediate levels. |
 | P42 | MIXED | Warship FFY purchase cost `HARD_ZERO`; purchase Population cost `2,000`; attack range Origin `-33%`. |
 | P43 | STRUCTURAL CHASSIS PROFILE | Tank -> Heavy Artillery; establishes cost/build/speed/range/health/attack/capability profile before Tank-scoped Echo specialization. |
 | P44 | CUSTOM attack aftermath | successful Tank-chassis Population attack neutralizes deterministic nearby cells + Fallout; not ordinary capture. |
@@ -554,7 +554,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | N04 | CONDITIONAL FFY | Mountain-located positive event `-50%` ordinary yield contribution. |
 | N05 | HARD PROHIBITION | Fallout territorial acquisition forbidden; P16 speed/resistance suppression cannot bypass. |
 | N06 | HARD TRANSACTION PROHIBITION | cannot spend FFY on ordinary structure upgrades; discounts do not create permission. |
-| N07 | HARD OWNERSHIP CAP | maximum one persistent structure of each type; applies to builds/transfers/grants; overflow resolution is external admission blocker. |
+| N07 | HARD OWNERSHIP CAP | maximum one persistent structure of each type across purchase builds, grants, and capture transfers; canonical structure admission/reservation rejects oversubscription and converts failed capture transfer to destruction without undoing the territorial capture. |
 | N08 | HARD ZERO | effective Fort defensive-pressure magnitude exactly zero; coverage remains; P09/Echo cannot resurrect; P50 mirrors effective zero. |
 | N09 | HARD BUILD PROHIBITION | cannot build Factories; terrain permission/free price cannot bypass; acquired Factory may still function. |
 | N10 | NUMERIC AXIS | Fort coverage **area** Origin `-25%`; same Origin slot as P09 area modifier. |
@@ -564,7 +564,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; depends on missing FFY `Vowner` snapshot definition. |
 | N15 | FLAT AXIS | Transport embarkation `+500 FFY`; same flat slot as P37 `+250`, producing +750 together. |
 | N16 | CUSTOM Trade payout inversion | uncaptured success -> owner `-Vowner`; first hostile capture -> owner `+Vowner` once; `Vowner` blocker shared with N14. |
-| N17 | STRUCTURAL CAPTURE OUTCOME | enemy structure that would transfer is destroyed instead; capture-dependent transfer effects therefore do not fire. |
+| N17 | STRUCTURAL CAPTURE OUTCOME | canonical structure-capture disposition transforms transfer to destruction; the territorial capture still succeeds and successful-transfer effects do not fire. |
 | N18 | LATE CONDITIONAL MULTIPLIER | final capture/settlement progress against **non-Fallout** target `×0.50`; Fallout targets exempt. This is not an ordinary additive terrain percentage. |
 
 ---
@@ -796,29 +796,29 @@ The composition registry must not invent focused subsystem semantics. The follow
 
 - **#32 / Spawn:** Random/Fixed interaction with spawn-transforming Origins; singular start-state grant placement/uniqueness under multi-origin profiles.
 - **#44 / structure geometry:** deterministic Fort/SAM/Command area -> radius/raster geometry and affiliation contracts.
-- **generic structure/unit admission:** concurrent/pending ownership-cap reservation; deterministic result of capture/grant that would exceed N07 or another hard cap.
 - **P02:** exact replacement 30–70% utilization-curve anchors must be available canonically.
 - **P05:** structure-capture FFY base value/location.
 - **P07:** Factory primary-dispatch counter transfer behavior.
 - **P10:** exact projectile classes/stages covered by `warhead projectile speed`.
-- **P20:** granted Silo resulting level/activation/initial charge readiness.
+- **P20:** exact start-state Silo placement/order remains #32-owned; initial ready-charge state remains strategic-weapon/charge-lifecycle-owned. Generic structure grant admission, resulting active L1 state, and cap handling are already canonical.
 - **P24:** qualifying Fort affiliation.
 - **P25:** deterministic +50% Hydrogen blast-area geometry including Water-Nukes behavior.
 - **P27:** SAM anti-ship targets/damage/cadence/charge/priority semantics.
 - **P28:** Transport theft attribution/recipient/order.
 - **P29/P53:** readiness of newly created launcher charge slots on dynamic level/capacity increase.
-- **P34 / #49:** exact meaning of `2× ordinary Factory effect`.
+- **P34 / #49:** exact meaning of `2× ordinary Factory effect`; successful-transfer conquest provenance is already canonical.
 - **P35:** generic deliberate-abandonment result for structure-occupied cells.
 - **P36:** exact residual debit ordering/destination across concurrent settlement commitments.
-- **P37:** landing-Fort grant placement/activation/conflict/admission semantics.
-- **P41:** direct-L5 City construction time.
+- **P37 / #50:** amphibious landing/capture execution remains with the amphibious owner. Once a successful landing establishes ownership and resolves any captured structure, exact-cell L1 Fort grant admission/activation/cap failure behavior is already canonical.
 - **P45/P49/#51:** exact tactical concealment/manifestation/blackout geometry and information contract.
 - **P54:** committed fixed-point star template constants.
 - **N11:** qualifying SAM affiliation/effective area, coordinated with structure geometry.
 - **N13:** exact landing casualty lifecycle point and deterministic half-Population rounding.
 - **N14/N16/#48:** canonical launch-time `Vowner` snapshot formula and included modifier state.
 
-These are not reasons to add arbitrary priority values or hidden compatibility vetoes. Each focused owner must supply the missing semantic input; the composition layer then consumes it through the appropriate typed axis/profile/event contract.
+Structure acquisition/capture admission and Warship ownership reservation are no longer blockers here: `TERRAIN_AND_STRUCTURES.md` now owns atomic persistent-structure admission/capture resolution, and `NAVAL_AND_STRATEGIC_WEAPONS.md` owns Warship build admission/reservation. P41's direct-L5 fresh-construction lifecycle is likewise canonical in the structure owner.
+
+These remaining items are not reasons to add arbitrary priority values or hidden compatibility vetoes. Each focused owner must supply the missing semantic input; the composition layer then consumes it through the appropriate typed axis/profile/event contract.
 
 ---
 
