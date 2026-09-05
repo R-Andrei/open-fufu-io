@@ -1,10 +1,10 @@
 # Open Fufu — Provisional Echo Catalogue Contract
 
-## Status
+## Status and authority
 
-This file is the **provisional working contract for Echo identity, acquisition, rolled quality, duplicate handling, match rewards, generated naming/presentation, collection behavior, storage boundaries, and Gacha Store behavior**, analogous to `ORIGIN_TRAIT_CATALOGUE.md` for Origins.
+This file is the **canonical owner for Echo identity, acquisition, rolled quality, duplicate handling, match rewards, generated naming/presentation, collection behavior, Echo-specific storage semantics, and Gacha Store behavior**.
 
-The canonical game-design authority remains [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). The canonical integration authority remains [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md).
+Neighboring concerns remain owned by their dedicated documents: high-level game-wide invariants by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), runtime persistence architecture by [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md), and Official-AI preset difficulty by [`official-ai/OFFICIAL_AI_PRESETS.md`](./official-ai/OFFICIAL_AI_PRESETS.md).
 
 Nothing in this file authorizes gameplay implementation.
 
@@ -1101,7 +1101,7 @@ Diplomacy does not change during a match, so the set of teammates/allies/opponen
 
 ### 13.2 AI difficulty bonuses
 
-Official/Baseline AI reward contribution is derived from that AI identity's bound/versioned **difficulty**. Character-preset difficulty is maintained in [`OFFICIAL_AI_PRESETS.md`](./OFFICIAL_AI_PRESETS.md); the generic Baseline AI has difficulty `0`. The Echo system does not maintain a second per-character bonus field/table.
+Official/Baseline AI reward contribution is derived from that AI identity's bound/versioned **difficulty**. Character-preset difficulty is maintained in [`official-ai/OFFICIAL_AI_PRESETS.md`](./official-ai/OFFICIAL_AI_PRESETS.md); the generic Baseline AI has difficulty `0`. The Echo system does not maintain a second per-character bonus field/table.
 
 The ordinary qualifying-opponent roll and the AI difficulty bonus are deliberately separate:
 
