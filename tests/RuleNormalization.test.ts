@@ -64,8 +64,50 @@ describe("canonical rule normalization", () => {
     });
   });
 
+  it("uses exact safe-integer SUM normalization independent of source ordering", () => {
+    const contributions: RuleContribution[] = [
+      {
+        axis: "TRANSPORT_EMBARK_COST",
+        scope: { kind: "GLOBAL" },
+        stage: "ORIGIN_FLAT",
+        operator: "ADD_FLAT",
+        sourceKind: "ORIGIN",
+        sourceId: "z-source",
+        valueUnit: "FFY",
+        value: 250,
+      },
+      {
+        axis: "TRANSPORT_EMBARK_COST",
+        scope: { kind: "GLOBAL" },
+        stage: "ORIGIN_FLAT",
+        operator: "ADD_FLAT",
+        sourceKind: "ORIGIN",
+        sourceId: "a-source",
+        valueUnit: "FFY",
+        value: 500,
+      },
+    ];
+    const forward = normalizeRuleContributions(
+      RULE_AXIS_REGISTRY,
+      contributions,
+    );
+    const reverse = normalizeRuleContributions(
+      RULE_AXIS_REGISTRY,
+      [...contributions].reverse(),
+    );
+    expect(forward[0]?.value).toEqual({ kind: "SUM", value: 750 });
+    expect(serializeNormalizedRuleRecords(forward)).toBe(
+      serializeNormalizedRuleRecords(reverse),
+    );
+  });
+
   it("is byte-identical under contribution permutations after reduction", () => {
-    const contributions = originRuleContributions(["P09", "N10", "P23", "P42"]);
+    const contributions = originRuleContributions([
+      "P09",
+      "N10",
+      "P23",
+      "P42",
+    ]);
     const forward = normalizeRuleContributions(
       RULE_AXIS_REGISTRY,
       contributions,

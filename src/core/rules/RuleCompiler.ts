@@ -37,6 +37,36 @@ export interface CompiledRuleProfile {
   readonly canonicalSerialization: string;
 }
 
+function compareStrings(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    const items = value.every((entry) => typeof entry === "string")
+      ? [...value].sort(compareStrings)
+      : value;
+    return `[${items.map(canonicalJson).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .filter((key) => record[key] !== undefined)
+      .sort(compareStrings)
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  throw new Error(`Unsupported canonical value: ${typeof value}`);
+}
+
 function scopeValue(scope: RuleScope): string {
   switch (scope.kind) {
     case "GLOBAL":
@@ -93,7 +123,8 @@ export function ruleConditionsMayOverlap(
   if (
     (a.kind === "TARGET_HAS_FALLOUT" &&
       b.kind === "TARGET_LACKS_FALLOUT") ||
-    (a.kind === "TARGET_LACKS_FALLOUT" && b.kind === "TARGET_HAS_FALLOUT")
+    (a.kind === "TARGET_LACKS_FALLOUT" &&
+      b.kind === "TARGET_HAS_FALLOUT")
   ) {
     return false;
   }
@@ -130,7 +161,9 @@ export function validateRuleProfile(
     if (stage === undefined) continue;
     for (let j = i + 1; j < contributions.length; j += 1) {
       const right = contributions[j];
-      if (right === undefined || !contributionsMayCoexist(left, right)) continue;
+      if (right === undefined || !contributionsMayCoexist(left, right)) {
+        continue;
+      }
       if (stage.reducer === "SINGLETON") {
         issues.push({
           code: "OVERLAPPING_SINGLETON_CONFLICT",
@@ -157,7 +190,7 @@ export function validateRuleProfile(
 }
 
 function canonicalContributionKey(contribution: RuleContribution): string {
-  return JSON.stringify({
+  return canonicalJson({
     axis: contribution.axis,
     scope: contribution.scope,
     stage: contribution.stage,
@@ -180,11 +213,9 @@ export function compileRuleProfile(
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
 
-  const sorted = [...contributions].sort((a, b) => {
-    const left = canonicalContributionKey(a);
-    const right = canonicalContributionKey(b);
-    return left < right ? -1 : left > right ? 1 : 0;
-  });
+  const sorted = [...contributions].sort((a, b) =>
+    compareStrings(canonicalContributionKey(a), canonicalContributionKey(b)),
+  );
   const normalizedRules = normalizeRuleContributions(registry, sorted);
 
   return Object.freeze({
@@ -195,7 +226,7 @@ export function compileRuleProfile(
   });
 }
 
-export function compiledContributionsFor(
+export function compiledRuleContributionsForScope(
   profile: CompiledRuleProfile,
   axis: string,
   scope: RuleScope,
@@ -205,7 +236,7 @@ export function compiledContributionsFor(
   );
 }
 
-export function compiledNormalizedRulesFor(
+export function compiledNormalizedRulesForScope(
   profile: CompiledRuleProfile,
   axis: string,
   scope: RuleScope,
@@ -214,3 +245,8 @@ export function compiledNormalizedRulesFor(
     (entry) => entry.axis === axis && ruleScopeMatches(entry.scope, scope),
   );
 }
+
+/** @deprecated Scope selection does not evaluate contextual conditions. */
+export const compiledContributionsFor = compiledRuleContributionsForScope;
+/** @deprecated Scope selection does not evaluate contextual conditions. */
+export const compiledNormalizedRulesFor = compiledNormalizedRulesForScope;

@@ -4,8 +4,12 @@ import {
   originRuleContributions,
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
-import { validateRuleProfile } from "../src/core/rules/RuleCompiler";
+import {
+  compileRuleProfile,
+  validateRuleProfile,
+} from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { RuleContribution } from "../src/core/rules/RuleComposition";
 
 interface BuilderTrait {
   readonly id: OriginTraitId;
@@ -20,7 +24,9 @@ function catalogueSection(
 ): string {
   const start = source.indexOf(startHeading);
   const end = source.indexOf(endHeading, start + startHeading.length);
-  if (start < 0 || end < 0) throw new Error(`Missing catalogue section ${startHeading}`);
+  if (start < 0 || end < 0) {
+    throw new Error(`Missing catalogue section ${startHeading}`);
+  }
   return source.slice(start, end);
 }
 
@@ -38,7 +44,9 @@ function parseBuilderTraits(): readonly BuilderTrait[] {
   );
   const result: BuilderTrait[] = [];
   for (const line of positive.split("\n")) {
-    const match = line.match(/^\|\s*(P\d{2})\s*\|.*\|\s*(\d+)\s*\|\s*$/);
+    const match = line.match(
+      /^\|\s*(P\d{2})\s*\|.*\|\s*(\d+)\s*\|\s*$/,
+    );
     if (match === null) continue;
     result.push({
       id: match[1] as OriginTraitId,
@@ -47,7 +55,9 @@ function parseBuilderTraits(): readonly BuilderTrait[] {
     });
   }
   for (const line of negative.split("\n")) {
-    const match = line.match(/^\|\s*(N\d{2})\s*\|.*\|\s*-(\d+)\s*\|\s*$/);
+    const match = line.match(
+      /^\|\s*(N\d{2})\s*\|.*\|\s*-(\d+)\s*\|\s*$/,
+    );
     if (match === null) continue;
     result.push({
       id: match[1] as OriginTraitId,
@@ -69,10 +79,15 @@ describe("builder-legal Origin composition space", () => {
     expect(new Set(traits.map((trait) => trait.id)).size).toBe(72);
     expect(ORIGIN_RULE_MANIFEST).toHaveLength(72);
 
-    // All current compiler conflicts are pairwise by construction: singleton
-    // overlap or mixed operators on one overlapping axis/stage. Precompute the
-    // compiler result once per pair, then enumerate the full public builder
-    // space without re-running an allocation-heavy compiler 1M+ times.
+    const contributionMap = new Map<OriginTraitId, readonly RuleContribution[]>(
+      traits.map((trait) => [
+        trait.id,
+        originRuleContributions([trait.id]),
+      ]),
+    );
+
+    // Current compiler conflicts are pairwise by construction: overlapping
+    // singleton stages or mixed operators on an overlapping axis/stage.
     const pairConflicts = new Set<string>();
     for (let i = 0; i < traits.length; i += 1) {
       for (let j = i + 1; j < traits.length; j += 1) {
@@ -83,18 +98,28 @@ describe("builder-legal Origin composition space", () => {
           RULE_AXIS_REGISTRY,
           originRuleContributions([left.id, right.id]),
         );
-        if (issues.length > 0) pairConflicts.add(pairKey(left.id, right.id));
+        if (issues.length > 0) {
+          pairConflicts.add(pairKey(left.id, right.id));
+        }
       }
     }
 
+    const exhaustiveCompile =
+      process.env.RULE_COMPOSITION_EXHAUSTIVE === "1";
     let checkedLegalOrigins = 0;
+    let compiledLegalOrigins = 0;
     const selected: BuilderTrait[] = [];
+    const selectedContributions: RuleContribution[] = [];
+
     const visit = (
       startIndex: number,
       positiveSpend: number,
       drawbackRefund: number,
     ): void => {
-      if (selected.length > 0 && positiveSpend <= 10 + drawbackRefund) {
+      if (
+        selected.length > 0 &&
+        positiveSpend <= 10 + drawbackRefund
+      ) {
         checkedLegalOrigins += 1;
         for (let i = 0; i < selected.length; i += 1) {
           for (let j = i + 1; j < selected.length; j += 1) {
@@ -103,11 +128,33 @@ describe("builder-legal Origin composition space", () => {
             if (left === undefined || right === undefined) continue;
             const key = pairKey(left.id, right.id);
             if (pairConflicts.has(key)) {
-              throw new Error(`Builder-legal Origin contains compiler-conflicting pair ${key}`);
+              throw new Error(
+                `Builder-legal Origin contains compiler-conflicting pair ${key}`,
+              );
             }
           }
         }
+
+        if (exhaustiveCompile) {
+          const profile = compileRuleProfile(
+            RULE_AXIS_REGISTRY,
+            selectedContributions,
+          );
+          compiledLegalOrigins += 1;
+          // Periodically prove the full compile/normalization serialization is
+          // also invariant to authored input order without doubling all work.
+          if ((checkedLegalOrigins & 0xfff) === 0) {
+            const reversed = compileRuleProfile(
+              RULE_AXIS_REGISTRY,
+              [...selectedContributions].reverse(),
+            );
+            expect(profile.canonicalSerialization).toBe(
+              reversed.canonicalSerialization,
+            );
+          }
+        }
       }
+
       if (selected.length === 5) return;
       for (let index = startIndex; index < traits.length; index += 1) {
         const trait = traits[index];
@@ -115,15 +162,23 @@ describe("builder-legal Origin composition space", () => {
         const nextPositive = positiveSpend + trait.positiveCost;
         const nextRefund = drawbackRefund + trait.drawbackRefund;
         if (nextPositive > 20 || nextRefund > 10) continue;
+
         selected.push(trait);
+        const beforeContributionCount = selectedContributions.length;
+        selectedContributions.push(
+          ...(contributionMap.get(trait.id) ?? []),
+        );
         visit(index + 1, nextPositive, nextRefund);
+        selectedContributions.length = beforeContributionCount;
         selected.pop();
       }
     };
 
     visit(0, 0, 0);
-    // Protect against a parser or recursion regression that accidentally turns
-    // the exhaustive proof into a tiny sample.
+
     expect(checkedLegalOrigins).toBeGreaterThan(1_000_000);
+    if (exhaustiveCompile) {
+      expect(compiledLegalOrigins).toBe(checkedLegalOrigins);
+    }
   });
 });

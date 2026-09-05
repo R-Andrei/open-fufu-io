@@ -62,7 +62,7 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(",")}]`;
   }
-  if (typeof value === "object") {
+  if (typeof value === "object" && value !== null) {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record)
       .filter((key) => record[key] !== undefined)
@@ -87,7 +87,10 @@ function numericValue(contribution: RuleContribution): number {
 
 function capabilityValues(value: RuleValue | undefined): readonly string[] {
   if (typeof value === "string") return [value];
-  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+  if (
+    Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string")
+  ) {
     return value;
   }
   throw new Error("Expected capability ID(s)");
@@ -137,6 +140,26 @@ function normalizedProduct(
   };
 }
 
+function normalizedSum(
+  contributions: readonly RuleContribution[],
+): NormalizedRuleValue {
+  let total = 0n;
+  for (const contribution of contributions) {
+    const value = numericValue(contribution);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(
+        `SUM requires a safe-integer fixed-scale operand; ${contribution.sourceId} supplied ${value}`,
+      );
+    }
+    total += BigInt(value);
+  }
+  const value = Number(total);
+  if (!Number.isSafeInteger(value)) {
+    throw new Error("Normalized SUM exceeds the safe-integer range");
+  }
+  return { kind: "SUM", value };
+}
+
 function normalizedSet(
   contributions: readonly RuleContribution[],
 ): readonly string[] {
@@ -153,13 +176,7 @@ function normalizeValue(
 ): NormalizedRuleValue {
   switch (reducer) {
     case "SUM":
-      return {
-        kind: "SUM",
-        value: contributions.reduce(
-          (total, contribution) => total + numericValue(contribution),
-          0,
-        ),
-      };
+      return normalizedSum(contributions);
     case "PRODUCT":
       return normalizedProduct(contributions);
     case "SINGLETON": {

@@ -1,4 +1,4 @@
-import {
+import type {
   RuleAxisDefinition,
   RuleAxisRegistry,
   RuleScopeKind,
@@ -14,6 +14,7 @@ const STATIC_RULE_SOURCES = [
   "TERRAIN",
   "STRUCTURE",
   "UNIT_PROFILE",
+  "SCENARIO",
   "SITUATIONAL",
 ] as const satisfies readonly RuleSourceKind[];
 
@@ -22,12 +23,14 @@ const ORIGIN_ECHO_SOURCES = [
   "RULESET_TRANSFORM",
   "ORIGIN",
   "ECHO",
+  "SCENARIO",
 ] as const satisfies readonly RuleSourceKind[];
 
-const ORIGIN_ONLY_SOURCES = [
+const ORIGIN_RULESET_SOURCES = [
   "BASE_RULESET",
   "RULESET_TRANSFORM",
   "ORIGIN",
+  "SCENARIO",
 ] as const satisfies readonly RuleSourceKind[];
 
 const originPercentStage: RuleStageDefinition = {
@@ -129,7 +132,14 @@ function standardScalarAxis(
     unit,
     scopeKind,
     stages,
-    allowedSourceKinds: echo ? ORIGIN_ECHO_SOURCES : ORIGIN_ONLY_SOURCES,
+    // Contextual stages can legitimately be authored by terrain, structure,
+    // unit-profile, scenario, and situational provenance. Fine-grained stage
+    // legality remains enforced by RULE_STAGE_ALLOWED_SOURCE_KINDS.
+    allowedSourceKinds: options.contextual
+      ? STATIC_RULE_SOURCES
+      : echo
+        ? ORIGIN_ECHO_SOURCES
+        : ORIGIN_RULESET_SOURCES,
   };
 }
 
@@ -176,7 +186,7 @@ function capAxis(
             allowedOperators: ["CAP_LIMIT"],
           },
     ],
-    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
+    allowedSourceKinds: ORIGIN_RULESET_SOURCES,
   };
 }
 
@@ -216,7 +226,39 @@ function structuralAxis(
         allowedOperators: ["STRUCTURAL_TRANSFORM"],
       },
     ],
-    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
+    allowedSourceKinds: ORIGIN_RULESET_SOURCES,
+  };
+}
+
+function capabilityAxis(
+  id: string,
+  scopeKind: RuleScopeKind,
+): RuleAxisDefinition {
+  return {
+    id,
+    kind: "CAPABILITY_SET",
+    unit: "CAPABILITY_SET",
+    scopeKind,
+    stages: [
+      {
+        id: "CAPABILITY_REPLACE",
+        reducer: "SINGLETON",
+        allowedOperators: ["REPLACE_CAPABILITIES"],
+      },
+      {
+        id: "CAPABILITY_ADD",
+        reducer: "UNION",
+        allowedOperators: ["ADD_CAPABILITY"],
+        after: ["CAPABILITY_REPLACE"],
+      },
+      {
+        id: "CAPABILITY_REMOVE",
+        reducer: "DIFFERENCE",
+        allowedOperators: ["REMOVE_CAPABILITY"],
+        after: ["CAPABILITY_ADD"],
+      },
+    ],
+    allowedSourceKinds: STATIC_RULE_SOURCES,
   };
 }
 
@@ -231,7 +273,11 @@ export const RULE_AXIS_REGISTRY = {
     "POPULATION_GROWTH_UTILIZATION_PROFILE",
     "GLOBAL",
   ),
-  POPULATION_GROWTH: standardScalarAxis("POPULATION_GROWTH", "RATIO", "GLOBAL"),
+  POPULATION_GROWTH: standardScalarAxis(
+    "POPULATION_GROWTH",
+    "RATIO",
+    "GLOBAL",
+  ),
   STARTING_POPULATION_FRACTION: standardScalarAxis(
     "STARTING_POPULATION_FRACTION",
     "RATIO",
@@ -343,7 +389,10 @@ export const RULE_AXIS_REGISTRY = {
     "STRUCTURE_UPGRADE_PERMISSION",
     "STRUCTURE",
   ),
-  STRUCTURE_OWNERSHIP_CAP: capAxis("STRUCTURE_OWNERSHIP_CAP", "STRUCTURE"),
+  STRUCTURE_OWNERSHIP_CAP: capAxis(
+    "STRUCTURE_OWNERSHIP_CAP",
+    "STRUCTURE",
+  ),
   CITY_GROWTH_CONTRIBUTION: standardScalarAxis(
     "CITY_GROWTH_CONTRIBUTION",
     "RATIO",
@@ -393,6 +442,10 @@ export const RULE_AXIS_REGISTRY = {
     "STRUCTURE_EFFECT_PROFILE",
     "STRUCTURE",
   ),
+  STRUCTURE_ATTACK_CAPABILITIES: capabilityAxis(
+    "STRUCTURE_ATTACK_CAPABILITIES",
+    "STRUCTURE",
+  ),
 
   UNIT_PURCHASE_FFY_COST: standardScalarAxis(
     "UNIT_PURCHASE_FFY_COST",
@@ -411,7 +464,11 @@ export const RULE_AXIS_REGISTRY = {
     "CELLS_PER_SECOND",
     "UNIT",
   ),
-  UNIT_ATTACK_RANGE: standardScalarAxis("UNIT_ATTACK_RANGE", "CELLS", "UNIT"),
+  UNIT_ATTACK_RANGE: standardScalarAxis(
+    "UNIT_ATTACK_RANGE",
+    "CELLS",
+    "UNIT",
+  ),
   UNIT_DAMAGE: standardScalarAxis("UNIT_DAMAGE", "DAMAGE", "UNIT"),
   UNIT_MAX_HEALTH: standardScalarAxis(
     "UNIT_MAX_HEALTH",
@@ -422,32 +479,10 @@ export const RULE_AXIS_REGISTRY = {
   UNIT_OWNERSHIP_CAP: capAxis("UNIT_OWNERSHIP_CAP", "UNIT"),
   UNIT_MAX_RANK: capAxis("UNIT_MAX_RANK", "UNIT", { additive: true }),
   UNIT_CHASSIS_PROFILE: structuralAxis("UNIT_CHASSIS_PROFILE", "UNIT"),
-  UNIT_ATTACK_CAPABILITIES: {
-    id: "UNIT_ATTACK_CAPABILITIES",
-    kind: "CAPABILITY_SET",
-    unit: "CAPABILITY_SET",
-    scopeKind: "UNIT",
-    stages: [
-      {
-        id: "CAPABILITY_REPLACE",
-        reducer: "SINGLETON",
-        allowedOperators: ["REPLACE_CAPABILITIES"],
-      },
-      {
-        id: "CAPABILITY_ADD",
-        reducer: "UNION",
-        allowedOperators: ["ADD_CAPABILITY"],
-        after: ["CAPABILITY_REPLACE"],
-      },
-      {
-        id: "CAPABILITY_REMOVE",
-        reducer: "DIFFERENCE",
-        allowedOperators: ["REMOVE_CAPABILITY"],
-        after: ["CAPABILITY_ADD"],
-      },
-    ],
-    allowedSourceKinds: STATIC_RULE_SOURCES,
-  },
+  UNIT_ATTACK_CAPABILITIES: capabilityAxis(
+    "UNIT_ATTACK_CAPABILITIES",
+    "UNIT",
+  ),
 
   TRANSPORT_EMBARK_COST: {
     id: "TRANSPORT_EMBARK_COST",
@@ -461,7 +496,7 @@ export const RULE_AXIS_REGISTRY = {
         allowedOperators: ["ADD_FLAT"],
       },
     ],
-    allowedSourceKinds: ORIGIN_ONLY_SOURCES,
+    allowedSourceKinds: ORIGIN_RULESET_SOURCES,
   },
   TRANSPORT_LANDING_SURVIVAL_FRACTION: standardScalarAxis(
     "TRANSPORT_LANDING_SURVIVAL_FRACTION",
@@ -480,11 +515,18 @@ export const RULE_AXIS_REGISTRY = {
     "FFY",
     "WEAPON",
   ),
-  WEAPON_BLAST_AREA: standardScalarAxis("WEAPON_BLAST_AREA", "AREA", "WEAPON"),
+  WEAPON_BLAST_AREA: standardScalarAxis(
+    "WEAPON_BLAST_AREA",
+    "AREA",
+    "WEAPON",
+  ),
   WEAPON_USE_PERMISSION: permissionAxis("WEAPON_USE_PERMISSION", "WEAPON"),
 
   SPAWN_PROFILE: structuralAxis("SPAWN_PROFILE", "GLOBAL"),
-  SPAWN_FOOTPRINT_PROFILE: structuralAxis("SPAWN_FOOTPRINT_PROFILE", "GLOBAL"),
+  SPAWN_FOOTPRINT_PROFILE: structuralAxis(
+    "SPAWN_FOOTPRINT_PROFILE",
+    "GLOBAL",
+  ),
 } as const satisfies RuleAxisRegistry;
 
 export type RuleAxisId = keyof typeof RULE_AXIS_REGISTRY;

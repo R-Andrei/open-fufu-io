@@ -1,6 +1,72 @@
 export const RULE_COMPOSITION_VERSION = "1" as const;
 export const BASIS_POINTS_SCALE = 10_000;
 
+export const TERRAIN_SCOPE_IDS = [
+  "PLAINS",
+  "HIGHLAND",
+  "MOUNTAIN",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+  "SHALLOW_WATER",
+] as const;
+export type TerrainScopeId = (typeof TERRAIN_SCOPE_IDS)[number];
+
+export const STRUCTURE_SCOPE_IDS = [
+  "ALL",
+  "CITY",
+  "FORT",
+  "PORT",
+  "FACTORY",
+  "MISSILE_SILO",
+  "SAM_LAUNCHER",
+  "OBSERVATION_POST",
+  "COMMAND_POST",
+] as const;
+export type StructureScopeId = (typeof STRUCTURE_SCOPE_IDS)[number];
+
+export const UNIT_SCOPE_IDS = [
+  "ALL",
+  "TANK",
+  "HEAVY_ARTILLERY",
+  "WARSHIP",
+  "TRANSPORT_SHIP",
+  "TRADE_SHIP",
+  "TRAIN",
+] as const;
+export type UnitScopeId = (typeof UNIT_SCOPE_IDS)[number];
+
+export const WEAPON_SCOPE_IDS = [
+  "ALL",
+  "ATOM_BOMB",
+  "HYDROGEN_BOMB",
+  "MIRV",
+] as const;
+export type WeaponScopeId = (typeof WEAPON_SCOPE_IDS)[number];
+
+export const FFY_FAMILY_SCOPE_IDS = [
+  "ALL",
+  "MILITARY_CONQUEST",
+  "NAVAL_TRADE",
+  "INDUSTRIAL",
+  "PIRACY",
+] as const;
+export type FfyFamilyScopeId = (typeof FFY_FAMILY_SCOPE_IDS)[number];
+
+export const RULE_SOURCE_KINDS = [
+  "BASE_RULESET",
+  "RULESET_TRANSFORM",
+  "ORIGIN",
+  "ECHO",
+  "TERRAIN",
+  "STRUCTURE",
+  "UNIT_PROFILE",
+  "SCENARIO",
+  "SITUATIONAL",
+] as const;
+export type RuleSourceKind = (typeof RULE_SOURCE_KINDS)[number];
+
 export type RuleAxisKind =
   | "SCALAR"
   | "PERMISSION"
@@ -8,16 +74,6 @@ export type RuleAxisKind =
   | "CAPABILITY_SET"
   | "COMPONENT_SET"
   | "STRUCTURAL";
-
-export type RuleSourceKind =
-  | "BASE_RULESET"
-  | "RULESET_TRANSFORM"
-  | "ORIGIN"
-  | "ECHO"
-  | "TERRAIN"
-  | "STRUCTURE"
-  | "UNIT_PROFILE"
-  | "SITUATIONAL";
 
 export type RuleUnit =
   | "NONE"
@@ -39,49 +95,6 @@ export type RuleUnit =
   | "COMPONENT_SET"
   | "PROFILE_ID";
 
-export type TerrainScopeId =
-  | "PLAINS"
-  | "HIGHLAND"
-  | "MOUNTAIN"
-  | "DESERT"
-  | "FOREST"
-  | "TUNDRA"
-  | "MARSH"
-  | "SHALLOW_WATER";
-
-export type StructureScopeId =
-  | "ALL"
-  | "CITY"
-  | "FORT"
-  | "PORT"
-  | "FACTORY"
-  | "MISSILE_SILO"
-  | "SAM_LAUNCHER"
-  | "OBSERVATION_POST"
-  | "COMMAND_POST";
-
-export type UnitScopeId =
-  | "ALL"
-  | "TANK"
-  | "HEAVY_ARTILLERY"
-  | "WARSHIP"
-  | "TRANSPORT_SHIP"
-  | "TRADE_SHIP"
-  | "TRAIN";
-
-export type WeaponScopeId =
-  | "ALL"
-  | "ATOM_BOMB"
-  | "HYDROGEN_BOMB"
-  | "MIRV";
-
-export type FfyFamilyScopeId =
-  | "ALL"
-  | "MILITARY_CONQUEST"
-  | "NAVAL_TRADE"
-  | "INDUSTRIAL"
-  | "PIRACY";
-
 export type RuleScope =
   | { readonly kind: "GLOBAL" }
   | { readonly kind: "TERRAIN"; readonly terrain: TerrainScopeId }
@@ -92,42 +105,46 @@ export type RuleScope =
 
 export type RuleScopeKind = RuleScope["kind"];
 
-export type RuleStageId =
-  | "STRUCTURAL_PROFILE"
-  | "BASE_REPLACEMENT"
-  | "ORIGIN_FLAT"
-  | "ORIGIN_PERCENT"
-  | "ORIGIN_SCALAR"
-  | "ORIGIN_CAP"
-  | "ECHO_PERCENT"
-  | "ECHO_SCALAR"
-  | "CONTEXTUAL_PERCENT"
-  | "CONTEXTUAL_SCALAR"
-  | "CAPABILITY_ADD"
-  | "CAPABILITY_REMOVE"
-  | "CAPABILITY_REPLACE"
-  | "COMPONENT_SUPPRESSION"
-  | "PERMISSION"
-  | "FINAL_OVERRIDE"
-  | "TERMINAL";
+export const RULE_STAGE_IDS = [
+  "STRUCTURAL_PROFILE",
+  "BASE_REPLACEMENT",
+  "ORIGIN_FLAT",
+  "ORIGIN_PERCENT",
+  "ORIGIN_SCALAR",
+  "ORIGIN_CAP",
+  "ECHO_PERCENT",
+  "ECHO_SCALAR",
+  "CONTEXTUAL_PERCENT",
+  "CONTEXTUAL_SCALAR",
+  "CAPABILITY_ADD",
+  "CAPABILITY_REMOVE",
+  "CAPABILITY_REPLACE",
+  "COMPONENT_SUPPRESSION",
+  "PERMISSION",
+  "FINAL_OVERRIDE",
+  "TERMINAL",
+] as const;
+export type RuleStageId = (typeof RULE_STAGE_IDS)[number];
 
-export type RuleOperator =
-  | "ADD_FLAT"
-  | "ADD_PERCENT"
-  | "MULTIPLY"
-  | "REPLACE_BASE"
-  | "FINAL_OVERRIDE"
-  | "HARD_ZERO"
-  | "ALLOW"
-  | "PROHIBIT"
-  | "CAP_LIMIT"
-  | "CAP_FLOOR"
-  | "ADD_CAP"
-  | "ADD_CAPABILITY"
-  | "REMOVE_CAPABILITY"
-  | "REPLACE_CAPABILITIES"
-  | "SUPPRESS_COMPONENT"
-  | "STRUCTURAL_TRANSFORM";
+export const RULE_OPERATORS = [
+  "ADD_FLAT",
+  "ADD_PERCENT",
+  "MULTIPLY",
+  "REPLACE_BASE",
+  "FINAL_OVERRIDE",
+  "HARD_ZERO",
+  "ALLOW",
+  "PROHIBIT",
+  "CAP_LIMIT",
+  "CAP_FLOOR",
+  "ADD_CAP",
+  "ADD_CAPABILITY",
+  "REMOVE_CAPABILITY",
+  "REPLACE_CAPABILITIES",
+  "SUPPRESS_COMPONENT",
+  "STRUCTURAL_TRANSFORM",
+] as const;
+export type RuleOperator = (typeof RULE_OPERATORS)[number];
 
 export type RuleReducer =
   | "SUM"
@@ -139,6 +156,18 @@ export type RuleReducer =
   | "UNION"
   | "DIFFERENCE"
   | "PROHIBIT_WINS";
+
+export const RULE_CAPABILITY_IDS = [
+  "NAVAL_GUNFIRE_AGAINST_SHIPS",
+  "ATTACK_SHIPS",
+] as const;
+export type RuleCapabilityId = (typeof RULE_CAPABILITY_IDS)[number];
+
+export const RULE_COMPONENT_IDS = [
+  "HOSTILE_FORT_DEFENSIVE_PRESSURE",
+  "FALLOUT_ACQUISITION_RESISTANCE",
+] as const;
+export type RuleComponentId = (typeof RULE_COMPONENT_IDS)[number];
 
 export type RuleCondition =
   | { readonly kind: "SOURCE_TERRAIN_IS"; readonly terrain: TerrainScopeId }
@@ -200,11 +229,8 @@ export interface RuleAxisDefinition {
 export type RuleAxisRegistry = Readonly<Record<string, RuleAxisDefinition>>;
 
 /**
- * Global semantic contract for provenance that may author each named stage.
- * Axes still decide which stages exist; this table prevents provenance from
- * silently masquerading as another layer merely because an axis accepts both.
- * Contextual stages intentionally admit Origins because provenance and semantic
- * placement are independent dimensions (for example N18 is a late Origin rule).
+ * Provenance that may author each semantic stage. Axis-level source legality is
+ * the coarse bound; this table is the fine-grained layer contract.
  */
 export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
   STRUCTURAL_PROFILE: [
@@ -212,8 +238,14 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "RULESET_TRANSFORM",
     "ORIGIN",
     "UNIT_PROFILE",
+    "SCENARIO",
   ],
-  BASE_REPLACEMENT: ["BASE_RULESET", "RULESET_TRANSFORM", "ORIGIN"],
+  BASE_REPLACEMENT: [
+    "BASE_RULESET",
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "SCENARIO",
+  ],
   ORIGIN_FLAT: ["ORIGIN"],
   ORIGIN_PERCENT: ["ORIGIN"],
   ORIGIN_SCALAR: ["ORIGIN"],
@@ -226,6 +258,7 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "TERRAIN",
     "STRUCTURE",
     "UNIT_PROFILE",
+    "SCENARIO",
     "SITUATIONAL",
   ],
   CONTEXTUAL_SCALAR: [
@@ -234,13 +267,21 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "TERRAIN",
     "STRUCTURE",
     "UNIT_PROFILE",
+    "SCENARIO",
     "SITUATIONAL",
   ],
-  CAPABILITY_ADD: ["RULESET_TRANSFORM", "ORIGIN", "UNIT_PROFILE", "SITUATIONAL"],
+  CAPABILITY_ADD: [
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "UNIT_PROFILE",
+    "SCENARIO",
+    "SITUATIONAL",
+  ],
   CAPABILITY_REMOVE: [
     "RULESET_TRANSFORM",
     "ORIGIN",
     "UNIT_PROFILE",
+    "SCENARIO",
     "SITUATIONAL",
   ],
   CAPABILITY_REPLACE: [
@@ -248,8 +289,14 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "RULESET_TRANSFORM",
     "ORIGIN",
     "UNIT_PROFILE",
+    "SCENARIO",
   ],
-  COMPONENT_SUPPRESSION: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
+  COMPONENT_SUPPRESSION: [
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "SCENARIO",
+    "SITUATIONAL",
+  ],
   PERMISSION: [
     "BASE_RULESET",
     "RULESET_TRANSFORM",
@@ -257,10 +304,16 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "TERRAIN",
     "STRUCTURE",
     "UNIT_PROFILE",
+    "SCENARIO",
     "SITUATIONAL",
   ],
-  FINAL_OVERRIDE: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
-  TERMINAL: ["RULESET_TRANSFORM", "ORIGIN", "SITUATIONAL"],
+  FINAL_OVERRIDE: [
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "SCENARIO",
+    "SITUATIONAL",
+  ],
+  TERMINAL: ["RULESET_TRANSFORM", "ORIGIN", "SCENARIO", "SITUATIONAL"],
 } as const satisfies Readonly<Record<RuleStageId, readonly RuleSourceKind[]>>;
 
 export type RuleValidationCode =
@@ -270,7 +323,12 @@ export type RuleValidationCode =
   | "STAGE_DEPENDENCY_ORDER"
   | "STAGE_DEPENDENCY_CYCLE"
   | "UNKNOWN_AXIS"
+  | "INVALID_SCOPE_VALUE"
   | "SCOPE_KIND_MISMATCH"
+  | "INVALID_CONDITION"
+  | "INVALID_SOURCE_KIND"
+  | "INVALID_STAGE"
+  | "INVALID_OPERATOR"
   | "VALUE_UNIT_MISMATCH"
   | "SOURCE_KIND_NOT_ALLOWED"
   | "SOURCE_KIND_NOT_ALLOWED_IN_STAGE"
@@ -280,6 +338,8 @@ export type RuleValidationCode =
   | "VALUE_NOT_ALLOWED"
   | "INVALID_NUMERIC_VALUE"
   | "NON_INTEGER_BASIS_POINTS"
+  | "NON_INTEGER_FLAT_VALUE"
+  | "NON_INTEGER_COUNT_VALUE"
   | "INVALID_STRING_VALUE"
   | "INVALID_CAPABILITY_VALUE"
   | "INVALID_COMPONENT_VALUE"
@@ -321,6 +381,17 @@ const CAPABILITY_OPERATORS = new Set<RuleOperator>([
 ]);
 const COMPONENT_OPERATORS = new Set<RuleOperator>(["SUPPRESS_COMPONENT"]);
 
+const TERRAIN_SCOPE_ID_SET = new Set<string>(TERRAIN_SCOPE_IDS);
+const STRUCTURE_SCOPE_ID_SET = new Set<string>(STRUCTURE_SCOPE_IDS);
+const UNIT_SCOPE_ID_SET = new Set<string>(UNIT_SCOPE_IDS);
+const WEAPON_SCOPE_ID_SET = new Set<string>(WEAPON_SCOPE_IDS);
+const FFY_FAMILY_SCOPE_ID_SET = new Set<string>(FFY_FAMILY_SCOPE_IDS);
+const RULE_SOURCE_KIND_SET = new Set<string>(RULE_SOURCE_KINDS);
+const RULE_STAGE_ID_SET = new Set<string>(RULE_STAGE_IDS);
+const RULE_OPERATOR_SET = new Set<string>(RULE_OPERATORS);
+const RULE_CAPABILITY_ID_SET = new Set<string>(RULE_CAPABILITY_IDS);
+const RULE_COMPONENT_ID_SET = new Set<string>(RULE_COMPONENT_IDS);
+
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -337,7 +408,7 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(canonicalJson).join(",")}]`;
   }
-  if (typeof value === "object") {
+  if (typeof value === "object" && value !== null) {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record)
       .filter((key) => record[key] !== undefined)
@@ -382,6 +453,82 @@ export function serializeRuleContributions(
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isValidRuleScope(scope: unknown): scope is RuleScope {
+  if (!isRecord(scope) || typeof scope.kind !== "string") return false;
+  switch (scope.kind) {
+    case "GLOBAL":
+      return true;
+    case "TERRAIN":
+      return (
+        typeof scope.terrain === "string" &&
+        TERRAIN_SCOPE_ID_SET.has(scope.terrain)
+      );
+    case "STRUCTURE":
+      return (
+        typeof scope.structure === "string" &&
+        STRUCTURE_SCOPE_ID_SET.has(scope.structure)
+      );
+    case "UNIT":
+      return typeof scope.unit === "string" && UNIT_SCOPE_ID_SET.has(scope.unit);
+    case "WEAPON":
+      return (
+        typeof scope.weapon === "string" &&
+        WEAPON_SCOPE_ID_SET.has(scope.weapon)
+      );
+    case "FFY_FAMILY":
+      return (
+        typeof scope.family === "string" &&
+        FFY_FAMILY_SCOPE_ID_SET.has(scope.family)
+      );
+    default:
+      return false;
+  }
+}
+
+export function isValidRuleCondition(
+  condition: unknown,
+): condition is RuleCondition {
+  if (!isRecord(condition) || typeof condition.kind !== "string") return false;
+  switch (condition.kind) {
+    case "SOURCE_TERRAIN_IS":
+    case "TARGET_TERRAIN_IS":
+    case "EVENT_TERRAIN_IS":
+    case "BUILD_TERRAIN_IS":
+      return (
+        typeof condition.terrain === "string" &&
+        TERRAIN_SCOPE_ID_SET.has(condition.terrain)
+      );
+    case "TARGET_HAS_FALLOUT":
+    case "TARGET_LACKS_FALLOUT":
+      return true;
+    case "TARGET_UNIT_IS":
+      return (
+        typeof condition.unit === "string" &&
+        UNIT_SCOPE_ID_SET.has(condition.unit)
+      );
+    case "EVENT_INSIDE_FIELD":
+      return (
+        condition.field === "FORT" ||
+        condition.field === "SAM" ||
+        condition.field === "COMMAND_POST"
+      );
+    case "SOURCE_INSIDE_FIELD":
+      return condition.field === "FORT" || condition.field === "COMMAND_POST";
+    case "STRUCTURE_PROVENANCE_IS":
+      return (
+        condition.provenance === "BUILT" ||
+        condition.provenance === "CAPTURED" ||
+        condition.provenance === "GRANTED"
+      );
+    default:
+      return false;
+  }
+}
+
 function scopeValue(scope: RuleScope): string {
   switch (scope.kind) {
     case "GLOBAL":
@@ -410,7 +557,7 @@ export function ruleScopeMatches(
   return authored === "ALL" || authored === scopeValue(requestedScope);
 }
 
-export function selectApplicableRuleContributions(
+export function selectRuleContributionsForScope(
   axis: string,
   requestedScope: RuleScope,
   contributions: readonly RuleContribution[],
@@ -421,6 +568,10 @@ export function selectApplicableRuleContributions(
       ruleScopeMatches(contribution.scope, requestedScope),
   );
 }
+
+/** @deprecated Scope selection does not evaluate contextual conditions. */
+export const selectApplicableRuleContributions =
+  selectRuleContributionsForScope;
 
 function expectedValueUnit(
   definition: RuleAxisDefinition,
@@ -545,21 +696,32 @@ function validateStringSetValue(
   contribution: RuleContribution,
   code: "INVALID_CAPABILITY_VALUE" | "INVALID_COMPONENT_VALUE",
   label: string,
+  allowed: ReadonlySet<string>,
   issues: RuleValidationIssue[],
 ): void {
   const value = contribution.value;
+  const values =
+    typeof value === "string"
+      ? [value]
+      : Array.isArray(value)
+        ? value
+        : undefined;
   const valid =
-    typeof value === "string" ||
-    (Array.isArray(value) &&
-      value.length > 0 &&
-      value.every((entry) => typeof entry === "string" && entry.length > 0));
+    values !== undefined &&
+    values.length > 0 &&
+    values.every(
+      (entry) =>
+        typeof entry === "string" &&
+        entry.length > 0 &&
+        allowed.has(entry),
+    );
   if (!valid) {
     issues.push({
       code,
       axis: contribution.axis,
       sourceId: contribution.sourceId,
       stage: contribution.stage,
-      message: `${contribution.operator} requires ${label} ID(s)`,
+      message: `${contribution.operator} requires registered ${label} ID(s)`,
     });
   }
 }
@@ -580,13 +742,17 @@ function validateValue(
         code: "VALUE_REQUIRED",
         message: `${contribution.operator} requires a numeric value`,
       });
-    } else if (!Number.isFinite(contribution.value)) {
+      return;
+    }
+    if (!Number.isFinite(contribution.value)) {
       issues.push({
         ...base,
         code: "INVALID_NUMERIC_VALUE",
         message: `${contribution.operator} requires a finite number`,
       });
-    } else if (
+      return;
+    }
+    if (
       contribution.valueUnit === "BASIS_POINTS" &&
       !Number.isSafeInteger(contribution.value)
     ) {
@@ -594,6 +760,29 @@ function validateValue(
         ...base,
         code: "NON_INTEGER_BASIS_POINTS",
         message: `${contribution.operator} requires an integer basis-point operand`,
+      });
+    }
+    if (
+      contribution.operator === "ADD_FLAT" &&
+      !Number.isSafeInteger(contribution.value)
+    ) {
+      issues.push({
+        ...base,
+        code: "NON_INTEGER_FLAT_VALUE",
+        message:
+          "V1 flat additions require safe-integer fixed-scale operands; introduce a versioned fixed-point unit before authoring fractional flats",
+      });
+    }
+    if (
+      (contribution.operator === "ADD_CAP" ||
+        contribution.operator === "CAP_LIMIT" ||
+        contribution.operator === "CAP_FLOOR") &&
+      !Number.isSafeInteger(contribution.value)
+    ) {
+      issues.push({
+        ...base,
+        code: "NON_INTEGER_COUNT_VALUE",
+        message: `${contribution.operator} requires a safe-integer count operand`,
       });
     }
     return;
@@ -609,7 +798,10 @@ function validateValue(
     return;
   }
   if (STRING_OPERATORS.has(contribution.operator)) {
-    if (typeof contribution.value !== "string" || contribution.value.length === 0) {
+    if (
+      typeof contribution.value !== "string" ||
+      contribution.value.length === 0
+    ) {
       issues.push({
         ...base,
         code: "INVALID_STRING_VALUE",
@@ -623,6 +815,7 @@ function validateValue(
       contribution,
       "INVALID_CAPABILITY_VALUE",
       "capability",
+      RULE_CAPABILITY_ID_SET,
       issues,
     );
     return;
@@ -632,6 +825,7 @@ function validateValue(
       contribution,
       "INVALID_COMPONENT_VALUE",
       "component",
+      RULE_COMPONENT_ID_SET,
       issues,
     );
   }
@@ -643,7 +837,48 @@ export function validateRuleContributions(
 ): readonly RuleValidationIssue[] {
   const issues: RuleValidationIssue[] = [];
   const groups = new Map<string, RuleContribution[]>();
+
   for (const contribution of contributions) {
+    const rawSourceKind = contribution.sourceKind as unknown;
+    if (
+      typeof rawSourceKind !== "string" ||
+      !RULE_SOURCE_KIND_SET.has(rawSourceKind)
+    ) {
+      issues.push({
+        code: "INVALID_SOURCE_KIND",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        message: `Unknown source kind ${String(rawSourceKind)}`,
+      });
+      continue;
+    }
+
+    const rawStage = contribution.stage as unknown;
+    if (typeof rawStage !== "string" || !RULE_STAGE_ID_SET.has(rawStage)) {
+      issues.push({
+        code: "INVALID_STAGE",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        message: `Unknown stage ${String(rawStage)}`,
+      });
+      continue;
+    }
+
+    const rawOperator = contribution.operator as unknown;
+    if (
+      typeof rawOperator !== "string" ||
+      !RULE_OPERATOR_SET.has(rawOperator)
+    ) {
+      issues.push({
+        code: "INVALID_OPERATOR",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        stage: contribution.stage,
+        message: `Unknown operator ${String(rawOperator)}`,
+      });
+      continue;
+    }
+
     const definition = registry[contribution.axis];
     if (definition === undefined) {
       issues.push({
@@ -652,6 +887,17 @@ export function validateRuleContributions(
         sourceId: contribution.sourceId,
         stage: contribution.stage,
         message: `Unknown axis ${contribution.axis}`,
+      });
+      continue;
+    }
+
+    if (!isValidRuleScope(contribution.scope as unknown)) {
+      issues.push({
+        code: "INVALID_SCOPE_VALUE",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        stage: contribution.stage,
+        message: `${contribution.axis} received an invalid runtime scope`,
       });
       continue;
     }
@@ -664,6 +910,20 @@ export function validateRuleContributions(
         message: `${contribution.axis} expects ${definition.scopeKind} scope`,
       });
     }
+
+    if (
+      contribution.condition !== undefined &&
+      !isValidRuleCondition(contribution.condition as unknown)
+    ) {
+      issues.push({
+        code: "INVALID_CONDITION",
+        axis: contribution.axis,
+        sourceId: contribution.sourceId,
+        stage: contribution.stage,
+        message: `${contribution.axis} received an invalid runtime condition`,
+      });
+    }
+
     const expectedUnit = expectedValueUnit(definition, contribution.operator);
     if (contribution.valueUnit !== expectedUnit) {
       issues.push({
@@ -674,6 +934,7 @@ export function validateRuleContributions(
         message: `${contribution.operator} on ${contribution.axis} expects ${expectedUnit}, received ${contribution.valueUnit}`,
       });
     }
+
     if (!definition.allowedSourceKinds.includes(contribution.sourceKind)) {
       issues.push({
         code: "SOURCE_KIND_NOT_ALLOWED",
@@ -683,6 +944,7 @@ export function validateRuleContributions(
         message: `${contribution.sourceKind} is not allowed on ${contribution.axis}`,
       });
     }
+
     const stage = definition.stages.find(
       (candidate) => candidate.id === contribution.stage,
     );
@@ -696,6 +958,7 @@ export function validateRuleContributions(
       });
       continue;
     }
+
     const stageAllowedSources: readonly RuleSourceKind[] =
       RULE_STAGE_ALLOWED_SOURCE_KINDS[stage.id];
     if (!stageAllowedSources.includes(contribution.sourceKind)) {
@@ -707,6 +970,7 @@ export function validateRuleContributions(
         message: `${contribution.sourceKind} cannot author semantic stage ${contribution.stage}`,
       });
     }
+
     if (!stage.allowedOperators.includes(contribution.operator)) {
       issues.push({
         code: "OPERATOR_NOT_ALLOWED",
@@ -716,7 +980,9 @@ export function validateRuleContributions(
         message: `${contribution.operator} is not allowed in ${contribution.axis}/${contribution.stage}`,
       });
     }
+
     validateValue(contribution, issues);
+
     const key = canonicalJson({
       axis: contribution.axis,
       scope: contribution.scope,
@@ -791,7 +1057,9 @@ function assertValid(
       stage.reducer === "SINGLETON" &&
       contributions.filter((entry) => entry.stage === stage.id).length > 1
     ) {
-      throw new Error(`${definition.id}/${stage.id} has multiple applicable singletons`);
+      throw new Error(
+        `${definition.id}/${stage.id} has multiple applicable singletons`,
+      );
     }
   }
 }
@@ -828,11 +1096,20 @@ function exactBasisPointProduct(group: readonly RuleContribution[]): number {
   return Number(numerator) / Number(denominator);
 }
 
-function deterministicNumericSum(group: readonly RuleContribution[]): number {
-  return group
-    .map(numericValue)
-    .sort((a, b) => a - b)
-    .reduce((total, value) => total + value, 0);
+function exactSafeIntegerSum(group: readonly RuleContribution[]): number {
+  let total = 0n;
+  for (const entry of group) {
+    const value = numericValue(entry);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`Unsafe integer sum operand from ${entry.sourceId}`);
+    }
+    total += BigInt(value);
+  }
+  const result = Number(total);
+  if (!Number.isSafeInteger(result)) {
+    throw new Error("Rule SUM exceeds the safe-integer range");
+  }
+  return result;
 }
 
 /** Apply an authored fixed-scale percentage without first materializing 1 + p as a float. */
@@ -859,7 +1136,7 @@ export function reduceScalarRule(
     if (operator === undefined) continue;
     switch (stage.reducer) {
       case "SUM": {
-        const sum = deterministicNumericSum(group);
+        const sum = exactSafeIntegerSum(group);
         if (operator === "ADD_FLAT") current += sum;
         else if (operator === "ADD_PERCENT") {
           current = applyBasisPointDelta(current, sum);
@@ -934,7 +1211,7 @@ export function reduceCapRule(
     if (group.length === 0) continue;
     const operator = group[0]?.operator;
     if (stage.reducer === "SUM" && operator === "ADD_CAP") {
-      cap += deterministicNumericSum(group);
+      cap += exactSafeIntegerSum(group);
     } else if (stage.reducer === "MIN" && operator === "CAP_LIMIT") {
       cap = Math.min(cap, ...group.map(numericValue));
     } else if (stage.reducer === "MAX" && operator === "CAP_FLOOR") {
@@ -946,7 +1223,10 @@ export function reduceCapRule(
 
 function stringIds(value: RuleValue | undefined): readonly string[] {
   if (typeof value === "string") return [value];
-  if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+  if (
+    Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string")
+  ) {
     return value;
   }
   throw new Error("Expected string ID(s)");
@@ -1047,12 +1327,14 @@ function strongestFieldBonus(
 /** Component-aware pressure; same-type strongest, cross-type complement. */
 export function composePressure(input: PressureCompositionInput): number {
   const suppressed = input.suppressedComponents ?? new Set<string>();
-  const terrainBp = [...(input.terrainPercentBp ?? [])]
-    .sort((a, b) => a - b)
-    .reduce((a, b) => a + b, 0);
-  const ruleBp = [...(input.rulePercentBp ?? [])]
-    .sort((a, b) => a - b)
-    .reduce((a, b) => a + b, 0);
+  const terrainBp = [...(input.terrainPercentBp ?? [])].reduce(
+    (total, value) => total + BigInt(value),
+    0n,
+  );
+  const ruleBp = [...(input.rulePercentBp ?? [])].reduce(
+    (total, value) => total + BigInt(value),
+    0n,
+  );
   const fields = (input.structureFields ?? []).filter(
     (field) => !suppressed.has(field.component),
   );
@@ -1061,8 +1343,8 @@ export function composePressure(input: PressureCompositionInput): number {
   const structureBonus = 1 - (1 - fort) * (1 - command);
   return (
     applyBasisPointDelta(
-      applyBasisPointDelta(input.basePressure, terrainBp),
-      ruleBp,
+      applyBasisPointDelta(input.basePressure, Number(terrainBp)),
+      Number(ruleBp),
     ) *
     (1 + structureBonus)
   );
