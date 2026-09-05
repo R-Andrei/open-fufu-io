@@ -206,6 +206,13 @@ export interface OperationView {
   readonly target: CellSelector;
 }
 
+export interface ChargeStateView {
+  readonly ready: number;
+  readonly capacity: number;
+  /** One remaining-tick value for each currently recharging charge. */
+  readonly rechargeRemainingTicks: readonly number[];
+}
+
 export interface StructureView {
   readonly id: StructureId;
   readonly ownerId: FactionId;
@@ -216,6 +223,8 @@ export interface StructureView {
   readonly constructionRemainingTicks?: number;
   readonly health?: number;
   readonly maxHealth?: number;
+  /** Present for legally observable charge-bearing structures such as Silos/SAMs. */
+  readonly chargeState?: ChargeStateView;
 }
 
 export interface UnitView {
@@ -232,6 +241,8 @@ export interface UnitView {
   readonly maxHealth?: number;
   readonly rank?: number;
   readonly carriedPopulation?: number;
+  /** Present when an explicit rule makes this unit a charge-bearing launcher. */
+  readonly strategicWeaponChargeState?: ChargeStateView;
 }
 
 export type CellSelector =
@@ -464,6 +475,8 @@ export interface TerrainMechanicsSpec {
   >;
 }
 
+export type ObservationStructureEffect = "NONE" | "REVEAL" | "ENEMY_BLACKOUT";
+
 export interface StructureMechanicsSpec {
   readonly type: StructureType;
   readonly level: StructureLevel;
@@ -478,6 +491,8 @@ export interface StructureMechanicsSpec {
   readonly rechargeTicks?: number;
   readonly interceptionRange?: number;
   readonly observationRadius?: number;
+  readonly observationEffect?: ObservationStructureEffect;
+  readonly canAttackShips?: boolean;
   readonly weaponAccess?: readonly StrategicWeaponType[];
 }
 
@@ -505,11 +520,33 @@ export interface UnitMechanicsSpec {
   readonly repairRetreatHealthFraction?: number;
   readonly maximumRank?: number;
   readonly attacks: readonly UnitAttackSpec[];
+  /** Present when this unit type/instance is an effective strategic launcher. */
+  readonly strategicWeaponAccess?: readonly StrategicWeaponType[];
+  readonly strategicWeaponChargeCapacity?: number;
+  readonly strategicWeaponRechargeTicks?: number;
+}
+
+export type TransportEmbarkSourceRule =
+  | "OWNED_COAST_OR_SHORE"
+  | "OWNED_ACTIVE_PORT";
+
+export interface TransportMechanicsSpec {
+  readonly unit: UnitMechanicsSpec;
+  readonly activeOwnershipCap: number;
+  readonly embarkSourceRule: TransportEmbarkSourceRule;
+  readonly landingPopulationSurvivalFraction: number;
+  readonly returnPopulationSurvivalFraction: number;
+  readonly successfulLandingGrant?: {
+    readonly structure: StructureType;
+    readonly level: StructureLevel;
+  };
 }
 
 export interface StrategicWeaponMechanicsSpec {
   readonly type: StrategicWeaponType;
   readonly projectileSpeedCellsPerSecond: number;
+  readonly postSeparationProjectileSpeedCellsPerSecond?: number;
+  readonly separationProgressFraction?: number;
   readonly innerRadius: number;
   readonly outerRadius: number;
   readonly maxWarheads: number;
@@ -567,6 +604,7 @@ export interface MechanicsApi {
     factionId?: FactionId,
   ): UnitMechanicsSpec;
   unitSpec(unitId: UnitId): UnitMechanicsSpec;
+  transportSpec(factionId?: FactionId): TransportMechanicsSpec;
 
   weaponSpec(
     type: StrategicWeaponType,
