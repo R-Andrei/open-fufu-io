@@ -561,7 +561,7 @@ const TRAIT_SUPPORT_P41_P50 = [
     synergyTags: ["CITY_PURCHASE", "POPULATION_GROWTH", "ECONOMY"],
     signalSupport: [
       { evaluator: "ECONOMY", hookId: "P41_LEVEL5_CITY_PURCHASE_VALUE" },
-      { evaluator: "FORECAST", hookId: "P41_IMMEDIATE_CITY_LEVEL_FORECAST" },
+      { evaluator: "FORECAST", hookId: "P41_LEVEL5_CITY_COMPLETION_FORECAST" },
     ],
     plannerSupport: [
       { domain: "INFRASTRUCTURE", phase: "ENRICH_INPUT", hookId: "P41_LEVEL5_CITY_BUILD_RESULT_SEMANTICS" },

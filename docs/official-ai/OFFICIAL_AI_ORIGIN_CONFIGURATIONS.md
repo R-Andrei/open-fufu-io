@@ -295,11 +295,11 @@ No special combination hook is required. Trade, Train, direct-L5 City, and uniqu
 
 ## O39 — A Mere Ten Years
 
-P17, P21, P41, and N07 create one of the strongest infrastructure-sequencing Origins in the library. The first purchase of a City remains subject to P21 affordability, but if legal it consumes no FFY and P41 makes the purchased City immediately level 5. N07 means this may also be the faction's only City.
+P17, P21, P41, and N07 create one of the strongest infrastructure-sequencing Origins in the library. The first purchase of a City remains subject to P21 affordability, but if legal it consumes no FFY and P41 makes that one purchase target L5 directly after one ordinary City construction interval. N07 means this may also be the faction's only City.
 
-This still does not require a bespoke combination adapter. P21 already modifies first-purchase cost semantics, P41 already defines the resulting City state, and N07 already defines ownership scarcity. The ordinary infrastructure candidate can therefore carry all three consequences simultaneously, while P17 continues to optimize upgrades for structures that actually have legal upgrade paths.
+This still does not require a bespoke combination adapter. P21 already modifies first-purchase cost semantics, P41 already defines the construction target/completion state, and N07 already defines ownership scarcity. The ordinary infrastructure candidate can therefore carry all three consequences simultaneously, while P17 continues to optimize upgrades for structures that actually have legal upgrade paths.
 
-**AI identity:** turn a tiny infrastructure roster into immediately mature, highly optimized assets through careful purchase and upgrade sequencing.
+**AI identity:** turn a tiny infrastructure roster into highly optimized mature assets through careful purchase and upgrade sequencing, accounting for P41's short construction interval before its L5 City payoff becomes active.
 
 ## O40 — Efficiency Above All
 
@@ -335,11 +335,11 @@ P30 + P31 does not need a dedicated combination hook. P30 already generates/eval
 
 ## O05 — The Country Mouse
 
-P37, P32, and P12 all feed the same amphibious planning stack: Transports are faster and armored, must embark from Ports, cost extra FFY to launch under P37, and successful landings create level-1 Forts. The combination is powerful but remains an ordinary amphibious candidate with richer route, survivability, cost, and beachhead consequences.
+P37, P32, and P12 all feed the same amphibious planning stack: Transports are faster and armored, must embark from Ports, cost extra FFY to launch under P37, and a successful landing attempts P37's exact-cell level-1 Fort grant after any landing-cell structure capture resolves. The amphibious forecast must value that Fort only when final occupancy, placement, and ownership admission allow it; an inadmissible Fort does not undo the successful landing. The combination remains an ordinary amphibious candidate with richer route, survivability, cost, and beachhead consequences.
 
 N12 prevents Warship construction but does **not** suppress Transport/amphibious support. `NO_WARSHIPS_SUPPRESSES_WARSHIP_DEPENDENT_SUPPORT` only removes support belonging to Warship-dependent positive traits; P12, P32, and P37 remain fully active. N01 weakens City growth.
 
-**AI identity:** conduct fast armored Port-launched invasions that pay more upfront but arrive with durable fortified beachheads, despite having no conventional Warship fleet.
+**AI identity:** conduct fast armored Port-launched invasions that pay more upfront and can arrive with durable fortified beachheads when the exact landing cell can admit the Fort, despite having no conventional Warship fleet.
 
 ## O43 — King of Apparitions
 

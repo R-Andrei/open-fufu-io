@@ -148,18 +148,19 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Required seams / dependencies**
 
 - `successful qualifying enemy-structure transfer -> exactly one P05 conquest FFY event -> ordinary Military/conquest modifier pipeline`.
-- Failed capture, structureless capture, or destruction instead of transfer must not fire P05.
-- Depends on canonical structure-transfer event identity plus the P05 event's base value and event location where spatial FFY rules consume it.
+- Failed capture, structureless capture, or `DESTROYED_ON_CAPTURE` result must not fire P05.
+- The canonical structure-capture resolver now supplies the successful-transfer event identity; P05 still depends on #48 for its event base value and location where spatial FFY rules consume it.
 
 **Explicit interactions**
 
-- `P05 + N17`: N17 destroys instead of transfers; P05 must not fire.
-- `P05 + P34`: captured Factory transformation and P05 event must coexist on one ownership transition.
+- `P05 + N17`: N17 changes capture disposition to destruction; P05 must not fire.
+- `P05 + N07`: cap-rejected capture transfer destroys the incoming structure; P05 must not fire because no `STRUCTURE_TRANSFERRED` result exists.
+- `P05 + P34`: a successfully transferred captured Factory can both trigger P05 and acquire P34 conquest provenance on one atomic capture resolution.
 - Inspect P14/P24 after P05 event-location semantics are closed.
 
 **Blocker**
 
-- The inspected canonical material identifies the P05 event family but does not close its base-value rule or location semantics.
+- The capture trigger/disposition identity is closed by #45, but P05's exact event base value and canonical event location remain unresolved under #48.
 
 ---
 
@@ -259,7 +260,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Required seams / dependencies**
 
-- `Fort effective field -> automatic-defense / land-combat pressure`: outside coverage, inside with no defender, inside with real defender.
+- `Fort effective field -> automatic-defense / land-combat pressure`: outside coverage, inside coverage without an automatic defender, and inside coverage with a real automatic defender.
 - `effective Fort price -> canonical structure affordability/payment transaction`.
 - Depends on level-dependent Fort baselines, defender presence, and structure cost-composition order.
 
@@ -317,12 +318,13 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 - `Population initialization/growth/loss -> monotonic peak-Population tracker -> permanent SAM-slot entitlement`.
 - Starting Population contributes to the initial peak; later losses must not revoke already unlocked slots.
-- `SAM-slot entitlement -> structure ownership/build legality` must reject owning/building beyond the currently unlocked permanent slot count while permitting legal zero-FFY purchases within it.
+- `SAM-slot entitlement -> canonical structure acquisition admission` must reject ownership beyond the currently unlocked permanent slot count across any applicable acquisition path while permitting legal zero-FFY purchases within it.
+- Existing/under-construction SAMs and committed ownership reservations consume the entitlement under the generic structure-admission contract.
 - SAM charge/range/interception behavior remains the ordinary SAM subsystem unless another trait changes it.
 
 **Explicit interactions**
 
-- `P11 + N07`: N07's one-of-each-structure cap and P11's unlocked-SAM-slot cap both apply; effective ownership legality must satisfy both rather than treating either as an override.
+- `P11 + N07`: P11's unlocked-SAM entitlement and N07's one-per-type ownership rule are both mandatory hard ownership constraints; an acquisition must satisfy both. Canonical normalization/composition of multiple cap-valued rule sources remains owned by #43 rather than this validation registry.
 - `P11 + P40`: P11 controls cost/ownership entitlement while P40 transforms the SAM's charge/range/recharge profile. Same-domain projection coverage must include the combined effective SAM state.
 - `P11 + P27`: inspect when P27 is audited because it changes SAM target legality while P11 changes how many SAMs may exist and their cost.
 - `P11 + P21`: first-SAM purchase remains a purchase even though P11 makes its FFY price zero; P21 must not change P11's permanent slot entitlement or create an extra SAM slot.
@@ -541,27 +543,28 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Direct transformation / owners**
 
 - Pre-match/start-state initialization: grants one free Missile Silo.
-- Persistent-structure lifecycle: the result must be a normal canonical Missile Silo after the grant resolves.
+- Persistent-structure lifecycle: after admission the result is one immediately active completed L1 Missile Silo.
 - Strategic-weapon subsystem consumes the resulting Silo level/charges/access exactly as it would any other legal persistent Silo.
 
 **Required seams / dependencies**
 
-- `resolved Initial Territory / start-state grant placement -> valid owned persistent Missile Silo -> ordinary Silo lifecycle/weapon access/charges`.
-- Grant occurs as a **grant**, not a purchase; no FFY purchase transaction is performed.
-- Depends on canonical start-state grant placement, resulting Silo level/activation state, and initial charge/readiness semantics.
+- `#32 resolved start-state location/order -> exact GRANT request -> canonical structure admission -> active completed L1 Missile Silo -> ordinary Silo weapon/charge lifecycle`.
+- Grant occurs as a **grant**, not a purchase; no FFY purchase transaction is performed and no P21 first-Silo entitlement is consumed.
+- Hard ownership limits such as N07 still apply to the grant.
+- #45 closes resulting level/activation/admission; exact start-state location/order remains #32 and initial charge/readiness state remains #46.
 
 **Explicit interactions**
 
-- `P20 + P21`: catalogue explicitly states the P20 grant does **not** consume P21's first-Silo purchase entitlement.
-- `P20 + P53`: explicitly legal; P53 must count the granted Silo's ready persistent charges exactly when those charges are canonically ready, creating the corresponding passive FFY source.
-- `P20 + N07`: the granted Silo counts toward N07's one-of-each-structure ownership cap; no hidden exemption for a free grant.
-- `P20 + N06`: if the granted Silo begins below L5, N06's upgrade-spending prohibition applies normally to later attempted upgrades.
-- `P20 + P39` / multi-origin profiles: placement/uniqueness of this singular start-state grant is a real spawn/start-state interaction and is explicitly part of the unresolved #32 spawn-semantics work.
+- `P20 + P21`: the grant does **not** consume P21's first-Silo purchase entitlement.
+- `P20 + P53`: explicitly legal; P53 must count the granted Silo's ready persistent charges exactly when #46 says those charges are canonically ready.
+- `P20 + N07`: the grant passes ordinary structure ownership admission and cannot bypass N07.
+- `P20 + N06`: the granted L1 Silo is immediately completed/active, but N06's upgrade-spending prohibition applies normally to later attempted upgrades.
+- `P20 + P39` / multi-origin profiles: placement/uniqueness of this singular start-state grant remains part of #32's spawn-semantics work.
 
-**Blockers / mechanic-definition findings**
+**Remaining blockers / dependencies**
 
 - #32 must close ordering/uniqueness/placement semantics for singular Origin start-state grants under multi-origin and Random/Fixed spawn profiles.
-- The canonical structure/start-state rules must make the P20 grant's resulting Silo level, active/completed state, placement rule, and initial charge/readiness state explicit enough to produce one deterministic expected start state. This registry does not infer those details from the word `free`.
+- #46 must close initial ready-charge state for a newly granted Silo. #45 no longer blocks P20's resulting structure level, activation state, or generic admission lifecycle.
 
 ---
 
@@ -580,7 +583,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `effective structure price + placement/cap/build legality -> affordability/legality validation -> accepted purchase -> zero FFY consumption -> ordinary construction lifecycle`.
 - Rejected, unaffordable, or otherwise illegal attempts must not consume the first-purchase entitlement.
 - The entitlement is keyed by structure type, so using it for one type must not affect another type.
-- Grants and captures are not purchases. The catalogue explicitly confirms that P20's starting Silo grant and P37's landing-created Fort grant do not consume the corresponding P21 entitlements.
+- Grants and captures are not purchases. P20's starting Silo grant and P37's landing-created Fort grant do not consume the corresponding P21 entitlements.
 
 **Explicit interactions**
 
@@ -588,7 +591,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P21 + P37`: landing-created Fort grant does not consume first-Fort purchase entitlement.
 - `P21 + P11`: a P11 SAM already has zero FFY price; a successful first-SAM purchase still advances the P21 first-purchase entitlement but does not create another SAM slot or bypass P11 entitlement legality.
 - `P21 + P09`: P09's effective Fort price is the affordability input checked before P21 zeroes FFY consumption on the qualifying first purchase.
-- `P21 + P41`: P41's direct-L5 City action is one **purchase**, not four upgrades; if it is the first City purchase, P21 must validate affordability against the canonical P41 effective purchase price and then consume `0 FFY` on successful commit.
+- `P21 + P41`: P41's direct-L5 City action is one **purchase**, not four upgrades; if it is the first City purchase, P21 validates affordability against the canonical P41 effective purchase price and then consumes `0 FFY` on successful commit.
 - N07/N09/P46 and other structure-legality transformations remain ordinary legality inputs; P21 does not bypass caps, build prohibitions, terrain rules, or placement requirements.
 
 **Non-effects**
@@ -633,19 +636,21 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Required seams / dependencies**
 
 - `effective Warship profile -> autonomous movement/pursuit/combat` must consume the transformed speed/range/damage rather than display-only values.
-- `Port Warship construction admission -> faction Warship ownership/cap state` must prevent a valid sequence from ending with more than one owned Warship.
-- Destruction/removal of the sole Warship must allow a later replacement under the same hard-cap rule.
+- `Port Warship construction admission -> existing owned + committed construction + current-proposal reservation -> hard cap 1`.
+- An admitted Warship reserves the slot at transaction commit and holds it throughout its five-second construction lifecycle.
+- Destruction/cancellation/removal releases the slot at the authoritative lifecycle transition.
+- A mechanics quote is not a reservation; two individually legal quotes against the same snapshot may still form an atomic proposal rejected with `OWNERSHIP_CAP`.
 
 **Explicit interactions**
 
 - `P23 + P22`: rank-derived shell damage and health must compose with the P23 Warship profile; P23 does not replace rank progression.
 - `P23 + P30`: both alter Warship speed, while P30 structurally removes naval gunfire against ships. The combined profile must retain the valid speed composition while P23's ship-gun range/damage becomes inert wherever P30 makes that attack illegal.
-- `P23 + P42`: inspect when P42 is audited because P42 changes Warship purchase resource and attack range on the same chassis while P23 enforces the one-Warship cap.
+- `P23 + P42`: P42 changes the payment resource but cannot bypass P23's ownership reservation/cap. Same-axis range arithmetic remains separately routed to #43.
 - `P23 + P29`: faster movement changes where the mobile launcher can physically be, but launcher semantics remain P29/strategic-weapon behavior rather than a separate P23 launcher mechanic.
 
-**Blocker / cap-admission requirement**
+**Resolved cap-admission result (#45)**
 
-- The hard `may own only one` rule must have canonical admission semantics for concurrent/in-progress Warship construction. Validation must be able to prove that simultaneous construction attempts from multiple Ports cannot bypass the cap by all being admitted before a completed Warship exists. If the generic unit-cap contract already provides reservation semantics, P23 consumes that contract; otherwise the mechanic needs closure before certification.
+- Concurrent/in-progress Warship admission is now canonical: pending committed construction counts toward the one-Warship cap, sibling commands reserve against one aggregate transaction, and command-array order cannot be used to oversubscribe the cap.
 
 ---
 
@@ -938,28 +943,30 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Direct transformations / owners**
 
-- Persistent Factory ownership/provenance: only a Factory **acquired by conquest** by the P34 holder receives the transformed state while owned by that holder.
+- Persistent Factory ownership/provenance: only a Factory **successfully transferred by conquest** to the P34 holder receives the transformed state while owned by that holder.
 - The transformed Factory is intended to operate at `2x ordinary Factory effect`, which crosses the persistent-structure Factory owner and every focused subsystem that consumes a Factory effect.
 
 **Required seams / dependencies**
 
-- `successful enemy-Factory transfer -> new owner/provenance classification -> P34 effective Factory profile -> ordinary Factory consumers`.
+- `successful enemy-Factory territorial capture -> canonical structure-capture resolver -> STRUCTURE_TRANSFERRED -> new owner/provenance classification -> P34 effective Factory profile -> ordinary Factory consumers`.
 - Built or granted Factories remain ordinary.
+- A Factory resolved as `DESTROYED_ON_CAPTURE`, whether because of N17 or rejected transfer admission such as N07 overflow, never acquires P34 provenance.
 - If ownership leaves the P34 holder, the P34 transformation must not persist as an owner-independent permanent buff. A later qualifying conquest by a P34 holder may re-establish the transformed state through the same canonical ownership rule.
-- The conquest transition must remain one ordinary structure transfer for P05/N17 and other capture-dependent logic; P34 must not create a parallel synthetic Factory.
+- Successful transfer preserves the physical Factory identity/state; #49 remains owner of Factory-specific provenance/counter lifecycle across later ownership changes.
 
 **Explicit interactions**
 
-- `P34 + P05`: a qualifying conquered Factory can both trigger the ordinary P05 structure-capture event and enter P34's transformed Factory state.
-- `P34 + N09`: explicitly legal and potentially important; N09 prevents building Factories but a legally conquered Factory can still provide P34 behavior.
-- `P34 + N17`: N17 destroys instead of transferring the Factory, so P34 cannot activate on that prevented conquest.
+- `P34 + P05`: a successfully transferred conquered Factory can both trigger the P05 structure-capture event and enter P34's transformed Factory state.
+- `P34 + N09`: explicitly legal and potentially important; N09 prevents building Factories but a legally transferred conquered Factory can still provide P34 behavior.
+- `P34 + N17`: N17 destroys instead of transferring the Factory, so P34 cannot activate.
+- `P34 + N07`: if the holder's Factory slot is already full, the captured Factory is destroyed on capture and P34 cannot activate on that structure.
 - `P34 + P07`: requires focused coverage once `2x ordinary Factory effect` defines whether/how Train service/throughput is doubled.
 - `P34 + P33`: if P34 increases Train event throughput, resulting additional ordinary events can drive P33; P33 itself remains event-driven rather than Factory-driven.
 - `P34 + P43`: if P34 affects Tank production/repair outputs, the transformed Heavy-Artillery chassis must consume those same canonical Factory hooks rather than receive a separate P34 implementation.
 
 **Blocker / mechanic-definition finding**
 
-- `2x ordinary Factory effect` is not one executable scalar in the current canonical Factory model. A Factory participates in Train production/service, Tank production, and Tank repair, while completed level also determines Train event value and simultaneous Tank-repair capacity. The mechanic owner must explicitly enumerate which of those outputs/timers/capacities/values are doubled and how. Validation must not decide whether `2x` means Train count, dispatch cadence, Train event value, Tank build throughput, Tank repair rate/capacity/radius, or some subset.
+- #45 closes the capture-transfer trigger/fate. The remaining #49 blocker is that `2x ordinary Factory effect` is not one executable scalar in the current canonical Factory model; #49 must enumerate which outputs/timers/capacities/values are doubled and its Factory-specific provenance/counter lifecycle.
 
 ---
 
@@ -1024,28 +1031,30 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Direct transformations / owners**
 
 - Transport embarkation transaction: contributes `+250 FFY` on the dedicated Transport embark-cost hook.
-- Amphibious landing -> persistent-structure grant: after a successful amphibious landing actually establishes land ownership, grant one permanent level-1 Fort at the landing location.
+- Amphibious landing -> persistent-structure grant: after a successful amphibious landing establishes land ownership and any captured structure on the landing cell has completed canonical capture resolution, attempt one permanent L1 Fort grant on that exact landing cell.
 
 **Required seams / dependencies**
 
 - `legal Transport embark -> effective additive embarkation cost -> ordinary payment/creation`.
-- `Transport arrival -> ordinary local territorial engagement -> successful ownership establishment -> exactly one P37 Fort grant`.
+- `Transport arrival -> ordinary local territorial engagement -> successful ownership establishment -> structure-capture resolution on landing cell -> exact-cell P37 GRANT admission`.
 - Destruction, abort, failed landing engagement, or arrival without successful ownership establishment grants no Fort.
-- The Fort is a **grant**, not a purchase; it does not consume P21's first-Fort purchase entitlement and must enter the ordinary persistent-structure lifecycle after the grant resolves.
+- The Fort is a **grant**, not a purchase; it does not consume P21's first-Fort purchase entitlement.
+- On successful admission the Fort materializes immediately as an active completed L1 Fort. If admission fails, no Fort is created and the successful landing/cell capture is not rolled back.
 
 **Explicit interactions**
 
 - `P37 + N15`: transport-cost modifiers are explicitly additive; together they contribute `+750 FFY` relative to the ordinary Transport baseline.
 - `P37 + P21`: the landing-created Fort grant does not consume first-Fort purchase entitlement.
 - `P37 + P32`: embark source must satisfy P32's owned-active-Port restriction while the successful landing still resolves P37 normally.
-- `P37 + N13`: N13 landing Population loss and P37 Fort grant both occur only on a successful landing path; validation must preserve their canonical ordering without granting a Fort on a destroyed/failed Transport.
-- `P37 + N07`: repeated successful P37 landings can attempt to create additional Forts while N07 forbids owning more than one Fort. This requires the generic grant-vs-ownership-cap rule below rather than a hidden compatibility restriction.
+- `P37 + N13`: N13 landing Population loss and P37 Fort grant both occur only on a successful landing path; exact N13 casualty order remains #50-owned, but no Fort appears on destroyed/failed Transport paths.
+- Successful transfer of a captured landing-cell structure leaves that cell occupied and therefore blocks the exact-cell P37 Fort grant; no nearby fallback is searched.
+- `P37 + N17`: if N17 resolves the captured landing-cell structure as `DESTROYED_ON_CAPTURE`, final occupancy may become empty and P37 then evaluates the Fort grant normally. The Fort appears only if its own placement and ownership admission pass.
+- `P37 + N07` has two independent admission points: N07 may reject and destroy an incoming captured structure of some type, freeing the landing cell for the later P37 Fort attempt, while N07 may separately reject the Fort itself when the holder's Fort slot is already occupied. Destruction/freeing of the captured object never bypasses the Fort's own cap.
 - Once legally created/active, the Fort is ordinary input to P03/P09/P18/P24/P50/N08/N10 and other Fort consumers; those downstream mechanics do not need a special P37 implementation.
 
-**Blocker / mechanic-definition finding**
+**Resolved mechanic-definition result (#45)**
 
-- The grant path needs canonical deterministic handling for structure conflicts and lifecycle: whether/how a Fort may be granted when the landing cell already contains a persistent structure, when ordinary buildability/placement would reject a purchased Fort, and whether the granted L1 Fort is immediately completed/active or enters ordinary construction timing.
-- The generic structure-grant contract must also define what happens when a grant would violate an ownership cap such as `P37 + N07`—for example, whether the grant is suppressed, fails in another deterministic way, or uses some other canonical rule. The landing itself must not become secretly illegal merely to avoid defining the grant result unless the mechanic owner explicitly says so.
+- Placement/activation/cap-conflict semantics are canonical: exact landing cell only; ordinary physical placement/occupancy and hard ownership admission apply; successful grants are immediately active completed L1; failed grants create nothing and never invalidate the successful territorial landing.
 
 ---
 
@@ -1098,7 +1107,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 - `P39 + P01`: P01 modifies the **total** quota before P39 divides it; current ordinary baseline yields `575 + 575` and one global Starting Population of `575`.
 - `P39 + P54`: explicitly legal. Each split footprint uses the canonical star profile without duplicating total quota.
-- `P39 + P20`: singular starting-Silo grant placement/uniqueness is a real start-state interaction and remains owned by #32's unresolved multi-origin grant semantics.
+- `P39 + P20`: singular starting-Silo grant placement/uniqueness remains owned by #32; once #32 selects the grant location/order, #45's generic grant admission/lifecycle applies.
 - Inspect P48 when audited because faction-effective population-bearing classification can affect footprint quota accounting.
 - `P01 + P39 + P54` remains not builder-legal under current positive spend, so no public runtime certification case is required for that triple.
 
@@ -1144,24 +1153,22 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | Trait | Finding | Validation consequence |
 | --- | --- | --- |
 | P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot finalize without the intended curve. |
-| P05 | Structure-capture FFY event base value and location semantics are not closed in the inspected canonical material. | P05 payout and spatial-modifier integration cannot fully certify. |
-| P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle lacks a canonical expected result until defined. |
+| P05 | Capture trigger/fate is closed by #45, but structure-capture FFY event base value and location remain open under #48. | P05 payout and spatial-modifier integration cannot fully certify until #48 closes value/location. |
+| P07 | Per-Factory normal-primary-dispatch counter behavior across Factory ownership transfer should be explicit. | Captured-Factory P07 lifecycle lacks a canonical expected result until #49 defines it. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
 | P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
-| P20 | Singular start-state grant placement/uniqueness under multi-origin/Random/Fixed profiles is unresolved in #32; resulting Silo level/activation/initial charge state must also be explicit. | P20 start-state and P20+P39/P53 certification cannot fully finalize until those semantics are closed. |
-| P23 | One-Warship hard-cap admission semantics must cover concurrent/in-progress construction rather than only completed ownership. | P23 cap certification cannot prove multiple Ports cannot oversubscribe the cap until the generic/unit-specific admission rule is explicit. |
+| P20 | Exact start-state grant placement/ordering remains #32-owned; initial charge readiness remains #46-owned. | P20's generic grant admission, L1 result, and immediate activation are closed by #45, but full start-state certification still depends on #32/#46. |
 | P24 | Qualifying Fort affiliation for `inside Fort areas` is not explicit. | Spatial FFY qualification cannot be certified for own/team/enemy Fort overlap cases without a canonical ownership/team boundary. |
 | P25 | `+50%` Hydrogen blast **area** lacks an exact deterministic inner/outer geometry transformation, including optional Water-Nukes core/fringe behavior. | P25 runtime/replay footprint certification cannot infer radii/raster rules from the percentage alone. |
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
 | P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected result yet. |
 | P29 | Dynamic Warship-rank -> effective-Silo-level changes do not yet state new charge-slot readiness semantics. | P29 charge/cooldown certification is incomplete when rank changes launcher capacity. |
-| P34 | `2x ordinary Factory effect` does not enumerate which Factory outputs/timers/capacities/values are doubled. | P34 cannot produce a canonical Factory-domain projection or reliable P07/P33/P43 interaction expectations until the transformed effect set is explicit. |
+| P34 | Capture-transfer trigger/fate is closed by #45; `2x ordinary Factory effect` and Factory-specific transformed provenance/counter lifecycle remain #49-owned. | P34's transfer prerequisite is canonical, but its transformed Factory projection still depends on #49. |
 | P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
 | P36 | Faction-level half-Population residual accounting does not define the eventual whole-Population debit destination/order across multiple concurrent expansion commitments. | P36 multi-operation settlement accounting cannot have one deterministic expected state yet. |
-| P37 | Landing-Fort grants lack deterministic placement/activation/conflict semantics and a generic rule for grants that would violate ownership caps such as N07. | P37 landing-to-structure conformance cannot fully certify occupied/unbuildable/cap-conflict cases until the grant contract is closed. |
 | P39 | Random/Fixed Spawn interaction with spawn-transforming Origins remains unresolved under #32. | P39 certification is complete only for spawn modes whose deterministic transformed profile is canonically defined. |
 
-Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
+The former P23 concurrent-cap and P37 grant-placement/lifecycle blockers are resolved by #45. Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
 
 ---
 
@@ -1177,7 +1184,7 @@ Do not freeze the final domain catalogue until all traits are audited, but P01�
 - FFY economy / physical Trade and Train logistics / location-conditioned events / Train-event side effects;
 - naval/amphibious physical lifecycle, Warship profile/rank/caps/repair, Transport health/destruction/landing;
 - strategic weapon legality, launcher/charge state, projectile/blast geometry, and SAM interception/anti-ship behavior;
-- cross-system state/event seams such as Spawn -> Population, structure capture -> FFY/Factory provenance, Fort/Port/SAM fields -> combat/economy/naval behavior, Population peak -> SAM entitlement, Train event -> Population, Transport destruction -> Population transfer, amphibious landing -> Fort grant, and Warship state -> mobile strategic launcher.
+- cross-system state/event seams such as Spawn -> Population, structure capture -> typed disposition/admission/consequences -> FFY/Factory provenance, Fort/Port/SAM fields -> combat/economy/naval behavior, Population peak -> SAM entitlement, Train event -> Population, Transport destruction -> Population transfer, amphibious landing -> exact-cell Fort grant, and Warship state -> mobile strategic launcher.
 
 These are evidence from the completed traces, not yet a final taxonomy.
 

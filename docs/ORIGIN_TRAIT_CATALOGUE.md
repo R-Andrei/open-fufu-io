@@ -170,18 +170,47 @@ P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Str
 
 Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11's SAM FFY cost is genuinely zero; ordinary non-FFY legality still applies.
 
+The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
+
+### N07 — one-per-type structure ownership
+
+N07 is a hard ownership cap of exactly one persistent structure of each canonical type. It is not merely a purchase limit.
+
+- purchases/builds, grants, start-state/scenario grants, and capture transfers must all pass the same ownership admission;
+- an admitted under-construction structure reserves the one slot immediately;
+- sibling actions in one atomic controller decision cannot oversubscribe the slot;
+- upgrades consume no additional slot;
+- destruction or successful transfer away releases the slot at the authoritative ownership transition;
+- a successful territorial capture is never blocked merely because the captured structure cannot be admitted.
+
+If a captured structure would transfer to an N07 holder whose slot for that type is full, the cell capture succeeds and the incoming physical structure is destroyed by the canonical capture resolver instead of transferring. Same-tick outgoing/incoming slot ordering and deterministic tie-breaking are owned by `TERRAIN_AND_STRUCTURES.md`.
+
 ### P04 — response-side counter-response
 
 P04 fixes only the response-side counter-response effectiveness hook at `1.0`. Attack-side effectiveness remains ordinary unless another explicit rule changes it. The ordinary counter-response model is owned by `COMBAT_TUNING.md` and the high-level combat contract.
 
+### P05 — successful structure-transfer conquest event
+
+P05 fires from the canonical `STRUCTURE_TRANSFERRED` capture consequence, not merely from capturing a cell that happened to contain a structure. Exactly one qualifying conquest FFY event is generated for each enemy persistent structure that successfully transfers to the P05 holder through territorial capture.
+
+If N17 changes the structure disposition to destruction, or transfer admission fails and the capture resolver destroys the structure, P05 does not fire. The event's exact base value and canonical event location remain owned by the FFY closure tracked in #48 rather than being invented here.
+
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
-- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement.
+- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. Once #32 supplies its exact start-state location/order, the grant uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. Its initial ready-charge state remains owned by #46.
 - P21 still requires ordinary legality/affordability validation; the first successful purchase of each structure type consumes `0 FFY`.
 - P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
-- P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement.
+- P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
 
-The granted structure's ordinary level/lifecycle semantics come from the structure owner rather than being redefined here.
+Grant placement/admission and lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; these traits only create the grant request and define its authored result.
+
+### P23 — single-Warship ownership cap
+
+P23 supplies a hard effective Warship ownership cap of exactly one. The cap counts an owned Warship plus any already committed Warship still under construction, and atomic decision validation reserves the slot so multiple Ports cannot oversubscribe it in one proposal.
+
+A quote does not reserve the slot. With no Warship yet, multiple individual build quotes may each be legal against the same immutable snapshot while a proposal containing more than one capped build is rejected atomically with `OWNERSHIP_CAP`.
+
+P42's Population-funded Warship purchase does not bypass P23. Destruction/cancellation of the owned or under-construction Warship releases the slot at the authoritative lifecycle transition. Baseline construction/reservation mechanics are owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
 ### P29 — Warships as strategic-weapon launchers
 
@@ -236,7 +265,9 @@ The gain is Capacity-capped and enters Available Population. P33 follows the can
 
 ### P34 — conquered Factories
 
-Only Factories acquired by conquest receive P34's `2×` Factory effect. Built or granted Factories remain ordinary. P34 + N09 is legal, enabling conquest-only access to the transformed Factory behavior.
+Only Factories that **successfully transfer** to the holder through the canonical structure-capture resolver count as acquired by conquest for P34. Built or granted Factories remain ordinary. A Factory destroyed on capture by N17 or by failed ownership admission never becomes a P34 Factory. P34 + N09 remains legal, enabling conquest-only access to the transformed Factory behavior.
+
+The exact transformed Factory axes and provenance/counter lifecycle after later ownership changes remain owned by #49; this catalogue only fixes the successful-transfer trigger.
 
 ### P35 — scorched-earth Fallout
 
@@ -244,15 +275,21 @@ Only deliberate relinquishment by the P35 holder creates the trait's Fallout. It
 
 ### N17 — conquest spoils destroyed
 
-N17 destroys an enemy structure the holder would otherwise capture instead of transferring ownership. It does not destroy the holder's own structures when another faction captures them. Capture-dependent Origin effects do not fire when N17 prevents the capture from occurring.
+N17 contributes a capture-disposition transformation to the canonical structure-capture resolver: an enemy structure that would otherwise proceed toward transfer is resolved as `DESTROYED_ON_CAPTURE` instead. The territorial cell capture still succeeds.
+
+Because no successful `STRUCTURE_TRANSFERRED` result exists, P05 does not fire and a captured Factory does not acquire P34 conquest provenance. N17 does not destroy the holder's own structures when another faction captures them. Capture-time destruction is distinct from ordinary combat destruction unless another explicit rule consumes that outcome.
 
 ### P36 — half-cost neutral settlement
 
 P36 changes only neutral-settlement Population cost to `0.5 Population` per qualifying cell and uses faction-level deterministic residual accounting. Residual debt survives ending/recreating expansion operations. P36 does not change acquisition speed and composes independently with N18.
 
-### P37 and N15 — Transport embarkation cost
+### P37 and N15 — Transport embarkation cost and landing Fort
 
-Transport-cost traits are additive on the dedicated embarkation-cost hook. P37 contributes `+250 FFY`; N15 contributes `+500 FFY`; selecting both therefore contributes `+750 FFY` relative to the ordinary Transport baseline. The successful-landing Fort appears only after land ownership is successfully established; destruction/abort before that point grants nothing.
+Transport-cost traits are additive on the dedicated embarkation-cost hook. P37 contributes `+250 FFY`; N15 contributes `+500 FFY`; selecting both therefore contributes `+750 FFY` relative to the ordinary Transport baseline.
+
+The P37 Fort request occurs only after the amphibious operation has successfully established ownership of the landing cell **and after any captured structure on that cell has completed canonical structure-capture resolution**. Destruction/abort before ownership establishment grants nothing.
+
+P37 then attempts exactly one L1 Fort grant on the exact landing cell; it never searches nearby. If the final cell is occupied by a surviving/transferred structure, is not legally structure-placeable for the holder, or the holder cannot admit another Fort because of N07/another hard ownership rule, the Fort grant is skipped. The successful landing/cell capture is not rolled back. A successful P37 grant materializes as an immediately active completed L1 Fort.
 
 ### P38 — automatic-defender survival
 
@@ -270,7 +307,13 @@ P40 transforms the holder's SAM profile to `+50%` ordinary range, exactly one ch
 
 ### P41 — direct-L5 City purchases
 
-P41 makes a purchased City one level-5 purchase transaction priced at `95%` of the ordinary cumulative L1→L5 cost. Captured lower-level Cities retain their captured level and may use ordinary upgrades unless another rule forbids it. Because the direct-L5 action is one purchase rather than upgrade spending, P41 + N06 remains legal.
+P41 makes a purchased City one level-5 purchase transaction priced at `95%` of the ordinary cumulative L1→L5 cost. With the current baseline this is `1,995,000 FFY` before any other explicit purchase-transaction transform.
+
+The transaction uses **one ordinary City construction interval: 5 seconds**. During those 5 seconds the new structure is inactive and already occupies any applicable ownership slot; at completion it atomically becomes an active completed L5 City. P41 does not internally execute four upgrade actions or four upgrade timers.
+
+Captured lower-level Cities retain their captured level and may use ordinary upgrades unless another rule forbids it. Because the direct-L5 action is one purchase rather than upgrade spending, P41 + N06 remains legal.
+
+For P41 + P21, ordinary legality and affordability are evaluated against the effective `1,995,000 FFY` P41 purchase requirement. If it is the first successful City purchase, P21 then makes `ffySpent = 0` and consumes the first-City purchase entitlement exactly once; failure before commit consumes neither FFY nor the entitlement.
 
 ### P42 — Population-funded Warships
 
@@ -281,7 +324,7 @@ P42 changes the Warship purchase transaction to:
 - only Available Population may pay that cost;
 - affected Warships have `-33% attack range`.
 
-The consumed Population is removed from Total Population rather than stored as recoverable crew. All other Warship lifecycle/mechanics remain ordinary unless another explicit modifier applies.
+The consumed Population is removed from Total Population rather than stored as recoverable crew. All other Warship lifecycle/mechanics remain ordinary unless another explicit modifier applies. P42 cannot bypass N12's hard Warship-build prohibition or P23's ownership cap.
 
 ### P43 — Heavy Artillery Tank transformation
 
@@ -418,6 +461,7 @@ Examples of awkward but legal combinations include:
 - N18 + N05;
 - N14 + N16;
 - N17 + P05/P34;
+- P20/P37 + N07;
 - P37 + N15;
 - P41 + N06;
 - P42 + N12.

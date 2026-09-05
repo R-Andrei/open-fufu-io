@@ -163,7 +163,178 @@ All persistent structures have levels `1–5`; normal purchases create L1 and L5
 - Ordinary placement requires owned buildable terrain; Port additionally requires a legal coast/water interface.
 - Same-type area effects use the strongest applicable same-type effect rather than stacking.
 
-## 2.2 Costs and times
+Construction state is represented independently from activity and completed level:
+
+```text
+fresh construction:
+  completedLevel = none
+  active = false
+  construction.targetLevel = purchased/granted target
+  construction.remainingTicks = remaining build time
+
+upgrade in progress:
+  completedLevel = previous completed level
+  active = true
+  construction.targetLevel = next target level
+  construction.remainingTicks = remaining upgrade time
+
+completed structure:
+  completedLevel = completed target level
+  construction = none
+```
+
+A rule such as P41 may change the fresh construction target without creating hidden intermediate levels. Its direct-L5 City therefore has no completed level during its five-second build, then atomically completes at L5.
+
+## 2.2 Canonical structure-acquisition admission
+
+Every path that would make a persistent structure belong to a faction passes through one authoritative **structure-acquisition admission** contract. The acquisition path is explicit because construction-only restrictions are not ownership restrictions.
+
+Canonical V1 acquisition paths are:
+
+```text
+PURCHASE_BUILD
+GRANT
+CAPTURE_TRANSFER
+```
+
+Start-state and scenario-created structures use the `GRANT` path; their owner decides when and where the grant request is generated. Runtime rewards such as a post-landing Fort also use `GRANT`.
+
+Admission evaluates the effective rules for the prospective owner without mutating authoritative state. A successful result may then be committed by the owning transaction; a rejected result consumes no FFY, Population, purchase entitlement, construction/producer capacity, or ownership-slot reservation.
+
+### 2.2.1 Common ownership constraints
+
+Hard **ownership** constraints apply to every acquisition path. Examples include a one-per-type structure cap or an entitlement that limits how many SAM Launchers may be owned. A free price, grant, capture, alternate payment resource, or expanded terrain permission never bypasses a hard ownership limit.
+
+Hard **build/purchase** constraints apply only to paths that actually build/purchase. For example, a rule that forbids building Factories prevents `PURCHASE_BUILD` but does not prevent a Factory from being acquired through an otherwise legal `CAPTURE_TRANSFER`.
+
+Likewise, ordinary terrain/build permission, Port-interface requirements, construction-site occupancy, and purchase affordability are build/grant inputs; they are not retroactively re-applied to a physical structure already present during `CAPTURE_TRANSFER`.
+
+### 2.2.2 Ownership-slot occupancy and reservations
+
+After an admission commits, one intended future owned object consumes exactly one ownership slot throughout its lifecycle. Slot accounting therefore uses disjoint buckets:
+
+```text
+occupied slots
+= currently owned physical structures of that type, including inactive/under-construction structures
++ committed admissions that reserved a slot but have not yet materialized a physical structure
++ temporary reservations created while validating the current atomic transaction
+```
+
+A materialized under-construction structure appears only in the first bucket; it is never counted again as a separate pending acquisition. An admitted construction occupies its ownership slot from transaction commit, not only from later activation. An upgrade does not create a new structure and consumes no additional ownership slot.
+
+A controller/mechanics quote is informational only and does **not** reserve a slot. Several individually legal quotes may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling commands cannot oversubscribe the same cap.
+
+The slot is released when authoritative ownership of that physical structure ends, including successful transfer away or destruction/deletion. A committed pre-materialization reservation is released on authoritative cancellation/rollback. Failed admissions leave no phantom reservation.
+
+## 2.3 Structure grants
+
+A structure grant is an acquisition, not a purchase. Unless the grant's canonical owner explicitly says otherwise:
+
+- it consumes no FFY and no purchase-only entitlement;
+- it requires no producer;
+- it requests one exact authored cell and never searches nearby for a fallback location;
+- the target cell must satisfy ordinary physical structure-placement/occupancy rules for the recipient, including faction-effective terrain eligibility and any structure-specific placement geometry;
+- it passes all hard ownership admission constraints;
+- on success it materializes immediately as an **active completed structure at the authored level**, with no ordinary paid-construction delay;
+- on failure nothing is created and the triggering gameplay result is not rolled back merely because the bonus grant failed.
+
+The Origin catalogue owns which traits create grants. Strategic Spawn owns P20 start-state placement/order; this structure owner defines what happens once that exact grant request reaches admission. Strategic-weapon charge readiness for a newly granted Silo is owned by the strategic-weapon/charge lifecycle, not by the generic grant contract.
+
+## 2.4 Structure capture resolution
+
+A successful territorial capture of a cell containing an enemy persistent structure does **not** directly call a raw ownership setter. It creates a deterministic structure-capture resolution inside the same authoritative capture transaction.
+
+Territorial capture success is already established before this resolver runs. Structure rules may determine the structure's fate and capture consequences, but they do not retroactively veto the successful cell capture unless a separate territorial-acquisition rule explicitly says so.
+
+Canonical pipeline:
+
+```text
+successful territorial capture of occupied cell
+    ↓
+freeze StructureCaptureContext
+    ↓
+resolve capture-disposition transformations
+    ↓
+if disposition remains TRANSFER:
+    evaluate CAPTURE_TRANSFER admission for prospective owner
+    ↓
+resolve final structure disposition
+    ↓
+resolve typed capture consequences from the final result
+    ↓
+commit cell ownership + structure fate + consequences atomically
+    ↓
+emit immutable StructureCaptureResolved fact
+```
+
+### 2.4.1 Capture context and disposition
+
+The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time.
+
+V1 has exactly two generic final dispositions:
+
+```text
+TRANSFER
+DESTROY
+```
+
+Default disposition is `TRANSFER`. An explicit rule may transform that proposed disposition before admission; for example, N17 is an Origin-owned `TRANSFER -> DESTROY` capture transformation.
+
+If disposition remains `TRANSFER`, the resolver performs `CAPTURE_TRANSFER` admission for the prospective owner. A hard ownership rejection converts the final disposition to `DESTROY`; **the territorial cell capture still succeeds**. This is the generic resolution used when an N07-style cap is full.
+
+A capture-time destruction is a distinct `DESTROYED_ON_CAPTURE` result, not an ordinary combat kill. Effects that require successful transfer do not fire merely because the structure existed, and ordinary combat-destruction rewards/side effects do not apply unless an explicit rule consumes this capture-destruction result.
+
+### 2.4.2 Successful transfer preserves the physical structure
+
+A successful transfer changes ownership atomically while preserving the physical structure and its ordinary persistent state unless the focused subsystem explicitly transforms one of its own fields. The generic transfer preserves:
+
+- structure ID and type;
+- cell/location;
+- completed level when one exists;
+- health/damage state where applicable;
+- current active state;
+- in-progress construction target level and remaining construction time when construction or an upgrade is underway;
+- other subsystem-owned persistent state by identity rather than recreating a new structure.
+
+Fresh construction therefore remains fresh construction after transfer, including a P41 City that is still targeting L5 with no completed level yet. An upgrading structure remains active at its previous completed level while its preserved construction state continues toward the same target level. Capture never silently converts pending work into a completed structure or discards its target level.
+
+Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
+
+Focused subsystem owners remain responsible for semantics of their own specialized state across transfer. For example, Factory Train scheduling/provenance belongs to the Factory/Train owner and Silo charge readiness belongs to the strategic-weapon/charge owner.
+
+### 2.4.3 Typed capture consequences, not mutating event listeners
+
+Gameplay systems that care about structure capture participate through typed deterministic resolver inputs/consequences rather than arbitrary post-hoc listeners that mutate canonical state in unspecified order.
+
+The resolver distinguishes at least these trigger stages:
+
+```text
+STRUCTURE_PRESENT_ON_CAPTURE
+STRUCTURE_TRANSFERRED
+STRUCTURE_DESTROYED_ON_CAPTURE
+```
+
+A future rule may therefore punish/reward capturing a City merely because it was present, only when it is successfully acquired, or only when capture destroys it, without depending on listener registration order. Consequence producers return declarative effects; the capture transaction collects and commits those effects atomically with the structure fate.
+
+Current examples are Origin-owned: P05 consumes `STRUCTURE_TRANSFERRED` to create its conquest FFY event, while P34 consumes a successfully transferred Factory as conquest acquisition/provenance. If N17 or failed transfer admission produces `STRUCTURE_DESTROYED_ON_CAPTURE`, those successful-transfer effects do not fire.
+
+After commit, the simulation emits an immutable resolved fact suitable for replay, diagnostics, statistics, presentation, and lawful controller-event projection. Post-resolution observers cannot change the already committed structure fate.
+
+### 2.4.4 Same-tick ownership-slot resolution
+
+When one simulation tick contains multiple already-resolved territorial captures involving structures, ownership-slot accounting is deterministic and does not depend on controller command order or incidental execution registration order.
+
+For cap accounting:
+
+1. resolve direct capture-disposition transformations such as `DESTROY` that require no incoming ownership slot;
+2. release slots for structures whose authoritative ownership is definitely leaving a faction in this tick because of successful territorial capture/destruction;
+3. evaluate incoming `CAPTURE_TRANSFER` admissions against remaining ownership plus reservations;
+4. when several incoming structures compete for fewer available slots, use stable ascending `cellId`, then stable `structureId` as the V1 tie-breaker;
+5. reserve each admitted incoming slot immediately for the rest of this capture-resolution batch.
+
+Therefore a capped faction that loses its existing Factory and captures one replacement Factory in the same tick may admit the incoming Factory. A capped faction with no Factory that captures two Factories in the same tick admits the deterministically first eligible transfer and destroys the other when the cap is one.
+
+## 2.5 Costs and times
 
 | Structure | Time per build/upgrade | L1 | L2 | L3 | L4 | L5 | L1→L5 total |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -176,7 +347,7 @@ All persistent structures have levels `1–5`; normal purchases create L1 and L5
 | **Observation Post** | **5s** | 50k | 100k | 200k | 300k | 400k | **1.05m** |
 | **Command Post** | **10s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
 
-## 2.3 Level effects
+## 2.6 Level effects
 
 | Effect | L1 | L2 | L3 | L4 | L5 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -193,7 +364,7 @@ All persistent structures have levels `1–5`; normal purchases create L1 and L5
 | **Command Post — source offensive pressure** | **+3%** | **+6%** | **+9%** | **+12%** | **+15%** |
 | **Command Post — coverage radius** | **30** | **35** | **40** | **45** | **50** |
 
-## 2.4 Structure-specific rules
+## 2.7 Structure-specific rules
 
 ### City
 

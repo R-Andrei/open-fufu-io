@@ -4,6 +4,7 @@
 // - docs/OPEN_FUFU_DESIGN.md — controller model and high-level constraints.
 // - docs/CONTROLLER_MEMORY.md — persistent controller-memory contract.
 // - docs/STRATEGIC_SPAWN.md — Strategic Spawn mechanics and resolver semantics.
+// - docs/TERRAIN_AND_STRUCTURES.md — structure admission/grant/capture semantics.
 //
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
@@ -213,14 +214,27 @@ export interface ChargeStateView {
   readonly rechargeRemainingTicks: readonly number[];
 }
 
+/**
+ * In-progress construction state for one physical persistent structure.
+ * Fresh construction may have no completed level yet. During an upgrade the
+ * previous completed level may remain active while construction targets the next level.
+ */
+export interface StructureConstructionView {
+  readonly targetLevel: StructureLevel;
+  readonly remainingTicks: number;
+}
+
 export interface StructureView {
   readonly id: StructureId;
   readonly ownerId: FactionId;
   readonly type: StructureType;
-  readonly level: StructureLevel;
+  /** Last fully completed level; absent while a never-completed fresh build is in progress. */
+  readonly completedLevel?: StructureLevel;
   readonly cellId: CellId;
+  /** Whether this structure currently contributes its completed-level mechanics. */
   readonly active: boolean;
-  readonly constructionRemainingTicks?: number;
+  /** Present while a fresh build or upgrade is still progressing. */
+  readonly construction?: StructureConstructionView;
   readonly health?: number;
   readonly maxHealth?: number;
   /** Present for legally observable charge-bearing structures such as Silos/SAMs. */
@@ -402,17 +416,19 @@ export interface CounterResponseCalculation {
 export interface EffectiveActionCost {
   /** FFY that must be available for the action to satisfy affordability. */
   readonly ffyRequired: number;
-  /** FFY actually consumed when the action commits. */
+  /** FFY actually consumed when the quoted action commits; zero for an illegal quote. */
   readonly ffySpent: number;
-  /** Available Population permanently consumed when the action commits. */
+  /** Available Population permanently consumed on commit; zero for an illegal quote. */
   readonly populationSpent: number;
 }
 
 /**
  * Exact single-action result against the current immutable observation snapshot.
  * A quote is not a reservation and does not account for other actions submitted in
- * the same later decision; aggregate FFY/Population use or conflicting actions can
- * therefore still make the complete atomic proposal reject.
+ * the same later decision; aggregate FFY/Population use, ownership-slot reservations,
+ * or conflicting actions can therefore still make the complete atomic proposal reject.
+ * When legal=false, ffySpent and populationSpent are always zero; ffyRequired may
+ * remain non-zero to expose the effective affordability requirement independently.
  */
 export interface ActionQuote {
   readonly legal: boolean;
@@ -426,6 +442,8 @@ export interface StructureBuildQuote extends ActionQuote {
   readonly cellId: CellId;
   readonly resultingLevel: StructureLevel;
   readonly buildTicks: number;
+  /** Effective hard ownership cap when this structure type is capped for the faction. */
+  readonly ownershipCap?: number;
 }
 
 export interface StructureUpgradeQuote extends ActionQuote {
@@ -440,6 +458,7 @@ export interface UnitBuildQuote extends ActionQuote {
   readonly resultingUnit: MobileUnitType;
   readonly producerId: StructureId;
   readonly buildTicks: number;
+  /** Effective hard ownership cap when this unit type is capped for the faction. */
   readonly ownershipCap?: number;
 }
 
@@ -540,9 +559,13 @@ export interface TransportMechanicsSpec {
   readonly embarkSourceRule: TransportEmbarkSourceRule;
   readonly landingPopulationSurvivalFraction: number;
   readonly returnPopulationSurvivalFraction: number;
+  /** Conditional post-landing grant contract; admission can still skip the grant. */
   readonly successfulLandingGrant?: {
     readonly structure: StructureType;
     readonly level: StructureLevel;
+    readonly placement: "EXACT_LANDING_CELL";
+    readonly activation: "IMMEDIATE_COMPLETED";
+    readonly failurePolicy: "SKIP_GRANT_KEEP_LANDING";
   };
 }
 
@@ -608,7 +631,12 @@ export interface MechanicsApi {
     level: StructureLevel,
     factionId?: FactionId,
   ): StructureMechanicsSpec;
-  structureSpec(structureId: StructureId): StructureMechanicsSpec;
+  /**
+   * Effective currently active mechanics for a physical structure.
+   * Fresh inactive construction has no completed mechanics yet and returns undefined;
+   * an upgrade returns the previous completed level's active mechanics until completion.
+   */
+  structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
   unitTypeSpec(
     type: MobileUnitType,
