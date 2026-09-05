@@ -257,9 +257,9 @@ Neutral settlement costs half the ordinary Population. Shared expansion reasonin
 
 ## P37 — The City Mouse
 
-Amphibious embarkation costs more FFY, but a successful landing creates a permanent level-1 Fort. The landing should be valued as an immediately fortified beachhead, not merely newly captured coast.
+Amphibious embarkation costs more FFY, while a successful landing creates an exact-cell Fort grant opportunity. A competent forecast must value the Fort only when canonical occupancy, placement, and ownership admission will actually allow the grant; an inadmissible Fort does not undo the landing.
 
-**Strategic philosophy:** pay more to invade, but make successful landings durable second fronts.
+**Strategic philosophy:** pay more to invade, but exploit successful landings as durable fortified second fronts when the beachhead can actually admit the Fort.
 
 ## P38 — Return by Death
 
@@ -281,9 +281,9 @@ SAMs become large-area, exactly-one-charge shields with slower recharge. Coverag
 
 ## P41 — Level 5
 
-A purchased City is immediately mature rather than entering the ordinary build/upgrade path. The decision combines high upfront liquidity with immediate high-level payoff.
+A purchased City uses one ordinary City construction interval and then completes directly at level 5, without intermediate level builds/upgrades. The decision combines high upfront liquidity with a short inactive setup window followed by a mature high-level payoff.
 
-**Strategic philosophy:** concentrate City investment into one-step mature infrastructure.
+**Strategic philosophy:** concentrate City investment into one-step mature infrastructure while accounting for the ordinary construction delay before the L5 payoff becomes active.
 
 ## P42 — The Price of Empire
 
