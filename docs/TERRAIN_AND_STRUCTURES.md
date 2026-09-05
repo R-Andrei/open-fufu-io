@@ -163,6 +163,28 @@ All persistent structures have levels `1–5`; normal purchases create L1 and L5
 - Ordinary placement requires owned buildable terrain; Port additionally requires a legal coast/water interface.
 - Same-type area effects use the strongest applicable same-type effect rather than stacking.
 
+Construction state is represented independently from activity and completed level:
+
+```text
+fresh construction:
+  completedLevel = none
+  active = false
+  construction.targetLevel = purchased/granted target
+  construction.remainingTicks = remaining build time
+
+upgrade in progress:
+  completedLevel = previous completed level
+  active = true
+  construction.targetLevel = next target level
+  construction.remainingTicks = remaining upgrade time
+
+completed structure:
+  completedLevel = completed target level
+  construction = none
+```
+
+A rule such as P41 may change the fresh construction target without creating hidden intermediate levels. Its direct-L5 City therefore has no completed level during its five-second build, then atomically completes at L5.
+
 ## 2.2 Canonical structure-acquisition admission
 
 Every path that would make a persistent structure belong to a faction passes through one authoritative **structure-acquisition admission** contract. The acquisition path is explicit because construction-only restrictions are not ownership restrictions.
@@ -189,20 +211,20 @@ Likewise, ordinary terrain/build permission, Port-interface requirements, constr
 
 ### 2.2.2 Ownership-slot occupancy and reservations
 
-For a hard cap on a structure type, admission uses:
+After an admission commits, one intended future owned object consumes exactly one ownership slot throughout its lifecycle. Slot accounting therefore uses disjoint buckets:
 
 ```text
 occupied slots
-= currently owned structures of that type
-+ already committed pending/under-construction acquisitions of that type
+= currently owned physical structures of that type, including inactive/under-construction structures
++ committed admissions that reserved a slot but have not yet materialized a physical structure
 + temporary reservations created while validating the current atomic transaction
 ```
 
-An admitted construction occupies its ownership slot from transaction commit, not only from later activation. A structure under construction therefore counts against the cap. An upgrade does not create a new structure and consumes no additional ownership slot.
+A materialized under-construction structure appears only in the first bucket; it is never counted again as a separate pending acquisition. An admitted construction occupies its ownership slot from transaction commit, not only from later activation. An upgrade does not create a new structure and consumes no additional ownership slot.
 
 A controller/mechanics quote is informational only and does **not** reserve a slot. Several individually legal quotes may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling commands cannot oversubscribe the same cap.
 
-The slot is released when authoritative ownership of that physical structure ends, including successful transfer away or destruction/deletion. Failed or rolled-back admissions leave no phantom reservation.
+The slot is released when authoritative ownership of that physical structure ends, including successful transfer away or destruction/deletion. A committed pre-materialization reservation is released on authoritative cancellation/rollback. Failed admissions leave no phantom reservation.
 
 ## 2.3 Structure grants
 
@@ -247,7 +269,7 @@ emit immutable StructureCaptureResolved fact
 
 ### 2.4.1 Capture context and disposition
 
-The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level, active/under-construction state, health where applicable, and construction progress where applicable.
+The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time.
 
 V1 has exactly two generic final dispositions:
 
@@ -268,11 +290,13 @@ A successful transfer changes ownership atomically while preserving the physical
 
 - structure ID and type;
 - cell/location;
-- completed level;
+- completed level when one exists;
 - health/damage state where applicable;
-- active versus under-construction state;
-- remaining construction progress when under construction;
+- current active state;
+- in-progress construction target level and remaining construction time when construction or an upgrade is underway;
 - other subsystem-owned persistent state by identity rather than recreating a new structure.
+
+Fresh construction therefore remains fresh construction after transfer, including a P41 City that is still targeting L5 with no completed level yet. An upgrading structure remains active at its previous completed level while its preserved construction state continues toward the same target level. Capture never silently converts pending work into a completed structure or discards its target level.
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
