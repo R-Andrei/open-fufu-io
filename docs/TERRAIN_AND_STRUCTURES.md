@@ -6,6 +6,7 @@ This file is the **canonical owner for Open Fufu base terrain, persistent struct
 
 Neighboring concerns are owned elsewhere:
 
+- game-wide teams, hostility, and `atWar` lifecycle: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
 - FFY, Factory Train service, and Trade Ship economics: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
 - Warships, Transports, and strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
 - Origin transformations of terrain, structures, or units: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
@@ -264,7 +265,7 @@ It does not modify Tank weapon damage, Warship damage, strategic weapons, or unr
 
 The **Tank** is the sole baseline persistent land military unit. One map Tank represents an abstract armored formation, not one literal vehicle.
 
-It performs autonomous raiding/interdiction, fights hostile armor, intercepts Trains, and can cause direct Population casualties without capturing territory.
+It performs autonomous raiding/interdiction, fights hostile armor, intercepts Trains, and can cause direct Population casualties while the canonical war-state gate permits those Population attacks.
 
 Origin transformations of the Tank chassis are defined only in `ORIGIN_TRAIT_CATALOGUE.md`.
 
@@ -317,7 +318,7 @@ Baseline Plains movement speed is **5 cells/s**.
 | **Deep Water** | Blocked | — | — |
 | **Impassable** | Blocked | — | — |
 
-Tanks may path through friendly traversable territory and traversable territory belonging to a faction they are legally hostile to. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
+Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
 ## 3.3 Strategic/autonomous control
 
@@ -334,6 +335,8 @@ Within ordinary operation the Tank wanders/searches for legal targets around its
 | **vs hostile Tank chassis** | **30** | **250 HP** | **1s** |
 | **vs hostile Train** | **30** | Train intercepted/destroyed | **1s weapon cadence** |
 | **vs hostile Population** | **30** | **250 Population casualties** | **3s** |
+
+Autonomous anti-armor combat and Train interception do **not** require, create, or refresh `atWar`. Autonomous Population attacks are legal only while the Tank owner's hostility side is currently `atWar` with the target faction's side under the canonical game-wide rule in `OPEN_FUFU_DESIGN.md`; they cease when that relation expires. Tank-derived Origin chassis inherit this gate unless an explicit Origin rule changes it.
 
 Population attacks never capture territory by themselves.
 
