@@ -14,8 +14,7 @@ The coverage registry is split only for reviewability; all files below use the s
 | P41–P50 + new blockers/status corrections | [`P41-P50.md`](./P41-P50.md) |
 | P51–P54 + positive-trait conclusions/corrections | [`P51-P54.md`](./P51-P54.md) |
 | N01–N10 + hard-prohibition/admission findings | [`N01-N10.md`](./N01-N10.md) |
-
-Future batches should be added here rather than turning one registry file into an unreviewable monolith.
+| N11–N18 + full-catalogue boundary conclusions | [`N11-N18.md`](./N11-N18.md) |
 
 The interaction registry must cover both:
 
@@ -26,9 +25,16 @@ Negative-trait validation additionally requires explicit treatment of **hard pro
 
 ## Audit status
 
-Concrete positive-trait dependency tracing is complete for **P01–P54**. Negative-trait tracing is complete through **N10**. Remaining catalogue audit work is N11–N18.
+Concrete dependency tracing is complete for the entire current Origin trait catalogue:
 
-Do not freeze the final validation-domain taxonomy until the negative-trait audit is complete; the remaining drawbacks may still expose additional admission/precedence boundaries.
+```text
+P01–P54
+N01–N18
+```
+
+The next design step is to consolidate/review the complete mechanic-definition blocker list, classify each blocker by canonical owner, then freeze the final validation-domain catalogue and explicit interaction registry from the completed traces.
+
+The full-catalogue evidence currently supports nine recurring gameplay validation domains; admission/legality is an explicit stage inside relevant domains rather than a separate tenth domain. See [`N11-N18.md`](./N11-N18.md) for the current consolidated boundary shape.
 
 ## Authority rule
 
