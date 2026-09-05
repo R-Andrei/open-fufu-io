@@ -37,8 +37,10 @@ Canonical catalogue invariants:
 - No trait tiers, Major/Minor taxonomy, hidden categories, pairwise exclusions, incompatibility families, or runtime vetoes exist.
 - Players select creator-authored traits; they never provide formulas, scripts, callbacks, or arbitrary numeric parameters.
 - Every combination satisfying the public budget, trait-count, and drawback-refund rules must be legal in production.
-- Candidate catalogue versions must be exhaustively tested before deployment; a broken legal combination is a catalogue-design failure, not justification for a hidden restriction.
+- Candidate catalogue versions must be certified under the Origin-validation architecture in [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md). Every builder-legal combination must compose deterministically and safely; expensive runtime certification targets the trait mechanics, meaningful interactions, and distinct gameplay-domain projections that those combinations can produce rather than every named Origin instance.
 - Origins should prefer playstyle-changing rules, tradeoffs, geography, and structural constraints over generic stat tuning better suited to Echoes.
+
+A named Official or Custom Origin is a configuration of one certified catalogue version, not a new mechanical implementation. Creating, loading, or starting a match with such an Origin therefore requires ordinary version, trait-ID, builder-legality, canonical-composition, and serialization checks; it does **not** trigger a new headless/runtime certification job merely because that exact named combination has not appeared before. Runtime conformance remains owned by the gameplay domains the selected traits affect or interact with, as defined by the migration validation architecture.
 
 ---
 
@@ -441,7 +443,7 @@ Examples of strong but legal compositions include:
 - P53 + P16 + N18;
 - P53 + P35/P44 + P16 + N18 where the public budget permits it.
 
-The exhaustive deployment gate must prove every builder-legal combination deterministic and engine-safe. These examples never become hidden compatibility rules.
+Certification must preserve the guarantee that every builder-legal combination is supported, deterministic, and structurally safe. Cheap catalogue/property validation may enumerate or generate very large sets of legal combinations, while expensive runtime validation is performed once per materially distinct gameplay-domain projection plus explicitly required trait/cross-domain interactions. These examples never become hidden compatibility rules.
 
 ---
 
@@ -453,4 +455,4 @@ The canonical Official Origin library is maintained in [`OFFICIAL_ORIGINS.md`](.
 
 ## Next Origin work
 
-Remaining Origin-side work is balance/repricing where testing provides evidence, benchmark validation of balance-sensitive traits, and exhaustive legal-combination validation before catalogue deployment. Echo identity/acquisition/reward work belongs in `ECHO_CATALOGUE.md`; Official-Origin content belongs in `OFFICIAL_ORIGINS.md`.
+Remaining Origin-side work is balance/repricing where testing provides evidence, benchmark validation of balance-sensitive traits, explicit trait-to-validation-domain coverage, and catalogue certification under the validation architecture in `OPENFRONT_INTEGRATION_PLAN.md`. Echo identity/acquisition/reward work belongs in `ECHO_CATALOGUE.md`; Official-Origin content belongs in `OFFICIAL_ORIGINS.md`.
