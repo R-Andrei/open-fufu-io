@@ -226,8 +226,10 @@ For the current Official-AI design this means, unless architecture is explicitly
 ```text
 design/official-ai/origin-trait-support.config.ts
   all exact trait-support mappings, additive combination support, and support-suppression rules
+
 design/official-ai/origin-configurations.config.ts
   all exact named Official-Origin AI mappings
+
 design/official-ai/character-configurations.config.ts
   Baseline and all exact character AI mappings once authored
 ```
