@@ -1,11 +1,25 @@
 import {
   GLOBAL_RULE_SCOPE,
+  evaluateDynamicRuleProvider,
+  type DynamicRuleFormula,
+  type DynamicRuleProvider,
+  type DynamicRuleResolvedValue,
   type RuleCondition,
+  type RuleConditions,
   type RuleContribution,
+  type RuleCustomDomainDeclaration,
   type RuleScope,
-  type RuleStageId,
+  type RuleStateDependency,
 } from "./RuleComposition";
 import type { RuleAxisId } from "./RuleAxisRegistry";
+
+export { evaluateDynamicRuleProvider } from "./RuleComposition";
+export type {
+  DynamicRuleFormula,
+  DynamicRuleProvider,
+  DynamicRuleResolvedValue,
+  RuleStateDependency,
+} from "./RuleComposition";
 
 export type OriginTraitRuleClass =
   | "DECLARATIVE"
@@ -23,7 +37,6 @@ export type OriginCustomRuleDomain =
   | "POPULATION_GROWTH_PROFILE_ANCHORS"
   | "STRUCTURE_CAPTURE_FFY_EVENT"
   | "FACTORY_DISPATCH_SCHEDULER"
-  | "SAM_SLOT_ENTITLEMENT"
   | "STARTING_STRUCTURE_GRANT"
   | "FIRST_STRUCTURE_PURCHASE_ZERO_FFY"
   | "MIRV_USE_ENTITLEMENT"
@@ -31,7 +44,7 @@ export type OriginCustomRuleDomain =
   | "WARSHIP_STRATEGIC_LAUNCHER"
   | "WARSHIP_OPERATIONAL_DURING_PORT_REPAIR"
   | "TRAIN_CITY_POPULATION_GRANT"
-  | "CONQUERED_FACTORY_EFFECT"
+  | "FACTORY_TRAIN_DISPATCH_SNAPSHOT"
   | "RELINQUISHMENT_FALLOUT"
   | "SETTLEMENT_RESIDUAL_ACCOUNTING"
   | "LANDING_FORT_GRANT"
@@ -46,49 +59,12 @@ export type OriginCustomRuleDomain =
   | "TRADE_CAPTURE_VALUE"
   | "STRUCTURE_CAPTURE_DISPOSITION";
 
-export type RuleStateDependency =
-  | "OWNED_PERSISTENT_STRUCTURE_COUNT"
-  | "TERRITORIAL_CONTACT_COUNT";
-
-export type DynamicRuleFormula =
-  | {
-      readonly kind: "RATIONAL_POWER";
-      readonly numerator: 99;
-      readonly denominator: 100;
-    }
-  | {
-      readonly kind: "PERCENT_BP_PER_COUNT";
-      readonly bpPerUnit: 500;
-    };
-
-export interface DynamicRuleProvider {
-  readonly id: string;
-  readonly axis: RuleAxisId;
-  readonly scope: RuleScope;
-  readonly stage: RuleStageId;
-  readonly operator: "MULTIPLY" | "ADD_PERCENT";
-  readonly sourceKind: "ORIGIN";
-  readonly sourceId: OriginTraitId;
-  readonly valueUnit: "BASIS_POINTS";
-  readonly dependency: RuleStateDependency;
-  readonly formula: DynamicRuleFormula;
-}
-
-export type DynamicRuleResolvedValue =
-  | {
-      readonly kind: "RATIONAL";
-      readonly numerator: string;
-      readonly denominator: string;
-    }
-  | { readonly kind: "BASIS_POINTS"; readonly value: number };
-
 export interface OriginTraitRuleManifestEntry {
   readonly id: OriginTraitId;
   readonly classification: OriginTraitRuleClass;
   readonly contributions: readonly RuleContribution[];
   readonly dynamicProviders: readonly DynamicRuleProvider[];
   readonly customDomains: readonly OriginCustomRuleDomain[];
-  /** Boundary note only; trait mechanics remain canonical in the Origin catalogue. */
   readonly note?: string;
 }
 
@@ -140,6 +116,15 @@ const scope = {
   ): RuleScope => ({ kind: "FFY_FAMILY", family }),
 };
 
+function asConditions(
+  conditionOrConditions?: RuleCondition | RuleConditions,
+): RuleConditions | undefined {
+  if (conditionOrConditions === undefined) return undefined;
+  return Array.isArray(conditionOrConditions)
+    ? conditionOrConditions
+    : [conditionOrConditions as RuleCondition];
+}
+
 function contribution(
   id: OriginTraitId,
   axis: RuleAxisId,
@@ -148,8 +133,9 @@ function contribution(
   operator: RuleContribution["operator"],
   valueUnit: RuleContribution["valueUnit"],
   value?: RuleContribution["value"],
-  condition?: RuleCondition,
+  conditionOrConditions?: RuleCondition | RuleConditions,
 ): RuleContribution {
+  const conditions = asConditions(conditionOrConditions);
   return {
     axis,
     scope: target,
@@ -159,7 +145,7 @@ function contribution(
     sourceId: id,
     valueUnit,
     ...(value === undefined ? {} : { value }),
-    ...(condition === undefined ? {} : { condition }),
+    ...(conditions === undefined ? {} : { conditions }),
   };
 }
 
@@ -168,7 +154,7 @@ const pct = (
   axis: RuleAxisId,
   target: RuleScope,
   bp: number,
-  condition?: RuleCondition,
+  conditions?: RuleCondition | RuleConditions,
 ): RuleContribution =>
   contribution(
     id,
@@ -178,7 +164,7 @@ const pct = (
     "ADD_PERCENT",
     "BASIS_POINTS",
     bp,
-    condition,
+    conditions,
   );
 
 const scalar = (
@@ -186,7 +172,7 @@ const scalar = (
   axis: RuleAxisId,
   target: RuleScope,
   bp: number,
-  condition?: RuleCondition,
+  conditions?: RuleCondition | RuleConditions,
 ): RuleContribution =>
   contribution(
     id,
@@ -196,7 +182,25 @@ const scalar = (
     "MULTIPLY",
     "BASIS_POINTS",
     bp,
-    condition,
+    conditions,
+  );
+
+const contextualScalar = (
+  id: OriginTraitId,
+  axis: RuleAxisId,
+  target: RuleScope,
+  bp: number,
+  conditions?: RuleCondition | RuleConditions,
+): RuleContribution =>
+  contribution(
+    id,
+    axis,
+    target,
+    "CONTEXTUAL_SCALAR",
+    "MULTIPLY",
+    "BASIS_POINTS",
+    bp,
+    conditions,
   );
 
 const replace = (
@@ -216,11 +220,30 @@ const replace = (
     value,
   );
 
+const finalOverride = (
+  id: OriginTraitId,
+  axis: RuleAxisId,
+  target: RuleScope,
+  valueUnit: RuleContribution["valueUnit"],
+  value: number,
+  conditions?: RuleCondition | RuleConditions,
+): RuleContribution =>
+  contribution(
+    id,
+    axis,
+    target,
+    "FINAL_OVERRIDE",
+    "FINAL_OVERRIDE",
+    valueUnit,
+    value,
+    conditions,
+  );
+
 const hardZero = (
   id: OriginTraitId,
   axis: RuleAxisId,
   target: RuleScope,
-  condition?: RuleCondition,
+  conditions?: RuleCondition | RuleConditions,
 ): RuleContribution =>
   contribution(
     id,
@@ -230,7 +253,7 @@ const hardZero = (
     "HARD_ZERO",
     "NONE",
     undefined,
-    condition,
+    conditions,
   );
 
 const permission = (
@@ -238,7 +261,7 @@ const permission = (
   axis: RuleAxisId,
   target: RuleScope,
   operator: "ALLOW" | "PROHIBIT",
-  condition?: RuleCondition,
+  conditions?: RuleCondition | RuleConditions,
 ): RuleContribution =>
   contribution(
     id,
@@ -248,7 +271,7 @@ const permission = (
     operator,
     "NONE",
     undefined,
-    condition,
+    conditions,
   );
 
 const limit = (
@@ -319,10 +342,12 @@ const dynamic = (
   providerId: string,
   axis: RuleAxisId,
   target: RuleScope,
-  stage: "ORIGIN_SCALAR" | "CONTEXTUAL_PERCENT",
-  operator: "MULTIPLY" | "ADD_PERCENT",
+  stage: DynamicRuleProvider["stage"],
+  operator: DynamicRuleProvider["operator"],
   dependency: RuleStateDependency,
   formula: DynamicRuleFormula,
+  operandKind: DynamicRuleProvider["operandKind"],
+  conditions?: RuleConditions,
 ): DynamicRuleProvider => ({
   id: providerId,
   axis,
@@ -331,9 +356,10 @@ const dynamic = (
   operator,
   sourceKind: "ORIGIN",
   sourceId: id,
-  valueUnit: "BASIS_POINTS",
   dependency,
   formula,
+  operandKind,
+  ...(conditions === undefined ? {} : { conditions }),
 });
 
 function traitIds(prefix: "P" | "N", count: number): OriginTraitId[] {
@@ -424,12 +450,10 @@ define("P03", "DECLARATIVE", {
 });
 define("P04", "DECLARATIVE", {
   contributions: [
-    contribution(
+    finalOverride(
       "P04",
       "COUNTER_RESPONSE_EFFECTIVENESS",
       scope.global,
-      "FINAL_OVERRIDE",
-      "FINAL_OVERRIDE",
       "RATIO",
       1,
     ),
@@ -448,7 +472,7 @@ define("P06", "DECLARATIVE", {
 custom(
   "P07",
   "FACTORY_DISPATCH_SCHEDULER",
-  "Every fourth ordinary primary Factory Train dispatch creates a bonus Train.",
+  "Each Factory ownership epoch tracks the every-fourth normal-primary-dispatch phase; every fourth primary dispatch simultaneously creates one bonus Train.",
 );
 define("P08", "DECLARATIVE", {
   contributions: [
@@ -485,12 +509,29 @@ define("P10", "DECLARATIVE", {
   ],
   note: "Projectile-family/stage membership remains owned by the strategic-weapon subsystem.",
 });
-define("P11", "MIXED", {
+define("P11", "DYNAMIC", {
   contributions: [
     hardZero("P11", "STRUCTURE_BUILD_COST", scope.structure("SAM_LAUNCHER")),
+    hardZero(
+      "P11",
+      "STRUCTURE_UPGRADE_COST",
+      scope.structure("SAM_LAUNCHER"),
+    ),
   ],
-  customDomains: ["SAM_SLOT_ENTITLEMENT"],
-  note: "Peak-Population SAM-slot entitlement remains lifecycle state.",
+  dynamicProviders: [
+    dynamic(
+      "P11",
+      "P11_SAM_OWNERSHIP_ENTITLEMENT",
+      "STRUCTURE_OWNERSHIP_CAP",
+      scope.structure("SAM_LAUNCHER"),
+      "ORIGIN_CAP",
+      "CAP_LIMIT",
+      "PEAK_TOTAL_POPULATION",
+      { kind: "FLOOR_COUNT_PER_UNITS", unitsPerStep: 25_000 },
+      "INTEGER",
+    ),
+  ],
+  note: "SAM FFY transactions are free; the hard ownership entitlement is floor(peak Total Population / 25,000) and composes through the cap reducer.",
 });
 define("P12", "DECLARATIVE", {
   contributions: [
@@ -545,6 +586,7 @@ define("P17", "DYNAMIC", {
       "MULTIPLY",
       "OWNED_PERSISTENT_STRUCTURE_COUNT",
       { kind: "RATIONAL_POWER", numerator: 99, denominator: 100 },
+      "RATIONAL",
     ),
   ],
   note: "Dynamic multiplier is exactly (99/100)^S where S is current owned persistent-structure count.",
@@ -570,7 +612,8 @@ define("P19", "DYNAMIC", {
       "CONTEXTUAL_PERCENT",
       "ADD_PERCENT",
       "TERRITORIAL_CONTACT_COUNT",
-      { kind: "PERCENT_BP_PER_COUNT", bpPerUnit: 500 },
+      { kind: "BASIS_POINTS_PER_COUNT", bpPerUnit: 500 },
+      "BASIS_POINTS",
     ),
   ],
   note: "Dynamic contextual contribution is +500 bp per distinct active other faction with Territorial Contact.",
@@ -673,14 +716,14 @@ define("P30", "DECLARATIVE", {
 });
 define("P31", "MIXED", {
   contributions: [
-    scalar(
+    contextualScalar(
       "P31",
       "STRUCTURE_REPAIR_RADIUS",
       scope.structure("PORT"),
       20_000,
       { kind: "TARGET_UNIT_IS", unit: "WARSHIP" },
     ),
-    scalar(
+    contextualScalar(
       "P31",
       "STRUCTURE_REPAIR_RATE",
       scope.structure("PORT"),
@@ -689,7 +732,7 @@ define("P31", "MIXED", {
     ),
   ],
   customDomains: ["WARSHIP_OPERATIONAL_DURING_PORT_REPAIR"],
-  note: "Numeric Port repair specialization is declarative; remaining operational while repaired is an explicit non-scalar behavior.",
+  note: "Warship-specific Port radius/rate specialize the already-effective Port field after Echo; operational-during-repair remains non-scalar.",
 });
 define("P32", "DECLARATIVE", {
   contributions: [
@@ -706,11 +749,51 @@ custom(
   "TRAIN_CITY_POPULATION_GRANT",
   "Qualifying Train event at an owned City grants 20 × completed City level Available Population, Capacity-capped.",
 );
-custom(
-  "P34",
-  "CONQUERED_FACTORY_EFFECT",
-  "Successfully transferred conquered Factories operate at 2× ordinary Factory effect while owned; transformed effect set remains Factory-owner semantics.",
-);
+const p34Captured = {
+  kind: "STRUCTURE_ACQUISITION_PATH_IS",
+  path: "CAPTURE_TRANSFER",
+} as const satisfies RuleCondition;
+const p34Target = (unit: "TANK" | "HEAVY_ARTILLERY"): RuleCondition => ({
+  kind: "TARGET_UNIT_IS",
+  unit,
+});
+define("P34", "MIXED", {
+  contributions: [
+    contextualScalar(
+      "P34",
+      "FACTORY_TRAIN_EVENT_BASE_VALUE",
+      scope.structure("FACTORY"),
+      15_000,
+      p34Captured,
+    ),
+    ...(["TANK", "HEAVY_ARTILLERY"] as const).flatMap((unit) => [
+      contextualScalar(
+        "P34",
+        "STRUCTURE_UNIT_CONSTRUCTION_WORK_RATE",
+        scope.structure("FACTORY"),
+        15_000,
+        [p34Captured, p34Target(unit)],
+      ),
+      contextualScalar(
+        "P34",
+        "STRUCTURE_REPAIR_RATE",
+        scope.structure("FACTORY"),
+        15_000,
+        [p34Captured, p34Target(unit)],
+      ),
+      finalOverride(
+        "P34",
+        "STRUCTURE_REPAIR_RADIUS",
+        scope.structure("FACTORY"),
+        "CELLS",
+        8,
+        [p34Captured, p34Target(unit)],
+      ),
+    ]),
+  ],
+  customDomains: ["FACTORY_TRAIN_DISPATCH_SNAPSHOT"],
+  note: "Captured-Factory numeric transformations are typed here; Factory service epochs and dispatch-time Train economic snapshots remain Factory/FFY lifecycle state.",
+});
 custom(
   "P35",
   "RELINQUISHMENT_FALLOUT",
@@ -750,9 +833,7 @@ custom(
   "Automatic defender survives a successful capture of the defended cell and remains/returns Available.",
 );
 define("P39", "DECLARATIVE", {
-  contributions: [
-    structural("P39", "SPAWN_PROFILE", scope.global, "SPLIT_TWO"),
-  ],
+  contributions: [structural("P39", "SPAWN_PROFILE", scope.global, "SPLIT_TWO")],
 });
 define("P40", "DECLARATIVE", {
   contributions: [
@@ -1067,62 +1148,47 @@ export const ORIGIN_RULE_MANIFEST_BY_ID: ReadonlyMap<
   OriginTraitRuleManifestEntry
 > = new Map(ORIGIN_RULE_MANIFEST.map((entry) => [entry.id, entry]));
 
+function manifestEntry(id: OriginTraitId): OriginTraitRuleManifestEntry {
+  const entry = ORIGIN_RULE_MANIFEST_BY_ID.get(id);
+  if (entry === undefined) throw new Error(`Unknown Origin trait ID: ${id}`);
+  return entry;
+}
+
 export function originRuleContributions(
   traitIds: readonly OriginTraitId[],
 ): readonly RuleContribution[] {
-  return traitIds.flatMap((id) => {
-    const entry = ORIGIN_RULE_MANIFEST_BY_ID.get(id);
-    if (entry === undefined) throw new Error(`Unknown Origin trait ID: ${id}`);
-    return entry.contributions;
-  });
+  return traitIds.flatMap((id) => manifestEntry(id).contributions);
 }
 
 export function originDynamicRuleProviders(
   traitIds: readonly OriginTraitId[],
 ): readonly DynamicRuleProvider[] {
-  return traitIds.flatMap((id) => {
-    const entry = ORIGIN_RULE_MANIFEST_BY_ID.get(id);
-    if (entry === undefined) throw new Error(`Unknown Origin trait ID: ${id}`);
-    return entry.dynamicProviders;
-  });
+  return traitIds.flatMap((id) => manifestEntry(id).dynamicProviders);
 }
 
-function bigintPower(base: bigint, exponent: number): bigint {
-  let result = 1n;
-  for (let index = 0; index < exponent; index += 1) {
-    result *= base;
-  }
-  return result;
+export function originCustomRuleDomains(
+  traitIds: readonly OriginTraitId[],
+): readonly RuleCustomDomainDeclaration[] {
+  return traitIds.flatMap((id) =>
+    manifestEntry(id).customDomains.map((domain) => ({
+      sourceKind: "ORIGIN" as const,
+      sourceId: id,
+      domain,
+    })),
+  );
 }
 
-export function evaluateDynamicRuleProvider(
-  provider: DynamicRuleProvider,
-  dependencyValue: number,
-): DynamicRuleResolvedValue {
-  if (!Number.isSafeInteger(dependencyValue) || dependencyValue < 0) {
-    throw new Error(
-      `${provider.id} requires a non-negative safe-integer dependency value`,
-    );
-  }
-  switch (provider.formula.kind) {
-    case "RATIONAL_POWER":
-      return {
-        kind: "RATIONAL",
-        numerator: bigintPower(
-          BigInt(provider.formula.numerator),
-          dependencyValue,
-        ).toString(),
-        denominator: bigintPower(
-          BigInt(provider.formula.denominator),
-          dependencyValue,
-        ).toString(),
-      };
-    case "PERCENT_BP_PER_COUNT": {
-      const value = provider.formula.bpPerUnit * dependencyValue;
-      if (!Number.isSafeInteger(value)) {
-        throw new Error(`${provider.id} produced an unsafe basis-point value`);
-      }
-      return { kind: "BASIS_POINTS", value };
-    }
-  }
+export function originRuleProfileInput(traitIds: readonly OriginTraitId[]): {
+  readonly contributions: readonly RuleContribution[];
+  readonly dynamicProviders: readonly DynamicRuleProvider[];
+  readonly customDomains: readonly RuleCustomDomainDeclaration[];
+} {
+  return {
+    contributions: originRuleContributions(traitIds),
+    dynamicProviders: originDynamicRuleProviders(traitIds),
+    customDomains: originCustomRuleDomains(traitIds),
+  };
 }
+
+void evaluateDynamicRuleProvider;
+void (undefined as DynamicRuleResolvedValue | undefined);
