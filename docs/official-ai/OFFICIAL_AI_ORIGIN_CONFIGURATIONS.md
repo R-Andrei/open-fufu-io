@@ -149,7 +149,7 @@ Reduced City growth and Mountain FFY further discourage treating all geography a
 
 This Origin activates two reusable combination entries.
 
-`CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates at double effect. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
+`CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates with P34's `50% increased effectiveness` Factory profile. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
 
 Highland offense helps create acquisition opportunities while weaker Plains offense makes route/terrain selection matter. No named-Origin-specific support is needed because the reusable combination layer already captures both strategic loops.
 

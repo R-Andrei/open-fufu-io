@@ -199,6 +199,8 @@ CAPTURE_TRANSFER
 
 Start-state and scenario-created structures use the `GRANT` path; their owner decides when and where the grant request is generated. Runtime rewards such as a post-landing Fort also use `GRANT`.
 
+Every successfully acquired physical structure records the **current ownership acquisition path** that produced its present owner. This owner-scoped provenance is deterministic serialized/replay state. `PURCHASE_BUILD` and `GRANT` initialize their corresponding provenance; every successful ownership transfer replaces the previous owner's provenance with `CAPTURE_TRANSFER`. The path describes the current ownership epoch rather than the structure's oldest historical origin.
+
 Admission evaluates the effective rules for the prospective owner without mutating authoritative state. A successful result may then be committed by the owning transaction; a rejected result consumes no FFY, Population, purchase entitlement, construction/producer capacity, or ownership-slot reservation.
 
 ### 2.2.1 Common ownership constraints
@@ -300,7 +302,7 @@ Fresh construction therefore remains fresh construction after transfer, includin
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
-Focused subsystem owners remain responsible for semantics of their own specialized state across transfer. For example, Factory Train scheduling/provenance belongs to the Factory/Train owner and Silo charge readiness belongs to the strategic-weapon/charge owner.
+Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`, and a focused subsystem may close the previous owner's operational epoch and initialize the new owner's epoch while preserving the physical structure. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. Silo charge readiness remains owned by the strategic-weapon/charge owner.
 
 ### 2.4.3 Typed capture consequences, not mutating event listeners
 
@@ -390,17 +392,19 @@ Trade Ship service/economics are defined in `FFY_ECONOMY.md`. Warship production
 
 ### Factory
 
-Factories produce Trains and Tanks and repair Tanks.
+Factories produce Trains and Tanks and repair Tank chassis.
 
-Train routing, timing, station events, and FFY values are defined in `FFY_ECONOMY.md`.
+Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
 Baseline Tank repair:
 
 ```text
 repair radius = 5 cells
-repair rate = 100 HP/s per repairing Tank
+repair rate = 100 HP/s per repairing Tank chassis
 simultaneous repair capacity = completed Factory level
 ```
+
+Factory consumers must request an **effective Factory profile** rather than infer a generic `Factory effect multiplier`. The current P34 conquest transformation is explicitly axis-specific: a qualifying conquered Factory uses `1.50×` Train-event base value, `1.50×` Tank-chassis construction speed, `150 HP/s` Tank repair, and an `8-cell` repair radius. Its primary Train-service capacity, turnaround, Tank-build concurrency, Tank purchase price, simultaneous repair capacity, Factory level, and Factory construction/upgrade rules remain ordinary. Exact Origin semantics and interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ### Missile Silo
 
@@ -456,6 +460,14 @@ Origin transformations of the Tank chassis are defined only in `ORIGIN_TRAIT_CAT
 | Max health | **1,000** |
 | Automatic repair-retreat threshold | **50% health** |
 | Repair structure | Factory |
+
+Tank-chassis construction-speed modifiers multiply construction **work rate**. They do not subtract the same percentage directly from duration. For a baseline build represented by `baseBuildTicks`, an isolated speed multiplier `S > 0` completes after:
+
+```text
+effectiveBuildTicks = ceil(baseBuildTicks / S)
+```
+
+The ceiling is authoritative so completion remains deterministic on the simulation tick lattice. P34's current `S = 1.50` therefore makes the ordinary 50-tick Tank build complete in 34 ticks; if P43 transforms the chassis to its 100-tick Heavy-Artillery baseline, the same P34 speed hook completes it in 67 ticks. Concurrent Tank-build capacity remains one unless an explicit rule changes that separate axis.
 
 ### Purchase-cost curve
 
