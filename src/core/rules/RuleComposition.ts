@@ -1,3 +1,5 @@
+import { pow2 as deterministicPow2 } from "../DetMath";
+
 export const RULE_COMPOSITION_VERSION = "1" as const;
 export const BASIS_POINTS_SCALE = 10_000;
 
@@ -1388,7 +1390,8 @@ export function rationalToFiniteNumber(
   const numeratorMantissa = Number(numerator >> BigInt(numeratorShift));
   const denominatorMantissa = Number(denominator >> BigInt(denominatorShift));
   const exponent = numeratorShift - denominatorShift;
-  const magnitude = (numeratorMantissa / denominatorMantissa) * 2 ** exponent;
+  const magnitude =
+    (numeratorMantissa / denominatorMantissa) * deterministicPow2(exponent);
   const result = negative ? -magnitude : magnitude;
   if (!Number.isFinite(result)) {
     throw new Error("Exact rational materialized to a non-finite number");
