@@ -30,9 +30,23 @@ const TAN_PI_8 = 0.41421356237309503;
 /** 2 ** n for integer n; exact, saturating to Infinity / 0 like Math.pow. */
 export function pow2(n: number): number {
   if (n > 1023) return Infinity;
-  if (n < -1022) return 0;
-  u32[HI] = (n + 1023) << 20;
-  u32[LO] = 0;
+  if (n < -1074) return 0;
+  if (n >= -1022) {
+    u32[HI] = (n + 1023) << 20;
+    u32[LO] = 0;
+    return f64[0];
+  }
+
+  // Subnormal 2^n has exactly one fraction bit set. The 52-bit fraction is
+  // split across the low 32-bit word and the low 20 bits of the high word.
+  const fractionBit = n + 1074;
+  if (fractionBit < 32) {
+    u32[HI] = 0;
+    u32[LO] = 1 << fractionBit;
+  } else {
+    u32[HI] = 1 << (fractionBit - 32);
+    u32[LO] = 0;
+  }
   return f64[0];
 }
 
