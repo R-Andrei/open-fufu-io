@@ -7,7 +7,7 @@ description: Build, run, and drive the repository's current inherited/OpenFront-
 
 This skill drives the **currently runnable inherited/OpenFront-derived application**. It is useful for UI/rendering checks, migration regressions, screenshots, and inspecting current implementation behavior.
 
-It is **not** a canonical Open Fufu mechanics/runtime authority. Browser-local state exposed by the current app is implementation evidence only; target Open Fufu behavior must be judged against `AGENTS.md`, `docs/README.md`, and the registered canonical owner for the concern.
+It is **not** a canonical Open Fufu mechanics/runtime authority or a normal correctness gate. Browser-local state exposed by the current app is implementation evidence only; target Open Fufu behavior must be judged against `AGENTS.md`, `docs/README.md`, `docs/VALIDATION_POLICY.md`, and the registered canonical owner for the concern.
 
 The current development application is a Lit + Pixi.js browser client with a Node server. Run it with:
 
@@ -142,14 +142,19 @@ npm run dev
 
 Then open `http://localhost:9000` in a browser.
 
-## Tests
+## Validation boundary
+
+The browser harness is an explicit current-app diagnostic. It does not make inherited application behavior or inherited tests part of the maintained Open Fufu correctness surface.
+
+For normal repository validation, use:
 
 ```bash
 npm test
-npx vitest tests/MapConsistency.test.ts --run
 ```
 
-Use additional checks required by `AGENTS.md` and by the canonical owner of the subsystem being changed. A successful browser smoke test does not replace canonical mechanics, headless-runtime, determinism, or integration validation.
+That command and plain/default `vitest run` are intentionally restricted to the tests registered in `validation/open-fufu-owned.json`. Do not recommend or run arbitrary inherited tests as normal validation merely because they exist. If an inherited test is useful for historical investigation, keep that use explicitly diagnostic/non-gating; if its subsystem becomes authoritative Open Fufu code, adopt it under `docs/VALIDATION_POLICY.md` with appropriate focused owned validation.
+
+A successful browser smoke test does not replace canonical mechanics, owned tests/validators, headless-runtime, determinism, or integration checks required by the adopted subsystem.
 
 ## Harness troubleshooting
 
