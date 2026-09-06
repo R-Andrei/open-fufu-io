@@ -9,6 +9,7 @@ import {
   ruleScopeMatches,
   validateRuleAxisRegistry,
   validateRuleContributions,
+  type DynamicRuleFormula,
   type DynamicRuleOperandKind,
   type DynamicRuleProvider,
   type RuleAxisRegistry,
@@ -29,8 +30,12 @@ export type RuleCompilerIssueCode =
   | RuleValidationIssue["code"]
   | "OVERLAPPING_SINGLETON_CONFLICT"
   | "OVERLAPPING_MIXED_OPERATORS"
+  | "UNSATISFIABLE_CONDITION_SET"
   | "DUPLICATE_DYNAMIC_PROVIDER"
   | "INVALID_DYNAMIC_PROVIDER"
+  | "INVALID_DYNAMIC_PROVIDER_SHAPE"
+  | "INVALID_DYNAMIC_DEPENDENCY"
+  | "INVALID_DYNAMIC_FORMULA"
   | "DYNAMIC_OPERAND_KIND_MISMATCH"
   | "INVALID_CUSTOM_DOMAIN";
 
@@ -57,6 +62,31 @@ export interface CompiledRuleProfile {
   readonly canonicalSerialization: string;
 }
 
+const DYNAMIC_PROVIDER_REQUIRED_KEYS = [
+  "id",
+  "axis",
+  "scope",
+  "stage",
+  "operator",
+  "sourceKind",
+  "sourceId",
+  "dependency",
+  "formula",
+  "operandKind",
+] as const;
+const DYNAMIC_PROVIDER_OPTIONAL_KEYS = ["conditions"] as const;
+const DYNAMIC_DEPENDENCIES = new Set([
+  "OWNED_PERSISTENT_STRUCTURE_COUNT",
+  "TERRITORIAL_CONTACT_COUNT",
+  "PEAK_TOTAL_POPULATION",
+]);
+const DYNAMIC_OPERATORS = new Set(["MULTIPLY", "ADD_PERCENT", "CAP_LIMIT"]);
+const DYNAMIC_OPERAND_KINDS = new Set<DynamicRuleOperandKind>([
+  "RATIONAL",
+  "BASIS_POINTS",
+  "INTEGER",
+]);
+
 function profileInput(
   input: readonly RuleContribution[] | RuleProfileInput,
 ): Required<RuleProfileInput> {
@@ -73,6 +103,22 @@ function profileInput(
     dynamicProviders: typed.dynamicProviders ?? [],
     customDomains: typed.customDomains ?? [],
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasExactKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return (
+    required.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key))
+  );
 }
 
 function scopeValue(scope: RuleScope): string {
@@ -138,6 +184,23 @@ export function ruleConditionsMayOverlap(
   return !exclusiveSameKindCondition(a, b);
 }
 
+export function ruleConditionSetIsSatisfiable(
+  conditions: RuleConditions | undefined,
+): boolean {
+  const entries = conditions ?? [];
+  for (let i = 0; i < entries.length; i += 1) {
+    const left = entries[i];
+    if (left === undefined) continue;
+    for (let j = i + 1; j < entries.length; j += 1) {
+      const right = entries[j];
+      if (right !== undefined && !ruleConditionsMayOverlap(left, right)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 export function ruleConditionSetsMayOverlap(
   a: RuleConditions | undefined,
   b: RuleConditions | undefined,
@@ -185,13 +248,138 @@ function expectedDynamicOperandKinds(
   }
 }
 
+interface DynamicFormulaValidation {
+  readonly resultKind?: DynamicRuleOperandKind;
+  readonly message?: string;
+}
+
+function validateDynamicFormula(formula: unknown): DynamicFormulaValidation {
+  if (!isRecord(formula) || typeof formula.kind !== "string") {
+    return { message: "Dynamic formula must be a typed object" };
+  }
+
+  switch (formula.kind) {
+    case "RATIONAL_POWER": {
+      if (!hasExactKeys(formula, ["kind", "numerator", "denominator"])) {
+        return { message: "RATIONAL_POWER has missing or unknown fields" };
+      }
+      const { numerator, denominator } = formula;
+      if (
+        typeof numerator !== "number" ||
+        typeof denominator !== "number" ||
+        !Number.isSafeInteger(numerator) ||
+        !Number.isSafeInteger(denominator) ||
+        denominator <= 0
+      ) {
+        return {
+          message:
+            "RATIONAL_POWER requires safe-integer numerator and positive safe-integer denominator",
+        };
+      }
+      return { resultKind: "RATIONAL" };
+    }
+    case "BASIS_POINTS_PER_COUNT": {
+      if (!hasExactKeys(formula, ["kind", "bpPerUnit"])) {
+        return {
+          message: "BASIS_POINTS_PER_COUNT has missing or unknown fields",
+        };
+      }
+      if (
+        typeof formula.bpPerUnit !== "number" ||
+        !Number.isSafeInteger(formula.bpPerUnit)
+      ) {
+        return {
+          message: "BASIS_POINTS_PER_COUNT requires a safe-integer rate",
+        };
+      }
+      return { resultKind: "BASIS_POINTS" };
+    }
+    case "FLOOR_COUNT_PER_UNITS": {
+      if (!hasExactKeys(formula, ["kind", "unitsPerStep"])) {
+        return {
+          message: "FLOOR_COUNT_PER_UNITS has missing or unknown fields",
+        };
+      }
+      if (
+        typeof formula.unitsPerStep !== "number" ||
+        !Number.isSafeInteger(formula.unitsPerStep) ||
+        formula.unitsPerStep <= 0
+      ) {
+        return {
+          message:
+            "FLOOR_COUNT_PER_UNITS requires a positive safe-integer step",
+        };
+      }
+      return { resultKind: "INTEGER" };
+    }
+    default:
+      return { message: `Unknown dynamic formula ${formula.kind}` };
+  }
+}
+
+function dynamicProviderShapeIsValid(raw: unknown): raw is DynamicRuleProvider {
+  if (!isRecord(raw)) return false;
+  if (
+    !hasExactKeys(
+      raw,
+      DYNAMIC_PROVIDER_REQUIRED_KEYS,
+      DYNAMIC_PROVIDER_OPTIONAL_KEYS,
+    )
+  ) {
+    return false;
+  }
+  return (
+    typeof raw.id === "string" &&
+    raw.id.length > 0 &&
+    typeof raw.axis === "string" &&
+    raw.axis.length > 0 &&
+    typeof raw.stage === "string" &&
+    typeof raw.operator === "string" &&
+    DYNAMIC_OPERATORS.has(raw.operator) &&
+    typeof raw.sourceKind === "string" &&
+    typeof raw.sourceId === "string" &&
+    raw.sourceId.length > 0 &&
+    typeof raw.dependency === "string" &&
+    typeof raw.operandKind === "string" &&
+    DYNAMIC_OPERAND_KINDS.has(raw.operandKind as DynamicRuleOperandKind) &&
+    Object.prototype.hasOwnProperty.call(raw, "scope") &&
+    Object.prototype.hasOwnProperty.call(raw, "formula") &&
+    (raw.conditions === undefined || Array.isArray(raw.conditions))
+  );
+}
+
+function dynamicProviderIssueContext(raw: unknown): {
+  readonly axis: string;
+  readonly sourceId: string;
+} {
+  if (!isRecord(raw)) return { axis: "DYNAMIC_PROVIDER", sourceId: "<invalid>" };
+  return {
+    axis: typeof raw.axis === "string" ? raw.axis : "DYNAMIC_PROVIDER",
+    sourceId: typeof raw.sourceId === "string" ? raw.sourceId : "<invalid>",
+  };
+}
+
 function validateDynamicProviders(
   registry: RuleAxisRegistry,
   providers: readonly DynamicRuleProvider[],
 ): readonly RuleCompilerIssue[] {
   const issues: RuleCompilerIssue[] = [];
   const providerIds = new Set<string>();
-  for (const provider of providers) {
+
+  for (const rawProvider of providers as readonly unknown[]) {
+    const context = dynamicProviderIssueContext(rawProvider);
+    if (!dynamicProviderShapeIsValid(rawProvider)) {
+      issues.push({
+        code: "INVALID_DYNAMIC_PROVIDER_SHAPE",
+        axis: context.axis,
+        sourceIds: [context.sourceId],
+        message:
+          "Dynamic provider must use the exact closed provider shape and valid operator/result-kind vocabulary",
+      });
+      continue;
+    }
+    const provider = rawProvider;
+
     if (providerIds.has(provider.id)) {
       issues.push({
         code: "DUPLICATE_DYNAMIC_PROVIDER",
@@ -202,6 +390,35 @@ function validateDynamicProviders(
       });
     }
     providerIds.add(provider.id);
+
+    if (!DYNAMIC_DEPENDENCIES.has(provider.dependency)) {
+      issues.push({
+        code: "INVALID_DYNAMIC_DEPENDENCY",
+        axis: provider.axis,
+        stage: provider.stage,
+        sourceIds: [provider.sourceId],
+        message: `${provider.id} uses unknown state dependency ${provider.dependency}`,
+      });
+    }
+
+    const formulaValidation = validateDynamicFormula(provider.formula);
+    if (formulaValidation.message !== undefined) {
+      issues.push({
+        code: "INVALID_DYNAMIC_FORMULA",
+        axis: provider.axis,
+        stage: provider.stage,
+        sourceIds: [provider.sourceId],
+        message: `${provider.id}: ${formulaValidation.message}`,
+      });
+    } else if (formulaValidation.resultKind !== provider.operandKind) {
+      issues.push({
+        code: "DYNAMIC_OPERAND_KIND_MISMATCH",
+        axis: provider.axis,
+        stage: provider.stage,
+        sourceIds: [provider.sourceId],
+        message: `${provider.id} formula materializes ${formulaValidation.resultKind}, not declared ${provider.operandKind}`,
+      });
+    }
 
     const definition = registry[provider.axis];
     if (definition === undefined) {
@@ -233,21 +450,37 @@ function validateDynamicProviders(
         message: `${provider.id} expects ${definition.scopeKind} scope`,
       });
     }
+
+    let validConditionSet = true;
+    if (provider.conditions !== undefined) {
+      validConditionSet =
+        provider.conditions.length > 0 &&
+        provider.conditions.every((condition) =>
+          isValidRuleCondition(condition as unknown),
+        );
+      if (!validConditionSet) {
+        issues.push({
+          code: "INVALID_DYNAMIC_PROVIDER",
+          axis: provider.axis,
+          stage: provider.stage,
+          sourceIds: [provider.sourceId],
+          message: `${provider.id} has an invalid condition conjunction`,
+        });
+      }
+    }
     if (
-      provider.conditions !== undefined &&
-      (provider.conditions.length === 0 ||
-        provider.conditions.some(
-          (condition) => !isValidRuleCondition(condition as unknown),
-        ))
+      validConditionSet &&
+      !ruleConditionSetIsSatisfiable(provider.conditions)
     ) {
       issues.push({
-        code: "INVALID_DYNAMIC_PROVIDER",
+        code: "UNSATISFIABLE_CONDITION_SET",
         axis: provider.axis,
         stage: provider.stage,
         sourceIds: [provider.sourceId],
-        message: `${provider.id} has an invalid condition conjunction`,
+        message: `${provider.id} has an internally contradictory condition conjunction`,
       });
     }
+
     if (!definition.allowedSourceKinds.includes(provider.sourceKind)) {
       issues.push({
         code: "INVALID_DYNAMIC_PROVIDER",
@@ -260,7 +493,10 @@ function validateDynamicProviders(
     const stage = definition.stages.find(
       (candidate) => candidate.id === provider.stage,
     );
-    if (stage === undefined || !stage.allowedOperators.includes(provider.operator)) {
+    if (
+      stage === undefined ||
+      !stage.allowedOperators.includes(provider.operator)
+    ) {
       issues.push({
         code: "INVALID_DYNAMIC_PROVIDER",
         axis: provider.axis,
@@ -270,9 +506,13 @@ function validateDynamicProviders(
       });
       continue;
     }
-    const allowedSources: readonly string[] =
-      RULE_STAGE_ALLOWED_SOURCE_KINDS[provider.stage];
-    if (!allowedSources.includes(provider.sourceKind)) {
+    const allowedSources = RULE_STAGE_ALLOWED_SOURCE_KINDS[
+      provider.stage
+    ] as readonly string[] | undefined;
+    if (
+      allowedSources === undefined ||
+      !allowedSources.includes(provider.sourceKind)
+    ) {
       issues.push({
         code: "INVALID_DYNAMIC_PROVIDER",
         axis: provider.axis,
@@ -281,13 +521,45 @@ function validateDynamicProviders(
         message: `${provider.sourceKind} cannot author semantic stage ${provider.stage}`,
       });
     }
-    if (!expectedDynamicOperandKinds(provider.operator).includes(provider.operandKind)) {
+    if (
+      !expectedDynamicOperandKinds(provider.operator).includes(
+        provider.operandKind,
+      )
+    ) {
       issues.push({
         code: "DYNAMIC_OPERAND_KIND_MISMATCH",
         axis: provider.axis,
         stage: provider.stage,
         sourceIds: [provider.sourceId],
         message: `${provider.id}/${provider.operator} cannot materialize ${provider.operandKind}`,
+      });
+    }
+  }
+  return issues;
+}
+
+function validateStaticConditionSets(
+  contributions: readonly RuleContribution[],
+): readonly RuleCompilerIssue[] {
+  const issues: RuleCompilerIssue[] = [];
+  for (const contribution of contributions) {
+    if (
+      contribution.conditions === undefined ||
+      !Array.isArray(contribution.conditions) ||
+      contribution.conditions.length === 0 ||
+      contribution.conditions.some(
+        (condition) => !isValidRuleCondition(condition as unknown),
+      )
+    ) {
+      continue;
+    }
+    if (!ruleConditionSetIsSatisfiable(contribution.conditions)) {
+      issues.push({
+        code: "UNSATISFIABLE_CONDITION_SET",
+        axis: contribution.axis,
+        stage: contribution.stage,
+        sourceIds: [contribution.sourceId],
+        message: `${contribution.sourceId} has an internally contradictory condition conjunction`,
       });
     }
   }
@@ -362,6 +634,7 @@ export function validateRuleProfile(
   const issues: RuleCompilerIssue[] = [
     ...validateRuleAxisRegistry(registry),
     ...validateRuleContributions(profile.contributions, registry),
+    ...validateStaticConditionSets(profile.contributions),
     ...validateDynamicProviders(registry, profile.dynamicProviders),
     ...validateCustomDomains(profile.customDomains),
   ];
