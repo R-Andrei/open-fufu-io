@@ -28,13 +28,18 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm ci
-      - name: Validate canonical ownership and prevent new drift
+      - name: Validate canonical ownership strictly
+        run: npx tsx scripts/checkDocumentationAuthority.ts --strict
+      - name: Phase 6 stale-reference diagnostic
         shell: bash
         run: |
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            npx tsx scripts/checkDocumentationAuthority.ts --base "origin/${{ github.base_ref }}"
-          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
-            npx tsx scripts/checkDocumentationAuthority.ts --base "${{ github.event.merge_group.base_sha }}"
-          else
-            npx tsx scripts/checkDocumentationAuthority.ts --base "${{ github.event.before }}"
-          fi
+          set +e
+          echo '=== GitHub issue/PR references in tracked text ==='
+          git grep -nE '(^|[^A-Za-z0-9_])#[0-9]+\b|https://github\.com/[^/[:space:])]+/[^/[:space:])]+/(issues|pull)/[0-9]+\b' -- '*.md' '*.ts' '*.tsx' '*.js' '*.mjs' '*.yml' '*.yaml' '*.json'
+          echo '=== TODO/FIXME in tracked text ==='
+          git grep -nE '\b(TODO|FIXME)\b' -- '*.md' '*.ts' '*.tsx' '*.js' '*.mjs' '*.yml' '*.yaml' '*.json'
+          echo '=== Deleted Origin-validation document references ==='
+          git grep -nE 'FINAL_VALIDATION_MODEL\.md|origin-validation/(P41-P50|P51-P54|N01-N10|N11-N18)\.md'
+          echo '=== Known stale authority/status phrases ==='
+          git grep -niE 'sole active workflow|72/72|49/49|20/20|phase closed|closure status|implementation/content work still open|remaining implementation/validation work|remaining migration work'
+          exit 0
