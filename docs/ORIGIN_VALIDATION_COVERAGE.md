@@ -151,18 +151,19 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - Failed capture, structureless capture, or `DESTROYED_ON_CAPTURE` result must not fire P05.
 - Base value is the captured physical structure type's **ordinary baseline L1 build price**, regardless of current completed level, in-progress construction/upgrade target, health, transaction history, discounts, grants, or free-purchase effects.
 - Event location is the captured structure cell.
-- Location-conditioned FFY eligibility uses the capture resolver's frozen **pre-transfer** spatial state. A newly captured Fort/SAM cannot make its own P05 event newly qualify through the ownership transfer that generated that same event.
-- Same-tick sibling captures must produce the same P05 results independent of consequence-iteration order.
+- Every mutable earning-side input consumed by P05 uses one frozen **pre-transfer / pre-batch earning-state snapshot** taken before the capture batch mutates territory, structure ownership, or capture consequences. This includes faction-wide derived earning state such as Desert-share All-FFY, captured-cell terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force.
+- A newly captured cell/structure cannot change its own or a sibling P05 event's earning state during the same batch. Same-tick sibling captures must therefore produce the same P05 results independent of consequence-iteration order.
 
 **Required scenario coverage**
 
 - every persistent structure type resolves to the current canonical L1 baseline price from `TERRAIN_AND_STRUCTURES.md`;
 - L1 versus L5 capture of the same structure type produces the same P05 base value;
 - fresh construction or an upgrade in progress still uses that structure type's L1 base value on successful transfer;
-- P14 applies when the captured cell's underlying terrain is Desert; N04 applies when it is Mountain;
-- an already-qualifying P24 Fort field may raise the P05 event and an already-qualifying N11 SAM field may hard-zero it, subject to the canonical field affiliation/geometry contract;
-- a Fort/SAM acquired by the same capture cannot newly affect its own P05 event;
-- simultaneous qualifying captures are invariant to processing order;
+- P14 applies when the captured cell's frozen underlying terrain is Desert; N04 applies when it is Mountain;
+- an already-qualifying P24 Fort field may raise the P05 event and an already-qualifying N11 SAM field may hard-zero it **when the canonical field owner supplies unambiguous membership**; #48 does not guess unresolved own/team/enemy field affiliation;
+- a Fort/SAM acquired by the same capture cannot newly affect its own or a sibling P05 event;
+- a capture that changes the capturer's Desert territory share must still use the **pre-batch** Desert-share All-FFY value for that P05 event;
+- a same-batch pair such as one Desert structure capture plus one non-Desert structure capture must produce identical P05 values when consequence iteration order is reversed, including faction-wide terrain-share yield inputs;
 - N17 destruction and N07/other transfer-admission rejection produce no P05 event;
 - P34 conquest provenance may be established by the same successful Factory transfer, but P34 does not multiply P05.
 
@@ -171,12 +172,12 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P05 + N17`: N17 changes capture disposition to destruction; P05 must not fire.
 - `P05 + N07`: cap-rejected capture transfer destroys the incoming structure; P05 must not fire because no `STRUCTURE_TRANSFERRED` result exists.
 - `P05 + P34`: a successfully transferred captured Factory can both trigger P05 and acquire P34 conquest provenance on one atomic capture resolution; P34 does not multiply the P05 event.
-- `P05 + P14/N04`: terrain qualification consumes the captured cell's frozen underlying terrain identity.
-- `P05 + P24/N11`: field qualification consumes the captured cell against the frozen pre-transfer effective field state; exact qualifying affiliation/geometry remains owned by the structure-field contract rather than P05.
+- `P05 + P14/N04`: terrain qualification consumes the captured cell's frozen underlying terrain identity from the same pre-batch earning-state snapshot.
+- `P05 + P24/N11`: field qualification consumes the captured cell against that same frozen pre-batch earning-state snapshot; exact qualifying affiliation/geometry remains owned by the structure-field contract rather than P05, so those cases remain externally conditional until field membership is canonical.
 
 **Resolved mechanic-definition result (#48)**
 
-- P05's base value, event location, temporal/spatial sampling point, same-capture self-field exclusion, and replay/order expectations are canonical. Runtime coverage may still be `UNAVAILABLE` until the corresponding Open Fufu capture/economy implementation exists, but P05 is no longer `BLOCKED` on undefined FFY semantics.
+- P05's base value, event location, frozen earning-state sampling point, same-capture/sibling self-effect exclusion, and replay/order expectations are canonical. #48 closes P05's own FFY ambiguity; exact P24/N11 expectations remain conditional on the separate canonical field-membership contract. Runtime coverage may still be `UNAVAILABLE` until the corresponding Open Fufu capture/economy implementation exists, but P05 is no longer `BLOCKED` on undefined FFY semantics.
 
 ---
 
@@ -219,7 +220,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - Save/reload or replay at phase `3` must reproduce a bonus on the next normal primary dispatch.
 - Temporary Factory inactivity pauses/preserves phase; Factory upgrade preserves phase; ordinary Train destruction preserves phase; physical Factory destruction deletes it.
 - Successful Factory ownership transfer closes the old owner's service epoch. A new P07 owner starts at phase `0`; no latent old-owner phase is inherited or advanced for a non-P07 owner.
-- An old-owner Train already in flight remains the old owner's Train with its dispatch-time route/economic snapshot, stops occupying the captured Factory's new primary slot, and cannot mutate the new owner's turnaround or P07 phase when it later returns/terminates/is destroyed.
+- An old-epoch Train already in flight remains the dispatching old owner's Train with its dispatch-time route/economic snapshot, stops occupying the captured Factory's new primary slot, and cannot mutate any later ownership epoch's turnaround or P07 phase when it later returns/terminates/is destroyed.
 
 **Explicit interactions**
 
@@ -230,7 +231,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Resolved mechanic-definition result (#49)**
 
-- Factory ownership-transfer behavior, P07 phase persistence/reset, in-flight old-owner Train behavior, and replay/serialization expectations are canonical. P07 is no longer blocked on undefined Factory-transfer scheduler semantics.
+- Factory ownership-transfer behavior, P07 phase persistence/reset, in-flight old-epoch Train behavior, and replay/serialization expectations are canonical. P07 is no longer blocked on undefined Factory-transfer scheduler semantics.
 
 ---
 
@@ -418,7 +419,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 - `P14 + P24`: an event may be both on Desert and inside Fort coverage; both eligible ordinary yield percentages must compose through the canonical same-axis FFY rule.
 - `P14 + N11`: a Desert event inside an applicable SAM area still follows N11's explicit hard-zero semantics after ordinary yield composition; P14 must not resurrect a hard-zero event.
-- `P14 + P05`: P05 uses the captured structure cell as its canonical location, so a P05 event on underlying Desert receives P14 through the ordinary FFY pipeline using the frozen pre-transfer spatial snapshot.
+- `P14 + P05`: P05 uses the captured structure cell as its canonical location, so a P05 event on underlying Desert receives P14 through the ordinary FFY pipeline using the frozen pre-transfer/pre-batch earning-state snapshot.
 - `P14 + N14/N16`: where the planned Trade destination cell is Desert at launch, P14 may contribute to snapshotted `Vowner`; the later N14/N16 signed delta itself is not run through P14 again.
 
 **Non-effects**
@@ -694,7 +695,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P24 + N08`: N08 removes Fort defensive-pressure benefit but does not by itself erase the Fort area; P24 should continue to use the remaining effective coverage geometry.
 - `P24 + P14`: an event may simultaneously be on Desert and inside Fort coverage; both ordinary yield percentages compose through the canonical FFY same-axis rule.
 - `P24 + N11`: an event that also lies inside an applicable SAM area still obeys N11's explicit hard zero after ordinary yield composition.
-- `P24 + P05`: P05's event location is the captured structure cell and Fort qualification is sampled from the frozen pre-transfer field state. A Fort acquired by that same capture cannot newly qualify its own P05 event.
+- `P24 + P05`: P05's event location is the captured structure cell and Fort qualification is sampled from the frozen pre-transfer/pre-batch earning-state snapshot. A Fort acquired by that same capture cannot newly qualify its own or a sibling P05 event. Exact own/team/enemy Fort membership remains this section's blocker rather than a #48-owned rule.
 - `P24 + N14/N16`: a qualifying Fort field at the planned Trade destination may contribute to launch-time `Vowner`; N14/N16 signed deltas do not run through P24 again.
 
 **Blocker / mechanic-definition finding**
@@ -1227,15 +1228,15 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | Trait | Finding | Validation consequence |
 | --- | --- | --- |
 | P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot finalize without the intended curve. |
-| P05 | P05 uses the captured structure type's ordinary L1 baseline price, the captured cell as event location, and frozen pre-transfer spatial qualification; #48 closes the FFY semantics. | P05 is no longer blocked on value/location semantics; runtime coverage must exercise the canonical type values, spatial interactions, and no-self-field/order invariants. |
-| P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-owner Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
+| P05 | P05 uses the captured structure type's ordinary L1 baseline price, the captured cell as event location, and one frozen pre-transfer/pre-batch earning-state snapshot for all mutable yield inputs; #48 closes the P05-owned FFY semantics. | P05 is no longer blocked on its own value/location/timing semantics; runtime coverage must exercise type values, faction-wide and spatial snapshot inputs, and same-batch order invariants. Exact P24/N11 membership cases remain conditional on their separate field contract. |
+| P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-epoch Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
 | P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
 | P20 | Exact start-state grant placement/ordering remains #32-owned; initial charge readiness remains #46-owned. | P20's generic grant admission, L1 result, and immediate activation are closed by #45, but full start-state certification still depends on #32/#46. |
 | P24 | Qualifying Fort affiliation for `inside Fort areas` is not explicit. | Spatial FFY qualification cannot be certified for own/team/enemy Fort overlap cases without a canonical ownership/team boundary. |
 | P25 | `+50%` Hydrogen blast **area** lacks an exact deterministic inner/outer geometry transformation, including optional Water-Nukes core/fringe behavior. | P25 runtime/replay footprint certification cannot infer radii/raster rules from the percentage alone. |
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
-| P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected result yet. |
+| P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected state yet. |
 | P29 | Dynamic Warship-rank -> effective-Silo-level changes do not yet state new charge-slot readiness semantics. | P29 charge/cooldown certification is incomplete when rank changes launcher capacity. |
 | P34 | P34's exact four transformed Factory axes, current-owner `CAPTURE_TRANSFER` provenance, Train economic snapshot, Tank-build speed semantics, and Factory/P07 transfer lifecycle are closed by #49. | P34 is no longer blocked on a generic Factory-effect interpretation; runtime/AI must consume the explicit effective profile. |
 | P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
