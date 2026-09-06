@@ -26,8 +26,7 @@ export const STRUCTURE_SCOPE_IDS = [
 ] as const;
 export type StructureScopeId = (typeof STRUCTURE_SCOPE_IDS)[number];
 
-export const UNIT_SCOPE_IDS = [
-  "ALL",
+export const CONCRETE_UNIT_IDS = [
   "TANK",
   "HEAVY_ARTILLERY",
   "WARSHIP",
@@ -35,6 +34,8 @@ export const UNIT_SCOPE_IDS = [
   "TRADE_SHIP",
   "TRAIN",
 ] as const;
+export type ConcreteUnitId = (typeof CONCRETE_UNIT_IDS)[number];
+export const UNIT_SCOPE_IDS = ["ALL", ...CONCRETE_UNIT_IDS] as const;
 export type UnitScopeId = (typeof UNIT_SCOPE_IDS)[number];
 
 export const WEAPON_SCOPE_IDS = [
@@ -53,6 +54,14 @@ export const FFY_FAMILY_SCOPE_IDS = [
   "PIRACY",
 ] as const;
 export type FfyFamilyScopeId = (typeof FFY_FAMILY_SCOPE_IDS)[number];
+
+export const STRUCTURE_ACQUISITION_PATHS = [
+  "PURCHASE_BUILD",
+  "GRANT",
+  "CAPTURE_TRANSFER",
+] as const;
+export type StructureAcquisitionPath =
+  (typeof STRUCTURE_ACQUISITION_PATHS)[number];
 
 export const RULE_SOURCE_KINDS = [
   "BASE_RULESET",
@@ -102,7 +111,6 @@ export type RuleScope =
   | { readonly kind: "UNIT"; readonly unit: UnitScopeId }
   | { readonly kind: "WEAPON"; readonly weapon: WeaponScopeId }
   | { readonly kind: "FFY_FAMILY"; readonly family: FfyFamilyScopeId };
-
 export type RuleScopeKind = RuleScope["kind"];
 
 export const RULE_STAGE_IDS = [
@@ -176,7 +184,7 @@ export type RuleCondition =
   | { readonly kind: "BUILD_TERRAIN_IS"; readonly terrain: TerrainScopeId }
   | { readonly kind: "TARGET_HAS_FALLOUT" }
   | { readonly kind: "TARGET_LACKS_FALLOUT" }
-  | { readonly kind: "TARGET_UNIT_IS"; readonly unit: UnitScopeId }
+  | { readonly kind: "TARGET_UNIT_IS"; readonly unit: ConcreteUnitId }
   | {
       readonly kind: "EVENT_INSIDE_FIELD";
       readonly field: "FORT" | "SAM" | "COMMAND_POST";
@@ -186,10 +194,12 @@ export type RuleCondition =
       readonly field: "FORT" | "COMMAND_POST";
     }
   | {
-      readonly kind: "STRUCTURE_PROVENANCE_IS";
-      readonly provenance: "BUILT" | "CAPTURED" | "GRANTED";
+      readonly kind: "STRUCTURE_ACQUISITION_PATH_IS";
+      readonly path: StructureAcquisitionPath;
     };
 
+/** Conditions on one contribution are a closed logical conjunction (AND). */
+export type RuleConditions = readonly RuleCondition[];
 export type RuleValue = number | string | readonly string[];
 
 export interface RuleContribution {
@@ -199,11 +209,10 @@ export interface RuleContribution {
   readonly operator: RuleOperator;
   readonly sourceKind: RuleSourceKind;
   readonly sourceId: string;
-  /** Operand unit. Percentage/scalar operands are integer basis points. */
+  /** Operand unit. Authored percentages/scalars use integer basis points. */
   readonly valueUnit: RuleUnit;
   readonly value?: RuleValue;
-  readonly condition?: RuleCondition;
-  /** Optional typed-domain provenance tag used by selective aggregation. */
+  readonly conditions?: RuleConditions;
   readonly component?: string;
 }
 
@@ -211,27 +220,73 @@ export interface RuleStageDefinition {
   readonly id: RuleStageId;
   readonly reducer: RuleReducer;
   readonly allowedOperators: readonly RuleOperator[];
-  /** Semantic dependency only; arbitrary numeric priority is intentionally absent. */
   readonly after?: readonly RuleStageId[];
 }
 
 export interface RuleAxisDefinition {
   readonly id: string;
   readonly kind: RuleAxisKind;
-  /** Unit of the materialized effective result. */
   readonly unit: RuleUnit;
   readonly scopeKind: RuleScopeKind;
-  /** Ordered semantic stages owned by this axis. */
   readonly stages: readonly RuleStageDefinition[];
   readonly allowedSourceKinds: readonly RuleSourceKind[];
 }
-
 export type RuleAxisRegistry = Readonly<Record<string, RuleAxisDefinition>>;
 
-/**
- * Provenance that may author each semantic stage. Axis-level source legality is
- * the coarse bound; this table is the fine-grained layer contract.
- */
+export type RuleStateDependency =
+  | "OWNED_PERSISTENT_STRUCTURE_COUNT"
+  | "TERRITORIAL_CONTACT_COUNT"
+  | "PEAK_TOTAL_POPULATION";
+
+export type DynamicRuleFormula =
+  | {
+      readonly kind: "RATIONAL_POWER";
+      readonly numerator: number;
+      readonly denominator: number;
+    }
+  | {
+      readonly kind: "BASIS_POINTS_PER_COUNT";
+      readonly bpPerUnit: number;
+    }
+  | {
+      readonly kind: "FLOOR_COUNT_PER_UNITS";
+      readonly unitsPerStep: number;
+    };
+
+export type DynamicRuleOperandKind =
+  | "RATIONAL"
+  | "BASIS_POINTS"
+  | "INTEGER";
+
+export interface DynamicRuleProvider {
+  readonly id: string;
+  readonly axis: string;
+  readonly scope: RuleScope;
+  readonly stage: RuleStageId;
+  readonly operator: "MULTIPLY" | "ADD_PERCENT" | "CAP_LIMIT";
+  readonly sourceKind: RuleSourceKind;
+  readonly sourceId: string;
+  readonly dependency: RuleStateDependency;
+  readonly formula: DynamicRuleFormula;
+  readonly operandKind: DynamicRuleOperandKind;
+  readonly conditions?: RuleConditions;
+}
+
+export type DynamicRuleResolvedValue =
+  | {
+      readonly kind: "RATIONAL";
+      readonly numerator: string;
+      readonly denominator: string;
+    }
+  | { readonly kind: "BASIS_POINTS"; readonly value: number }
+  | { readonly kind: "INTEGER"; readonly value: string };
+
+export interface RuleCustomDomainDeclaration {
+  readonly sourceKind: RuleSourceKind;
+  readonly sourceId: string;
+  readonly domain: string;
+}
+
 export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
   STRUCTURAL_PROFILE: [
     "BASE_RULESET",
@@ -326,6 +381,7 @@ export type RuleValidationCode =
   | "INVALID_SCOPE_VALUE"
   | "SCOPE_KIND_MISMATCH"
   | "INVALID_CONDITION"
+  | "INVALID_CONDITION_SET"
   | "INVALID_SOURCE_KIND"
   | "INVALID_STAGE"
   | "INVALID_OPERATOR"
@@ -384,19 +440,21 @@ const COMPONENT_OPERATORS = new Set<RuleOperator>(["SUPPRESS_COMPONENT"]);
 const TERRAIN_SCOPE_ID_SET = new Set<string>(TERRAIN_SCOPE_IDS);
 const STRUCTURE_SCOPE_ID_SET = new Set<string>(STRUCTURE_SCOPE_IDS);
 const UNIT_SCOPE_ID_SET = new Set<string>(UNIT_SCOPE_IDS);
+const CONCRETE_UNIT_ID_SET = new Set<string>(CONCRETE_UNIT_IDS);
 const WEAPON_SCOPE_ID_SET = new Set<string>(WEAPON_SCOPE_IDS);
 const FFY_FAMILY_SCOPE_ID_SET = new Set<string>(FFY_FAMILY_SCOPE_IDS);
+const STRUCTURE_ACQUISITION_PATH_SET = new Set<string>(STRUCTURE_ACQUISITION_PATHS);
 const RULE_SOURCE_KIND_SET = new Set<string>(RULE_SOURCE_KINDS);
 const RULE_STAGE_ID_SET = new Set<string>(RULE_STAGE_IDS);
 const RULE_OPERATOR_SET = new Set<string>(RULE_OPERATORS);
 const RULE_CAPABILITY_ID_SET = new Set<string>(RULE_CAPABILITY_IDS);
 const RULE_COMPONENT_ID_SET = new Set<string>(RULE_COMPONENT_IDS);
 
-function compareStrings(a: string, b: string): number {
+export function compareRuleStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function canonicalJson(value: unknown): string {
+export function canonicalRuleJson(value: unknown): string {
   if (value === null) return "null";
   if (
     typeof value === "number" ||
@@ -406,81 +464,68 @@ function canonicalJson(value: unknown): string {
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
+    return `[${value.map(canonicalRuleJson).join(",")}]`;
   }
   if (typeof value === "object" && value !== null) {
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record)
       .filter((key) => record[key] !== undefined)
-      .sort(compareStrings);
+      .sort(compareRuleStrings);
     return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .map((key) => `${JSON.stringify(key)}:${canonicalRuleJson(record[key])}`)
       .join(",")}}`;
   }
   throw new Error(`Unsupported canonical value: ${typeof value}`);
-}
-
-function canonicalContribution(contribution: RuleContribution): RuleContribution {
-  const value = Array.isArray(contribution.value)
-    ? [...contribution.value].sort(compareStrings)
-    : contribution.value;
-  return {
-    axis: contribution.axis,
-    scope: contribution.scope,
-    stage: contribution.stage,
-    operator: contribution.operator,
-    sourceKind: contribution.sourceKind,
-    sourceId: contribution.sourceId,
-    valueUnit: contribution.valueUnit,
-    ...(value === undefined ? {} : { value }),
-    ...(contribution.condition === undefined
-      ? {}
-      : { condition: contribution.condition }),
-    ...(contribution.component === undefined
-      ? {}
-      : { component: contribution.component }),
-  };
-}
-
-export function serializeRuleContributions(
-  contributions: readonly RuleContribution[],
-): string {
-  const normalized = contributions.map(canonicalContribution);
-  normalized.sort((a, b) => compareStrings(canonicalJson(a), canonicalJson(b)));
-  return canonicalJson({
-    version: RULE_COMPOSITION_VERSION,
-    contributions: normalized,
-  });
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function hasExactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+): boolean {
+  const actual = Object.keys(value).sort(compareRuleStrings);
+  const expected = [...keys].sort(compareRuleStrings);
+  return (
+    actual.length === expected.length &&
+    actual.every((key, index) => key === expected[index])
+  );
+}
+
 export function isValidRuleScope(scope: unknown): scope is RuleScope {
   if (!isRecord(scope) || typeof scope.kind !== "string") return false;
   switch (scope.kind) {
     case "GLOBAL":
-      return true;
+      return hasExactKeys(scope, ["kind"]);
     case "TERRAIN":
       return (
+        hasExactKeys(scope, ["kind", "terrain"]) &&
         typeof scope.terrain === "string" &&
         TERRAIN_SCOPE_ID_SET.has(scope.terrain)
       );
     case "STRUCTURE":
       return (
+        hasExactKeys(scope, ["kind", "structure"]) &&
         typeof scope.structure === "string" &&
         STRUCTURE_SCOPE_ID_SET.has(scope.structure)
       );
     case "UNIT":
-      return typeof scope.unit === "string" && UNIT_SCOPE_ID_SET.has(scope.unit);
+      return (
+        hasExactKeys(scope, ["kind", "unit"]) &&
+        typeof scope.unit === "string" &&
+        UNIT_SCOPE_ID_SET.has(scope.unit)
+      );
     case "WEAPON":
       return (
+        hasExactKeys(scope, ["kind", "weapon"]) &&
         typeof scope.weapon === "string" &&
         WEAPON_SCOPE_ID_SET.has(scope.weapon)
       );
     case "FFY_FAMILY":
       return (
+        hasExactKeys(scope, ["kind", "family"]) &&
         typeof scope.family === "string" &&
         FFY_FAMILY_SCOPE_ID_SET.has(scope.family)
       );
@@ -499,34 +544,95 @@ export function isValidRuleCondition(
     case "EVENT_TERRAIN_IS":
     case "BUILD_TERRAIN_IS":
       return (
+        hasExactKeys(condition, ["kind", "terrain"]) &&
         typeof condition.terrain === "string" &&
         TERRAIN_SCOPE_ID_SET.has(condition.terrain)
       );
     case "TARGET_HAS_FALLOUT":
     case "TARGET_LACKS_FALLOUT":
-      return true;
+      return hasExactKeys(condition, ["kind"]);
     case "TARGET_UNIT_IS":
       return (
+        hasExactKeys(condition, ["kind", "unit"]) &&
         typeof condition.unit === "string" &&
-        UNIT_SCOPE_ID_SET.has(condition.unit)
+        CONCRETE_UNIT_ID_SET.has(condition.unit)
       );
     case "EVENT_INSIDE_FIELD":
       return (
-        condition.field === "FORT" ||
-        condition.field === "SAM" ||
-        condition.field === "COMMAND_POST"
+        hasExactKeys(condition, ["kind", "field"]) &&
+        (condition.field === "FORT" ||
+          condition.field === "SAM" ||
+          condition.field === "COMMAND_POST")
       );
     case "SOURCE_INSIDE_FIELD":
-      return condition.field === "FORT" || condition.field === "COMMAND_POST";
-    case "STRUCTURE_PROVENANCE_IS":
       return (
-        condition.provenance === "BUILT" ||
-        condition.provenance === "CAPTURED" ||
-        condition.provenance === "GRANTED"
+        hasExactKeys(condition, ["kind", "field"]) &&
+        (condition.field === "FORT" || condition.field === "COMMAND_POST")
+      );
+    case "STRUCTURE_ACQUISITION_PATH_IS":
+      return (
+        hasExactKeys(condition, ["kind", "path"]) &&
+        typeof condition.path === "string" &&
+        STRUCTURE_ACQUISITION_PATH_SET.has(condition.path)
       );
     default:
       return false;
   }
+}
+
+export function canonicalizeRuleConditions(
+  conditions: RuleConditions | undefined,
+): RuleConditions | undefined {
+  if (conditions === undefined) return undefined;
+  const byKey = new Map<string, RuleCondition>();
+  for (const condition of conditions) {
+    byKey.set(canonicalRuleJson(condition), condition);
+  }
+  return Object.freeze(
+    [...byKey.entries()]
+      .sort(([a], [b]) => compareRuleStrings(a, b))
+      .map(([, condition]) => condition),
+  );
+}
+
+export function canonicalizeStringSet(values: readonly string[]): readonly string[] {
+  return Object.freeze([...new Set(values)].sort(compareRuleStrings));
+}
+
+function canonicalContribution(contribution: RuleContribution): RuleContribution {
+  const value = Array.isArray(contribution.value)
+    ? canonicalizeStringSet(contribution.value)
+    : contribution.value;
+  const conditions = canonicalizeRuleConditions(contribution.conditions);
+  return {
+    axis: contribution.axis,
+    scope: contribution.scope,
+    stage: contribution.stage,
+    operator: contribution.operator,
+    sourceKind: contribution.sourceKind,
+    sourceId: contribution.sourceId,
+    valueUnit: contribution.valueUnit,
+    ...(value === undefined ? {} : { value }),
+    ...(conditions === undefined || conditions.length === 0
+      ? {}
+      : { conditions }),
+    ...(contribution.component === undefined
+      ? {}
+      : { component: contribution.component }),
+  };
+}
+
+export function serializeRuleContributions(
+  contributions: readonly RuleContribution[],
+): string {
+  const normalized = contributions.map(canonicalContribution);
+  normalized.sort((a, b) =>
+    compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
+  );
+  return canonicalRuleJson({
+    version: RULE_COMPOSITION_VERSION,
+    contributions: normalized,
+  });
 }
 
 function scopeValue(scope: RuleScope): string {
@@ -546,7 +652,6 @@ function scopeValue(scope: RuleScope): string {
   }
 }
 
-/** `ALL` is a typed wildcard only within scope kinds that explicitly define it. */
 export function ruleScopeMatches(
   contributionScope: RuleScope,
   requestedScope: RuleScope,
@@ -711,9 +816,7 @@ function validateStringSetValue(
     values.length > 0 &&
     values.every(
       (entry) =>
-        typeof entry === "string" &&
-        entry.length > 0 &&
-        allowed.has(entry),
+        typeof entry === "string" && entry.length > 0 && allowed.has(entry),
     );
   if (!valid) {
     issues.push({
@@ -852,7 +955,6 @@ export function validateRuleContributions(
       });
       continue;
     }
-
     const rawStage = contribution.stage as unknown;
     if (typeof rawStage !== "string" || !RULE_STAGE_ID_SET.has(rawStage)) {
       issues.push({
@@ -863,7 +965,6 @@ export function validateRuleContributions(
       });
       continue;
     }
-
     const rawOperator = contribution.operator as unknown;
     if (
       typeof rawOperator !== "string" ||
@@ -878,7 +979,6 @@ export function validateRuleContributions(
       });
       continue;
     }
-
     const definition = registry[contribution.axis];
     if (definition === undefined) {
       issues.push({
@@ -890,7 +990,6 @@ export function validateRuleContributions(
       });
       continue;
     }
-
     if (!isValidRuleScope(contribution.scope as unknown)) {
       issues.push({
         code: "INVALID_SCOPE_VALUE",
@@ -910,20 +1009,29 @@ export function validateRuleContributions(
         message: `${contribution.axis} expects ${definition.scopeKind} scope`,
       });
     }
-
-    if (
-      contribution.condition !== undefined &&
-      !isValidRuleCondition(contribution.condition as unknown)
-    ) {
-      issues.push({
-        code: "INVALID_CONDITION",
-        axis: contribution.axis,
-        sourceId: contribution.sourceId,
-        stage: contribution.stage,
-        message: `${contribution.axis} received an invalid runtime condition`,
-      });
+    if (contribution.conditions !== undefined) {
+      if (!Array.isArray(contribution.conditions) || contribution.conditions.length === 0) {
+        issues.push({
+          code: "INVALID_CONDITION_SET",
+          axis: contribution.axis,
+          sourceId: contribution.sourceId,
+          stage: contribution.stage,
+          message: `${contribution.axis} conditions must be a non-empty conjunction when present`,
+        });
+      } else {
+        for (const condition of contribution.conditions) {
+          if (!isValidRuleCondition(condition as unknown)) {
+            issues.push({
+              code: "INVALID_CONDITION",
+              axis: contribution.axis,
+              sourceId: contribution.sourceId,
+              stage: contribution.stage,
+              message: `${contribution.axis} received an invalid runtime condition`,
+            });
+          }
+        }
+      }
     }
-
     const expectedUnit = expectedValueUnit(definition, contribution.operator);
     if (contribution.valueUnit !== expectedUnit) {
       issues.push({
@@ -934,7 +1042,6 @@ export function validateRuleContributions(
         message: `${contribution.operator} on ${contribution.axis} expects ${expectedUnit}, received ${contribution.valueUnit}`,
       });
     }
-
     if (!definition.allowedSourceKinds.includes(contribution.sourceKind)) {
       issues.push({
         code: "SOURCE_KIND_NOT_ALLOWED",
@@ -944,7 +1051,6 @@ export function validateRuleContributions(
         message: `${contribution.sourceKind} is not allowed on ${contribution.axis}`,
       });
     }
-
     const stage = definition.stages.find(
       (candidate) => candidate.id === contribution.stage,
     );
@@ -958,7 +1064,6 @@ export function validateRuleContributions(
       });
       continue;
     }
-
     const stageAllowedSources: readonly RuleSourceKind[] =
       RULE_STAGE_ALLOWED_SOURCE_KINDS[stage.id];
     if (!stageAllowedSources.includes(contribution.sourceKind)) {
@@ -970,7 +1075,6 @@ export function validateRuleContributions(
         message: `${contribution.sourceKind} cannot author semantic stage ${contribution.stage}`,
       });
     }
-
     if (!stage.allowedOperators.includes(contribution.operator)) {
       issues.push({
         code: "OPERATOR_NOT_ALLOWED",
@@ -980,14 +1084,13 @@ export function validateRuleContributions(
         message: `${contribution.operator} is not allowed in ${contribution.axis}/${contribution.stage}`,
       });
     }
-
     validateValue(contribution, issues);
 
-    const key = canonicalJson({
+    const key = canonicalRuleJson({
       axis: contribution.axis,
       scope: contribution.scope,
       stage: contribution.stage,
-      condition: contribution.condition,
+      conditions: canonicalizeRuleConditions(contribution.conditions),
       component: contribution.component,
     });
     const group = groups.get(key);
@@ -1023,6 +1126,109 @@ export function validateRuleContributions(
   return issues;
 }
 
+function bigintAbs(value: bigint): bigint {
+  return value < 0n ? -value : value;
+}
+
+export function bigintGcd(a: bigint, b: bigint): bigint {
+  let left = bigintAbs(a);
+  let right = bigintAbs(b);
+  while (right !== 0n) {
+    const next = left % right;
+    left = right;
+    right = next;
+  }
+  return left === 0n ? 1n : left;
+}
+
+export function reducedRational(
+  numeratorInput: bigint,
+  denominatorInput: bigint,
+): { readonly numerator: bigint; readonly denominator: bigint } {
+  if (denominatorInput === 0n) throw new Error("Rational denominator cannot be zero");
+  let numerator = numeratorInput;
+  let denominator = denominatorInput;
+  if (denominator < 0n) {
+    numerator = -numerator;
+    denominator = -denominator;
+  }
+  const divisor = bigintGcd(numerator, denominator);
+  return {
+    numerator: numerator / divisor,
+    denominator: denominator / divisor,
+  };
+}
+
+function powBigInt(baseInput: bigint, exponentInput: number): bigint {
+  if (!Number.isSafeInteger(exponentInput) || exponentInput < 0) {
+    throw new Error("Exponent must be a non-negative safe integer");
+  }
+  let base = baseInput;
+  let exponent = exponentInput;
+  let result = 1n;
+  while (exponent > 0) {
+    if (exponent % 2 === 1) result *= base;
+    exponent = Math.floor(exponent / 2);
+    if (exponent > 0) base *= base;
+  }
+  return result;
+}
+
+export function evaluateDynamicRuleProvider(
+  provider: DynamicRuleProvider,
+  dependencyValue: number,
+): DynamicRuleResolvedValue {
+  if (!Number.isSafeInteger(dependencyValue) || dependencyValue < 0) {
+    throw new Error(`${provider.dependency} must be a non-negative safe integer`);
+  }
+  switch (provider.formula.kind) {
+    case "RATIONAL_POWER": {
+      const numerator = provider.formula.numerator;
+      const denominator = provider.formula.denominator;
+      if (
+        !Number.isSafeInteger(numerator) ||
+        !Number.isSafeInteger(denominator) ||
+        denominator <= 0
+      ) {
+        throw new Error("RATIONAL_POWER requires safe integer numerator/denominator");
+      }
+      const reduced = reducedRational(
+        powBigInt(BigInt(numerator), dependencyValue),
+        powBigInt(BigInt(denominator), dependencyValue),
+      );
+      return {
+        kind: "RATIONAL",
+        numerator: reduced.numerator.toString(),
+        denominator: reduced.denominator.toString(),
+      };
+    }
+    case "BASIS_POINTS_PER_COUNT": {
+      if (!Number.isSafeInteger(provider.formula.bpPerUnit)) {
+        throw new Error("BASIS_POINTS_PER_COUNT requires a safe integer rate");
+      }
+      const value = dependencyValue * provider.formula.bpPerUnit;
+      if (!Number.isSafeInteger(value)) {
+        throw new Error("Dynamic basis-point result exceeds safe-integer range");
+      }
+      return { kind: "BASIS_POINTS", value };
+    }
+    case "FLOOR_COUNT_PER_UNITS": {
+      if (
+        !Number.isSafeInteger(provider.formula.unitsPerStep) ||
+        provider.formula.unitsPerStep <= 0
+      ) {
+        throw new Error("FLOOR_COUNT_PER_UNITS requires a positive safe integer step");
+      }
+      return {
+        kind: "INTEGER",
+        value: Math.floor(
+          dependencyValue / provider.formula.unitsPerStep,
+        ).toString(),
+      };
+    }
+  }
+}
+
 function numericValue(contribution: RuleContribution): number {
   if (typeof contribution.value !== "number") {
     throw new Error(`Expected numeric value from ${contribution.sourceId}`);
@@ -1052,48 +1258,6 @@ function assertValid(
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
-  for (const stage of definition.stages) {
-    if (
-      stage.reducer === "SINGLETON" &&
-      contributions.filter((entry) => entry.stage === stage.id).length > 1
-    ) {
-      throw new Error(
-        `${definition.id}/${stage.id} has multiple applicable singletons`,
-      );
-    }
-  }
-}
-
-function bigintAbs(value: bigint): bigint {
-  return value < 0n ? -value : value;
-}
-
-function bigintGcd(a: bigint, b: bigint): bigint {
-  let left = bigintAbs(a);
-  let right = bigintAbs(b);
-  while (right !== 0n) {
-    const next = left % right;
-    left = right;
-    right = next;
-  }
-  return left === 0n ? 1n : left;
-}
-
-function exactBasisPointProduct(group: readonly RuleContribution[]): number {
-  let numerator = 1n;
-  let denominator = 1n;
-  for (const entry of group) {
-    const value = numericValue(entry);
-    if (!Number.isSafeInteger(value)) {
-      throw new Error(`Unsafe basis-point multiplier from ${entry.sourceId}`);
-    }
-    numerator *= BigInt(value);
-    denominator *= BigInt(BASIS_POINTS_SCALE);
-    const divisor = bigintGcd(numerator, denominator);
-    numerator /= divisor;
-    denominator /= divisor;
-  }
-  return Number(numerator) / Number(denominator);
 }
 
 function exactSafeIntegerSum(group: readonly RuleContribution[]): number {
@@ -1112,7 +1276,43 @@ function exactSafeIntegerSum(group: readonly RuleContribution[]): number {
   return result;
 }
 
-/** Apply an authored fixed-scale percentage without first materializing 1 + p as a float. */
+function exactBasisPointProduct(
+  group: readonly RuleContribution[],
+): { readonly numerator: bigint; readonly denominator: bigint } {
+  let numerator = 1n;
+  let denominator = 1n;
+  for (const entry of group) {
+    const value = numericValue(entry);
+    if (!Number.isSafeInteger(value)) {
+      throw new Error(`Unsafe basis-point multiplier from ${entry.sourceId}`);
+    }
+    numerator *= BigInt(value);
+    denominator *= BigInt(BASIS_POINTS_SCALE);
+    const reduced = reducedRational(numerator, denominator);
+    numerator = reduced.numerator;
+    denominator = reduced.denominator;
+  }
+  return { numerator, denominator };
+}
+
+function materializeRational(
+  numerator: bigint,
+  denominator: bigint,
+): number {
+  const left = Number(numerator);
+  const right = Number(denominator);
+  if (!Number.isFinite(left) || !Number.isFinite(right) || right === 0) {
+    throw new Error(
+      "Exact rational cannot be materialized safely as a finite JavaScript number",
+    );
+  }
+  const result = left / right;
+  if (!Number.isFinite(result)) {
+    throw new Error("Exact rational materialized to a non-finite number");
+  }
+  return result;
+}
+
 function applyBasisPointDelta(value: number, deltaBasisPoints: number): number {
   return (
     (value * (BASIS_POINTS_SCALE + deltaBasisPoints)) /
@@ -1120,7 +1320,7 @@ function applyBasisPointDelta(value: number, deltaBasisPoints: number): number {
   );
 }
 
-/** Scope/condition eligibility is resolved by the owning subsystem before reduction. */
+/** Scope and condition eligibility must be resolved before materialization. */
 export function reduceScalarRule(
   baseValue: number,
   definition: RuleAxisDefinition,
@@ -1143,12 +1343,14 @@ export function reduceScalarRule(
         } else throw new Error(`SUM cannot apply ${operator}`);
         break;
       }
-      case "PRODUCT":
+      case "PRODUCT": {
         if (operator !== "MULTIPLY") {
           throw new Error(`PRODUCT cannot apply ${operator}`);
         }
-        current *= exactBasisPointProduct(group);
+        const product = exactBasisPointProduct(group);
+        current *= materializeRational(product.numerator, product.denominator);
         break;
+      }
       case "SINGLETON": {
         const entry = group[0];
         if (
@@ -1227,7 +1429,7 @@ function stringIds(value: RuleValue | undefined): readonly string[] {
     Array.isArray(value) &&
     value.every((entry) => typeof entry === "string")
   ) {
-    return value;
+    return canonicalizeStringSet(value);
   }
   throw new Error("Expected string ID(s)");
 }
@@ -1255,7 +1457,7 @@ export function reduceCapabilitySetRule(
       capabilities = new Set(stringIds(group[0]?.value));
     } else throw new Error(`${stage.reducer} is invalid for capability set`);
   }
-  return [...capabilities].sort(compareStrings);
+  return canonicalizeStringSet([...capabilities]);
 }
 
 export function reduceComponentSetRule(
@@ -1276,7 +1478,7 @@ export function reduceComponentSetRule(
       for (const id of stringIds(entry.value)) suppressed.add(id);
     }
   }
-  return [...suppressed].sort(compareStrings);
+  return canonicalizeStringSet([...suppressed]);
 }
 
 export function selectStructuralTransform(
@@ -1302,7 +1504,6 @@ export interface StructurePressureFieldContribution {
   readonly component: string;
   readonly bonusBp: number;
 }
-
 export interface PressureCompositionInput {
   readonly basePressure: number;
   readonly terrainPercentBp?: readonly number[];
@@ -1324,17 +1525,26 @@ function strongestFieldBonus(
   return strongest / BASIS_POINTS_SCALE;
 }
 
+function exactBasisPointArraySum(values: readonly number[]): number {
+  let total = 0n;
+  for (const value of values) {
+    if (!Number.isSafeInteger(value)) {
+      throw new Error("Pressure basis-point operands must be safe integers");
+    }
+    total += BigInt(value);
+  }
+  const result = Number(total);
+  if (!Number.isSafeInteger(result)) {
+    throw new Error("Pressure basis-point sum exceeds safe-integer range");
+  }
+  return result;
+}
+
 /** Component-aware pressure; same-type strongest, cross-type complement. */
 export function composePressure(input: PressureCompositionInput): number {
   const suppressed = input.suppressedComponents ?? new Set<string>();
-  const terrainBp = [...(input.terrainPercentBp ?? [])].reduce(
-    (total, value) => total + BigInt(value),
-    0n,
-  );
-  const ruleBp = [...(input.rulePercentBp ?? [])].reduce(
-    (total, value) => total + BigInt(value),
-    0n,
-  );
+  const terrainBp = exactBasisPointArraySum(input.terrainPercentBp ?? []);
+  const ruleBp = exactBasisPointArraySum(input.rulePercentBp ?? []);
   const fields = (input.structureFields ?? []).filter(
     (field) => !suppressed.has(field.component),
   );
@@ -1343,8 +1553,8 @@ export function composePressure(input: PressureCompositionInput): number {
   const structureBonus = 1 - (1 - fort) * (1 - command);
   return (
     applyBasisPointDelta(
-      applyBasisPointDelta(input.basePressure, Number(terrainBp)),
-      Number(ruleBp),
+      applyBasisPointDelta(input.basePressure, terrainBp),
+      ruleBp,
     ) *
     (1 + structureBonus)
   );
