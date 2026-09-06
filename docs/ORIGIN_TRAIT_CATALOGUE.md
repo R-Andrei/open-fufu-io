@@ -193,7 +193,7 @@ P04 fixes only the response-side counter-response effectiveness hook at `1.0`. A
 
 P05 fires from the canonical `STRUCTURE_TRANSFERRED` capture consequence, not merely from capturing a cell that happened to contain a structure. Exactly one qualifying conquest FFY event is generated for each enemy persistent structure that successfully transfers to the P05 holder through territorial capture.
 
-If N17 changes the structure disposition to destruction, or transfer admission fails and the capture resolver destroys the structure, P05 does not fire. The event's exact base value and canonical event location remain owned by the FFY closure tracked in #48 rather than being invented here.
+If N17 changes the structure disposition to destruction, or transfer admission fails and the capture resolver destroys the structure, P05 does not fire. `FFY_ECONOMY.md` owns the event valuation/location contract: the base is the captured structure type's ordinary baseline L1 build price, independent of the captured structure's actual level or transaction history; the event location is the captured structure cell; and spatial FFY qualification uses the frozen pre-transfer capture state. The canonical structure price table remains owned only by `TERRAIN_AND_STRUCTURES.md` and is not duplicated here.
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
