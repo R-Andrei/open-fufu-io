@@ -5,15 +5,6 @@ import { dirname, relative, resolve } from "node:path";
 const REPO_ROOT = process.cwd();
 const OWNER_MAP_PATH = "docs/README.md";
 
-/**
- * RULE_COMPOSITION.md is introduced before the repository-wide strict
- * authority migration is complete. Remove this exemption once strict mode
- * passes repository-wide.
- */
-const TRANSITIONAL_NEW_OWNER_EXEMPTIONS = new Set([
-  "docs/RULE_COMPOSITION.md",
-]);
-
 interface CanonicalOwner {
   readonly concern: string;
   readonly path: string;
@@ -129,13 +120,6 @@ function assertNoNewIssueReferences(
     const current = existsSync(resolve(REPO_ROOT, path)) ? readCurrent(path) : undefined;
     if (current === undefined) continue;
     const base = readAtGitRef(baseRef, path);
-    if (base === undefined && TRANSITIONAL_NEW_OWNER_EXEMPTIONS.has(path)) {
-      console.warn(
-        `documentation-authority: transitional exemption for newly introduced canonical owner ${path}`,
-      );
-      continue;
-    }
-
     const baseCounts = issueReferenceCounts(base ?? "");
     const currentCounts = issueReferenceCounts(current);
     for (const [issue, currentCount] of currentCounts) {
