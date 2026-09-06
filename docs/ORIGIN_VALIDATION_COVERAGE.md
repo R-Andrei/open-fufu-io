@@ -147,20 +147,36 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Required seams / dependencies**
 
+- Canonical P05 valuation, event location, capture-tick earning-state sampling, and FFY-pipeline behavior are owned by `FFY_ECONOMY.md`; the assertions below consume that contract rather than redefining it.
 - `successful qualifying enemy-structure transfer -> exactly one P05 conquest FFY event -> ordinary Military/conquest modifier pipeline`.
 - Failed capture, structureless capture, or `DESTROYED_ON_CAPTURE` result must not fire P05.
-- The canonical structure-capture resolver now supplies the successful-transfer event identity; P05 still depends on #48 for its event base value and location where spatial FFY rules consume it.
+
+**Required relational invariants / scenario coverage**
+
+- for every successful qualifying transfer, `emittedP05EventCount == 1`; for every non-transfer result, `emittedP05EventCount == 0`;
+- for every persistent structure type, `P05BaseValue == canonical ordinary L1 build price for capturedStructure.type` from the structure-price owner;
+- for the same structure type, `P05Base(L1) == P05Base(L5) == P05Base(fresh-construction) == P05Base(upgrading)`;
+- P14 and N04 qualifications use the canonical P05 physical-cell event location and capture-tick snapshot supplied by the FFY owner;
+- an already-qualifying P24 Fort field may raise the P05 event and an already-qualifying N11 SAM field may hard-zero it **when the canonical field owner supplies unambiguous membership**; #48 does not guess unresolved own/team/enemy field affiliation;
+- a Fort/SAM acquired by that capture tick cannot newly affect its own or a sibling P05 event under the FFY owner's sampling boundary;
+- gaining a structureless Desert cell on the same tick as a qualifying structure capture must not change that tick's P05 value relative to the same pre-mutation earning state;
+- losing a structureless Desert cell on the same tick as a qualifying structure capture must likewise not change that tick's P05 value relative to the same pre-mutation earning state;
+- gaining a Desert structure cell on that tick must not retroactively alter its own or a sibling P05 value through changed Desert share;
+- given identical pre-mutation state and identical authoritative capture results for one tick, reversing internal structureless ownership-commit order, structure-fate/admission order where legal, or consequence iteration order must produce identical individual and total P05 values;
+- N17 destruction and N07/other transfer-admission rejection produce no P05 event;
+- P34 conquest provenance may be established by the same successful Factory transfer, but P34 does not multiply P05.
 
 **Explicit interactions**
 
 - `P05 + N17`: N17 changes capture disposition to destruction; P05 must not fire.
 - `P05 + N07`: cap-rejected capture transfer destroys the incoming structure; P05 must not fire because no `STRUCTURE_TRANSFERRED` result exists.
 - `P05 + P34`: a successfully transferred captured Factory can both trigger P05 and acquire P34 conquest provenance on one atomic capture resolution; P34 does not multiply the P05 event.
-- Inspect P14/P24 after P05 event-location semantics are closed.
+- `P05 + P14/N04`: verify terrain qualification through the FFY owner's canonical P05 location/capture-tick snapshot contract.
+- `P05 + P24/N11`: verify field qualification through the same FFY-owned sampling contract; exact qualifying affiliation/geometry remains owned by the structure-field contract, so those cases remain externally conditional until field membership is canonical.
 
-**Blocker**
+**Resolved mechanic-definition result (#48)**
 
-- The capture trigger/disposition identity is closed by #45, but P05's exact event base value and canonical event location remain unresolved under #48.
+- `FFY_ECONOMY.md` now supplies the previously missing P05 value/location/capture-tick sampling contract. Runtime coverage may still be `UNAVAILABLE` until the corresponding Open Fufu capture/economy implementation exists, and exact P24/N11 cases remain conditional on the separate field-membership contract, but P05 is no longer `BLOCKED` on undefined FFY semantics.
 
 ---
 
@@ -203,7 +219,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - Save/reload or replay at phase `3` must reproduce a bonus on the next normal primary dispatch.
 - Temporary Factory inactivity pauses/preserves phase; Factory upgrade preserves phase; ordinary Train destruction preserves phase; physical Factory destruction deletes it.
 - Successful Factory ownership transfer closes the old owner's service epoch. A new P07 owner starts at phase `0`; no latent old-owner phase is inherited or advanced for a non-P07 owner.
-- An old-owner Train already in flight remains the old owner's Train with its dispatch-time route/economic snapshot, stops occupying the captured Factory's new primary slot, and cannot mutate the new owner's turnaround or P07 phase when it later returns/terminates/is destroyed.
+- An old-epoch Train already in flight remains the dispatching old owner's Train with its dispatch-time route/economic snapshot, stops occupying the captured Factory's new primary slot, and cannot mutate any later ownership epoch's turnaround or P07 phase when it later returns/terminates/is destroyed.
 
 **Explicit interactions**
 
@@ -245,7 +261,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Explicit interactions**
 
-- Inspect N14/N16 when audited because they snapshot/use owner-side voyage value around hostile capture; their launch-time `Vowner` semantics must not be conflated with P08's event-resolution-time `atWar` check.
+- `P08 + N14/N16`: conformance must preserve the FFY owner's separation between the immutable launch-time voyage reference and the actual event-resolution wartime/P08 stage; changing war state must not retroactively mutate the stored N14/N16 reference amount.
 - No bespoke P06/P07 pair is required when those traits independently change speed/count.
 
 **Status**
@@ -402,7 +418,8 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 - `P14 + P24`: an event may be both on Desert and inside Fort coverage; both eligible ordinary yield percentages must compose through the canonical same-axis FFY rule.
 - `P14 + N11`: a Desert event inside an applicable SAM area still follows N11's explicit hard-zero semantics after ordinary yield composition; P14 must not resurrect a hard-zero event.
-- Revisit P05 once P05 event-location semantics are closed.
+- `P14 + P05`: verify P14 against the P05 event location/capture-tick snapshot supplied by `FFY_ECONOMY.md`, including order invariance when same-tick structureless or structure-bearing territorial changes would otherwise alter Desert share.
+- `P14 + N14/N16`: verify launch-time Desert qualification can affect the FFY owner's stored voyage reference once, while the later N14/N16 signed transaction itself is not reprocessed through P14.
 
 **Non-effects**
 
@@ -677,7 +694,8 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P24 + N08`: N08 removes Fort defensive-pressure benefit but does not by itself erase the Fort area; P24 should continue to use the remaining effective coverage geometry.
 - `P24 + P14`: an event may simultaneously be on Desert and inside Fort coverage; both ordinary yield percentages compose through the canonical FFY same-axis rule.
 - `P24 + N11`: an event that also lies inside an applicable SAM area still obeys N11's explicit hard zero after ordinary yield composition.
-- Revisit P05 once P05's event-location semantics are canonically closed.
+- `P24 + P05`: verify Fort qualification against the FFY owner's canonical P05 capture-tick sampling boundary. A Fort acquired on that tick must not self-enable the same P05 event; exact own/team/enemy Fort membership remains this section's blocker rather than a #48-owned rule.
+- `P24 + N14/N16`: verify a qualifying planned-destination Fort field can contribute once to the FFY owner's stored voyage reference, while later N14/N16 signed transactions are not reprocessed through P24.
 
 **Blocker / mechanic-definition finding**
 
@@ -841,12 +859,12 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 - `P30 + P23`: same chassis gets both speed transformations, while P30 structurally disables ordinary ship gunfire. P23 ship-gun range/damage must not restore a forbidden attack; its speed contribution remains meaningful.
 - `P30 + P22`: rank-derived max health remains meaningful; rank-derived shell damage may be inert against ships while P30's gunfire prohibition is active.
 - `P30 + P29`: P30 forbids **naval gunfire against ships**, not strategic-weapon launching. A legal P29 strategic launch remains available subject to its own launcher/weapon rules.
-- N14/N16 must later be covered on the same Trade-capture lifecycle: their original-owner first-capture deltas remain separate from P30's hostile final-holder piracy payout multiplier.
+- `P30 + N14/N16`: verify the original-owner voyage adjustment and final-holder piracy payout remain separate authoritative amounts; neither may change or reprocess the other.
 - P06 Trade Ship speed changes pursuit geometry but does not alter P30's capture/payout semantics.
 
 **Non-effects**
 
-- P30 does not grant immediate FFY on capture; the ordinary captured-cargo lifecycle still pays only on legal terminal delivery.
+- P30 does not grant immediate ordinary piracy FFY on capture; the ordinary captured-cargo lifecycle still pays only on legal terminal delivery.
 - P30 does not turn ordinary owner recovery into piracy or multiply unrelated Naval/trade events merely because they share a broad source family.
 
 ---
@@ -1169,15 +1187,50 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 ---
 
-# 6. Running mechanic-closure findings
+# 6. Focused #48 Trade-voyage snapshot validation obligations
+
+The canonical Trade-voyage economic snapshot, mutable first-capture lifecycle state, signed-transaction execution, and N14/N16 economic consumption semantics are owned by `FFY_ECONOMY.md` together with the Origin transformations supplied by `ORIGIN_TRAIT_CATALOGUE.md`. This section records deterministic conformance relations for those owners; it does not become a second formula or trait-mechanics owner.
+
+**Required relational invariants / scenario coverage**
+
+- with no eligible launch-time positive-event modifiers or hard zero, `ownerSuccessValueFfy == rawCargoFfy`;
+- launch-time P14/N04 terrain qualification at the planned destination changes the stored reference exactly through the canonical positive-event pipeline once;
+- launch-time P24/N11 field qualification changes/hard-zeroes that reference once the canonical field affiliation/geometry contract supplies membership;
+- peaceful, wartime-baseline, and P08 launch states produce identical `ownerSuccessValueFfy` when every other launch-time input is identical;
+- changing `atWar` before ordinary completion may change the actual completion payout while `ownerSuccessValueFfy` remains byte-for-byte/equivalent-value unchanged;
+- rerouting to another destination leaves `valuationCellId` and `ownerSuccessValueFfy` unchanged;
+- `firstHostileCaptureResolved == false` at launch; the first valid hostile capture sets it `true` atomically with the first-capture transition; no recapture/reroute returns it to `false`;
+- N14-only first hostile capture: `requestedOwnerDelta == -ownerSuccessValueFfy` exactly once;
+- N16-only first hostile capture: `requestedOwnerDelta == +ownerSuccessValueFfy` exactly once;
+- N14 + N16 first hostile capture: fact-level `requestedOwnerDelta == 0` before same-tick signed aggregation or any balance floor;
+- isolated N14 low-balance tick: with no other ordinary positive FFY event or signed FFY fact for that owner on the tick and `ownerBalanceBefore < ownerSuccessValueFfy`, the requested delta remains the full negative reference amount and the post-signed-stage balance is `0`;
+- isolated N16 successful-uncaptured tick: with no other ordinary positive FFY event or signed FFY fact for that owner on the tick, ordinary positive Trade payout is suppressed, `requestedOwnerDelta == -ownerSuccessValueFfy`, and post-signed-stage balance equals `max(0, ownerBalanceBefore - ownerSuccessValueFfy)`;
+- same-owner multi-fact tick: if two or more signed voyage facts resolve on one tick, the FFY owner's `tickSignedDelta` equals the sum of their already-netted fact-level requested deltas, and reversing fact-processing order must produce the same tick delta and final balance;
+- ordinary-positive-plus-signed same tick: ordinary positive FFY events must finalize before the one per-faction signed stage, so `balanceAfterSignedStage == max(0, balanceAfterOrdinaryPositiveEventsForTick + tickSignedDelta)`;
+- affordability-gated purchases/costs are not members of `tickSignedDelta`; validation must reject any implementation that hides purchase, embarkation, or strategic-weapon spending inside this signed-consequence aggregation;
+- destruction or return/termination without successful uncaptured completion produces no N16 replacement transaction;
+- repeated capture/recapture with `firstHostileCaptureResolved == true` produces no additional first-capture owner adjustment;
+- exact persistence chain: first hostile capture -> original-owner recapture -> save -> load -> hostile capture again must preserve `firstHostileCaptureResolved == true` and produce zero additional first-capture adjustment;
+- save immediately after first hostile capture -> load must preserve permanent cancellation of the original uncaptured commercial-completion path;
+- N14/N16 signed transactions never run through ordinary positive FFY modifiers a second time, including when their fact-level or tick-level net signed delta is positive;
+- terminal captured-cargo base remains `rawCargoFfy` even when `ownerSuccessValueFfy != rawCargoFfy`; `Vowner` must never replace physical cargo value;
+- save/load restores both the immutable voyage economic snapshot and mutable first-capture lifecycle state without revaluation/reconstruction from current ownership; deterministic replay/regeneration reproduces the immutable launch snapshot from the same versioned launch state.
+
+**Resolved mechanic-definition result (#48)**
+
+- `FFY_ECONOMY.md` now owns the missing voyage snapshot, first-capture persistence, same-fact and same-tick signed-transaction netting, non-negative balance-floor execution, and ordinary cargo separation. The obligations above consume those contracts for certification; runtime conformance may remain `UNAVAILABLE` until the corresponding Open Fufu Trade gameplay implementation exists, but these traits are no longer blocked on undefined voyage-value or first-capture transaction semantics.
+
+---
+
+# 7. Running mechanic-closure findings
 
 These are **not #31 validation-design decisions**. They are mechanic-definition questions discovered because honest certification needs a canonical expected result.
 
 | Trait | Finding | Validation consequence |
 | --- | --- | --- |
 | P02 | Exact replacement `30–70%` Population-utilization curve/anchors must be canonically available. | P02 semantic conformance cannot finalize without the intended curve. |
-| P05 | Capture trigger/fate is closed by #45, but structure-capture FFY event base value and location remain open under #48. | P05 payout and spatial-modifier integration cannot fully certify until #48 closes value/location. |
-| P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-owner Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
+| P05 | `FFY_ECONOMY.md` now owns the previously missing P05 value/location/capture-tick sampling semantics from #48. | P05 is no longer blocked on its own FFY semantics; runtime coverage must exercise type valuation, faction-wide/spatial snapshot inputs, structureless same-tick territory changes, and capture-tick order invariants. Exact P24/N11 membership cases remain conditional on their separate field contract. |
+| P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-epoch Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
 | P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
 | P20 | **Resolved by #32:** singular start-state placement/order is once per faction at stable primary `originSlot 0` after Initial-Territory ownership; #45 owns exact-cell admission/result. Initial charge readiness remains #46-owned. | Spawn/grant placement conformance is no longer blocked by #32; full Silo start-state certification still depends on #46 charge readiness. |
@@ -1195,19 +1248,19 @@ The former P23 concurrent-cap and P37 grant-placement/lifecycle blockers are res
 
 ---
 
-# 7. Emerging validation boundaries — provisional
+# 8. Emerging validation boundaries — provisional
 
-Do not freeze the final domain catalogue until all traits are audited, but P01–P40 currently reveal recurring owners/seams around:
+Do not freeze the final domain catalogue until all traits are audited, but P01–P40 plus the focused #48 N14/N16 closure currently reveal recurring owners/seams around:
 
 - Spawn / pre-match initialization and multi-slot spawn profiles;
 - Population initialization, growth, peak-state tracking, settlement cost/residuals, automatic-defender survival, and explicit Population transfers;
 - land combat / pressure / counter-response / capture casualty resolution;
 - terrain/acquisition / deliberate abandonment / Fallout overlays;
 - persistent structures / provenance / ownership / grants / purchase-upgrade transactions / spatial coverage;
-- FFY economy / physical Trade and Train logistics / location-conditioned events / Train-event side effects;
+- FFY economy / physical Trade and Train logistics / location-conditioned events / Train-event side effects / immutable voyage-value snapshots and mutable first-capture lifecycle state;
 - naval/amphibious physical lifecycle, Warship profile/rank/caps/repair, Transport health/destruction/landing;
 - strategic weapon legality, launcher/charge state, projectile/blast geometry, and SAM interception/anti-ship behavior;
-- cross-system state/event seams such as Spawn -> Population, structure capture -> typed disposition/admission/consequences -> FFY/Factory provenance, Fort/Port/SAM fields -> combat/economy/naval behavior, Population peak -> SAM entitlement, Train event -> Population, Transport destruction -> Population transfer, amphibious landing -> exact-cell Fort grant, and Warship state -> mobile strategic launcher.
+- cross-system state/event seams such as Spawn -> Population, structure capture -> typed disposition/admission/consequences -> FFY/Factory provenance, Fort/Port/SAM fields -> combat/economy/naval behavior, Population peak -> SAM entitlement, Train event -> Population, Trade launch -> serialized owner-value snapshot -> first-capture lifecycle -> capture/completion signed transaction, Transport destruction -> Population transfer, amphibious landing -> exact-cell Fort grant, and Warship state -> mobile strategic launcher.
 
 These are evidence from the completed traces, not yet a final taxonomy.
 
@@ -1216,7 +1269,7 @@ These are evidence from the completed traces, not yet a final taxonomy.
 ## Next work items
 
 - audit P41–P50 using the same dependency-trace procedure;
-- continue through P54 and N01–N18 in bounded batches;
+- continue through P54 and N01–N18 in bounded batches; when N14/N16 receive their full trait-audit entries, consume the already-canonical #48 snapshot contract rather than reopening it;
 - derive the final validation-domain catalogue from completed traces rather than forcing traits into a preselected taxonomy;
 - derive the explicit interaction registry from actual same-hook/cross-system dependencies;
 - route mechanic-definition blockers to their canonical owners/issues without solving them inside validation metadata;
