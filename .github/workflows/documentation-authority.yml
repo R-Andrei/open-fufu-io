@@ -12,41 +12,6 @@ permissions:
   contents: read
 
 jobs:
-  phase6-test-label-autofix:
-    if: github.event_name == 'pull_request' && github.event.pull_request.number == 67 && github.event.pull_request.head.repo.full_name == github.repository
-    name: Temporary Phase 6 test-label cleanup
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout PR head
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 0
-      - name: Remove closed-issue identity from composition test label
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('tests/RuleComposition.test.ts')
-          text = path.read_text()
-          old = 'describe("canonical #43 numeric cases", () => {'
-          new = 'describe("canonical numeric composition cases", () => {'
-          if text.count(old) != 1:
-              raise SystemExit(f'{path}: expected exactly one stale suite label')
-          path.write_text(text.replace(old, new))
-          PY
-          if git diff --quiet -- tests/RuleComposition.test.ts; then
-            echo 'Test label already cleaned.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add tests/RuleComposition.test.ts
-          git commit -m 'tests: remove closed-issue label from composition cases'
-          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
-
   authority:
     name: Canonical authority guard
     runs-on: ubuntu-latest
