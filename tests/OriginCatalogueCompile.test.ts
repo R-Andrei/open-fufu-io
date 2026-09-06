@@ -120,8 +120,14 @@ describe("builder-legal Origin composition space", () => {
 
       const exhaustiveCompile =
         process.env.RULE_COMPOSITION_EXHAUSTIVE === "1";
-      let checkedLegalOrigins = 0;
-      let compiledLegalOrigins = 0;
+
+      const emptyProfile = compileRuleProfile(RULE_AXIS_REGISTRY, profileFor([]));
+      expect(emptyProfile.contributions).toEqual([]);
+      expect(emptyProfile.dynamicProviders).toEqual([]);
+      expect(emptyProfile.customDomains).toEqual([]);
+
+      let checkedLegalOrigins = 1;
+      let compiledLegalOrigins = exhaustiveCompile ? 1 : 0;
       const selected: BuilderTrait[] = [];
       const selectedContributions: RuleContribution[] = [];
       const selectedDynamic: DynamicRuleProvider[] = [];
