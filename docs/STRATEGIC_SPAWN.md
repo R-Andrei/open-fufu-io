@@ -304,7 +304,16 @@ return h as unsigned uint32
 
 Implementations must use exact low-32-bit multiplication semantics (`Math.imul` + `>>> 0` is suitable in TypeScript); ordinary IEEE-754 multiplication followed by ad-hoc rounding is not the contract.
 
-Canonical hash collisions remain harmless because every resolver ordering appends semantic fallback keys such as `FactionId`, slot index, or `CellId` after the tie value.
+### Canonical resolver tuple ordering
+
+All resolver tuples in this document are compared lexicographically, field by field, using one resolver-v1 comparator:
+
+- integer fields sort by ascending exact numerical value;
+- string fields sort by ascending lexicographic order of their raw UTF-8 byte sequences, comparing bytes as unsigned `0..255`;
+- when one string's UTF-8 byte sequence is an exact prefix of the other, the shorter sequence sorts first;
+- no locale-aware comparison, Unicode normalization, case folding, or host-language default string collation is permitted.
+
+The same string rule applies to `FactionId`, stable effect IDs, and any future string-valued deterministic fallback key used by resolver-v1. Canonical `stableTie32` collisions are therefore harmless because every resolver ordering appends semantic fallback keys such as `FactionId`, slot index, or `CellId` after the tie value, and those fallback keys now have an exact cross-platform comparison rule.
 
 ### Resolver-v1 `stableTie32` golden vectors
 
@@ -333,23 +342,29 @@ For the first vector, the canonical serialized input bytes are:
 0100000030
 ```
 
-Changing field canonicalization, length endianness, FNV constants/order, unsigned overflow behavior, or any tie domain used by resolver-v1 requires a new `spawnResolverVersion`; it must not silently redefine version `1`.
+Changing field canonicalization, length endianness, FNV constants/order, unsigned overflow behavior, tuple comparison, or any tie domain used by resolver-v1 requires a new `spawnResolverVersion`; it must not silently redefine version `1`.
 
 Cryptographic SHA-256 remains appropriate for stored integrity/cell-set hashes; that is a different purpose.
 
 ## 3.2 Strategic hook defaults
 
-Missing, malformed, rejected, or runtime-faulting Strategic Spawn hooks use these deterministic defaults:
+Missing, structurally malformed, or runtime-faulting Strategic Spawn hooks use these deterministic defaults:
 
 - **`chooseInfluence()`**: for each required influence slot, rank the compiled legal-spawn seed set by `(stableTie32("default-influence-center", version, matchSeed, factionId, influenceSlot, cellId), cellId)` and choose the first candidate not already used by an earlier slot of that same faction; fallback slots are processed in ascending `influenceSlot` only for this within-faction default selection. Using a legal seed as center guarantees at least one legal origin candidate lies inside the area.
 - **`reconsiderInfluence()`**: retain that faction's successfully resolved Phase-1 influence center(s) unchanged.
 - **`chooseOrigins()`**: for each required slot, choose the legal origin inside its final influence region nearest to that influence center, using the canonical tie ordering below.
 
+For `chooseOrigins()`, **whole-hook defaulting is structural, not a penalty for requesting a mechanically illegal location**. The whole callback result defaults only when it is missing/faulted or cannot be interpreted as the required Phase-3 decision, including wrong origin count, non-integer cell identifiers, identifiers that do not name a real map cell, or another malformed return shape. Once the callback supplies the required number of real map `CellId`s, those cells are the faction's requested origins even when one or more are outside influence, spawn-ineligible, same-faction duplicates, or later lose foreign-spacing arbitration. Those semantic placement failures are repaired per slot by Sections 3.3–3.5; they do not discard otherwise usable sibling-slot requests.
+
+`SpawnOriginApi.isValidOriginChoice()` and `validateOriginChoices()` are therefore **local preflight helpers**. They report whether a prospective choice/set would pass local Phase-3 placement rules without authoritative resolver repair. A locally invalid result for `OUTSIDE_INFLUENCE`, `SPAWN_INELIGIBLE`, or `DUPLICATE_ORIGIN` does not mean a structurally valid `chooseOrigins()` callback result will be thrown away. Foreign spacing remains unknowable to those helpers until simultaneous resolution.
+
 A hook fallback does not by itself fault the controller for normal match play. Successfully committed controller memory from earlier lifecycle callbacks remains available under `CONTROLLER_MEMORY.md`.
 
 ## 3.3 Strategic global priority resolution
 
-A structurally malformed Phase-3 decision (wrong origin count, non-cell identifiers, etc.) first uses the deterministic `chooseOrigins()` hook default. The resulting well-formed requested origin slots then resolve together with every other faction through one **global** priority order:
+A structurally malformed Phase-3 decision uses the deterministic `chooseOrigins()` whole-hook default defined in Section 3.2. A correctly shaped Phase-3 decision containing the required number of real map `CellId`s is instead preserved as the faction's requested slot set and enters the authoritative resolver even when local placement validation would report a semantic failure.
+
+The resulting requested origin slots resolve together with every other faction through one **global** priority order:
 
 ```text
 (
@@ -364,7 +379,7 @@ Process all requested slots in that canonical order. For each slot:
 1. retain its requested cell exactly when the cell is a valid legal Initial-Territory seed inside that slot's final influence region, remains at least 50 cells from every already resolved foreign-faction origin, and does not duplicate an already resolved origin slot of the same faction;
 2. otherwise resolve that slot through the Section 3.4 nearest-in-region fallback before proceeding to the next slot.
 
-Therefore P39 same-faction origins have **no 50-cell spacing constraint against each other**, but two P39 slots requesting the exact same cell are not ambiguous: whichever slot comes first in the seeded global priority keeps that requested cell and the later slot deterministically falls back to another distinct cell.
+Therefore P39 same-faction origins have **no 50-cell spacing constraint against each other**, but two P39 slots requesting the exact same cell are not ambiguous: whichever slot comes first in the seeded global priority keeps that requested cell and the later slot deterministically falls back to another distinct cell. Likewise, if only one P39 slot requests an outside-influence or spawn-ineligible real map cell, the other locally legal sibling request remains intact rather than being replaced by a whole-hook default.
 
 Connected conflict components may be used internally as an optimization/diagnostic aid only when they are proven to produce the exact same final result as this global priority scan. Component discovery or iteration order is **not** a resolver-v1 semantic input.
 
@@ -693,7 +708,7 @@ Thus the combination produces two independently deformable star-biased starts ra
 
 # 6. Singular start-state grants and spawn immunity
 
-After all Initial-Territory footprints finish and political ownership is established, faction-singular start-state effects resolve once per faction in deterministic stable effect-ID order unless a mechanic explicitly owns another order.
+After all Initial-Territory footprints finish and political ownership is established, faction-singular start-state effects resolve once per faction in deterministic stable effect-ID order under the Section 3.1 canonical resolver tuple/string comparator unless a mechanic explicitly owns another order.
 
 For P20:
 
@@ -821,8 +836,12 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 
 - every Section 3.1 `stableTie32` golden vector reproduces the exact unsigned uint32 result, and the first vector reproduces the exact canonical serialized bytes;
 - `stableTie32` field-length endianness, integer canonicalization, UTF-8 handling, and low-32-bit multiplication semantics are identical across TypeScript/server/replay-verifier implementations;
+- forced-equal primary tie values exercise the Section 3.1 fallback comparator: ASCII ordering (`"A" < "B"`), prefix ordering (`"F" < "F-A"`), unsigned UTF-8 byte ordering (including a non-ASCII string), and numeric slot ordering (`0 < 1`) must reproduce identically across implementations without locale/default string comparison;
 - deterministic multi-slot `chooseInfluence()` fallback reproduces `default-influence-center` ordering and distinct within-faction fallback centers independent of service iteration order;
 - dense overlapping Strategic influence regions;
+- a missing/runtime-faulting or structurally malformed `chooseOrigins()` result (including wrong count, non-integer/non-map CellId, or malformed return shape) uses the whole-hook deterministic default;
+- a correctly shaped `chooseOrigins()` result containing real map CellIds is preserved as the requested slot set even when local preflight reports outside-influence, spawn-ineligible, or duplicate-own-slot placement; only the affected slots are repaired through authoritative resolution;
+- a P39 request with one locally legal slot and one semantic-placement-invalid real map cell preserves the legal sibling request rather than replacing the entire faction decision;
 - many Strategic exact-origin conflicts resolved identically regardless of faction/component/service enumeration order;
 - P39 Strategic same-faction duplicate requests deterministically retain one requested cell and displace the other through ordinary fallback without imposing own-faction 50-cell spacing;
 - a Strategic fallback from an earlier global-priority slot cannot make component iteration order change a later slot's result;
