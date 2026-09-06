@@ -29,7 +29,7 @@ Official-Origin authoring follows these content rules:
 - Specialized Origins may spend above the ordinary base budget by accepting coherent drawbacks within the public builder rules.
 - Drawbacks for beginner-oriented Origins should prefer understandable scalar tradeoffs over mechanics that radically change the rules or demand specialized knowledge.
 - Origins are a **global shared library**, not content owned by one AI character. Multiple AI presets may legally include the same Official Origin in their allowed pools even when the Origin name/reference has no lore relationship to that character.
-- Duplicate mechanical builds under different presentation names are generally undesirable; the former O35 duplicate was retired rather than preserving two names for the same build.
+- Duplicate mechanical builds under different presentation names are generally undesirable.
 
 The first three UI-facing starter choices are:
 
@@ -101,22 +101,6 @@ The first three UI-facing starter choices are:
 
 ## Roster notes
 
-### Existing seven-origin roster migration
-
-The original seven Official Origin builds remain present mechanically but have been absorbed into the expanded thematic library; display titles below reflect the accepted naming pass:
-
-| Previous working name | Current provisional identity |
-| --- | --- |
-| Last Bastion | **O01 — A True Warrior Needs No Sword** |
-| Golden City | **O02 — Fuwa Fuwa Time** |
-| Rail-Demographic Origin | **O03 — Railgun** |
-| Spoils of Empire | **O04 — Right of Conquest** |
-| Iron Tide | **O05 — The Country Mouse** |
-| Gemini | **O06 — Gemini** |
-| Corsair State | **O07 — The Fake Is of Far Greater Value** |
-
-Their trait compositions were not discarded merely because the presentation names changed.
-
 ### Global sharing
 
 An Official Origin may appear in any number of Official AI preset pools. The Origin's name is a thematic identity for the build, **not a claim that the preset character said the line or belongs to the source work referenced by the Origin name**.
@@ -132,19 +116,3 @@ The library does not need a fixed quota of naval, economic, nuclear, defensive, 
 ### Intentional under-budget Origin
 
 **O50 — Lucky Star** is intentionally a 5-point build. Its low spend is a deliberate roster/content choice for a geometry/flair-heavy Origin, not an authoring oversight. P54 mechanics are owned by the trait catalogue and the referenced spawn profile is owned by `STRATEGIC_SPAWN.md`.
-
-### TODO — trap/deception Origin
-
-Explore a future **trap-oriented Origin** built around deliberately tempting enemy actions and punishing opponents who take the bait. Candidate fantasies include decoy/exposed military assets that detonate into a nuclear-like Fallout effect when destroyed or captured, and booby-trapped Cities/structures whose capture imposes a delayed or persistent penalty such as reduced Population Growth. Exact mechanics, counterplay, information rules, legality, trait decomposition, balance, and whether this becomes one Origin or several traits remain deliberately open.
-
----
-
-## Implementation/content work still open
-
-The following remain implementation/content work rather than reasons to reopen the Official-Origin roster architecture:
-
-1. playtest repricing/revision if canonical trait costs change;
-2. UI art/presentation for Official Origins;
-3. runtime data schema/import representation;
-4. exhaustive legality/invariant validation against the deployed trait catalogue;
-5. future additions where an AI preset or player-facing fantasy genuinely needs another build.
