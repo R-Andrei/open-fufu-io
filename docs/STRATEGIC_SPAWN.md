@@ -56,7 +56,7 @@ Match initialization uses this order:
 
 A faction-singular start-state effect executes **once per faction** unless its own mechanic explicitly says `per origin` or `per footprint`. A multi-origin profile such as P39 never implicitly duplicates a singular effect.
 
-P20 therefore requests exactly one starting Missile Silo grant at `originSlot 0` after Initial-Territory ownership is established. P39 + P20 still requests one Silo, not one per core. Generic structure admission/materialization is owned by `TERRAIN_AND_STRUCTURES.md`; Silo charge/readiness state is owned by the strategic-launcher closure tracked in #46.
+P20 therefore requests exactly one starting Missile Silo grant at `originSlot 0` after Initial-Territory ownership is established. P39 + P20 still requests one Silo, not one per core. Generic structure admission/materialization and persistent-Silo level/charge/readiness lifecycle are owned by `TERRAIN_AND_STRUCTURES.md`; strategic launch transactionality is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
 ## 0.2 Strategic Spawn hooks
 
