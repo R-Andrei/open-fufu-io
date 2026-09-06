@@ -621,7 +621,7 @@ define("P19", "DYNAMIC", {
 custom(
   "P20",
   "STARTING_STRUCTURE_GRANT",
-  "One free starting Missile Silo; Strategic Spawn owns exact placement/order and strategic weapons own initial charge readiness.",
+  "Starting-structure grant boundary; exact Spawn placement/order is owned by STRATEGIC_SPAWN.md, generic admission/materialization by the structure owner, and initial charge readiness by the strategic-weapons owner.",
 );
 custom(
   "P21",
