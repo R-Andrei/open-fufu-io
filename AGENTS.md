@@ -166,6 +166,70 @@ The repository must prefer **one canonical source of truth per concern**. Long b
 
 **One canonical owner per concern. Other documents should link to that owner only when they genuinely need to reference the concern; they must not restate its mechanics, exceptions, constants, migration caveats, or other authoritative detail.** A cross-reference is navigation, not a license to maintain a synchronized summary copy.
 
+### Canonical-authority synchronization protocol
+
+This protocol is mandatory for substantive work that changes mechanics, rules, configuration, canonical documentation, or any code/comment that summarizes another subsystem's semantics.
+
+#### Before substantive work
+
+1. Read [`docs/README.md`](./docs/README.md) from the **current target base** and identify every canonical owner relevant to the requested change.
+2. Read those owners from that same current base before editing. Do not rely on memory, an earlier branch snapshot, issue prose, a PR description, or a secondary summary.
+3. Record the owner set for the work session so later reconciliation can determine whether `main` changed any of them.
+4. If ownership is unclear, resolve the ownership boundary before introducing another statement of the rule.
+
+#### While implementing
+
+- Change an authoritative fact only in the file that owns that concern.
+- In non-owner documents/code comments, retain only the minimum interface/composition fact that the local concern itself owns and link/name the canonical owner for the rest.
+- Do not copy resolver details, constants, formulas, exception lists, edge cases, blocker ledgers, completion matrices, or mutable project status from another owner.
+- **Canonical mechanics/design documents must not use GitHub issue numbers as normative dependency or current-status records.** GitHub issues own work/progress state; canonical documents own the durable rule. Say `owned by STRATEGIC_SPAWN.md`, not `blocked by #32`.
+- PR descriptions and issue comments are review/project-management surfaces, never canonical mechanics authorities.
+
+#### Whenever the target base advances
+
+Before continuing implementation after merging/rebasing/updating from `main`:
+
+1. Compare the old base to the new base and list every changed file.
+2. If any relevant canonical owner changed, stop and reread that owner before further implementation.
+3. Compute the semantic overlap set:
+
+```text
+topicChanged = files changed oldBase -> pre-reconciliation topic head
+mainChanged  = files changed oldBase -> new main
+overlap      = intersection(topicChanged, mainChanged)
+```
+
+4. Every overlapping canonical/configuration owner requires an explicit four-way semantic audit: old base, pre-reconciliation topic version, new-main version, and reconciliation result.
+5. Verify that every compatible topic-branch semantic change survived and every new-main authoritative change was incorporated. A clean Git textual merge is not evidence that this semantic merge succeeded.
+
+#### Before declaring implementation complete
+
+1. Search the repository for each changed mechanic/trait/entity name, old terminology, old formula/value, and any obsolete status wording.
+2. Inspect every relevant hit. Update/delete stale summaries and replace duplicated authority with owner references in the same change.
+3. Reread the canonical owners against the resulting code/configuration, not merely against the original task description.
+4. Recheck current `main`. If `main` advanced after validation, repeat the owner/reconciliation audit before treating the SHA as final.
+5. Freeze the candidate SHA only after this audit. Any subsequent semantic change invalidates the previous authority audit and final-review status.
+
+#### Required completion evidence
+
+For PRs that touch canonical concerns, include a compact record such as:
+
+```text
+Canonical-authority audit
+- Canonical owners consulted: <paths>
+- Owners modified: <paths / none>
+- Cross-owner references reviewed: <paths or search terms>
+- Base reconciliation: <old base -> current base; overlapping owner files>
+- Stale-reference search: <performed; findings/fixes>
+- Final current-main recheck: <sha>
+```
+
+This record supplements the three-layer gameplay/Origin/Character-AI audit; neither replaces the other.
+
+#### Automated guard
+
+`scripts/checkDocumentationAuthority.ts` and the Documentation Authority workflow enforce the mechanically provable subset of this policy. During the repository-wide migration, incremental mode rejects any **new** mutable GitHub issue/PR work-state reference in every registered canonical owner while allowing only references already present at the comparison base. Newly registered canonical owners are compared against an empty base and receive no legacy exemption. `--strict` rejects all such references. The migration is complete only when strict mode passes repository-wide and the workflow is switched permanently to strict enforcement; do not introduce a baseline allowlist or exemption merely to make strict mode pass.
+
 ### Subsystem documentation gateways
 
 When a subsystem grows beyond a few tightly related documents, group its dedicated documents under one obvious directory and provide a `README.md` gateway that explains the subsystem, names the broad/father design document, maps each narrower concern to its canonical owner, and links to relevant code/configuration. Detailed child documents should point back to that gateway or father document, and code/configuration owners should point toward the documentation gateway.
@@ -232,10 +296,8 @@ For the current Official-AI design this means, unless architecture is explicitly
 ```text
 design/official-ai/origin-trait-support.config.ts
   all exact trait-support mappings, additive combination support, and support-suppression rules
-
 design/official-ai/origin-configurations.config.ts
   all exact named Official-Origin AI mappings
-
 design/official-ai/character-configurations.config.ts
   Baseline and all exact character AI mappings once authored
 ```
