@@ -144,6 +144,35 @@ Fixed Spawn performs **no displacement, fallback, nearest-cell repair, or silent
 
 P54 changes the generated footprint shape around those authored origins exactly as it does in every other mode; Fixed Spawn fixes origin locations, not faction mechanics.
 
+### 0.4.1 Fixed Spawn service/configuration input contract
+
+Fixed Spawn is configured by the match/service fixture layer, not by Controller API callbacks. Its minimum canonical semantic shape is:
+
+```ts
+interface FixedSpawnFactionInput {
+  readonly factionId: FactionId;
+  readonly origins: readonly CellId[];
+}
+
+interface FixedSpawnConfiguration {
+  readonly factions: readonly FixedSpawnFactionInput[];
+}
+```
+
+The concrete service serialization may use an equivalent schema, but it must preserve these semantics exactly:
+
+- there is exactly one `FixedSpawnFactionInput` for every participating faction and no entry for a non-participant;
+- `origins.length` must equal that faction's already-resolved effective `SpawnProfile.exactOriginCount`;
+- **array index is canonical `originSlot` identity** and must survive unchanged into the resolved spawn result;
+- therefore ordinary profiles use `origins[0] = PRIMARY`, while P39 uses `origins[0] = PRIMARY` and `origins[1] = SECONDARY`;
+- the fixture/service must never geographically sort, relabel, normalize, or otherwise infer slot identity from the authored cells;
+- all faction entries and origin slots are validated as **one atomic configuration** after effective profiles are known, including seed legality, same-faction distinctness, and foreign-faction spacing across the complete authored set;
+- if any entry/slot is invalid, the entire Fixed configuration is rejected before any faction receives Initial Territory or start-state effects;
+- validation performs no per-slot fallback, displacement, substitution, defaulting, or partial acceptance;
+- after successful validation, the authored cells become the resolved exact origins with replay source `FIXED_CONFIGURATION` and enter the ordinary mode-independent footprint/start-state pipeline unchanged.
+
+This contract is service/configuration input only. It does not add Fixed-Spawn selection callbacks to `ControllerApi.ts` and does not allow the service layer to redefine SpawnProfile, footprint, P39 slot, P20 grant, or P54 geometry semantics.
+
 ---
 
 # 1. Ordinary Strategic influence region
@@ -709,6 +738,8 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 - P39 same-faction Random origins may be within 50 cells but may never duplicate;
 - Fixed ordinary profiles require exactly one authored legal origin;
 - Fixed P39 profiles require exactly two authored legal distinct origins;
+- Fixed P39 preserves authored `origins[]` order as canonical origin-slot identity end-to-end; swapping the two authored cells swaps PRIMARY/SECONDARY semantics rather than geographically re-sorting them, including odd-quota remainder and P20 slot-0 placement;
+- Fixed whole-configuration validation is atomic across every participating faction; one invalid faction/slot rejects the entire fixture with no partial spawn state;
 - invalid Fixed count, terrain, duplicate-slot, or foreign-spacing fixtures reject deterministically with no repair/fallback;
 - exact 1,000-cell and modified Initial-Territory quota fulfillment;
 - odd P39 population-bearing quota assigns its remainder to `originSlot 0`;
