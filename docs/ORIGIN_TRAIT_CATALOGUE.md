@@ -2,11 +2,12 @@
 
 ## Status and authority
 
-This file is the **canonical owner for Origin builder rules, Origin trait identities, trait costs/refunds, trait-specific mechanics, and Origin-trait composition semantics**.
+This file is the **canonical owner for Origin builder rules, Origin trait identities, trait costs/refunds, trait-specific mechanics, and trait-specific interaction semantics**.
 
 Neighboring concerns are owned elsewhere and are referenced rather than restated here:
 
 - high-level game-wide invariants: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
+- game-wide effective-rule composition, modifier algebra, normalization, and serialization semantics: [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md);
 - OpenFront → Open Fufu migration sequencing: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
 - Official Origin roster/content: [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md);
 - terrain, persistent structures, and baseline Tank chassis: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
@@ -170,7 +171,7 @@ P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Str
 
 Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11 makes both SAM construction and SAM upgrade FFY cost exactly zero; ordinary non-FFY legality still applies.
 
-The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
+The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by `RULE_COMPOSITION.md`.
 
 ### N07 — one-per-type structure ownership
 
@@ -197,7 +198,7 @@ If N17 changes the structure disposition to destruction, or transfer admission f
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
-- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. Its initial ready-charge state remains owned by #46.
+- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. Initial ready-charge state remains owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 - P21 still requires ordinary legality/affordability validation; the first successful purchase of each structure type consumes `0 FFY`.
 - P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
 - P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
