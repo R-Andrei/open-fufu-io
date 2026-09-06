@@ -84,25 +84,27 @@ export type RuleAxisKind =
   | "COMPONENT_SET"
   | "STRUCTURAL";
 
-export type RuleUnit =
-  | "NONE"
-  | "AREA"
-  | "BASIS_POINTS"
-  | "CELLS"
-  | "CELLS_PER_SECOND"
-  | "DAMAGE"
-  | "HEALTH_POINTS"
-  | "HEALTH_PER_SECOND"
-  | "FFY"
-  | "POPULATION"
-  | "SECONDS"
-  | "TICKS"
-  | "RATIO"
-  | "BOOLEAN"
-  | "COUNT"
-  | "CAPABILITY_SET"
-  | "COMPONENT_SET"
-  | "PROFILE_ID";
+export const RULE_UNITS = [
+  "NONE",
+  "AREA",
+  "BASIS_POINTS",
+  "CELLS",
+  "CELLS_PER_SECOND",
+  "DAMAGE",
+  "HEALTH_POINTS",
+  "HEALTH_PER_SECOND",
+  "FFY",
+  "POPULATION",
+  "SECONDS",
+  "TICKS",
+  "RATIO",
+  "BOOLEAN",
+  "COUNT",
+  "CAPABILITY_SET",
+  "COMPONENT_SET",
+  "PROFILE_ID",
+] as const;
+export type RuleUnit = (typeof RULE_UNITS)[number];
 
 export type RuleScope =
   | { readonly kind: "GLOBAL" }
@@ -230,6 +232,8 @@ export interface RuleAxisDefinition {
   readonly scopeKind: RuleScopeKind;
   readonly stages: readonly RuleStageDefinition[];
   readonly allowedSourceKinds: readonly RuleSourceKind[];
+  /** Closed, axis-specific structural output vocabulary. */
+  readonly allowedProfileIds?: readonly string[];
 }
 export type RuleAxisRegistry = Readonly<Record<string, RuleAxisDefinition>>;
 
@@ -377,7 +381,11 @@ export type RuleValidationCode =
   | "UNKNOWN_STAGE_DEPENDENCY"
   | "STAGE_DEPENDENCY_ORDER"
   | "STAGE_DEPENDENCY_CYCLE"
+  | "MISSING_PROFILE_VOCABULARY"
+  | "DUPLICATE_PROFILE_ID"
   | "UNKNOWN_AXIS"
+  | "INVALID_CONTRIBUTION_SHAPE"
+  | "INVALID_SOURCE_ID"
   | "INVALID_SCOPE_VALUE"
   | "SCOPE_KIND_MISMATCH"
   | "INVALID_CONDITION"
@@ -397,6 +405,7 @@ export type RuleValidationCode =
   | "NON_INTEGER_FLAT_VALUE"
   | "NON_INTEGER_COUNT_VALUE"
   | "INVALID_STRING_VALUE"
+  | "INVALID_PROFILE_ID"
   | "INVALID_CAPABILITY_VALUE"
   | "INVALID_COMPONENT_VALUE"
   | "SINGLETON_CONFLICT"
@@ -447,8 +456,20 @@ const STRUCTURE_ACQUISITION_PATH_SET = new Set<string>(STRUCTURE_ACQUISITION_PAT
 const RULE_SOURCE_KIND_SET = new Set<string>(RULE_SOURCE_KINDS);
 const RULE_STAGE_ID_SET = new Set<string>(RULE_STAGE_IDS);
 const RULE_OPERATOR_SET = new Set<string>(RULE_OPERATORS);
+const RULE_UNIT_SET = new Set<string>(RULE_UNITS);
 const RULE_CAPABILITY_ID_SET = new Set<string>(RULE_CAPABILITY_IDS);
 const RULE_COMPONENT_ID_SET = new Set<string>(RULE_COMPONENT_IDS);
+
+const CONTRIBUTION_REQUIRED_KEYS = [
+  "axis",
+  "scope",
+  "stage",
+  "operator",
+  "sourceKind",
+  "sourceId",
+  "valueUnit",
+] as const;
+const CONTRIBUTION_OPTIONAL_KEYS = ["value", "conditions", "component"] as const;
 
 export function compareRuleStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -484,13 +505,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasExactKeys(
   value: Record<string, unknown>,
-  keys: readonly string[],
+  required: readonly string[],
+  optional: readonly string[] = [],
 ): boolean {
-  const actual = Object.keys(value).sort(compareRuleStrings);
-  const expected = [...keys].sort(compareRuleStrings);
+  const allowed = new Set([...required, ...optional]);
   return (
-    actual.length === expected.length &&
-    actual.every((key, index) => key === expected[index])
+    required.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key))
   );
 }
 
@@ -580,6 +601,30 @@ export function isValidRuleCondition(
   }
 }
 
+export function isValidRuleContributionShape(raw: unknown): raw is RuleContribution {
+  if (!isRecord(raw)) return false;
+  if (!hasExactKeys(raw, CONTRIBUTION_REQUIRED_KEYS, CONTRIBUTION_OPTIONAL_KEYS)) {
+    return false;
+  }
+  return (
+    typeof raw.axis === "string" &&
+    raw.axis.length > 0 &&
+    Object.prototype.hasOwnProperty.call(raw, "scope") &&
+    typeof raw.stage === "string" &&
+    RULE_STAGE_ID_SET.has(raw.stage) &&
+    typeof raw.operator === "string" &&
+    RULE_OPERATOR_SET.has(raw.operator) &&
+    typeof raw.sourceKind === "string" &&
+    RULE_SOURCE_KIND_SET.has(raw.sourceKind) &&
+    typeof raw.sourceId === "string" &&
+    typeof raw.valueUnit === "string" &&
+    RULE_UNIT_SET.has(raw.valueUnit) &&
+    (raw.conditions === undefined || Array.isArray(raw.conditions)) &&
+    (raw.component === undefined ||
+      (typeof raw.component === "string" && raw.component.length > 0))
+  );
+}
+
 export function canonicalizeRuleConditions(
   conditions: RuleConditions | undefined,
 ): RuleConditions | undefined {
@@ -599,7 +644,9 @@ export function canonicalizeStringSet(values: readonly string[]): readonly strin
   return Object.freeze([...new Set(values)].sort(compareRuleStrings));
 }
 
-function canonicalContribution(contribution: RuleContribution): RuleContribution {
+export function canonicalizeRuleContribution(
+  contribution: RuleContribution,
+): RuleContribution {
   const value = Array.isArray(contribution.value)
     ? canonicalizeStringSet(contribution.value)
     : contribution.value;
@@ -625,7 +672,7 @@ function canonicalContribution(contribution: RuleContribution): RuleContribution
 export function serializeRuleContributions(
   contributions: readonly RuleContribution[],
 ): string {
-  const normalized = contributions.map(canonicalContribution);
+  const normalized = contributions.map(canonicalizeRuleContribution);
   normalized.sort((a, b) =>
     compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
   );
@@ -719,6 +766,23 @@ export function validateRuleAxisRegistry(
         axis: axisId,
         message: `Registry key ${axisId} does not match definition id ${definition.id}`,
       });
+    }
+
+    if (definition.kind === "STRUCTURAL") {
+      const profiles = definition.allowedProfileIds;
+      if (profiles === undefined || profiles.length === 0) {
+        issues.push({
+          code: "MISSING_PROFILE_VOCABULARY",
+          axis: axisId,
+          message: `${axisId} is structural but declares no profile vocabulary`,
+        });
+      } else if (new Set(profiles).size !== profiles.length) {
+        issues.push({
+          code: "DUPLICATE_PROFILE_ID",
+          axis: axisId,
+          message: `${axisId} declares duplicate structural profile IDs`,
+        });
+      }
     }
 
     const ids = new Set<RuleStageId>();
@@ -831,6 +895,7 @@ function validateStringSetValue(
 
 function validateValue(
   contribution: RuleContribution,
+  definition: RuleAxisDefinition,
   issues: RuleValidationIssue[],
 ): void {
   const base = {
@@ -910,6 +975,18 @@ function validateValue(
         code: "INVALID_STRING_VALUE",
         message: `${contribution.operator} requires a non-empty string`,
       });
+      return;
+    }
+    if (
+      definition.kind !== "STRUCTURAL" ||
+      definition.allowedProfileIds === undefined ||
+      !definition.allowedProfileIds.includes(contribution.value)
+    ) {
+      issues.push({
+        ...base,
+        code: "INVALID_PROFILE_ID",
+        message: `${contribution.value} is not a registered profile for ${definition.id}`,
+      });
     }
     return;
   }
@@ -934,51 +1011,48 @@ function validateValue(
   }
 }
 
+function invalidContributionContext(raw: unknown): {
+  readonly axis: string;
+  readonly sourceId?: string;
+} {
+  if (!isRecord(raw)) return { axis: "RULE_CONTRIBUTION" };
+  return {
+    axis: typeof raw.axis === "string" ? raw.axis : "RULE_CONTRIBUTION",
+    ...(typeof raw.sourceId === "string" ? { sourceId: raw.sourceId } : {}),
+  };
+}
+
 export function validateRuleContributions(
-  contributions: readonly RuleContribution[],
+  contributions: readonly unknown[],
   registry: RuleAxisRegistry,
 ): readonly RuleValidationIssue[] {
   const issues: RuleValidationIssue[] = [];
   const groups = new Map<string, RuleContribution[]>();
 
-  for (const contribution of contributions) {
-    const rawSourceKind = contribution.sourceKind as unknown;
-    if (
-      typeof rawSourceKind !== "string" ||
-      !RULE_SOURCE_KIND_SET.has(rawSourceKind)
-    ) {
+  for (const rawContribution of contributions) {
+    const context = invalidContributionContext(rawContribution);
+    if (!isValidRuleContributionShape(rawContribution)) {
       issues.push({
-        code: "INVALID_SOURCE_KIND",
-        axis: contribution.axis,
-        sourceId: contribution.sourceId,
-        message: `Unknown source kind ${String(rawSourceKind)}`,
+        code: "INVALID_CONTRIBUTION_SHAPE",
+        axis: context.axis,
+        ...(context.sourceId === undefined ? {} : { sourceId: context.sourceId }),
+        message:
+          "Rule contribution must use the exact closed RuleContribution shape and registered runtime vocabulary",
       });
       continue;
     }
-    const rawStage = contribution.stage as unknown;
-    if (typeof rawStage !== "string" || !RULE_STAGE_ID_SET.has(rawStage)) {
+    const contribution = rawContribution;
+    if (contribution.sourceId.length === 0) {
       issues.push({
-        code: "INVALID_STAGE",
-        axis: contribution.axis,
-        sourceId: contribution.sourceId,
-        message: `Unknown stage ${String(rawStage)}`,
-      });
-      continue;
-    }
-    const rawOperator = contribution.operator as unknown;
-    if (
-      typeof rawOperator !== "string" ||
-      !RULE_OPERATOR_SET.has(rawOperator)
-    ) {
-      issues.push({
-        code: "INVALID_OPERATOR",
+        code: "INVALID_SOURCE_ID",
         axis: contribution.axis,
         sourceId: contribution.sourceId,
         stage: contribution.stage,
-        message: `Unknown operator ${String(rawOperator)}`,
+        message: "Rule contribution sourceId must be non-empty",
       });
       continue;
     }
+
     const definition = registry[contribution.axis];
     if (definition === undefined) {
       issues.push({
@@ -1010,7 +1084,7 @@ export function validateRuleContributions(
       });
     }
     if (contribution.conditions !== undefined) {
-      if (!Array.isArray(contribution.conditions) || contribution.conditions.length === 0) {
+      if (contribution.conditions.length === 0) {
         issues.push({
           code: "INVALID_CONDITION_SET",
           axis: contribution.axis,
@@ -1084,7 +1158,7 @@ export function validateRuleContributions(
         message: `${contribution.operator} is not allowed in ${contribution.axis}/${contribution.stage}`,
       });
     }
-    validateValue(contribution, issues);
+    validateValue(contribution, definition, issues);
 
     const key = canonicalRuleJson({
       axis: contribution.axis,
@@ -1295,18 +1369,27 @@ function exactBasisPointProduct(
   return { numerator, denominator };
 }
 
-function materializeRational(
-  numerator: bigint,
-  denominator: bigint,
+export function rationalToFiniteNumber(
+  numeratorInput: bigint,
+  denominatorInput: bigint,
 ): number {
-  const left = Number(numerator);
-  const right = Number(denominator);
-  if (!Number.isFinite(left) || !Number.isFinite(right) || right === 0) {
-    throw new Error(
-      "Exact rational cannot be materialized safely as a finite JavaScript number",
-    );
+  if (denominatorInput === 0n) {
+    throw new Error("Exact rational denominator cannot be zero");
   }
-  const result = left / right;
+  if (numeratorInput === 0n) return 0;
+
+  const negative = (numeratorInput < 0n) !== (denominatorInput < 0n);
+  const numerator = numeratorInput < 0n ? -numeratorInput : numeratorInput;
+  const denominator = denominatorInput < 0n ? -denominatorInput : denominatorInput;
+  const numeratorBits = numerator.toString(2).length;
+  const denominatorBits = denominator.toString(2).length;
+  const numeratorShift = Math.max(0, numeratorBits - 53);
+  const denominatorShift = Math.max(0, denominatorBits - 53);
+  const numeratorMantissa = Number(numerator >> BigInt(numeratorShift));
+  const denominatorMantissa = Number(denominator >> BigInt(denominatorShift));
+  const exponent = numeratorShift - denominatorShift;
+  const magnitude = (numeratorMantissa / denominatorMantissa) * 2 ** exponent;
+  const result = negative ? -magnitude : magnitude;
   if (!Number.isFinite(result)) {
     throw new Error("Exact rational materialized to a non-finite number");
   }
@@ -1348,7 +1431,7 @@ export function reduceScalarRule(
           throw new Error(`PRODUCT cannot apply ${operator}`);
         }
         const product = exactBasisPointProduct(group);
-        current *= materializeRational(product.numerator, product.denominator);
+        current *= rationalToFiniteNumber(product.numerator, product.denominator);
         break;
       }
       case "SINGLETON": {
