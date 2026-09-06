@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   isExecutableCodePath,
   validateChangedPaths,
+  validateOwnershipDelta,
   validateStaticPolicy,
   type ValidationManifest,
 } from "../scripts/checkValidationBoundary";
@@ -20,9 +21,12 @@ const manifest: ValidationManifest = {
 };
 
 describe("Open Fufu validation ownership boundary", () => {
-  it("treats executable source and test files as code-bearing artifacts", () => {
+  it("treats common repository source formats and tests as code-bearing artifacts", () => {
     expect(isExecutableCodePath("src/core/Owned.ts")).toBe(true);
     expect(isExecutableCodePath("tests/Owned.test.ts")).toBe(true);
+    expect(isExecutableCodePath("map-generator/main.go")).toBe(true);
+    expect(isExecutableCodePath("scripts/tool.py")).toBe(true);
+    expect(isExecutableCodePath("scripts/tool.sh")).toBe(true);
     expect(isExecutableCodePath("docs/README.md")).toBe(false);
   });
 
@@ -67,6 +71,82 @@ describe("Open Fufu validation ownership boundary", () => {
           { status: "D", path: "tests/OldOpenFront.test.ts" },
         ],
         manifest,
+      ),
+    ).toEqual([]);
+  });
+
+  it("rejects manifest-only revival of an inherited test after bootstrap", () => {
+    const headManifest: ValidationManifest = {
+      ...manifest,
+      ownedTests: [...manifest.ownedTests, "tests/LegacyRevival.test.ts"],
+    };
+
+    const errors = validateOwnershipDelta(
+      [{ status: "M", path: "validation/open-fufu-owned.json" }],
+      headManifest,
+      manifest,
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("manifest-only registration");
+  });
+
+  it("rejects newly adopted source code that only points at an untouched validator", () => {
+    const headManifest: ValidationManifest = {
+      ...manifest,
+      ownedSources: [
+        ...manifest.ownedSources,
+        {
+          path: "src/core/NewOwned.ts",
+          validators: ["tests/Owned.test.ts"],
+        },
+      ],
+    };
+
+    const errors = validateOwnershipDelta(
+      [
+        { status: "M", path: "validation/open-fufu-owned.json" },
+        { status: "M", path: "src/core/NewOwned.ts" },
+      ],
+      headManifest,
+      manifest,
+    );
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("no validator added or modified");
+  });
+
+  it("allows intentional adoption when its registered validator changes with it", () => {
+    const headManifest: ValidationManifest = {
+      ...manifest,
+      ownedSources: [
+        ...manifest.ownedSources,
+        {
+          path: "src/core/NewOwned.ts",
+          validators: ["tests/Owned.test.ts"],
+        },
+      ],
+    };
+
+    expect(
+      validateOwnershipDelta(
+        [
+          { status: "M", path: "validation/open-fufu-owned.json" },
+          { status: "M", path: "src/core/NewOwned.ts" },
+          { status: "M", path: "tests/Owned.test.ts" },
+        ],
+        headManifest,
+        manifest,
+      ),
+    ).toEqual([]);
+  });
+
+  it("permits the one-time ownership-manifest bootstrap", () => {
+    expect(
+      validateOwnershipDelta(
+        [{ status: "A", path: "validation/open-fufu-owned.json" }],
+        manifest,
+        null,
       ),
     ).toEqual([]);
   });
