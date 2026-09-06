@@ -142,7 +142,7 @@ The following groups are required by the completed audit. This is a validation r
 - **P05 + N17** — P05 consumes `STRUCTURE_TRANSFERRED`, so it does not fire on N17 `DESTROYED_ON_CAPTURE`.
 - **P05 + P34** — when transfer is admitted, capture FFY and conquered-Factory provenance can coexist on one atomic capture resolution.
 - **P07 + P33** — bonus Trains produce ordinary qualifying Train events and therefore P33 Population side effects.
-- **P07 + P34** — transformed Factory semantics must define how P07 scheduling participates; routed to #49.
+- **P07 + P34** — #49 closes their interaction through owner-scoped Factory Train-service epochs and dispatch-time Factory economic snapshots; P07 cadence remains unchanged while qualifying primary/bonus Trains consume the P34-transformed Factory profile.
 - **P14 + P24** — independent eligible spatial FFY modifiers may apply to the same event through the canonical FFY modifier algebra.
 - **P14/P24/N04 + N11** — N11's explicit hard zero cannot be resurrected by ordinary positive/negative yield percentages.
 - **N14 + N16** — first-hostile-capture owner-side `-Vowner` and `+Vowner` deltas cancel exactly while physical cargo continues normally.
@@ -194,7 +194,7 @@ The full audit intentionally did not invent missing gameplay semantics inside #3
 | **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
 | **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
 | **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
-| **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | P07 counter transfer lifecycle, P34 exact `2× ordinary Factory effect` axes and focused provenance lifecycle |
+| **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | **resolved by #49:** owner-scoped P07 Factory Train-service epochs/serialized phase, exact P34 transformed Factory axes, current-ownership conquest provenance, and dispatch-time Train economic snapshots |
 | **#50 — naval/amphibious Origin interactions** | Transport/SAM-vs-ship mechanics | N13 landing casualty order/rounding, P27 complete anti-ship SAM behavior, P28 Transport-Population theft |
 | **#51 — tactical observation/concealment** | observation visibility contract | P45 Forest interior/boundary geometry, P45/P49 minimum hostile-manifestation reveal payload/precedence/lifetime |
 
@@ -205,7 +205,8 @@ Closed dependencies and resolved downstream contracts are consumed directly from
 - **#32** closes P39/P54 all-mode Spawn semantics, P20 multi-origin singular-grant ordering, and resolver-v1 `P54_STAR_V1` geometry/replay binding;
 - **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
 - **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
-- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #43/#46/#48/#49/#50 boundaries;
+- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #43/#46/#48/#50 boundaries;
+- **#49** closes P07 Factory Train-service ownership-epoch behavior and P34 conquered-Factory effectiveness/provenance, consumed directly from the Factory/Train canonical owners;
 - **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
 
 ---
@@ -225,6 +226,6 @@ The #31 design/documentation work is complete when all of the following are true
 - discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
 - neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
 
-All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#43, #44, #46–#51) is owned by those systems/issues; #32 and #45 scoped mechanics are resolved by their canonical contracts. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
+All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#43, #44, #46–#48, #50–#51) is owned by those systems/issues; #32, #45, and #49 scoped mechanics are resolved by their canonical contracts. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
 
 Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.
