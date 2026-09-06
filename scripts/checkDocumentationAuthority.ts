@@ -6,9 +6,9 @@ const REPO_ROOT = process.cwd();
 const OWNER_MAP_PATH = "docs/README.md";
 
 /**
- * RULE_COMPOSITION.md is introduced by the long-running #43 branch while the
- * repository-wide legacy cleanup is intentionally tracked separately. Remove
- * this exemption when that cleanup makes strict mode pass repository-wide.
+ * RULE_COMPOSITION.md is introduced before the repository-wide strict
+ * authority migration is complete. Remove this exemption once strict mode
+ * passes repository-wide.
  */
 const TRANSITIONAL_NEW_OWNER_EXEMPTIONS = new Set([
   "docs/RULE_COMPOSITION.md",
