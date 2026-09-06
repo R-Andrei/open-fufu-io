@@ -58,7 +58,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P08 | **Tea Time** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **Wall Maria** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **Scorpion's Tail** | `+100% warhead projectile speed` | 4 |
-| P11 | **Level Upper** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
+| P11 | **Level Upper** | SAMs cost `0 FFY` to build or upgrade; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
 | P12 | **Somewhere Not Here** | `+25% Transport Ship speed` | 6 |
 | P13 | **Mountain Training Arc** | Mountains provide `+33% defensive pressure` | 4 |
 | P14 | **60 Billion Double Dollars** | FFY events located on Desert yield `+33% FFY` | 4 |
@@ -168,7 +168,7 @@ P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Str
 
 ### P11 — Population-unlocked SAMs
 
-Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11's SAM FFY cost is genuinely zero; ordinary non-FFY legality still applies.
+Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11 makes both SAM construction and SAM upgrade FFY cost exactly zero; ordinary non-FFY legality still applies.
 
 The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
 
