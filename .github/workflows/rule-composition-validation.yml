@@ -60,7 +60,7 @@ jobs:
       - run: npx vitest run tests/OriginCatalogueCompile.test.ts
 
   full-tests:
-    name: Full repository test suite
+    name: Full non-server repository test suite
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -70,4 +70,5 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm test
+      - name: Active repository tests (server tests dormant)
+        run: npm test
