@@ -1,5 +1,6 @@
 import {
   validateRuleContributions,
+  validateRuleAxisRegistry,
   type DynamicRuleProvider,
   type RuleCondition,
   type RuleContribution,
@@ -18,7 +19,6 @@ const fortScope = { kind: "STRUCTURE", structure: "FORT" } as const;
 
 function structuralContribution(
   sourceId: string,
-  profile: string,
   conditions?: readonly RuleCondition[],
 ): RuleContribution {
   return {
@@ -29,7 +29,7 @@ function structuralContribution(
     sourceKind: "ORIGIN",
     sourceId,
     valueUnit: "PROFILE_ID",
-    value: profile,
+    value: "ENEMY_BLACKOUT",
     ...(conditions === undefined ? {} : { conditions }),
   };
 }
@@ -187,6 +187,136 @@ describe("runtime payload validation", () => {
     expect(codes).toContain("INVALID_CAPABILITY_VALUE");
     expect(codes).toContain("NON_INTEGER_FLAT_VALUE");
   });
+
+  it("fails closed on malformed static contributions without throwing", () => {
+    const malformed = null as unknown as RuleContribution;
+    const extraField = {
+      axis: "GLOBAL_OFFENSIVE_PRESSURE",
+      scope: { kind: "GLOBAL" },
+      stage: "ORIGIN_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ORIGIN",
+      sourceId: "extra-field",
+      valueUnit: "BASIS_POINTS",
+      value: 100,
+      priority: 999,
+    } as unknown as RuleContribution;
+    const missingField = {
+      axis: "GLOBAL_OFFENSIVE_PRESSURE",
+      scope: { kind: "GLOBAL" },
+      stage: "ORIGIN_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ORIGIN",
+      sourceId: "missing-unit",
+      value: 100,
+    } as unknown as RuleContribution;
+    const unknownUnit = {
+      axis: "GLOBAL_OFFENSIVE_PRESSURE",
+      scope: { kind: "GLOBAL" },
+      stage: "ORIGIN_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ORIGIN",
+      sourceId: "unknown-unit",
+      valueUnit: "PERCENTISH",
+      value: 100,
+    } as unknown as RuleContribution;
+
+    expect(() =>
+      validateRuleProfile(RULE_AXIS_REGISTRY, [malformed, extraField, missingField, unknownUnit]),
+    ).not.toThrow();
+    const codes = validateRuleProfile(
+      RULE_AXIS_REGISTRY,
+      [malformed, extraField, missingField, unknownUnit],
+    ).map((issue) => issue.code);
+    expect(codes.filter((code) => code === "INVALID_CONTRIBUTION_SHAPE")).toHaveLength(4);
+  });
+
+  it("rejects an empty sourceId specifically", () => {
+    const emptySource: RuleContribution = {
+      axis: "GLOBAL_OFFENSIVE_PRESSURE",
+      scope: { kind: "GLOBAL" },
+      stage: "ORIGIN_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ORIGIN",
+      sourceId: "",
+      valueUnit: "BASIS_POINTS",
+      value: 100,
+    };
+    expect(
+      validateRuleContributions([emptySource], RULE_AXIS_REGISTRY).map(
+        (issue) => issue.code,
+      ),
+    ).toContain("INVALID_SOURCE_ID");
+  });
+
+  it("fails closed on malformed profile/custom-domain payloads", () => {
+    const badProfile = {
+      contributions: [],
+      customDomains: [null],
+      secret: true,
+    } as unknown as Parameters<typeof validateRuleProfile>[1];
+    expect(() => validateRuleProfile(RULE_AXIS_REGISTRY, badProfile)).not.toThrow();
+    expect(
+      validateRuleProfile(RULE_AXIS_REGISTRY, badProfile).map(
+        (issue) => issue.code,
+      ),
+    ).toContain("INVALID_PROFILE_INPUT");
+
+    const badCustoms = [
+      null,
+      { sourceKind: "MOON", sourceId: "P20", domain: "START" },
+      {
+        sourceKind: "ORIGIN",
+        sourceId: "P20",
+        domain: "START",
+        hidden: true,
+      },
+    ] as unknown as NonNullable<
+      Parameters<typeof validateRuleProfile>[1] extends infer T ? never : never
+    >;
+    const input = {
+      contributions: [],
+      customDomains: badCustoms,
+    } as unknown as Parameters<typeof validateRuleProfile>[1];
+    expect(() => validateRuleProfile(RULE_AXIS_REGISTRY, input)).not.toThrow();
+    expect(
+      validateRuleProfile(RULE_AXIS_REGISTRY, input).filter(
+        (issue) => issue.code === "INVALID_CUSTOM_DOMAIN",
+      ),
+    ).toHaveLength(3);
+  });
+});
+
+describe("closed structural profile vocabulary", () => {
+  it("rejects unknown and cross-axis profile IDs", () => {
+    const unknown: RuleContribution = {
+      axis: "UNIT_CHASSIS_PROFILE",
+      scope: tankScope,
+      stage: "STRUCTURAL_PROFILE",
+      operator: "STRUCTURAL_TRANSFORM",
+      sourceKind: "ORIGIN",
+      sourceId: "bad-profile",
+      valueUnit: "PROFILE_ID",
+      value: "BANANA",
+    };
+    const wrongAxis: RuleContribution = {
+      ...unknown,
+      sourceId: "wrong-axis-profile",
+      value: "STAR",
+    };
+    const codes = validateRuleContributions(
+      [unknown, wrongAxis],
+      RULE_AXIS_REGISTRY,
+    ).map((issue) => issue.code);
+    expect(codes.filter((code) => code === "INVALID_PROFILE_ID")).toHaveLength(2);
+  });
+
+  it("accepts every current production Origin structural projection", () => {
+    for (const id of ["P02", "P32", "P39", "P43", "P49", "P54"] as const) {
+      expect(validateRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput([id]))).toEqual([]);
+    }
+    expect(validateRuleAxisRegistry(RULE_AXIS_REGISTRY)).toEqual([]);
+  });
 });
 
 describe("dynamic-provider compile-time validation", () => {
@@ -215,34 +345,25 @@ describe("dynamic-provider compile-time validation", () => {
     ).toContain("INVALID_DYNAMIC_PROVIDER_SHAPE");
   });
 
-  it("rejects unknown state dependencies", () => {
-    const provider = {
+  it("rejects unknown dependencies and formula/result-kind disagreement", () => {
+    const unknownDependency = {
       ...canonicalDynamicProvider(),
       dependency: "CURRENT_MOON_PHASE",
     } as unknown as DynamicRuleProvider;
-    expect(
-      validateRuleProfile(RULE_AXIS_REGISTRY, {
-        contributions: [],
-        dynamicProviders: [provider],
-      }).map((issue) => issue.code),
-    ).toContain("INVALID_DYNAMIC_DEPENDENCY");
-  });
-
-  it("rejects formula/result-kind disagreement", () => {
-    const provider = {
+    const mismatch = {
       ...canonicalDynamicProvider(),
       formula: { kind: "RATIONAL_POWER", numerator: 99, denominator: 100 },
       operandKind: "BASIS_POINTS",
     } as DynamicRuleProvider;
-    expect(
-      validateRuleProfile(RULE_AXIS_REGISTRY, {
-        contributions: [],
-        dynamicProviders: [provider],
-      }).map((issue) => issue.code),
-    ).toContain("DYNAMIC_OPERAND_KIND_MISMATCH");
+    const codes = validateRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: [],
+      dynamicProviders: [unknownDependency, mismatch],
+    }).map((issue) => issue.code);
+    expect(codes).toContain("INVALID_DYNAMIC_DEPENDENCY");
+    expect(codes).toContain("DYNAMIC_OPERAND_KIND_MISMATCH");
   });
 
-  it("rejects invalid dynamic formula parameters before runtime evaluation", () => {
+  it("rejects invalid formula parameters and non-exact provider/formula shapes", () => {
     const zeroDenominator = {
       ...canonicalDynamicProvider(),
       operator: "MULTIPLY",
@@ -267,19 +388,11 @@ describe("dynamic-provider compile-time validation", () => {
       ...canonicalDynamicProvider(),
       formula: { kind: "BASIS_POINTS_PER_COUNT", bpPerUnit: 0.5 },
     } as DynamicRuleProvider;
-    const codes = validateRuleProfile(RULE_AXIS_REGISTRY, {
-      contributions: [],
-      dynamicProviders: [zeroDenominator, zeroStep, fractionalRate],
-    }).map((issue) => issue.code);
-    expect(codes.filter((code) => code === "INVALID_DYNAMIC_FORMULA")).toHaveLength(3);
-  });
-
-  it("rejects non-exact provider and formula shapes", () => {
-    const extraProviderField = {
+    const extraProvider = {
       ...canonicalDynamicProvider(),
       priority: 999,
     } as unknown as DynamicRuleProvider;
-    const extraFormulaField = {
+    const extraFormula = {
       ...canonicalDynamicProvider(),
       formula: {
         kind: "BASIS_POINTS_PER_COUNT",
@@ -287,45 +400,35 @@ describe("dynamic-provider compile-time validation", () => {
         hiddenMultiplier: 2,
       },
     } as unknown as DynamicRuleProvider;
-
-    expect(
-      validateRuleProfile(RULE_AXIS_REGISTRY, {
-        contributions: [],
-        dynamicProviders: [extraProviderField],
-      }).map((issue) => issue.code),
-    ).toContain("INVALID_DYNAMIC_PROVIDER_SHAPE");
-    expect(
-      validateRuleProfile(RULE_AXIS_REGISTRY, {
-        contributions: [],
-        dynamicProviders: [extraFormulaField],
-      }).map((issue) => issue.code),
-    ).toContain("INVALID_DYNAMIC_FORMULA");
+    const codes = validateRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: [],
+      dynamicProviders: [
+        zeroDenominator,
+        zeroStep,
+        fractionalRate,
+        extraProvider,
+        extraFormula,
+      ],
+    }).map((issue) => issue.code);
+    expect(codes.filter((code) => code === "INVALID_DYNAMIC_FORMULA")).toHaveLength(4);
+    expect(codes).toContain("INVALID_DYNAMIC_PROVIDER_SHAPE");
   });
 });
 
 describe("condition-conjunction validation", () => {
-  it("recognizes a contradiction across two different conjunctions", () => {
+  it("recognizes contradictions across and within conjunctions", () => {
     expect(
       ruleConditionSetsMayOverlap(
         [
-          {
-            kind: "STRUCTURE_ACQUISITION_PATH_IS",
-            path: "CAPTURE_TRANSFER",
-          },
+          { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "CAPTURE_TRANSFER" },
           { kind: "TARGET_UNIT_IS", unit: "TANK" },
         ],
         [
-          {
-            kind: "STRUCTURE_ACQUISITION_PATH_IS",
-            path: "CAPTURE_TRANSFER",
-          },
+          { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "CAPTURE_TRANSFER" },
           { kind: "TARGET_UNIT_IS", unit: "HEAVY_ARTILLERY" },
         ],
       ),
     ).toBe(false);
-  });
-
-  it("rejects internally contradictory condition conjunctions", () => {
     expect(
       ruleConditionSetIsSatisfiable([
         { kind: "TARGET_HAS_FALLOUT" },
@@ -340,29 +443,20 @@ describe("condition-conjunction validation", () => {
     ).toBe(false);
     expect(
       ruleConditionSetIsSatisfiable([
-        {
-          kind: "STRUCTURE_ACQUISITION_PATH_IS",
-          path: "PURCHASE_BUILD",
-        },
-        {
-          kind: "STRUCTURE_ACQUISITION_PATH_IS",
-          path: "CAPTURE_TRANSFER",
-        },
+        { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "PURCHASE_BUILD" },
+        { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "CAPTURE_TRANSFER" },
       ]),
     ).toBe(false);
     expect(
       ruleConditionSetIsSatisfiable([
-        {
-          kind: "STRUCTURE_ACQUISITION_PATH_IS",
-          path: "CAPTURE_TRANSFER",
-        },
+        { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "CAPTURE_TRANSFER" },
         { kind: "TARGET_UNIT_IS", unit: "TANK" },
       ]),
     ).toBe(true);
   });
 
-  it("rejects an impossible static rule during profile compilation", () => {
-    const impossible: RuleContribution = {
+  it("rejects impossible static and dynamic rules", () => {
+    const impossibleStatic: RuleContribution = {
       axis: "GLOBAL_OFFENSIVE_PRESSURE",
       scope: { kind: "GLOBAL" },
       stage: "CONTEXTUAL_PERCENT",
@@ -376,16 +470,7 @@ describe("condition-conjunction validation", () => {
         { kind: "TARGET_LACKS_FALLOUT" },
       ],
     };
-    expect(
-      validateRuleProfile(RULE_AXIS_REGISTRY, [impossible]).map(
-        (issue) => issue.code,
-      ),
-    ).toContain("UNSATISFIABLE_CONDITION_SET");
-    expect(() => compileRuleProfile(RULE_AXIS_REGISTRY, [impossible])).toThrow();
-  });
-
-  it("rejects an impossible dynamic provider during profile compilation", () => {
-    const impossible: DynamicRuleProvider = {
+    const impossibleDynamic: DynamicRuleProvider = {
       ...canonicalDynamicProvider(),
       conditions: [
         { kind: "TARGET_UNIT_IS", unit: "TANK" },
@@ -393,43 +478,32 @@ describe("condition-conjunction validation", () => {
       ],
     };
     expect(
+      validateRuleProfile(RULE_AXIS_REGISTRY, [impossibleStatic]).map(
+        (issue) => issue.code,
+      ),
+    ).toContain("UNSATISFIABLE_CONDITION_SET");
+    expect(
       validateRuleProfile(RULE_AXIS_REGISTRY, {
         contributions: [],
-        dynamicProviders: [impossible],
+        dynamicProviders: [impossibleDynamic],
       }).map((issue) => issue.code),
     ).toContain("UNSATISFIABLE_CONDITION_SET");
+    expect(() => compileRuleProfile(RULE_AXIS_REGISTRY, [impossibleStatic])).toThrow();
   });
 
-  it("allows singleton transforms whose conjunctions are provably exclusive", () => {
-    const built = structuralContribution("origin:built", "BUILT_PROFILE", [
-      {
-        kind: "STRUCTURE_ACQUISITION_PATH_IS",
-        path: "PURCHASE_BUILD",
-      },
+  it("allows provably exclusive singleton transforms and rejects overlapping ones", () => {
+    const purchased = structuralContribution("origin:purchased", [
+      { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "PURCHASE_BUILD" },
     ]);
-    const captured = structuralContribution("origin:captured", "CAPTURED_PROFILE", [
-      {
-        kind: "STRUCTURE_ACQUISITION_PATH_IS",
-        path: "CAPTURE_TRANSFER",
-      },
+    const captured = structuralContribution("origin:captured", [
+      { kind: "STRUCTURE_ACQUISITION_PATH_IS", path: "CAPTURE_TRANSFER" },
     ]);
-    expect(validateRuleProfile(RULE_AXIS_REGISTRY, [built, captured])).toEqual([]);
+    expect(validateRuleProfile(RULE_AXIS_REGISTRY, [purchased, captured])).toEqual([]);
     expect(() =>
-      compileRuleProfile(RULE_AXIS_REGISTRY, [built, captured]),
+      compileRuleProfile(RULE_AXIS_REGISTRY, [purchased, captured]),
     ).not.toThrow();
-  });
 
-  it("rejects singleton transforms whose conjunctions can overlap", () => {
-    const captured = structuralContribution("origin:captured", "CAPTURED_PROFILE", [
-      {
-        kind: "STRUCTURE_ACQUISITION_PATH_IS",
-        path: "CAPTURE_TRANSFER",
-      },
-    ]);
-    const unconditional = structuralContribution(
-      "origin:any-provenance",
-      "ANY_PROFILE",
-    );
+    const unconditional = structuralContribution("origin:any-provenance");
     expect(
       validateRuleProfile(RULE_AXIS_REGISTRY, [captured, unconditional]).map(
         (issue) => issue.code,
