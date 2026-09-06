@@ -8,6 +8,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | --- | --- |
 | High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
 | Game-wide effective-rule composition, rule-axis taxonomy, modifier algebra, normalization, and static composition validation | [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md) |
+| Repository validation scope, test ownership, inherited-code validation boundaries, and executable-code adoption rules | [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md) |
 | OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
 | HTTP/control-plane service API | [`service/SERVICE_API.md`](./service/SERVICE_API.md) |
 | Live participant/spectator stream protocol | [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) |
