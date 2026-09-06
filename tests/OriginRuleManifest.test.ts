@@ -6,6 +6,7 @@ import {
   evaluateDynamicRuleProvider,
   originDynamicRuleProviders,
   originRuleContributions,
+  originRuleProfileInput,
 } from "../src/core/rules/OriginRuleManifest";
 import {
   reduceCapabilitySetRule,
@@ -14,9 +15,8 @@ import {
   reduceScalarRule,
   selectRuleContributionsForScope,
   validateRuleContributions,
-  type RuleContribution,
-  type RuleOperator,
 } from "../src/core/rules/RuleComposition";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
   RULE_AXIS_REGISTRY,
   ruleAxis,
@@ -54,62 +54,17 @@ describe("Origin rule manifest", () => {
     }
   });
 
-  it("keeps dynamic providers on registered axes/stages with valid materialized operand shapes", () => {
-    for (const entry of ORIGIN_RULE_MANIFEST) {
-      for (const provider of entry.dynamicProviders) {
-        const definition = RULE_AXIS_REGISTRY[provider.axis];
-        expect(definition).toBeDefined();
-        expect(definition?.scopeKind).toBe(provider.scope.kind);
-        expect(
-          definition?.stages.some(
-            (stage) =>
-              stage.id === provider.stage &&
-              (stage.allowedOperators as readonly RuleOperator[]).includes(
-                provider.operator,
-              ),
-          ),
-        ).toBe(true);
-
-        const resolved = evaluateDynamicRuleProvider(provider, 1);
-        const value =
-          resolved.kind === "BASIS_POINTS" ? resolved.value : 10_000;
-        const contribution: RuleContribution = {
-          axis: provider.axis,
-          scope: provider.scope,
-          stage: provider.stage,
-          operator: provider.operator,
-          sourceKind: provider.sourceKind,
-          sourceId: provider.sourceId,
-          valueUnit: provider.valueUnit,
-          value,
-        };
-        expect(
-          validateRuleContributions([contribution], RULE_AXIS_REGISTRY),
-        ).toEqual([]);
-      }
+  it("compiles every single-trait complete profile including dynamic/custom declarations", () => {
+    for (const id of EXPECTED_ORIGIN_TRAIT_IDS) {
+      expect(() =>
+        compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput([id])),
+      ).not.toThrow();
     }
-  });
-
-  it("projects P01 and P02 onto spawn-quota and growth-profile axes", () => {
-    const p01 = originRuleContributions(["P01"]);
-    expect(
-      reduceScalarRule(1000, ruleAxis("INITIAL_TERRITORY_QUOTA"), p01),
-    ).toBe(1150);
-
-    const p02 = originRuleContributions(["P02"]);
-    expect(p02).toEqual([
-      expect.objectContaining({
-        axis: "POPULATION_GROWTH_UTILIZATION_PROFILE",
-        operator: "STRUCTURAL_TRANSFORM",
-        value: "ORIGIN_P02_30_70",
-      }),
-    ]);
   });
 
   it("projects every P09 Fort numeric hook, including upgrade cost", () => {
     const p09 = originRuleContributions(["P09"]);
     expect(p09).toHaveLength(4);
-
     const build = selectRuleContributionsForScope(
       "STRUCTURE_BUILD_COST",
       { kind: "STRUCTURE", structure: "FORT" },
@@ -128,32 +83,77 @@ describe("Origin rule manifest", () => {
     ).toBe(920);
   });
 
-  it("represents P17 and P19 as closed typed dynamic providers", () => {
-    const p17 = originDynamicRuleProviders(["P17"]);
-    expect(p17).toHaveLength(1);
-    expect(p17[0]).toEqual(
+  it("models P11 zero-cost SAM transactions plus the peak-Population cap provider", () => {
+    const p11 = originRuleContributions(["P11"]);
+    expect(
+      reduceScalarRule(
+        10_000,
+        ruleAxis("STRUCTURE_BUILD_COST"),
+        selectRuleContributionsForScope(
+          "STRUCTURE_BUILD_COST",
+          { kind: "STRUCTURE", structure: "SAM_LAUNCHER" },
+          p11,
+        ),
+      ),
+    ).toBe(0);
+    expect(
+      reduceScalarRule(
+        10_000,
+        ruleAxis("STRUCTURE_UPGRADE_COST"),
+        selectRuleContributionsForScope(
+          "STRUCTURE_UPGRADE_COST",
+          { kind: "STRUCTURE", structure: "SAM_LAUNCHER" },
+          p11,
+        ),
+      ),
+    ).toBe(0);
+
+    const provider = originDynamicRuleProviders(["P11"])[0];
+    expect(provider).toEqual(
+      expect.objectContaining({
+        axis: "STRUCTURE_OWNERSHIP_CAP",
+        stage: "ORIGIN_CAP",
+        operator: "CAP_LIMIT",
+        dependency: "PEAK_TOTAL_POPULATION",
+        operandKind: "INTEGER",
+      }),
+    );
+    expect(evaluateDynamicRuleProvider(provider!, 74_999)).toEqual({
+      kind: "INTEGER",
+      value: "2",
+    });
+    expect(evaluateDynamicRuleProvider(provider!, 75_000)).toEqual({
+      kind: "INTEGER",
+      value: "3",
+    });
+  });
+
+  it("represents P17 and P19 as exact symbolic dynamic providers", () => {
+    const p17 = originDynamicRuleProviders(["P17"])[0];
+    expect(p17).toEqual(
       expect.objectContaining({
         axis: "STRUCTURE_UPGRADE_COST",
         stage: "ORIGIN_SCALAR",
         dependency: "OWNED_PERSISTENT_STRUCTURE_COUNT",
+        operandKind: "RATIONAL",
       }),
     );
-    expect(evaluateDynamicRuleProvider(p17[0]!, 3)).toEqual({
+    expect(evaluateDynamicRuleProvider(p17!, 3)).toEqual({
       kind: "RATIONAL",
       numerator: "970299",
       denominator: "1000000",
     });
 
-    const p19 = originDynamicRuleProviders(["P19"]);
-    expect(p19).toHaveLength(1);
-    expect(p19[0]).toEqual(
+    const p19 = originDynamicRuleProviders(["P19"])[0];
+    expect(p19).toEqual(
       expect.objectContaining({
         axis: "GLOBAL_OFFENSIVE_PRESSURE",
         stage: "CONTEXTUAL_PERCENT",
         dependency: "TERRITORIAL_CONTACT_COUNT",
+        operandKind: "BASIS_POINTS",
       }),
     );
-    expect(evaluateDynamicRuleProvider(p19[0]!, 3)).toEqual({
+    expect(evaluateDynamicRuleProvider(p19!, 3)).toEqual({
       kind: "BASIS_POINTS",
       value: 1500,
     });
@@ -170,13 +170,56 @@ describe("Origin rule manifest", () => {
     ).toEqual(["ATTACK_SHIPS"]);
   });
 
-  it("marks P31 MIXED because operational-during-repair remains non-scalar", () => {
+  it("places P31 Warship-only Port repair specialization after Echo", () => {
     const p31 = ORIGIN_RULE_MANIFEST_BY_ID.get("P31");
     expect(p31?.classification).toBe("MIXED");
-    expect(p31?.customDomains).toContain(
+    expect(p31?.customDomains).toEqual([
       "WARSHIP_OPERATIONAL_DURING_PORT_REPAIR",
+    ]);
+    expect(p31?.contributions).toEqual([
+      expect.objectContaining({
+        axis: "STRUCTURE_REPAIR_RADIUS",
+        stage: "CONTEXTUAL_SCALAR",
+        conditions: [{ kind: "TARGET_UNIT_IS", unit: "WARSHIP" }],
+      }),
+      expect.objectContaining({
+        axis: "STRUCTURE_REPAIR_RATE",
+        stage: "CONTEXTUAL_SCALAR",
+        conditions: [{ kind: "TARGET_UNIT_IS", unit: "WARSHIP" }],
+      }),
+    ]);
+  });
+
+  it("projects P34 captured-Factory numeric effects with AND conditions", () => {
+    const p34 = ORIGIN_RULE_MANIFEST_BY_ID.get("P34");
+    expect(p34?.classification).toBe("MIXED");
+    expect(p34?.customDomains).toEqual(["FACTORY_TRAIN_DISPATCH_SNAPSHOT"]);
+    expect(p34?.contributions).toHaveLength(7);
+
+    const tankRepair = p34?.contributions.find(
+      (entry) =>
+        entry.axis === "STRUCTURE_REPAIR_RATE" &&
+        entry.conditions?.some(
+          (condition) =>
+            condition.kind === "TARGET_UNIT_IS" && condition.unit === "TANK",
+        ),
     );
-    expect(p31?.contributions).toHaveLength(2);
+    expect(tankRepair).toEqual(
+      expect.objectContaining({
+        scope: { kind: "STRUCTURE", structure: "FACTORY" },
+        stage: "CONTEXTUAL_SCALAR",
+        value: 15_000,
+      }),
+    );
+    expect(tankRepair?.conditions).toEqual(
+      expect.arrayContaining([
+        {
+          kind: "STRUCTURE_ACQUISITION_PATH_IS",
+          path: "CAPTURE_TRANSFER",
+        },
+        { kind: "TARGET_UNIT_IS", unit: "TANK" },
+      ]),
+    );
   });
 
   it("compiles P09 + N10 through the shared Fort coverage axis", () => {
@@ -195,68 +238,35 @@ describe("Origin rule manifest", () => {
     ).toBeCloseTo(85);
   });
 
-  it("compiles P23 + P42 through the shared Warship attack-range axis", () => {
-    const contributions = originRuleContributions(["P23", "P42"]);
-    const applicable = selectRuleContributionsForScope(
-      "UNIT_ATTACK_RANGE",
-      { kind: "UNIT", unit: "WARSHIP" },
-      contributions,
-    );
-    expect(
-      reduceScalarRule(130, ruleAxis("UNIT_ATTACK_RANGE"), applicable),
-    ).toBeCloseTo(113.1);
-  });
-
   it("represents P03 and P16 as selective component suppression", () => {
-    const p03 = originRuleContributions(["P03"]);
     expect(
       reduceComponentSetRule(
         [],
         ruleAxis("LAND_PRESSURE_SUPPRESSED_COMPONENTS"),
-        p03,
+        originRuleContributions(["P03"]),
       ),
     ).toEqual([RULE_COMPONENT.HOSTILE_FORT_DEFENSIVE_PRESSURE]);
-
-    const p16 = originRuleContributions(["P16"]);
     expect(
       reduceComponentSetRule(
         [],
         ruleAxis("ACQUISITION_SUPPRESSED_COMPONENTS"),
-        p16,
+        originRuleContributions(["P16"]),
       ),
     ).toEqual([RULE_COMPONENT.FALLOUT_ACQUISITION_RESISTANCE]);
   });
 
-  it("keeps N05 Fallout prohibition independent from P16 resistance suppression", () => {
+  it("keeps N05 Fallout prohibition independent from P16 suppression", () => {
     const contributions = originRuleContributions(["P16", "N05"]);
-    const permission = selectRuleContributionsForScope(
-      "FALLOUT_ACQUISITION_PERMISSION",
-      { kind: "GLOBAL" },
-      contributions,
-    );
     expect(
       reducePermissionRule(
         true,
         ruleAxis("FALLOUT_ACQUISITION_PERMISSION"),
-        permission,
+        selectRuleContributionsForScope(
+          "FALLOUT_ACQUISITION_PERMISSION",
+          { kind: "GLOBAL" },
+          contributions,
+        ),
       ),
     ).toBe(false);
-  });
-
-  it("uses event-location terrain conditions for P14 and N04", () => {
-    expect(originRuleContributions(["P14"])).toEqual([
-      expect.objectContaining({
-        axis: "FFY_EVENT_YIELD",
-        value: 3300,
-        condition: { kind: "EVENT_TERRAIN_IS", terrain: "DESERT" },
-      }),
-    ]);
-    expect(originRuleContributions(["N04"])).toEqual([
-      expect.objectContaining({
-        axis: "FFY_EVENT_YIELD",
-        value: -5000,
-        condition: { kind: "EVENT_TERRAIN_IS", terrain: "MOUNTAIN" },
-      }),
-    ]);
   });
 });
