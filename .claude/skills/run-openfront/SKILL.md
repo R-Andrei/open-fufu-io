@@ -1,54 +1,67 @@
 ---
 name: run-openfront
-description: Build, run, and drive OpenFront locally — including full in-game WebGL testing. Use when asked to run the game, start the dev server, take a screenshot of the UI, verify a client change in the real app, or interact with the running game (lobby, modals, map picker, starting a singleplayer game, spawning, attacking, build menu, reading live sim state).
+description: Build, run, and drive the repository's current inherited/OpenFront-derived browser application locally for UI, rendering, regression, and migration testing.
 ---
 
-OpenFront is a browser game (Lit + Pixi.js client, Node game server).
-Run the dev server with `npm run dev` (serves on **http://localhost:9000**,
-not Vite's default 5173), then drive it with headless Chromium via
-`.claude/skills/run-openfront/driver.mjs`. All paths are relative to the
-repo root.
+# Current browser-app harness
 
-## Prerequisites (one-time per machine, no sudo)
+This skill drives the **currently runnable inherited/OpenFront-derived application**. It is useful for UI/rendering checks, migration regressions, screenshots, and inspecting current implementation behavior.
 
-The host (Ubuntu 26.04, headless) has no browser, and Playwright doesn't
-support 26.04 yet. `setup.sh` works around both: it installs Playwright
-(`--no-save`), downloads the ubuntu24.04 chromium-headless-shell via
-`PLAYWRIGHT_HOST_PLATFORM_OVERRIDE`, extracts the missing system libraries
-from `.deb` packages into `~/.cache/openfront-run/` (no root needed), and
-builds a local fontconfig (the host has no `/etc/fonts`; Skia FATALs
-without one).
+It is **not** a canonical Open Fufu mechanics/runtime authority. Browser-local state exposed by the current app is implementation evidence only; target Open Fufu behavior must be judged against `AGENTS.md`, `docs/README.md`, and the registered canonical owner for the concern.
+
+The current development application is a Lit + Pixi.js browser client with a Node server. Run it with:
+
+```bash
+npm run dev
+```
+
+The current Vite development port is **9000**. Harness files live in this directory and all paths below are relative to repository root.
+
+## Prerequisites
+
+Install repository dependencies with:
+
+```bash
+npm run inst
+```
+
+Do not substitute `npm install` for the repository install command.
+
+For the repository's headless Chromium harness on the Ubuntu host, run:
 
 ```bash
 bash .claude/skills/run-openfront/setup.sh
 ```
 
-Deps were installed with `npm run inst` (`npm ci --ignore-scripts`) — do
-not use `npm install`.
+`setup.sh` installs the local Playwright dependency/browser support used by this harness without requiring root and prepares the local library/fontconfig cache expected by `driver.mjs`.
 
-## Run the dev server
+## Start/stop the development application
 
 ```bash
 (npm run dev > /tmp/dev.log 2>&1 &)
 timeout 60 bash -c 'until curl -sf http://localhost:9000 >/dev/null 2>&1; do sleep 1; done'
 ```
 
-Stop it with `pkill -f "tsx src/server/Server.ts"; pkill -f vite`.
-`ECONNREFUSED "Error polling lobby"` lines in `/tmp/dev.log` are normal —
-the closed-source API isn't running in dev.
+Stop the current client/server development processes with:
 
-## Drive it (agent path)
+```bash
+pkill -f "tsx src/server/Server.ts"
+pkill -f vite
+```
 
-Smoke flow — home page, open the single-player modal, dump the map-picker
-state, screenshot:
+Inherited development paths may emit API-related errors when the external OpenFront service is unavailable. Treat those as current-app diagnostics; do not encode them as Open Fufu target behavior.
+
+## Browser smoke flow
+
+Run the existing driver:
 
 ```bash
 node .claude/skills/run-openfront/driver.mjs
-# screenshots: /tmp/openfront-run/home.png, /tmp/openfront-run/solo-modal.png
 ```
 
-For ad-hoc flows, write a script **inside the repo** (so `playwright`
-resolves) importing the driver's helpers:
+The driver writes its harness screenshots under `/tmp/openfront-run/`.
+
+For an ad-hoc browser flow, place the script inside the repository so local `playwright` resolution works, then import helpers from the driver:
 
 ```js
 import {
@@ -56,33 +69,29 @@ import {
   gotoHome,
   openSoloModal,
 } from "./.claude/skills/run-openfront/driver.mjs";
-const { browser, page } = await launch(); // env/libs/fonts handled here
+
+const { browser, page } = await launch();
 await gotoHome(page);
 await openSoloModal(page);
-// Lit components use light DOM — query and read properties directly:
-const s = await page.evaluate(
+
+const selectedMap = await page.evaluate(
   () => document.querySelector("map-picker")?.selectedMap,
 );
+
 await browser.close();
 ```
 
-## Drive a full game (WebGL, in-game interaction)
+Lit components in the current client use light DOM, so direct element/property inspection is available where the implementation exposes it.
 
-`game.mjs` drives an actual singleplayer game end-to-end: start, spawn,
-attack/expand, open the radial menu, and read **ground-truth sim state**.
-WebGL works headless via SwiftShader (no extra flags needed), and the
-screenshots show the real rendered map.
+## Full inherited-game flow
 
-Smoke flow (≈2 min: starts a 50-bot game, spawns, expands, opens the
-radial menu, asserts territory growth):
+`game.mjs` drives the current single-player application through spawn, expansion/attack, radial-menu interaction, and current browser-simulation inspection:
 
 ```bash
 node .claude/skills/run-openfront/game.mjs
-# screenshots: /tmp/openfront-run/game-{spawn-phase,spawned,expanded,radial-menu}.png
 ```
 
-For ad-hoc in-game flows, import the helpers (script must live inside the
-repo):
+For ad-hoc current-game flows:
 
 ```js
 import {
@@ -91,10 +100,10 @@ import {
   openSoloModal,
 } from "./.claude/skills/run-openfront/driver.mjs";
 import {
-  startSoloGame, // set modal options ({bots, map, difficulty, instantBuild, …}), click Start, wait for sim
-  gameState, // {ticks, inSpawnPhase, numPlayers, myPlayer: {troops, gold, tilesOwned, isAlive}, …}
+  startSoloGame,
+  gameState,
   findSpawnTile,
-  spawn, // pick land + click it; waits until myPlayer owns tiles
+  spawn,
   waitForSpawnPhaseEnd,
   waitForTick,
   findExpansionTile,
@@ -102,10 +111,10 @@ import {
   clickWorld,
   panTo,
   setAttackRatio,
-  openRadialMenu, // right-click on own territory; returns true if the menu opened
+  openRadialMenu,
 } from "./.claude/skills/run-openfront/game.mjs";
 
-const { browser, page } = await launch({ rafIntervalMs: 3000 }); // throttle is REQUIRED in-game, see below
+const { browser, page } = await launch({ rafIntervalMs: 3000 });
 await gotoHome(page);
 await openSoloModal(page);
 await startSoloGame(page, { bots: 50 });
@@ -116,91 +125,38 @@ await attack(page, target.x, target.y);
 await browser.close();
 ```
 
-### How it works / in-game gotchas
+### Current-app interaction notes
 
-- **Ground-truth state without any repo changes**: `hud/GameRenderer.ts`
-  assigns the `GameView` and `TransformHandler` onto the `<build-menu>`
-  Lit element (light DOM). From page JS:
-  `document.querySelector("build-menu").game` / `.transformHandler`.
-  GameView has `ticks()`, `inSpawnPhase()`, `myPlayer()`, `players()`,
-  `ref(x,y)`, `isLand()`, `hasOwner()`; PlayerView has `troops()`,
-  `numTilesOwned()`, `gold()`, `isAlive()`, `outgoingAttacks()`.
-- **`launch({ rafIntervalMs: 3000 })` is mandatory for in-game work.**
-  SwiftShader needs seconds of CPU per frame; an unthrottled rAF loop
-  starves the main thread (0.8 fps, 100 ms timers firing every ~4 s) and
-  the singleplayer turn loop crawls at ~0.3 ticks/s instead of 10/s. The
-  throttle stubs `requestAnimationFrame` to one frame per interval —
-  sim runs near full speed, frames still render for screenshots.
-- **Solo modal options are settable as element properties** before
-  clicking Start: `document.querySelector("single-player-modal").bots = 50`
-  (`@state` fields are TS-private only). `startSoloGame` does this.
-- **Click tile centers, not corners.** World coords address a tile's
-  top-left corner and `screenToWorldCoordinates` floors — a corner click
-  can land on the neighboring tile (and clicking your own tile is a
-  silent no-op). `clickWorld` aims at `+0.5,+0.5`.
-- **HUD elements swallow canvas clicks.** The leaderboard / control panel
-  / modals sit above the `#game-input-overlay`. `clickWorld` verifies
-  `document.elementFromPoint` hits the overlay and recenters the camera
-  (`panTo`) if not — never click raw screen coords yourself.
-- **The camera animates on its own** (post-spawn go-to-player), so screen
-  coords computed before the click go stale. `clickWorld` calls
-  `transformHandler.clearTarget()` first to freeze it.
-- **Spawning**: during the spawn phase a left click on unowned land sends
-  the spawn intent; in singleplayer the spawn phase ends as soon as the
-  human spawns. `nameLocation()` can still be `{0,0}` for the first ticks
-  after spawning — pass the spawn tile as fallback origin (helpers do).
-- **Attacking**: a left click outside the spawn phase attacks/expands if
-  `canAttack` (unowned land must be connected to your border through
-  unowned land). Troops drop and `outgoingAttacks()` becomes non-empty on
-  success. The radial menu (right click) is a DOM/SVG overlay —
-  `.radial-menu-container` exists from startup; check
-  `style.display !== "none"` for "open".
-- Verify rendering visually by reading the screenshots — a blank WebGL
-  canvas means SwiftShader broke (check `webgl2` context creation and
-  `LD_LIBRARY_PATH`/fontconfig from setup.sh).
+- `hud/GameRenderer.ts` currently exposes the browser `GameView` and `TransformHandler` through the `<build-menu>` element. This permits regression inspection without repository instrumentation, but it is **not** the target server-authoritative Open Fufu observation model.
+- For headless in-game rendering, use `launch({ rafIntervalMs: 3000 })`. The harness throttles `requestAnimationFrame` so SwiftShader rendering does not starve the current browser-local simulation loop.
+- Current solo-modal options can be set as element properties before clicking Start; `startSoloGame` wraps that behavior.
+- Use `clickWorld` rather than raw screen-coordinate clicks. It accounts for tile-center targeting, UI overlays, and camera motion in the current client.
+- `spawn`, `attack`, `findExpansionTile`, and the other helpers operate against **inherited/current** spawn/combat semantics. They are regression helpers, not specifications for Open Fufu target mechanics.
+- A blank WebGL canvas is a harness/rendering failure. Check WebGL2 creation and the local `LD_LIBRARY_PATH`/fontconfig prepared by `setup.sh`.
 
-## Run (human path)
-
-`npm run dev`, open http://localhost:9000 in a browser. Useless headless.
-
-## Test
+## Human path
 
 ```bash
-npm test                                      # full suite (Vitest)
-npx vitest tests/MapConsistency.test.ts --run # single file
+npm run dev
 ```
 
-## Gotchas
+Then open `http://localhost:9000` in a browser.
 
-- **Vite serves on port 9000**, not 5173 (configured in vite.config.ts).
-- **Playwright on Ubuntu 26.04**: `npx playwright install chromium` fails
-  with "does not support chromium on ubuntu26.04-x64". Fix:
-  `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64` (setup.sh does this).
-- **Browser dies at launch / mid-load**: missing host libs
-  (`libnspr4.so`, `libatk-1.0.so.0`, …) then a Skia FATAL
-  (`SkFontMgr_FontConfigInterface.cpp: Not implemented`) from the absent
-  fontconfig. `launch()` in driver.mjs injects `LD_LIBRARY_PATH` and
-  `FONTCONFIG_FILE` pointing at `~/.cache/openfront-run/`; diagnose new
-  missing libs with `DEBUG=pw:browser` and
-  `ldd .../chrome-headless-shell | grep "not found"`.
-- **The single-player button is labeled "SOLO!"**, and the DOM has more
-  than one (responsive layouts) — use `button:visible` with
-  `hasText: /solo/i`.
-- **Lit + Vite HMR**: custom elements can't be re-registered, so an
-  already-open tab keeps old component code after an edit. Hard-reload
-  (or re-`goto`) before judging behavior.
-- **`PAGEERROR: ... reading 'inSpawnPhase'`** on the home page is
-  pre-existing background noise, not your breakage.
-- Wait ~3s after `load` before interacting — Lit components render
-  client-side (driver's `gotoHome` does this).
+## Tests
 
-## Troubleshooting
+```bash
+npm test
+npx vitest tests/MapConsistency.test.ts --run
+```
 
-- `Cannot find package 'playwright'` — your script is outside the repo;
-  module resolution starts at the script's path, not cwd. Move it inside
-  the repo (anywhere under the root works).
-- `Target page, context or browser has been closed` immediately —
-  re-run `bash .claude/skills/run-openfront/setup.sh` (the
-  `~/.cache/openfront-run` lib cache is missing or was cleared).
-- `EADDRINUSE` on relaunch — a previous dev server is still up:
-  `pkill -f "tsx src/server/Server.ts"; pkill -f vite`.
+Use additional checks required by `AGENTS.md` and by the canonical owner of the subsystem being changed. A successful browser smoke test does not replace canonical mechanics, headless-runtime, determinism, or integration validation.
+
+## Harness troubleshooting
+
+- `Cannot find package 'playwright'`: keep the ad-hoc script inside the repository so package resolution reaches the local dependency.
+- Chromium launch failure after the local harness cache was removed: rerun `bash .claude/skills/run-openfront/setup.sh`.
+- `EADDRINUSE`: stop the previous development processes with the commands above.
+- Existing tabs can retain stale Lit custom-element code under HMR; hard reload or navigate again before judging an edit.
+- The current responsive UI may render multiple matching controls; use visible-element selectors rather than assuming one DOM instance.
+
+If the current harness and a canonical Open Fufu contract disagree, record the implementation gap; do not rewrite the canonical contract to match inherited browser behavior.
