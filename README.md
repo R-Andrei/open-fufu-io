@@ -1,153 +1,82 @@
-> **Open Fufu fork notice:** this repository is being transformed from OpenFront into Open Fufu. The authoritative target design is [`docs/OPEN_FUFU_DESIGN.md`](docs/OPEN_FUFU_DESIGN.md) and the authoritative migration/integration plan is [`docs/OPENFRONT_INTEGRATION_PLAN.md`](docs/OPENFRONT_INTEGRATION_PLAN.md). The inherited OpenFront material below remains useful setup/upstream reference but is not normative when it conflicts with those Open Fufu documents.
+# Open Fufu
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="proprietary/images/OpenFrontLogoDark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="proprietary/images/OpenFrontLogo.svg">
-    <img src="proprietary/images/OpenFrontLogo.svg" alt="OpenFrontIO Logo" width="300">
-  </picture>
-</p>
+Open Fufu is being built from the OpenFront codebase. The inherited engine, client, server, tooling, assets, and documentation remain useful migration inputs, but inherited OpenFront behavior is **not** an Open Fufu target contract.
 
-[OpenFront.io](https://openfront.io/) is an online real-time strategy game focused on territorial control and alliance building. Players compete to expand their territory, build structures, and form strategic alliances in various maps based on real-world geography.
+Start here for repository authority:
 
-This is a fork/rewrite of WarFront.io. Credit to https://github.com/WarFrontIO.
+- [`AGENTS.md`](./AGENTS.md) — repository workflow and canonical-authority policy;
+- [`docs/README.md`](./docs/README.md) — canonical owner map;
+- [`docs/OPEN_FUFU_DESIGN.md`](./docs/OPEN_FUFU_DESIGN.md) — high-level target game and cross-system invariants;
+- [`docs/OPENFRONT_INTEGRATION_PLAN.md`](./docs/OPENFRONT_INTEGRATION_PLAN.md) — OpenFront → Open Fufu migration/runtime architecture.
 
-![CI](https://github.com/openfrontio/OpenFrontIO/actions/workflows/ci.yml/badge.svg)
-[![Crowdin](https://badges.crowdin.net/openfront-mls/localized.svg)](https://crowdin.com/project/openfront-mls)
-[![CLA assistant](https://cla-assistant.io/readme/badge/openfrontio/OpenFrontIO)](https://cla-assistant.io/openfrontio/OpenFrontIO)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
-[![Assets: CC BY-SA 4.0](https://img.shields.io/badge/Assets-CC%20BY--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+When inherited OpenFront material conflicts with a registered Open Fufu canonical owner, the Open Fufu owner wins.
 
-## License
+## Development setup
 
-OpenFront source code is licensed under the **GNU Affero General Public License v3.0**
+### Prerequisites
 
-Current copyright notices appear in:
+- Node/npm compatible with the versions declared by the repository;
+- a modern browser for the inherited/current browser client.
 
-- Footer: "© OpenFront and Contributors"
-- Loading screen: "© OpenFront and Contributors"
+### Clone
 
-Modified versions must preserve these notices in reasonably visible locations.
+```bash
+git clone https://github.com/R-Andrei/open-fufu-io.git
+cd open-fufu-io
+```
 
-See the [LICENSE](LICENSE) for complete requirements.
+### Install dependencies
 
-For asset licensing, see [LICENSE-ASSETS](LICENSE-ASSETS).  
-For license history, see [LICENSING.md](LICENSING.md).
+```bash
+npm run inst
+```
 
-## 🌟 Features
+`npm run inst` uses `npm ci --ignore-scripts`; use that repository command rather than substituting `npm install`.
 
-- **Real-time Strategy Gameplay**: Expand your territory and engage in strategic battles
-- **Alliance System**: Form alliances with other players for mutual defense
-- **Multiple Maps**: Play across various geographical regions including Europe, Asia, Africa, and more
-- **Resource Management**: Balance your expansion with defensive capabilities
-- **Cross-platform**: Play in any modern web browser
-
-## 📋 Prerequisites
-
-- [npm](https://www.npmjs.com/) (v10.9.2 or higher)
-- A modern web browser (Chrome, Firefox, Edge, etc.)
-
-## 🚀 Installation
-
-1. **Clone the repository**
-
-   ```bash
-   git clone https://github.com/openfrontio/OpenFrontIO.git
-   cd OpenFrontIO
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm run inst
-   ```
-
-   Do NOT use `npm install` nor `npm i` but instead use our `npm run inst`. It runs the safer `npm ci --ignore-scripts` to install dependencies exactly according to the versions in `package-lock.json` and doesn't run scripts. This can prevent being hit by a supply chain attack.
-
-## 🎮 Running the Game
-
-### Development Mode
-
-Run both the client and server in development mode with live reloading:
+### Run the current development application
 
 ```bash
 npm run dev
 ```
 
-This will:
-
-- Start the webpack dev server for the client
-- Launch the game server with development settings
-- Open the game in your default browser (to disable this behavior, set `SKIP_BROWSER_OPEN=true` in your environment)
-
-### Client Only
-
-To run just the client with hot reloading:
+Individual processes are also available:
 
 ```bash
 npm run start:client
-```
-
-### Server Only
-
-To run just the server with development settings:
-
-```bash
 npm run start:server-dev
 ```
 
-### Connecting to staging or production backends
+The currently runnable application still contains inherited OpenFront behavior. Running it is useful for migration, regression, rendering, and tooling work; it is not evidence that unimplemented Open Fufu target mechanics already exist.
 
-Sometimes it's useful to connect to production servers when replaying a game, testing user profiles, purchases, or login flow.
-
-> To replay a production game, make sure you're on the same commit that the game you want to replay was executed on, you can find the `gitCommit` value via `https://api.openfront.io/game/[gameId]`.
-> Unfinished games cannot be replayed on localhost.
-
-To connect to staging api servers:
+## Common checks
 
 ```bash
-npm run dev:staging
+npm run build-prod
+npm run lint
+npm test
+npm run test:server
+npm run format
 ```
 
-To connect to production api servers:
+Use the checks relevant to the files and subsystem being changed, together with the repository-specific requirements in `AGENTS.md` and the owning canonical contract.
 
-```bash
-npm run dev:prod
-```
+## Repository layout
 
-## 🛠️ Development Tools
+- `/src/client` — browser client/rendering/UI;
+- `/src/core` — shared deterministic simulation and public controller/rules surfaces;
+- `/src/server` — server/runtime code;
+- `/design` — code-readable design-time configuration registered as canonical where listed in `docs/README.md`;
+- `/docs` — Open Fufu canonical documents, gateways, and inherited references;
+- `/resources` — static assets and game resources;
+- `/zbin` — compact binary wire-format tooling;
+- `/map-generator` — inherited/adapted map-generation tooling.
 
-- **Format code**:
+Do not infer canonical ownership from directory location alone; use `docs/README.md`.
 
-  ```bash
-  npm run format
-  ```
+## Inherited OpenFront material
 
-- **Lint code with Oxlint and ESLint**:
+This fork descends from OpenFront, which in turn is a fork/rewrite of WarFront.io. Inherited source files, historical documentation, assets, and tooling remain subject to their applicable licenses and attribution requirements.
 
-  ```bash
-  npm run lint
-  ```
+## License
 
-- **Lint and fix code with Oxlint and ESLint**:
-
-  ```bash
-  npm run lint:fix
-  ```
-
-- **Testing**
-  ```bash
-  npm test
-  ```
-
-## 🏗️ Project Structure
-
-- `/src/client` - Frontend game client
-- `/src/core` - Deterministic game simulation
-- `/src/server` - Backend game server
-- `/resources` - Static assets (images, maps, etc.)
-- `/zbin` - Compact binary wire format for zod schemas (self-contained, zod-only)
-
-## 🤝 Contributing
-
-Contributions and translations are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, the approved-issue process, project governance, and translation info.
+Source code remains licensed under the **GNU Affero General Public License v3.0**. See [`LICENSE`](./LICENSE), [`LICENSE-ASSETS`](./LICENSE-ASSETS), and [`LICENSING.md`](./LICENSING.md) for the applicable source/asset licensing and history.
