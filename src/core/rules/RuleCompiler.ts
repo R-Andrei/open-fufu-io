@@ -9,7 +9,6 @@ import {
   ruleScopeMatches,
   validateRuleAxisRegistry,
   validateRuleContributions,
-  type DynamicRuleFormula,
   type DynamicRuleOperandKind,
   type DynamicRuleProvider,
   type RuleAxisRegistry,
@@ -647,14 +646,21 @@ export function validateRuleProfile(
       sourceId: entry.sourceId,
       ...(entry.conditions === undefined ? {} : { conditions: entry.conditions }),
     })),
-    ...profile.dynamicProviders.map((entry) => ({
-      axis: entry.axis,
-      scope: entry.scope,
-      stage: entry.stage,
-      operator: entry.operator,
-      sourceId: entry.sourceId,
-      ...(entry.conditions === undefined ? {} : { conditions: entry.conditions }),
-    })),
+    ...profile.dynamicProviders.flatMap((entry) => {
+      if (!dynamicProviderShapeIsValid(entry as unknown)) return [];
+      return [
+        {
+          axis: entry.axis,
+          scope: entry.scope,
+          stage: entry.stage,
+          operator: entry.operator,
+          sourceId: entry.sourceId,
+          ...(entry.conditions === undefined
+            ? {}
+            : { conditions: entry.conditions }),
+        },
+      ];
+    }),
   ];
   issues.push(...validateOverlap(registry, shapes));
   return issues;
