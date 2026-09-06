@@ -193,7 +193,7 @@ P04 fixes only the response-side counter-response effectiveness hook at `1.0`. A
 
 P05 fires from the canonical `STRUCTURE_TRANSFERRED` capture consequence, not merely from capturing a cell that happened to contain a structure. Exactly one qualifying conquest FFY event is generated for each enemy persistent structure that successfully transfers to the P05 holder through territorial capture.
 
-If N17 changes the structure disposition to destruction, or transfer admission fails and the capture resolver destroys the structure, P05 does not fire. The event's exact base value and canonical event location remain owned by the FFY closure tracked in #48 rather than being invented here.
+If N17 changes the structure disposition to destruction, or transfer admission fails and the capture resolver destroys the structure, P05 does not fire. `FFY_ECONOMY.md` owns P05's exact base value, event location, earning-state sampling boundary, and FFY-pipeline behavior. `TERRAIN_AND_STRUCTURES.md` remains the sole canonical owner of structure prices.
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
@@ -232,11 +232,11 @@ P30 removes naval gunfire against ships while preserving Trade Ship pursuit/capt
 
 Both traits use the canonical launch-time owner-side voyage value (`Vowner`) defined by `FFY_ECONOMY.md`.
 
-- N14 subtracts `Vowner` from the original owner on the first hostile capture only.
-- N16 replaces successful uncaptured owner payout with a loss of `Vowner`; on first hostile capture, the original owner instead receives `Vowner` once.
-- N14 + N16 is legal; their first-hostile-capture owner-side deltas cancel without a compatibility exception.
+- On the first hostile capture only, N14 contributes one original-owner signed FFY component of `-Vowner`.
+- N16 replaces successful uncaptured owner payout with one original-owner signed FFY component of `-Vowner`; on first hostile capture instead it contributes one original-owner signed FFY component of `+Vowner`.
+- N14 + N16 is legal; on the same first-hostile-capture fact their `-Vowner` and `+Vowner` components net to exactly `0` before FFY balance application.
 
-All ordinary voyage, rerouting, cargo, capture, and payout rules remain in the FFY owner.
+This catalogue owns those trait triggers, signs, and reference amounts. `FFY_ECONOMY.md` owns `Vowner` valuation, first-capture lifecycle persistence, signed-component aggregation, the non-negative FFY balance floor, and ordinary voyage/cargo/payout execution. A catalogue component therefore remains exactly `±Vowner` even when the realized balance movement is limited by the FFY owner's non-negative balance rule.
 
 ### P31 — enhanced Warship Port repair
 
