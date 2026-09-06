@@ -1,5 +1,6 @@
 import {
   type FfyFamilyScopeId,
+  type RuleConditions,
   type RuleContribution,
   type RuleScope,
   type StructureScopeId,
@@ -16,6 +17,7 @@ export interface EchoRuleKeyDefinition {
   readonly id: string;
   readonly axis: RuleAxisId;
   readonly scope: RuleScope;
+  readonly conditions?: RuleConditions;
   /** Whether a beneficial roll raises or lowers the materialized value. */
   readonly beneficialDirection: EchoBeneficialDirection;
 }
@@ -27,8 +29,15 @@ function add(
   axis: RuleAxisId,
   scope: RuleScope,
   beneficialDirection: EchoBeneficialDirection = "INCREASE",
+  conditions?: RuleConditions,
 ): void {
-  definitions.push({ id, axis, scope, beneficialDirection });
+  definitions.push({
+    id,
+    axis,
+    scope,
+    beneficialDirection,
+    ...(conditions === undefined ? {} : { conditions }),
+  });
 }
 
 const global = { kind: "GLOBAL" } as const;
@@ -49,6 +58,9 @@ const ffy = (value: FfyFamilyScopeId): RuleScope => ({
   kind: "FFY_FAMILY",
   family: value,
 });
+const WARHEAD_PROJECTILE_CONDITIONS = Object.freeze([
+  { kind: "PROJECTILE_IS_WARHEAD" } as const,
+]) satisfies RuleConditions;
 
 add("population.growth", "POPULATION_GROWTH", global);
 add("population.starting", "STARTING_POPULATION_FRACTION", global);
@@ -185,6 +197,8 @@ for (const value of [
     `weapon.${value}.projectile_speed`,
     "WEAPON_PROJECTILE_SPEED",
     weapon(value),
+    "INCREASE",
+    WARHEAD_PROJECTILE_CONDITIONS,
   );
 }
 for (const value of [
@@ -235,5 +249,8 @@ export function echoRuleContribution(
     sourceId,
     valueUnit: "BASIS_POINTS",
     value: magnitudeBp * beneficialSign * polaritySign,
+    ...(definition.conditions === undefined
+      ? {}
+      : { conditions: definition.conditions }),
   };
 }
