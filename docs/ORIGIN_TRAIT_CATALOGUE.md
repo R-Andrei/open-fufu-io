@@ -202,7 +202,7 @@ If N17 changes the structure disposition to destruction, or transfer admission f
 - P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
 - P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
 
-Grant placement/admission and lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; these traits only create the grant request and define their authored result.
+Grant placement/admission and lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; these traits only create the grant request and define its authored result.
 
 ### P23 — single-Warship ownership cap
 
