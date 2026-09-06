@@ -210,12 +210,14 @@ function componentSuppressionAxis(
 function structuralAxis(
   id: string,
   scopeKind: RuleScopeKind,
+  allowedProfileIds: readonly string[],
 ): RuleAxisDefinition {
   return {
     id,
     kind: "STRUCTURAL",
     unit: "PROFILE_ID",
     scopeKind,
+    allowedProfileIds,
     stages: [
       {
         id: "STRUCTURAL_PROFILE",
@@ -269,6 +271,7 @@ export const RULE_AXIS_REGISTRY = {
   POPULATION_GROWTH_UTILIZATION_PROFILE: structuralAxis(
     "POPULATION_GROWTH_UTILIZATION_PROFILE",
     "GLOBAL",
+    ["ORIGIN_P02_30_70"],
   ),
   POPULATION_GROWTH: standardScalarAxis(
     "POPULATION_GROWTH",
@@ -453,6 +456,7 @@ export const RULE_AXIS_REGISTRY = {
   STRUCTURE_EFFECT_PROFILE: structuralAxis(
     "STRUCTURE_EFFECT_PROFILE",
     "STRUCTURE",
+    ["ENEMY_BLACKOUT"],
   ),
   STRUCTURE_ATTACK_CAPABILITIES: capabilityAxis(
     "STRUCTURE_ATTACK_CAPABILITIES",
@@ -490,7 +494,11 @@ export const RULE_AXIS_REGISTRY = {
   UNIT_BUILD_PERMISSION: permissionAxis("UNIT_BUILD_PERMISSION", "UNIT"),
   UNIT_OWNERSHIP_CAP: capAxis("UNIT_OWNERSHIP_CAP", "UNIT"),
   UNIT_MAX_RANK: capAxis("UNIT_MAX_RANK", "UNIT", { additive: true }),
-  UNIT_CHASSIS_PROFILE: structuralAxis("UNIT_CHASSIS_PROFILE", "UNIT"),
+  UNIT_CHASSIS_PROFILE: structuralAxis(
+    "UNIT_CHASSIS_PROFILE",
+    "UNIT",
+    ["HEAVY_ARTILLERY", "ARMORED_PORT_TRANSPORT"],
+  ),
   UNIT_ATTACK_CAPABILITIES: capabilityAxis(
     "UNIT_ATTACK_CAPABILITIES",
     "UNIT",
@@ -534,10 +542,11 @@ export const RULE_AXIS_REGISTRY = {
   ),
   WEAPON_USE_PERMISSION: permissionAxis("WEAPON_USE_PERMISSION", "WEAPON"),
 
-  SPAWN_PROFILE: structuralAxis("SPAWN_PROFILE", "GLOBAL"),
+  SPAWN_PROFILE: structuralAxis("SPAWN_PROFILE", "GLOBAL", ["SPLIT_TWO"]),
   SPAWN_FOOTPRINT_PROFILE: structuralAxis(
     "SPAWN_FOOTPRINT_PROFILE",
     "GLOBAL",
+    ["STAR"],
   ),
 } as const satisfies RuleAxisRegistry;
 
