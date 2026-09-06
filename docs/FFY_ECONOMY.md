@@ -91,11 +91,13 @@ Therefore an L1 and L5 structure of the same type produce the same P05 base valu
 
 The canonical P05 event location is the captured structure's **physical occupied cell**.
 
-Location-conditioned FFY eligibility is evaluated against the capture resolver's **frozen pre-transfer spatial state**. The captured cell's terrain and any qualifying fields already present in that frozen state may affect the event. State created only by the successful transfer itself does not retroactively modify the same capture event. In particular, a newly captured Fort or SAM Launcher cannot make its own P05 payout newly qualify for a Fort/SAM field merely because ownership has just transferred.
+Every P05 event in one deterministic capture-resolution batch evaluates **all mutable earning-side inputs** from one authoritative frozen **pre-transfer / pre-batch earning-state snapshot** taken before that batch's cell/structure ownership mutations and capture consequences are committed. The snapshot includes every mutable input that the ordinary positive-event pipeline would otherwise read while resolving P05, including faction-wide derived earning state such as terrain-share All-FFY effects, the captured cell's terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force for the capturing faction.
 
-When several structure captures resolve in one deterministic capture batch, every P05 event uses the same authoritative frozen-state rule rather than observing sibling transfer processing order. The resulting payout is therefore invariant to incidental consequence iteration order.
+State changed or created by any capture in that same batch therefore cannot retroactively change any sibling P05 event. In particular, captured Desert territory cannot first change the capturer's Desert-share All-FFY bonus and then affect a later P05 consequence in the same batch, and a newly captured Fort or SAM Launcher cannot make its own or a sibling P05 payout newly qualify for a Fort/SAM field merely because the transfer has already been processed internally.
 
-After base value, location, and frozen spatial eligibility are established, the P05 event follows the ordinary positive-event pipeline in this section. P14/N04 consume the captured cell's underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says exists at that cell in the frozen snapshot. Exact Fort/SAM field geometry and affiliation are owned by `TERRAIN_AND_STRUCTURES.md` and the focused structure-field closure rather than by this economy rule.
+The P05 event then follows the ordinary positive-event pipeline in this section using that frozen earning-state snapshot. P14/N04 consume the captured cell's frozen underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says existed at that cell in the same frozen snapshot. Exact Fort/SAM field geometry and affiliation remain owned by `TERRAIN_AND_STRUCTURES.md` and the focused structure-field closure. #48 therefore fixes P05's event location and temporal sampling boundary, but does not invent unresolved Fort/SAM membership rules.
+
+Because every sibling P05 event in the batch consumes the same pre-batch earning-state snapshot, payouts are invariant to incidental consequence iteration order.
 
 ---
 
@@ -393,6 +395,6 @@ The following are implementation or balance-validation details, not unresolved s
 
 - exact retry scheduling when a Trade Ship dispatch timer fires with no legal destination;
 - exact deterministic hash/RNG representation for equal-age Trade destination ties and Train service queues;
-- runtime/replay conformance for P05 frozen-state spatial qualification and the serialized Trade-voyage `Vowner` snapshot once the corresponding Open Fufu gameplay implementation exists;
+- runtime/replay conformance for P05 frozen pre-batch earning-state qualification and the serialized Trade-voyage `Vowner` snapshot once the corresponding Open Fufu gameplay implementation exists;
 - benchmark/playtest retuning of provisional Train/Trade values;
 - accelerated simulation benchmarks across baseline passive income, optimized industry, maritime trade, piracy, Factory levels, and relevant Origin/Echo combinations.
