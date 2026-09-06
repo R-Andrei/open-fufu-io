@@ -1,15 +1,22 @@
 import { readFileSync } from "node:fs";
 import {
   ORIGIN_RULE_MANIFEST,
+  originCustomRuleDomains,
+  originDynamicRuleProviders,
   originRuleContributions,
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
 import {
   compileRuleProfile,
   validateRuleProfile,
+  type RuleProfileInput,
 } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
-import type { RuleContribution } from "../src/core/rules/RuleComposition";
+import type {
+  DynamicRuleProvider,
+  RuleContribution,
+  RuleCustomDomainDeclaration,
+} from "../src/core/rules/RuleComposition";
 
 interface BuilderTrait {
   readonly id: OriginTraitId;
@@ -74,7 +81,7 @@ function pairKey(a: OriginTraitId, b: OriginTraitId): string {
 
 describe("builder-legal Origin composition space", () => {
   it(
-    "proves every current builder-legal trait combination is statically composable",
+    "proves every current builder-legal complete rule profile is statically composable",
     () => {
       const traits = parseBuilderTraits();
       expect(traits).toHaveLength(72);
@@ -82,14 +89,21 @@ describe("builder-legal Origin composition space", () => {
       expect(ORIGIN_RULE_MANIFEST).toHaveLength(72);
 
       const contributionMap = new Map<OriginTraitId, readonly RuleContribution[]>(
-        traits.map((trait) => [
-          trait.id,
-          originRuleContributions([trait.id]),
-        ]),
+        traits.map((trait) => [trait.id, originRuleContributions([trait.id])]),
+      );
+      const dynamicMap = new Map<OriginTraitId, readonly DynamicRuleProvider[]>(
+        traits.map((trait) => [trait.id, originDynamicRuleProviders([trait.id])]),
+      );
+      const customMap = new Map<OriginTraitId, readonly RuleCustomDomainDeclaration[]>(
+        traits.map((trait) => [trait.id, originCustomRuleDomains([trait.id])]),
       );
 
-      // Current compiler conflicts are pairwise by construction: overlapping
-      // singleton stages or mixed operators on an overlapping axis/stage.
+      const profileFor = (ids: readonly OriginTraitId[]): RuleProfileInput => ({
+        contributions: ids.flatMap((id) => contributionMap.get(id) ?? []),
+        dynamicProviders: ids.flatMap((id) => dynamicMap.get(id) ?? []),
+        customDomains: ids.flatMap((id) => customMap.get(id) ?? []),
+      });
+
       const pairConflicts = new Set<string>();
       for (let i = 0; i < traits.length; i += 1) {
         for (let j = i + 1; j < traits.length; j += 1) {
@@ -98,11 +112,9 @@ describe("builder-legal Origin composition space", () => {
           if (left === undefined || right === undefined) continue;
           const issues = validateRuleProfile(
             RULE_AXIS_REGISTRY,
-            originRuleContributions([left.id, right.id]),
+            profileFor([left.id, right.id]),
           );
-          if (issues.length > 0) {
-            pairConflicts.add(pairKey(left.id, right.id));
-          }
+          if (issues.length > 0) pairConflicts.add(pairKey(left.id, right.id));
         }
       }
 
@@ -112,16 +124,15 @@ describe("builder-legal Origin composition space", () => {
       let compiledLegalOrigins = 0;
       const selected: BuilderTrait[] = [];
       const selectedContributions: RuleContribution[] = [];
+      const selectedDynamic: DynamicRuleProvider[] = [];
+      const selectedCustom: RuleCustomDomainDeclaration[] = [];
 
       const visit = (
         startIndex: number,
         positiveSpend: number,
         drawbackRefund: number,
       ): void => {
-        if (
-          selected.length > 0 &&
-          positiveSpend <= 10 + drawbackRefund
-        ) {
+        if (selected.length > 0 && positiveSpend <= 10 + drawbackRefund) {
           checkedLegalOrigins += 1;
           for (let i = 0; i < selected.length; i += 1) {
             for (let j = i + 1; j < selected.length; j += 1) {
@@ -138,18 +149,19 @@ describe("builder-legal Origin composition space", () => {
           }
 
           if (exhaustiveCompile) {
-            const profile = compileRuleProfile(
-              RULE_AXIS_REGISTRY,
-              selectedContributions,
-            );
+            const input: RuleProfileInput = {
+              contributions: selectedContributions,
+              dynamicProviders: selectedDynamic,
+              customDomains: selectedCustom,
+            };
+            const profile = compileRuleProfile(RULE_AXIS_REGISTRY, input);
             compiledLegalOrigins += 1;
-            // Periodically prove the full compile/normalization serialization is
-            // also invariant to authored input order without doubling all work.
             if ((checkedLegalOrigins & 0xfff) === 0) {
-              const reversed = compileRuleProfile(
-                RULE_AXIS_REGISTRY,
-                [...selectedContributions].reverse(),
-              );
+              const reversed = compileRuleProfile(RULE_AXIS_REGISTRY, {
+                contributions: [...selectedContributions].reverse(),
+                dynamicProviders: [...selectedDynamic].reverse(),
+                customDomains: [...selectedCustom].reverse(),
+              });
               expect(profile.canonicalSerialization).toBe(
                 reversed.canonicalSerialization,
               );
@@ -167,11 +179,15 @@ describe("builder-legal Origin composition space", () => {
 
           selected.push(trait);
           const beforeContributionCount = selectedContributions.length;
-          selectedContributions.push(
-            ...(contributionMap.get(trait.id) ?? []),
-          );
+          const beforeDynamicCount = selectedDynamic.length;
+          const beforeCustomCount = selectedCustom.length;
+          selectedContributions.push(...(contributionMap.get(trait.id) ?? []));
+          selectedDynamic.push(...(dynamicMap.get(trait.id) ?? []));
+          selectedCustom.push(...(customMap.get(trait.id) ?? []));
           visit(index + 1, nextPositive, nextRefund);
           selectedContributions.length = beforeContributionCount;
+          selectedDynamic.length = beforeDynamicCount;
+          selectedCustom.length = beforeCustomCount;
           selected.pop();
         }
       };
