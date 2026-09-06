@@ -30,16 +30,3 @@ jobs:
         run: npm ci
       - name: Validate canonical ownership strictly
         run: npx tsx scripts/checkDocumentationAuthority.ts --strict
-      - name: Phase 6 stale-reference diagnostic
-        shell: bash
-        run: |
-          set +e
-          echo '=== GitHub issue/PR references in tracked text ==='
-          git grep -nE '(^|[^A-Za-z0-9_])#[0-9]+\b|https://github\.com/[^/[:space:])]+/[^/[:space:])]+/(issues|pull)/[0-9]+\b' -- '*.md' '*.ts' '*.tsx' '*.js' '*.mjs' '*.yml' '*.yaml' '*.json'
-          echo '=== TODO/FIXME in tracked text ==='
-          git grep -nE '\b(TODO|FIXME)\b' -- '*.md' '*.ts' '*.tsx' '*.js' '*.mjs' '*.yml' '*.yaml' '*.json'
-          echo '=== Deleted Origin-validation document references ==='
-          git grep -nE 'FINAL_VALIDATION_MODEL\.md|origin-validation/(P41-P50|P51-P54|N01-N10|N11-N18)\.md'
-          echo '=== Known stale authority/status phrases ==='
-          git grep -niE 'sole active workflow|72/72|49/49|20/20|phase closed|closure status|implementation/content work still open|remaining implementation/validation work|remaining migration work'
-          exit 0
