@@ -1,10 +1,13 @@
 import {
   RULE_COMPOSITION_VERSION,
+  RULE_SOURCE_KINDS,
   RULE_STAGE_ALLOWED_SOURCE_KINDS,
   canonicalRuleJson,
   canonicalizeRuleConditions,
+  canonicalizeRuleContribution,
   compareRuleStrings,
   isValidRuleCondition,
+  isValidRuleContributionShape,
   isValidRuleScope,
   ruleScopeMatches,
   validateRuleAxisRegistry,
@@ -18,6 +21,7 @@ import {
   type RuleCustomDomainDeclaration,
   type RuleOperator,
   type RuleScope,
+  type RuleSourceKind,
   type RuleValidationIssue,
 } from "./RuleComposition";
 import {
@@ -27,6 +31,7 @@ import {
 
 export type RuleCompilerIssueCode =
   | RuleValidationIssue["code"]
+  | "INVALID_PROFILE_INPUT"
   | "OVERLAPPING_SINGLETON_CONFLICT"
   | "OVERLAPPING_MIXED_OPERATORS"
   | "UNSATISFIABLE_CONDITION_SET"
@@ -61,6 +66,14 @@ export interface CompiledRuleProfile {
   readonly canonicalSerialization: string;
 }
 
+interface CheckedProfileInput {
+  readonly contributions: readonly unknown[];
+  readonly dynamicProviders: readonly unknown[];
+  readonly customDomains: readonly unknown[];
+}
+
+const PROFILE_REQUIRED_KEYS = ["contributions"] as const;
+const PROFILE_OPTIONAL_KEYS = ["dynamicProviders", "customDomains"] as const;
 const DYNAMIC_PROVIDER_REQUIRED_KEYS = [
   "id",
   "axis",
@@ -74,6 +87,7 @@ const DYNAMIC_PROVIDER_REQUIRED_KEYS = [
   "operandKind",
 ] as const;
 const DYNAMIC_PROVIDER_OPTIONAL_KEYS = ["conditions"] as const;
+const CUSTOM_DOMAIN_REQUIRED_KEYS = ["sourceKind", "sourceId", "domain"] as const;
 const DYNAMIC_DEPENDENCIES = new Set([
   "OWNED_PERSISTENT_STRUCTURE_COUNT",
   "TERRITORIAL_CONTACT_COUNT",
@@ -85,24 +99,7 @@ const DYNAMIC_OPERAND_KINDS = new Set<DynamicRuleOperandKind>([
   "BASIS_POINTS",
   "INTEGER",
 ]);
-
-function profileInput(
-  input: readonly RuleContribution[] | RuleProfileInput,
-): Required<RuleProfileInput> {
-  if (Array.isArray(input)) {
-    return {
-      contributions: input,
-      dynamicProviders: [],
-      customDomains: [],
-    };
-  }
-  const typed = input as RuleProfileInput;
-  return {
-    contributions: typed.contributions,
-    dynamicProviders: typed.dynamicProviders ?? [],
-    customDomains: typed.customDomains ?? [],
-  };
-}
+const RULE_SOURCE_KIND_SET = new Set<string>(RULE_SOURCE_KINDS);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -118,6 +115,31 @@ function hasExactKeys(
     required.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
     Object.keys(value).every((key) => allowed.has(key))
   );
+}
+
+function checkedProfileInput(input: unknown): CheckedProfileInput | undefined {
+  if (Array.isArray(input)) {
+    return {
+      contributions: input,
+      dynamicProviders: [],
+      customDomains: [],
+    };
+  }
+  if (!isRecord(input) || !hasExactKeys(input, PROFILE_REQUIRED_KEYS, PROFILE_OPTIONAL_KEYS)) {
+    return undefined;
+  }
+  if (
+    !Array.isArray(input.contributions) ||
+    (input.dynamicProviders !== undefined && !Array.isArray(input.dynamicProviders)) ||
+    (input.customDomains !== undefined && !Array.isArray(input.customDomains))
+  ) {
+    return undefined;
+  }
+  return {
+    contributions: input.contributions,
+    dynamicProviders: input.dynamicProviders ?? [],
+    customDomains: input.customDomains ?? [],
+  };
 }
 
 function scopeValue(scope: RuleScope): string {
@@ -360,12 +382,12 @@ function dynamicProviderIssueContext(raw: unknown): {
 
 function validateDynamicProviders(
   registry: RuleAxisRegistry,
-  providers: readonly DynamicRuleProvider[],
+  providers: readonly unknown[],
 ): readonly RuleCompilerIssue[] {
   const issues: RuleCompilerIssue[] = [];
   const providerIds = new Set<string>();
 
-  for (const rawProvider of providers as readonly unknown[]) {
+  for (const rawProvider of providers) {
     const context = dynamicProviderIssueContext(rawProvider);
     if (!dynamicProviderShapeIsValid(rawProvider)) {
       issues.push({
@@ -544,7 +566,6 @@ function validateStaticConditionSets(
   for (const contribution of contributions) {
     if (
       contribution.conditions === undefined ||
-      !Array.isArray(contribution.conditions) ||
       contribution.conditions.length === 0 ||
       contribution.conditions.some(
         (condition) => !isValidRuleCondition(condition as unknown),
@@ -565,20 +586,37 @@ function validateStaticConditionSets(
   return issues;
 }
 
+function customDomainShapeIsValid(
+  raw: unknown,
+): raw is RuleCustomDomainDeclaration {
+  return (
+    isRecord(raw) &&
+    hasExactKeys(raw, CUSTOM_DOMAIN_REQUIRED_KEYS) &&
+    typeof raw.sourceKind === "string" &&
+    RULE_SOURCE_KIND_SET.has(raw.sourceKind) &&
+    typeof raw.sourceId === "string" &&
+    raw.sourceId.length > 0 &&
+    typeof raw.domain === "string" &&
+    raw.domain.length > 0
+  );
+}
+
 function validateCustomDomains(
-  domains: readonly RuleCustomDomainDeclaration[],
+  domains: readonly unknown[],
 ): readonly RuleCompilerIssue[] {
   const issues: RuleCompilerIssue[] = [];
-  for (const declaration of domains) {
-    if (
-      declaration.sourceId.length === 0 ||
-      declaration.domain.length === 0
-    ) {
+  for (const raw of domains) {
+    if (!customDomainShapeIsValid(raw)) {
+      const sourceId =
+        isRecord(raw) && typeof raw.sourceId === "string"
+          ? raw.sourceId
+          : "<invalid>";
       issues.push({
         code: "INVALID_CUSTOM_DOMAIN",
         axis: "CUSTOM_DOMAIN",
-        sourceIds: [declaration.sourceId],
-        message: "Custom rule-domain declarations require non-empty source/domain IDs",
+        sourceIds: [sourceId],
+        message:
+          "Custom domain declaration must use exact {sourceKind, sourceId, domain} shape with registered provenance",
       });
     }
   }
@@ -629,16 +667,36 @@ export function validateRuleProfile(
   registry: RuleAxisRegistry,
   input: readonly RuleContribution[] | RuleProfileInput,
 ): readonly RuleCompilerIssue[] {
-  const profile = profileInput(input);
+  const profile = checkedProfileInput(input as unknown);
+  if (profile === undefined) {
+    return [
+      {
+        code: "INVALID_PROFILE_INPUT",
+        axis: "RULE_PROFILE",
+        message:
+          "Rule profile must be an authored contribution array or exact {contributions, dynamicProviders?, customDomains?} object",
+      },
+    ];
+  }
+
+  const validStaticContributions = profile.contributions.filter(
+    (entry): entry is RuleContribution =>
+      isValidRuleContributionShape(entry as unknown),
+  );
+  const validDynamicProviders = profile.dynamicProviders.filter(
+    (entry): entry is DynamicRuleProvider =>
+      dynamicProviderShapeIsValid(entry as unknown),
+  );
   const issues: RuleCompilerIssue[] = [
     ...validateRuleAxisRegistry(registry),
     ...validateRuleContributions(profile.contributions, registry),
-    ...validateStaticConditionSets(profile.contributions),
+    ...validateStaticConditionSets(validStaticContributions),
     ...validateDynamicProviders(registry, profile.dynamicProviders),
     ...validateCustomDomains(profile.customDomains),
   ];
+
   const shapes: RuleShape[] = [
-    ...profile.contributions.map((entry) => ({
+    ...validStaticContributions.map((entry) => ({
       axis: entry.axis,
       scope: entry.scope,
       stage: entry.stage,
@@ -646,38 +704,17 @@ export function validateRuleProfile(
       sourceId: entry.sourceId,
       ...(entry.conditions === undefined ? {} : { conditions: entry.conditions }),
     })),
-    ...profile.dynamicProviders.flatMap((entry) => {
-      if (!dynamicProviderShapeIsValid(entry as unknown)) return [];
-      return [
-        {
-          axis: entry.axis,
-          scope: entry.scope,
-          stage: entry.stage,
-          operator: entry.operator,
-          sourceId: entry.sourceId,
-          ...(entry.conditions === undefined
-            ? {}
-            : { conditions: entry.conditions }),
-        },
-      ];
-    }),
+    ...validDynamicProviders.map((entry) => ({
+      axis: entry.axis,
+      scope: entry.scope,
+      stage: entry.stage,
+      operator: entry.operator,
+      sourceId: entry.sourceId,
+      ...(entry.conditions === undefined ? {} : { conditions: entry.conditions }),
+    })),
   ];
   issues.push(...validateOverlap(registry, shapes));
   return issues;
-}
-
-function canonicalContribution(contribution: RuleContribution): RuleContribution {
-  const conditions = canonicalizeRuleConditions(contribution.conditions);
-  const value = Array.isArray(contribution.value)
-    ? [...new Set(contribution.value)].sort(compareRuleStrings)
-    : contribution.value;
-  return {
-    ...contribution,
-    ...(value === undefined ? {} : { value }),
-    ...(conditions === undefined || conditions.length === 0
-      ? {}
-      : { conditions }),
-  };
 }
 
 function canonicalDynamicProvider(
@@ -685,7 +722,16 @@ function canonicalDynamicProvider(
 ): DynamicRuleProvider {
   const conditions = canonicalizeRuleConditions(provider.conditions);
   return {
-    ...provider,
+    id: provider.id,
+    axis: provider.axis,
+    scope: provider.scope,
+    stage: provider.stage,
+    operator: provider.operator,
+    sourceKind: provider.sourceKind,
+    sourceId: provider.sourceId,
+    dependency: provider.dependency,
+    formula: provider.formula,
+    operandKind: provider.operandKind,
     ...(conditions === undefined || conditions.length === 0
       ? {}
       : { conditions }),
@@ -697,7 +743,12 @@ function canonicalCustomDomains(
 ): readonly RuleCustomDomainDeclaration[] {
   const byKey = new Map<string, RuleCustomDomainDeclaration>();
   for (const declaration of domains) {
-    byKey.set(canonicalRuleJson(declaration), declaration);
+    const canonical = {
+      sourceKind: declaration.sourceKind,
+      sourceId: declaration.sourceId,
+      domain: declaration.domain,
+    } as const;
+    byKey.set(canonicalRuleJson(canonical), canonical);
   }
   return Object.freeze(
     [...byKey.entries()]
@@ -710,23 +761,28 @@ export function compileRuleProfile(
   registry: RuleAxisRegistry,
   input: readonly RuleContribution[] | RuleProfileInput,
 ): CompiledRuleProfile {
-  const profile = profileInput(input);
-  const issues = validateRuleProfile(registry, profile);
+  const issues = validateRuleProfile(registry, input);
   if (issues.length > 0) {
     throw new Error(issues.map((issue) => issue.message).join("; "));
   }
+  const profile = checkedProfileInput(input as unknown);
+  if (profile === undefined) {
+    throw new Error("Rule profile input became invalid after validation");
+  }
 
-  const contributions = profile.contributions
-    .map(canonicalContribution)
+  const contributions = (profile.contributions as readonly RuleContribution[])
+    .map(canonicalizeRuleContribution)
     .sort((a, b) =>
       compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
     );
-  const dynamicProviders = profile.dynamicProviders
+  const dynamicProviders = (profile.dynamicProviders as readonly DynamicRuleProvider[])
     .map(canonicalDynamicProvider)
     .sort((a, b) =>
       compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
     );
-  const customDomains = canonicalCustomDomains(profile.customDomains);
+  const customDomains = canonicalCustomDomains(
+    profile.customDomains as readonly RuleCustomDomainDeclaration[],
+  );
   const normalizedRules = normalizeValidatedRuleContributions(
     registry,
     contributions,
