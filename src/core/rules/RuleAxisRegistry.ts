@@ -132,9 +132,6 @@ function standardScalarAxis(
     unit,
     scopeKind,
     stages,
-    // Contextual stages can legitimately be authored by terrain, structure,
-    // unit-profile, scenario, and situational provenance. Fine-grained stage
-    // legality remains enforced by RULE_STAGE_ALLOWED_SOURCE_KINDS.
     allowedSourceKinds: options.contextual
       ? STATIC_RULE_SOURCES
       : echo
@@ -364,6 +361,12 @@ export const RULE_AXIS_REGISTRY = {
     "GLOBAL",
     { baseReplacement: true, echo: false },
   ),
+  FACTORY_TRAIN_EVENT_BASE_VALUE: standardScalarAxis(
+    "FACTORY_TRAIN_EVENT_BASE_VALUE",
+    "FFY",
+    "STRUCTURE",
+    { echo: false, contextual: true },
+  ),
 
   STRUCTURE_BUILD_COST: standardScalarAxis(
     "STRUCTURE_BUILD_COST",
@@ -375,11 +378,18 @@ export const RULE_AXIS_REGISTRY = {
     "STRUCTURE_UPGRADE_COST",
     "FFY",
     "STRUCTURE",
+    { hardZero: true },
   ),
   STRUCTURE_CONSTRUCTION_TIME: standardScalarAxis(
     "STRUCTURE_CONSTRUCTION_TIME",
     "TICKS",
     "STRUCTURE",
+  ),
+  STRUCTURE_UNIT_CONSTRUCTION_WORK_RATE: standardScalarAxis(
+    "STRUCTURE_UNIT_CONSTRUCTION_WORK_RATE",
+    "RATIO",
+    "STRUCTURE",
+    { echo: false, contextual: true },
   ),
   STRUCTURE_BUILD_PERMISSION: permissionAxis(
     "STRUCTURE_BUILD_PERMISSION",
@@ -413,11 +423,13 @@ export const RULE_AXIS_REGISTRY = {
     "STRUCTURE_REPAIR_RADIUS",
     "CELLS",
     "STRUCTURE",
+    { contextual: true, finalOverride: true },
   ),
   STRUCTURE_REPAIR_RATE: standardScalarAxis(
     "STRUCTURE_REPAIR_RATE",
     "HEALTH_PER_SECOND",
     "STRUCTURE",
+    { contextual: true },
   ),
   STRUCTURE_OBSERVATION_RADIUS: standardScalarAxis(
     "STRUCTURE_OBSERVATION_RADIUS",
