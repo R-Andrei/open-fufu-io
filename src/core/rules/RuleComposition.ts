@@ -189,6 +189,7 @@ export type RuleCondition =
   | { readonly kind: "TARGET_HAS_FALLOUT" }
   | { readonly kind: "TARGET_LACKS_FALLOUT" }
   | { readonly kind: "TARGET_UNIT_IS"; readonly unit: ConcreteUnitId }
+  | { readonly kind: "PROJECTILE_IS_WARHEAD" }
   | {
       readonly kind: "EVENT_INSIDE_FIELD";
       readonly field: "FORT" | "SAM" | "COMMAND_POST";
@@ -573,6 +574,7 @@ export function isValidRuleCondition(
       );
     case "TARGET_HAS_FALLOUT":
     case "TARGET_LACKS_FALLOUT":
+    case "PROJECTILE_IS_WARHEAD":
       return hasExactKeys(condition, ["kind"]);
     case "TARGET_UNIT_IS":
       return (
