@@ -34,6 +34,7 @@ jobs:
           tests/RuleCompiler.test.ts
           tests/RuleNormalization.test.ts
           tests/RuleMaterialization.test.ts
+          tests/RuleRationalMaterialization.test.ts
           tests/RuleValidationRegression.test.ts
       - name: Catalogue projection
         run: >-
