@@ -228,7 +228,7 @@ This record supplements the three-layer gameplay/Origin/Character-AI audit; neit
 
 #### Automated guard
 
-`scripts/checkDocumentationAuthority.ts` and the Documentation Authority workflow enforce the mechanically provable subset of this policy. During the repository-wide migration, incremental mode rejects **new** GitHub issue-number status/dependency references in canonical documents while preserving explicitly transitional legacy content. `--strict` rejects all such references. The migration is complete only when strict mode passes and transitional exemptions are removed.
+`scripts/checkDocumentationAuthority.ts` and the Documentation Authority workflow enforce the mechanically provable subset of this policy. During the repository-wide migration, incremental mode rejects any **new** mutable GitHub issue/PR work-state reference in every registered canonical owner while allowing only references already present at the comparison base. Newly registered canonical owners are compared against an empty base and receive no legacy exemption. `--strict` rejects all such references. The migration is complete only when strict mode passes repository-wide and the workflow is switched permanently to strict enforcement; do not introduce a baseline allowlist or exemption merely to make strict mode pass.
 
 ### Subsystem documentation gateways
 
