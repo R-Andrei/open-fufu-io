@@ -155,6 +155,31 @@ describe("Echo rule registry", () => {
     }
   });
 
+  it("constrains every projectile-speed Echo to the canonical warhead class", () => {
+    const projectileSpeedDefinitions = ECHO_RULE_KEY_DEFINITIONS.filter(
+      (definition) => definition.axis === "WEAPON_PROJECTILE_SPEED",
+    );
+    expect(projectileSpeedDefinitions).toHaveLength(4);
+    for (const definition of projectileSpeedDefinitions) {
+      expect(definition.conditions).toEqual([{ kind: "PROJECTILE_IS_WARHEAD" }]);
+      expect(
+        echoRuleContribution(
+          definition.id,
+          "BENEFICIAL",
+          100,
+          `test:${definition.id}`,
+        ).conditions,
+      ).toEqual([{ kind: "PROJECTILE_IS_WARHEAD" }]);
+    }
+    expect(
+      ECHO_RULE_KEY_DEFINITIONS.filter(
+        (definition) =>
+          definition.axis !== "WEAPON_PROJECTILE_SPEED" &&
+          definition.conditions !== undefined,
+      ),
+    ).toEqual([]);
+  });
+
   it("uses mathematical sign independently from beneficial/harmful polarity", () => {
     expect(
       echoRuleContribution(
