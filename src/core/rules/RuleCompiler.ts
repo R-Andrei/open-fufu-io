@@ -21,7 +21,6 @@ import {
   type RuleCustomDomainDeclaration,
   type RuleOperator,
   type RuleScope,
-  type RuleSourceKind,
   type RuleValidationIssue,
 } from "./RuleComposition";
 import {
