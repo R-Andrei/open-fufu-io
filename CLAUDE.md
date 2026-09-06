@@ -12,6 +12,7 @@ Key entry points:
 
 - high-level Open Fufu target: [`docs/OPEN_FUFU_DESIGN.md`](./docs/OPEN_FUFU_DESIGN.md);
 - OpenFront → Open Fufu migration/runtime architecture: [`docs/OPENFRONT_INTEGRATION_PLAN.md`](./docs/OPENFRONT_INTEGRATION_PLAN.md);
+- repository validation/test ownership: [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md);
 - complete canonical-owner map: [`docs/README.md`](./docs/README.md).
 
 ## Commands
@@ -19,28 +20,29 @@ Key entry points:
 Use repository scripts rather than inventing alternate install/build flows:
 
 ```bash
-npm run inst             # npm ci --ignore-scripts
-npm run dev              # current client + server development application
-npm run start:client     # client only
-npm run start:server-dev # development server only
-npm test                 # non-server Vitest suite
-npm run test:server      # server Vitest suite
-npm run test:coverage    # non-server tests with coverage
-npm run lint             # Oxlint + ESLint
-npm run lint:fix         # Oxlint + ESLint with auto-fix
-npm run lint:github      # CI-oriented lint output
-npm run format           # Prettier
-npm run build-prod       # typecheck + production build + asset hashes
+npm run inst                 # npm ci --ignore-scripts
+npm run dev                  # current client + server development application
+npm run start:client         # client only
+npm run start:server-dev     # development server only
+npm test                     # Open Fufu-owned test allowlist only
+npm run test:coverage        # coverage for the same owned test surface
+npm run legacy:test:server   # inherited server suite; manual historical investigation only
+npm run lint                 # repository lint utility; not a normal inherited-code merge gate
+npm run lint:fix             # lint with auto-fix
+npm run lint:github          # CI-oriented lint output utility
+npm run format               # Prettier
+npm run build-prod           # inherited/current application build utility; not a normal merge gate
 ```
 
-Single-test examples:
+`npm test` and plain/default `vitest run` are intentionally manifest-backed and must discover only tests registered in [`validation/open-fufu-owned.json`](./validation/open-fufu-owned.json). Do not restore broad test discovery, exclusion-based inherited test sweeps, or generic repository-wide build/lint gates during the documentation-first redesign phase.
+
+For a focused Open Fufu-owned test, choose an explicitly registered file from the ownership manifest, for example:
 
 ```bash
-npx vitest tests/YourTest.test.ts --run
-npx vitest NationAllianceBehavior --run
+npx vitest run tests/RuleComposition.test.ts
 ```
 
-Apply the validation required by `AGENTS.md` and the changed subsystem's canonical owner in addition to these generic commands.
+Do not use an inherited/unregistered test as a correctness gate merely because it exists. If a previously inherited subsystem is intentionally adopted, follow `docs/VALIDATION_POLICY.md`: adopt the exact source, add or update appropriate focused validation in the same change, and register the source-to-validator relationship.
 
 ## Current inherited implementation versus target architecture
 
@@ -62,7 +64,8 @@ When adapting an inherited subsystem:
 1. locate its target owner in `docs/README.md`;
 2. use `OPENFRONT_INTEGRATION_PLAN.md` for migration/source-traceability boundaries;
 3. preserve useful implementation machinery only where it conforms to the target owner;
-4. update all synchronized owners/configuration/code comments required by `AGENTS.md` rather than creating a second semantic copy.
+4. update all synchronized owners/configuration/code comments required by `AGENTS.md` rather than creating a second semantic copy;
+5. follow `VALIDATION_POLICY.md` so executable adoption and appropriate focused validation happen together.
 
 ## UI text / i18n
 
@@ -70,7 +73,15 @@ For inherited/current UI using the existing localization system, user-visible te
 
 ## Testing patterns
 
-Existing tests commonly use `setup()` from `tests/util/Setup.ts` and map fixtures under `tests/testdata/maps/`. Reuse existing test infrastructure where it is semantically appropriate, but do not preserve tests whose assertions are intentionally superseded by an Open Fufu canonical owner.
+Existing inherited tests and helpers such as `tests/util/Setup.ts` or map fixtures under `tests/testdata/maps/` may be useful migration evidence or reusable infrastructure, but they are not automatically maintained Open Fufu contracts.
+
+- Normal validation runs only the explicit owned-test allowlist.
+- Do not edit or revive inherited tests unless the corresponding subsystem is deliberately adopted.
+- New Open Fufu executable code must be registered with appropriate focused tests/validators in the same change.
+- Changing inherited executable code must not silently make that subsystem maintained.
+- Repository-wide inherited build, lint, unit, integration, browser, server, matchmaking, replay, or performance validation is not a normal merge gate during the current redesign phase.
+
+The canonical rules are in [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md); the machine-readable registry is [`validation/open-fufu-owned.json`](./validation/open-fufu-owned.json).
 
 ## Tooling notes
 
