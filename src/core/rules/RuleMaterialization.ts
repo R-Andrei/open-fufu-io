@@ -9,7 +9,6 @@ import {
   type RuleAxisDefinition,
   type RuleAxisRegistry,
   type RuleConditions,
-  type RuleReducer,
   type RuleScope,
   type RuleStateDependency,
   type RuleUnit,
