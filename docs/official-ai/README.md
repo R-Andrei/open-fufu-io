@@ -1,6 +1,6 @@
 # Open Fufu — Official AI documentation gateway
 
-This directory is the mandatory **entry point for work on Official PvE AI**. It is a navigation/integration gateway; it does not own gameplay mechanics or duplicate child-document contracts.
+This directory is the mandatory **entry point for work on Official PvE AI**. It is a navigation/integration gateway; it does not own gameplay mechanics, child-document contracts, exact configuration mappings, or project-completion state.
 
 For any Official-AI task, read this file first, then [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md). Follow the task-specific owner trail below rather than editing AI documents in isolation.
 
@@ -107,17 +107,4 @@ This repository-wide rule is also enforced in `AGENTS.md`.
 - Exact tables/mappings live in the listed TypeScript configs where identified, not duplicated in prose.
 - Gameplay mechanics stay in their gameplay owners.
 - Echo reward arithmetic stays in `ECHO_CATALOGUE.md`; AI docs expose difficulty as an input only.
-- New AI documents require a genuinely distinct ownership boundary and must be added to this map.
-
-## Current V1 design status
-
-```text
-shared architecture/configuration contracts: complete
-Origin trait AI support:                 72 / 72
-Official Origin AI configuration:         49 / 49
-Difficulty-0 Baseline:                     1 / 1
-character profiles:                       20 / 20
-character signature/quirk pass:          complete
-```
-
-Remaining work is primarily cross-profile / character × Origin validation, capability benchmarking, thematic/fidelity benchmarking, runtime implementation, and version/hash integration—not another round of parallel design documents.
+- New AI documents require a genuinely distinct ownership boundary and must be added to this map and the repository-level owner map.
