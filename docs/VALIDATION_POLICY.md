@@ -72,9 +72,13 @@ For ordinary production/game code, the expected validator is one or more focused
 
 A new or modified test under `tests/` must itself be registered as an owned test. This prevents agents from reviving or editing inherited tests and then accidentally treating them as current requirements.
 
+After the one-time ownership-manifest bootstrap, CI compares the head manifest with the target-base manifest. A newly registered owned test or workflow must itself be added or modified in the same change. A newly adopted executable source must have at least one of its registered validators added or modified in that same change. Manifest-only revival of an untouched inherited test, or adoption that merely points at an unrelated untouched validator, is rejected.
+
+The executable-source boundary covers the repository's common source/script languages rather than only TypeScript/JavaScript, so moving new implementation into another language is not a way around the adoption rule.
+
 ## Workflow hardening
 
-Every workflow Open Fufu actively maintains must be registered in the ownership manifest.
+Every GitHub Actions workflow present in `.github/workflows/` must be registered in the ownership manifest. An unregistered workflow is itself a validation-boundary failure.
 
 The boundary guard rejects owned workflows that reintroduce known broad inherited validation paths. Direct Vitest invocations in workflows must name at least one registered Open Fufu test; otherwise use the manifest-backed default `npm test`.
 
@@ -95,7 +99,7 @@ The old inherited suite remains historical evidence unless a test is deliberatel
 
 ## Enforcement
 
-`scripts/checkValidationBoundary.ts` enforces the mechanically provable portion of this policy. It checks the manifest, default Vitest wiring, owned workflows, and the changed-file set against the target base.
+`scripts/checkValidationBoundary.ts` enforces the mechanically provable portion of this policy. It checks the manifest, default Vitest wiring, the complete workflow set, ownership expansion relative to the target base, and the changed-file set.
 
 `tests/ValidationBoundaryPolicy.test.ts` regression-tests the guard's ownership behavior.
 
