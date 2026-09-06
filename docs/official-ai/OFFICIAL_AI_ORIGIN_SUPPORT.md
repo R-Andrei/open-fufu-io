@@ -21,7 +21,7 @@ design/official-ai/origin-trait-support.config.ts
 design/official-ai/origin-configurations.config.ts
 ```
 
-Future exact character mappings will live in `design/official-ai/character-configurations.config.ts`.
+Exact character mappings live in `design/official-ai/character-configurations.config.ts`.
 
 Neighboring authorities:
 
@@ -217,7 +217,6 @@ type StrategicAffordance =
   | "SCALE_INDUSTRY"
   | "SCALE_TRADE"
   | "BUILD_HIGH_LEVEL_INFRASTRUCTURE"
-
   | "EXPLOIT_TERRAIN"
 
   | "DISTRIBUTE_START"
@@ -753,12 +752,12 @@ These checks are distinct from capability/win-rate benchmarking and character-fi
 
 Traits, Origins, and characters may be **reviewed in batches of ten**, but batch boundaries are never permanent file boundaries.
 
-Accepted content is appended to these single canonical configuration files:
+Accepted content lives in these single canonical configuration files:
 
 ```text
 design/official-ai/origin-trait-support.config.ts
 design/official-ai/origin-configurations.config.ts
-design/official-ai/character-configurations.config.ts   # once character mapping starts
+design/official-ai/character-configurations.config.ts
 ```
 
 Rationale stays in one document per entity type:
