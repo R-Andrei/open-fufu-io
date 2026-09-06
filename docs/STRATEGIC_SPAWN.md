@@ -99,7 +99,7 @@ Random Spawn bypasses controller spawn hooks but applies the same effective spaw
 - P39 same-faction slots must be distinct but are not subject to the foreign-faction 50-cell spacing rule;
 - foreign-faction spacing remains identical to Strategic Spawn.
 
-Random origins are selected from the compiled legal-spawn seed set by a deterministic resolver-versioned ordering. For each faction/origin slot, candidate ordering is conceptually:
+For each faction/origin slot, legal-spawn-seed candidates are ranked independently by:
 
 ```text
 (
@@ -111,15 +111,37 @@ Random origins are selected from the compiled legal-spawn seed set by a determin
     originSlot,
     cellId
   ),
-  factionId,
-  originSlot,
   cellId
 )
 ```
 
-All required slots across all factions are resolved as one deterministic simultaneous allocation problem. Faction enumeration order, controller presence, browser timing, and service iteration order cannot create spawn priority.
+All required slots across all factions then resolve through one deterministic **round-based simultaneous allocation**:
 
-When a first-ranked random candidate conflicts with an already winning foreign origin under the deterministic resolver order, the slot advances through its ranked legal candidates until one satisfies all required foreign spacing and same-faction distinctness constraints. Validated production maps/rulesets must provide enough legal candidates for every legal lobby/profile configuration.
+1. Every unresolved origin slot advances through its ranked candidate list until it finds the first candidate that is legal against all origins committed in earlier rounds: it must preserve foreign 50-cell spacing and must not duplicate a committed same-faction origin. That candidate becomes the slot's proposal for this round.
+2. Sort all proposing slots globally by:
+
+```text
+(
+  stableTie32(
+    "random-origin-priority",
+    spawnResolverVersion,
+    matchSeed,
+    factionId,
+    originSlot
+  ),
+  factionId,
+  originSlot
+)
+```
+
+3. Scan proposals in that priority order into a temporary accepted set. Accept a proposal only when it is compatible with every proposal already accepted this round: foreign proposals must remain at least 50 cells apart, while same-faction P39 proposals need only use distinct `CellId`s.
+4. Commit all accepted proposals **simultaneously** at the end of the round.
+5. Every rejected proposal advances past that candidate on the next round; every committed slot leaves the unresolved set.
+6. Repeat until every required origin slot is committed.
+
+The temporary scan is only a deterministic arbitration rule for simultaneous proposals; it is not service/controller execution order and does not expose intermediate winners to participants. Faction enumeration order, controller presence, browser timing, and service iteration order therefore cannot create spawn priority.
+
+If any unresolved slot exhausts the compiled legal-spawn seed set without a candidate compatible with the already committed result, emit `RANDOM_ORIGIN_ALLOCATION_UNFILLABLE` and reject spawn initialization as a deterministic map/ruleset/lobby configuration failure. Random Spawn never relaxes foreign spacing, duplicates a same-faction origin, or silently drops an origin slot to force initialization to continue.
 
 ## 0.4 Fixed Spawn
 
@@ -248,17 +270,68 @@ Random Spawn uses the same bound resolver version and deterministic tie primitiv
 
 The match binds that version. Algorithm changes require a new resolver version; ordinary balance-number changes use the appropriate ruleset/catalogue version rather than silently redefining resolver `1`.
 
-## 3.1 Stable deterministic tie primitive
+## 3.1 `stableTie32` — resolver-v1 exact tie primitive
 
-Use one reusable non-cryptographic deterministic 32-bit tie primitive conceptually equivalent to:
+Resolver version `1` binds one exact non-cryptographic 32-bit tie primitive:
 
 ```text
-stableTie32(domain, spawnResolverVersion, matchSeed, ...canonical keys)
+stableTie32Id = "FNV1A32_LENPREFIX_V1"
 ```
 
-It must use fixed 32-bit integer operations with cross-platform deterministic output. It exists only to shuffle otherwise equal candidates; it is not a security hash.
+`stableTie32(domain, spawnResolverVersion, matchSeed, ...canonicalKeys)` accepts only canonical strings and exact integers. Each argument, including `domain`, version, and seed, is converted to a payload as follows:
 
-Every ordering also has semantic fallback keys (such as `FactionId`, slot index, `CellId`) after the tie value so a hash collision can never make behavior undefined.
+- a string payload is its exact UTF-8 byte sequence; no Unicode normalization/case folding is performed;
+- an integer payload is base-10 ASCII with no leading `+` or leading zeroes (`0` is exactly `"0"`; negative values use one leading `-`);
+- floating-point/non-integer numeric keys are forbidden.
+
+Each payload is serialized as:
+
+```text
+uint32LE(payloadByteLength) || payloadBytes
+```
+
+The complete hash input is the concatenation of those encoded fields in call order. No separators, terminators, implicit locale formatting, or host-language object serialization are added.
+
+The hash itself is canonical FNV-1a 32-bit:
+
+```text
+h = 2166136261  // 0x811C9DC5
+for each input byte b in order:
+    h = h XOR b
+    h = (h * 16777619) mod 2^32  // 0x01000193
+return h as unsigned uint32
+```
+
+Implementations must use exact low-32-bit multiplication semantics (`Math.imul` + `>>> 0` is suitable in TypeScript); ordinary IEEE-754 multiplication followed by ad-hoc rounding is not the contract.
+
+Canonical hash collisions remain harmless because every resolver ordering appends semantic fallback keys such as `FactionId`, slot index, or `CellId` after the tie value.
+
+### Resolver-v1 `stableTie32` golden vectors
+
+These values use match seed `seed-0001` and are normative:
+
+| Call | Expected uint32 | Hex |
+| --- | ---: | --- |
+| `stableTie32("exact-origin-priority", "1", "seed-0001", "F-A", 0)` | `753298903` | `0x2CE66DD7` |
+| `stableTie32("exact-origin-priority", "1", "seed-0001", "F-A", 1)` | `736521284` | `0x2BE66C44` |
+| `stableTie32("random-origin-priority", "1", "seed-0001", "F-A", 0)` | `3352854808` | `0xC7D88118` |
+| `stableTie32("random-exact-origin", "1", "seed-0001", "F-A", 0, 12345)` | `887248552` | `0x34E256A8` |
+| `stableTie32("exact-origin-cell", "1", "seed-0001", "F-A", 1, 12345)` | `88442828` | `0x054587CC` |
+| `stableTie32("spawn-footprint-cell", "1", "seed-0001", 12345, "F-A", 0)` | `1594207403` | `0x5F05ACAB` |
+| `stableTie32("spawn-star-cell", "1", "seed-0001", "F-A", 0, 12345)` | `1777288741` | `0x69EF4625` |
+| `stableTie32("spawn-compact-cell", "1", "seed-0001", "F-A", 0, 12345)` | `786146991` | `0x2EDBA6AF` |
+
+For the first vector, the canonical serialized input bytes are:
+
+```text
+1500000065786163742d6f726967696e2d7072696f72697479
+0100000031
+09000000736565642d30303031
+03000000462d41
+0100000030
+```
+
+Changing field canonicalization, length endianness, FNV constants/order, unsigned overflow behavior, or any tie domain used by resolver-v1 requires a new `spawnResolverVersion`; it must not silently redefine version `1`.
 
 Cryptographic SHA-256 remains appropriate for stored integrity/cell-set hashes; that is a different purpose.
 
@@ -272,27 +345,28 @@ Missing, malformed, rejected, or runtime-faulting Strategic Spawn hooks use thes
 
 A hook fallback does not by itself fault the controller for normal match play. Successfully committed controller memory from earlier lifecycle callbacks remains available under `CONTROLLER_MEMORY.md`.
 
-## 3.3 Strategic conflict graph and priority
+## 3.3 Strategic global priority resolution
 
-If all requested Strategic exact origins already satisfy legality/spacing, retain them exactly.
-
-Otherwise construct an undirected conflict graph over requested origins. An edge exists between two **foreign-faction** origin slots whose requested cells violate:
+A structurally malformed Phase-3 decision (wrong origin count, non-cell identifiers, etc.) first uses the deterministic `chooseOrigins()` hook default. The resulting well-formed requested origin slots then resolve together with every other faction through one **global** priority order:
 
 ```text
-distance² < 2,500
+(
+  stableTie32("exact-origin-priority", version, matchSeed, factionId, originSlot),
+  factionId,
+  originSlot
+)
 ```
 
-P39 same-faction origins do not receive a foreign-spacing edge, but they must remain distinct legal cells.
+Process all requested slots in that canonical order. For each slot:
 
-Resolve each connected conflict component using priority sorted by:
+1. retain its requested cell exactly when the cell is a valid legal Initial-Territory seed inside that slot's final influence region, remains at least 50 cells from every already resolved foreign-faction origin, and does not duplicate an already resolved origin slot of the same faction;
+2. otherwise resolve that slot through the Section 3.4 nearest-in-region fallback before proceeding to the next slot.
 
-```text
-stableTie32("exact-origin-priority", version, matchSeed, factionId, originSlot)
-factionId
-originSlot
-```
+Therefore P39 same-faction origins have **no 50-cell spacing constraint against each other**, but two P39 slots requesting the exact same cell are not ambiguous: whichever slot comes first in the seeded global priority keeps that requested cell and the later slot deterministically falls back to another distinct cell.
 
-The first legal origin in that order keeps its requested cell. Each later origin is resolved against already resolved foreign origins.
+Connected conflict components may be used internally as an optimization/diagnostic aid only when they are proven to produce the exact same final result as this global priority scan. Component discovery or iteration order is **not** a resolver-v1 semantic input.
+
+Because priority is bound to match seed + faction/slot identity rather than submission arrival or service enumeration, browser/controller timing and implementation iteration order cannot decide who retains a conflicting requested origin.
 
 ## 3.4 Strategic nearest in-region fallback
 
@@ -311,17 +385,27 @@ A candidate must:
 1. be a valid map cell and legal Initial-Territory seed terrain;
 2. lie inside that slot's own final influence region;
 3. remain at least 50 cells from every already resolved foreign-faction origin;
-4. not duplicate another origin slot of the same faction.
+4. not duplicate an already resolved origin slot of the same faction.
 
 Because the ordinary influence radius is only 400 cells, exhaustive bounded scanning is preferred over a more complex spatial structure unless profiling later proves it necessary.
 
-If the hook output is structurally malformed (wrong count, invalid/non-cell IDs, etc.), use the Phase-3 hook default rather than inventing geometric displacement from an invalid request.
+A well-formed requested cell that is outside its influence region, spawn-ineligible, foreign-spacing-conflicting, or a same-faction exact duplicate is displaced through this same fallback path; those cases do not acquire separate unspecified repair rules.
 
 ## 3.5 Strategic global emergency fallback
 
-If no valid candidate exists inside a final influence region, search the compiled global legal-spawn seed set deterministically, preserving foreign 50-cell spacing where possible and prioritizing candidates nearest that influence center with the same stable tie mechanism.
+If no valid candidate exists inside a final influence region, search the compiled global legal-spawn seed set using:
 
-This is an emergency map/ruleset-defect path, not expected ordinary behavior. It must emit an explicit diagnostic and must never hang/fault the match.
+```text
+(
+  squaredEuclideanDistanceFromFinalInfluenceCenter,
+  stableTie32("exact-origin-global-cell", version, matchSeed, factionId, originSlot, cellId),
+  cellId
+)
+```
+
+The chosen global candidate must still preserve foreign 50-cell spacing and same-faction exact distinctness against every already resolved origin. This is an emergency map/ruleset-defect path, not expected ordinary behavior, and it emits `ORIGIN_GLOBAL_FALLBACK` when used.
+
+If even the global legal-seed set contains no candidate satisfying those invariants, emit `ORIGIN_GLOBAL_UNFILLABLE` and reject spawn initialization deterministically as a map/ruleset/lobby configuration failure. Resolver-v1 never silently relaxes foreign spacing or duplicates an origin slot merely to force the match to start.
 
 # 4. Initial-Territory footprint resolver
 
@@ -364,7 +448,7 @@ In each resolver round every unfinished footprint proposes its best currently un
 Group proposals by `CellId`.
 
 - one proposal: that footprint claims the cell;
-- multiple proposals from foreign factions: winner is selected by deterministic tuple
+- multiple proposals, whether from foreign factions or from two footprints of the same P39 faction: winner is selected by the same deterministic tuple
 
 ```text
 (
@@ -373,6 +457,8 @@ Group proposals by `CellId`.
   footprintSlot
 )
 ```
+
+For a foreign contest, only the winning faction claims the cell. For a same-faction P39 contest, political ownership is already the same faction; only the winning footprint receives that cell for its own quota/frontier accounting, while the losing footprint continues elsewhere. The seeded tie prevents PRIMARY/slot `0` from gaining an additional automatic geometry advantage merely because of its slot number.
 
 All round winners commit simultaneously, then their newly exposed cardinal neighbors enter the appropriate frontiers.
 
@@ -398,7 +484,7 @@ originSlot 1 = SECONDARY
 
 An odd one-cell remainder goes to `originSlot 0`.
 
-The two same-faction footprint queues still grow separately under the simultaneous resolver. If both propose the same cell, deterministic footprint-slot ordering decides which queue receives that cell for quota/frontier accounting; politically the cell belongs to the same faction either way. The losing queue continues elsewhere.
+The two same-faction footprint queues still grow separately under the simultaneous resolver. When both propose the same cell, the exact Section 4.2 `spawn-footprint-cell` tuple decides which footprint receives quota/frontier accounting; politically the cell belongs to the same faction either way. The losing queue continues elsewhere.
 
 Starting Population remains one global pool calculated from the final total Initial Territory. P39 never creates local Population pools.
 
@@ -642,7 +728,9 @@ ORIGIN_DUPLICATE_OWN_SLOT
 ORIGIN_FOREIGN_SPACING_CONFLICT
 ORIGIN_IN_REGION_FALLBACK
 ORIGIN_GLOBAL_FALLBACK
+ORIGIN_GLOBAL_UNFILLABLE
 RANDOM_ORIGIN_RESOLVED
+RANDOM_ORIGIN_ALLOCATION_UNFILLABLE
 FIXED_ORIGIN_ACCEPTED
 FIXED_CONFIGURATION_INVALID
 HOOK_MISSING
@@ -680,6 +768,7 @@ Every archival replay/spawn snapshot records the common semantic inputs and auth
 ```text
 spawnMode
 spawnResolverVersion
+stableTie32Id = FNV1A32_LENPREFIX_V1
 effective SpawnProfile per faction
 
 for each origin slot:
@@ -728,14 +817,21 @@ Determinism tests may independently regenerate the spawn from map + match seed +
 
 Before V1 release, deterministic/accelerated tests should cover at least:
 
+- every Section 3.1 `stableTie32` golden vector reproduces the exact unsigned uint32 result, and the first vector reproduces the exact canonical serialized bytes;
+- `stableTie32` field-length endianness, integer canonicalization, UTF-8 handling, and low-32-bit multiplication semantics are identical across TypeScript/server/replay-verifier implementations;
 - dense overlapping Strategic influence regions;
-- many Strategic exact-origin collision components;
+- many Strategic exact-origin conflicts resolved identically regardless of faction/component/service enumeration order;
+- P39 Strategic same-faction duplicate requests deterministically retain one requested cell and displace the other through ordinary fallback without imposing own-faction 50-cell spacing;
+- a Strategic fallback from an earlier global-priority slot cannot make component iteration order change a later slot's result;
 - coastal/island Strategic influence centers;
 - ordinary and P39 Strategic fallback resolution;
+- deterministic `ORIGIN_GLOBAL_UNFILLABLE` failure when no globally legal candidate preserves required invariants;
 - ordinary Random Spawn -> one deterministic origin;
 - P39 Random Spawn -> two deterministic distinct same-faction origins;
-- Random foreign-origin conflicts resolve deterministically independent of faction/service enumeration order;
-- P39 same-faction Random origins may be within 50 cells but may never duplicate;
+- Random foreign-origin conflicts resolve through the exact round/global-priority algorithm independent of faction/service enumeration order;
+- Random same-faction P39 proposals may be within 50 cells but may never share the exact same `CellId`;
+- Random loser slots advance deterministically across rounds without exposing intermediate arbitration to controllers;
+- deterministic `RANDOM_ORIGIN_ALLOCATION_UNFILLABLE` failure when a required slot exhausts the legal seed set;
 - Fixed ordinary profiles require exactly one authored legal origin;
 - Fixed P39 profiles require exactly two authored legal distinct origins;
 - Fixed P39 preserves authored `origins[]` order as canonical origin-slot identity end-to-end; swapping the two authored cells swaps PRIMARY/SECONDARY semantics rather than geographically re-sorting them, including odd-quota remainder and P20 slot-0 placement;
@@ -743,6 +839,7 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 - invalid Fixed count, terrain, duplicate-slot, or foreign-spacing fixtures reject deterministically with no repair/fallback;
 - exact 1,000-cell and modified Initial-Territory quota fulfillment;
 - odd P39 population-bearing quota assigns its remainder to `originSlot 0`;
+- repeated same-faction P39 footprint collisions use the exact `spawn-footprint-cell` tuple and reproduce identical per-footprint quota/frontier accounting across reruns;
 - Tundra/Shallow-Water inclusion without consuming ordinary quota;
 - `P54_STAR_V1` canonical serialization hashes to `52318cc016a674164fc4861468e29b24b177b8fc35287337a55a11d1b6773440`;
 - every Section 5.2 golden offset reproduces the exact edge/`N`/`D` vector and exact ordering;
@@ -756,8 +853,8 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 - P20 + P39 creates exactly one starting Silo request at `originSlot 0`;
 - spawn-time singular effects never multiply merely because a profile has multiple origins;
 - Strategic-only AI/controller candidate hooks are never invoked by Random/Fixed Spawn;
-- replay regeneration/hash stability of every mode, origin source, bound P54 template identity, realized footprint, and singular start-state effect.
+- replay regeneration/hash stability of every mode, origin source, bound resolver/tie/template identity, realized footprint, and singular start-state effect.
 
-Full realized cell-set golden hashes belong to the executable Spawn implementation/certification fixtures because they additionally depend on the canonical map/CellId representation and concrete `stableTie32` implementation. The geometry contract itself is now independently reproducible from the frozen template, exact score rule, template SHA, and golden shape vectors above; runtime certification must publish and lock the fixture cell-set hashes when that resolver is implemented.
+Full realized cell-set golden hashes belong to the executable Spawn implementation/certification fixtures because they additionally depend on a concrete canonical map/`CellId` fixture and the executable resolver harness. Resolver-v1's tie primitive, origin arbitration, footprint arbitration, star geometry, and ordering rules are now exact and independently reproducible; runtime certification must publish and lock representative fixture cell-set hashes when that resolver is implemented.
 
 Retuning radius, pointiness, or spacing after map benchmarks is ordinary versioned balance/geometry iteration. Changing resolver ordering/hash/fallback/rasterization semantics requires an explicit new `spawnResolverVersion`; silent sequential spawn priority or arbitrary controller-painted starting territory is never permitted.
