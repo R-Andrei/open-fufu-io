@@ -10,9 +10,11 @@ describe("deterministic rational materialization boundaries", () => {
   });
 
   it("does not prematurely zero a representable exact rational", () => {
-    expect(rationalToFiniteNumber(1n, 1n << 1023n)).toBe(
-      1.1125369292536007e-308,
-    );
+    const largeCoprimeNumerator = (1n << 100n) + 1n;
+    const largeDenominator = 1n << 1123n;
+    expect(
+      rationalToFiniteNumber(largeCoprimeNumerator, largeDenominator),
+    ).toBe(1.1125369292536007e-308);
     expect(rationalToFiniteNumber(1n, 1n << 1074n)).toBe(Number.MIN_VALUE);
   });
 });
