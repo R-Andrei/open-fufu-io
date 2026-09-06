@@ -154,7 +154,7 @@ describe("typed scopes", () => {
   });
 });
 
-describe("canonical #43 numeric cases", () => {
+describe("canonical numeric composition cases", () => {
   it("adds P09 and N10 on the same Origin Fort-area stage", () => {
     const contributions = [
       percent(
