@@ -19,19 +19,7 @@ Neighboring owners:
 
 Exact code-readable AI mappings live under `design/official-ai/` and are not duplicated here.
 
-Current content status:
-
-```text
-shared AI architecture/configuration contracts: closed
-Origin trait AI support:                    72 / 72 complete
-Official Origin AI configuration:            49 / 49 complete
-Baseline/character CharacterProfiles:         21 / 21 complete
-character quirk/signature pass:              complete
-```
-
-The `21` profile count is the Difficulty-0 Baseline plus the 20 character presets.
-
-Difficulty values below are creator-authored competence targets, not claims that unfinished implementations already achieve those ratings.
+Difficulty values below are creator-authored competence targets, not claims that an implementation already achieves those ratings.
 
 ---
 
@@ -174,19 +162,4 @@ The Difficulty-0 Baseline is not counted.
 - The preset personality must remain recognizable across every allowed Origin.
 - Human players may use the same Official Origins independently of AI-preset pools.
 
----
-
-## Concrete content work still open
-
-The generic architecture/configuration contracts, complete 72-trait support catalogue, complete 49-Origin AI configuration, Difficulty-0 Baseline, all 20 character `CharacterProfile`s, and character quirk/signature pass are closed for the current V1 design.
-
-Remaining work proceeds in this order:
-
-1. run the complete 20-character cross-profile and character × allowed-Origin consistency audit;
-2. benchmark each character against its authored capability target;
-3. benchmark thematic/fidelity/signature behavior separately;
-4. version/hash final preset/controller/Origin configuration for match/replay records.
-
-Signature behavior should use existing character-owned Expression/Goal/Arbiter/Persistence surfaces where possible. It must not create gameplay mechanics, Origin semantics, or a new shared subsystem merely to support personality when the existing architecture can represent the behavior.
-
-The roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, and provisional difficulty targets are accepted V1 content direction. Echo reward behavior is owned exclusively by `ECHO_CATALOGUE.md`.
+This document owns the roster, Difficulty-0 Baseline role, current allowed-Origin sets, uniform seeded Origin-selection rule, and provisional difficulty targets. Echo reward behavior is owned exclusively by `ECHO_CATALOGUE.md`.
