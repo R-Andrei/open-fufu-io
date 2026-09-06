@@ -1200,20 +1200,23 @@ The canonical Trade-voyage economic snapshot, mutable first-capture lifecycle st
 - `firstHostileCaptureResolved == false` at launch; the first valid hostile capture sets it `true` atomically with the first-capture transition; no recapture/reroute returns it to `false`;
 - N14-only first hostile capture: `requestedOwnerDelta == -ownerSuccessValueFfy` exactly once;
 - N16-only first hostile capture: `requestedOwnerDelta == +ownerSuccessValueFfy` exactly once;
-- N14 + N16 first hostile capture: `requestedOwnerDelta == 0` before any balance floor, and `ownerBalanceAfter == ownerBalanceBefore`;
-- N14 low-balance case: when `ownerBalanceBefore < ownerSuccessValueFfy`, the requested delta remains the full negative reference amount and `ownerBalanceAfter == 0` under the canonical non-negative balance floor;
-- N16 successful uncaptured completion: ordinary positive Trade payout count/value is suppressed, `requestedOwnerDelta == -ownerSuccessValueFfy`, and `ownerBalanceAfter == max(0, ownerBalanceBefore - ownerSuccessValueFfy)`;
+- N14 + N16 first hostile capture: fact-level `requestedOwnerDelta == 0` before same-tick signed aggregation or any balance floor;
+- isolated N14 low-balance tick: with no other ordinary positive FFY event or signed FFY fact for that owner on the tick and `ownerBalanceBefore < ownerSuccessValueFfy`, the requested delta remains the full negative reference amount and the post-signed-stage balance is `0`;
+- isolated N16 successful-uncaptured tick: with no other ordinary positive FFY event or signed FFY fact for that owner on the tick, ordinary positive Trade payout is suppressed, `requestedOwnerDelta == -ownerSuccessValueFfy`, and post-signed-stage balance equals `max(0, ownerBalanceBefore - ownerSuccessValueFfy)`;
+- same-owner multi-fact tick: if two or more signed voyage facts resolve on one tick, the FFY owner's `tickSignedDelta` equals the sum of their already-netted fact-level requested deltas, and reversing fact-processing order must produce the same tick delta and final balance;
+- ordinary-positive-plus-signed same tick: ordinary positive FFY events must finalize before the one per-faction signed stage, so `balanceAfterSignedStage == max(0, balanceAfterOrdinaryPositiveEventsForTick + tickSignedDelta)`;
+- affordability-gated purchases/costs are not members of `tickSignedDelta`; validation must reject any implementation that hides purchase, embarkation, or strategic-weapon spending inside this signed-consequence aggregation;
 - destruction or return/termination without successful uncaptured completion produces no N16 replacement transaction;
 - repeated capture/recapture with `firstHostileCaptureResolved == true` produces no additional first-capture owner adjustment;
 - exact persistence chain: first hostile capture -> original-owner recapture -> save -> load -> hostile capture again must preserve `firstHostileCaptureResolved == true` and produce zero additional first-capture adjustment;
 - save immediately after first hostile capture -> load must preserve permanent cancellation of the original uncaptured commercial-completion path;
-- N14/N16 signed transactions never run through ordinary positive FFY modifiers a second time, including when their net signed delta is positive;
+- N14/N16 signed transactions never run through ordinary positive FFY modifiers a second time, including when their fact-level or tick-level net signed delta is positive;
 - terminal captured-cargo base remains `rawCargoFfy` even when `ownerSuccessValueFfy != rawCargoFfy`; `Vowner` must never replace physical cargo value;
 - save/load restores both the immutable voyage economic snapshot and mutable first-capture lifecycle state without revaluation/reconstruction from current ownership; deterministic replay/regeneration reproduces the immutable launch snapshot from the same versioned launch state.
 
 **Resolved mechanic-definition result (#48)**
 
-- `FFY_ECONOMY.md` now owns the missing voyage snapshot, first-capture persistence, signed-transaction netting/balance-floor execution, and ordinary cargo separation. The obligations above consume those contracts for certification; runtime conformance may remain `UNAVAILABLE` until the corresponding Open Fufu Trade gameplay implementation exists, but these traits are no longer blocked on undefined voyage-value or first-capture transaction semantics.
+- `FFY_ECONOMY.md` now owns the missing voyage snapshot, first-capture persistence, same-fact and same-tick signed-transaction netting, non-negative balance-floor execution, and ordinary cargo separation. The obligations above consume those contracts for certification; runtime conformance may remain `UNAVAILABLE` until the corresponding Open Fufu Trade gameplay implementation exists, but these traits are no longer blocked on undefined voyage-value or first-capture transaction semantics.
 
 ---
 
