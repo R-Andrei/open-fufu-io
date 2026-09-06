@@ -21,7 +21,7 @@ The focused owner defines **what a rule means**. This document defines **how ind
 
 This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
 
-The executable V1 realization lives under `src/core/rules/` and is bound by `RULE_COMPOSITION_VERSION = "1"`. The code-readable registry, manifests, normalizer, compiler, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
+The executable V1 realization lives under `src/core/rules/` and is bound by `RULE_COMPOSITION_VERSION = "1"`. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
 
 ---
 
@@ -361,7 +361,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Structure ownership cap | AXIS / hard constraint | `structure.ownershipCap[type]`; N07 static and P11 dynamic providers supply effective limits, while canonical acquisition admission and atomic slot reservation are owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Structure type build permission | AXIS / hard constraint | e.g. N09 Factory prohibition; separate from terrain eligibility and price. |
 | City Growth contribution magnitude | AXIS | `structure.effect.cityGrowth[level]`; N01 Origin then Echo specialization. |
-| Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area must remain area until geometry projection (#44). |
+| Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area remain area until geometry projection owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Fort defensive / Command offensive magnitude | AXIS | `structure.field.pressureMagnitude[type,direction]`. |
 | Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type field; not a generic percentage stack. |
 | Fort+Command cross-type pressure handling | DOMAIN REDUCER | Complement formula when both distinct field types affect same direction. |
@@ -373,7 +373,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | SAM interception range | AXIS | `structure.interception.range[SAM]`; P40 + Echo. |
 | Observation radius | AXIS | `structure.observation.radius`; under P49 the same effective radius specializes blackout field. |
 | Observation effect (`REVEAL`/`BLACKOUT`) | STRUCTURAL AXIS | P49 changes profile; numeric radius remains separately composable. |
-| SAM ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains subsystem blocker. |
+| SAM ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains owned by the focused SAM/strategic-weapons mechanic. |
 | Silo weapon-access set | CAPABILITY AXIS | Level/profile + weapon restrictions such as P25. |
 | Current ownership acquisition path | STATE | Exact owner-epoch provenance `PURCHASE_BUILD`, `GRANT`, or `CAPTURE_TRANSFER`; P34 consumes `CAPTURE_TRANSFER`. |
 
@@ -415,7 +415,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Transport embark FFY cost | AXIS | Baseline 0; P37 +250 and N15 +500 flat additions. |
 | Transport movement speed | AXIS | P12. |
 | Transport health/profile | STRUCTURAL AXIS | Baseline fragile/no pool; P32 -> 500 HP health-bearing. |
-| Landing Population survival/casualty | AXIS + lifecycle boundary | N13 50% death; exact application/rounding point is subsystem blocker. |
+| Landing Population survival/casualty | AXIS + lifecycle boundary | N13 50% death; exact application/rounding point remains owned by the amphibious lifecycle. |
 | Return Population survival fraction | AXIS-capable / baseline | 75%; no current modifier. |
 | Successful-landing structure grant | CUSTOM lifecycle | P37 emits an exact-cell L1 Fort grant after successful landing/capture resolution; generic grant admission is owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Transport-destruction Population theft | CUSTOM lifecycle | P28. |
@@ -427,7 +427,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Weapon FFY purchase cost | AXIS | `weapon.transaction.purchaseCost[type]`; P25/Echo/P26 transaction behavior. |
 | Weapon-family use permission | CAPABILITY AXIS | P25 hard-prohibits Atom/MIRV. |
 | Per-faction use count/limit | AXIS / entitlement | P26 MIRV once. |
-| Projectile speed by weapon/stage | AXIS | P10 + Echo; exact P10 projectile classes must be closed by weapon owner. |
+| Projectile speed by weapon/stage | AXIS | P10 + Echo; exact P10 projectile classes are owned by the strategic-weapons subsystem. |
 | Atom/Hydrogen blast **area** | AXIS | P25/Echo authored as area; inner/outer radius/raster projection remains weapon-domain geometry. |
 | Baseline inner/outer radii | PARAMETER / geometry basis | Focused weapon owner. |
 | MIRV max warheads, distribution radius, spacing | PARAMETER | No current generic modifier. |
@@ -458,7 +458,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Raw cargo | DERIVED | `150 × planned route length`. |
 | Destination selection | CUSTOM deterministic policy | least-recently-selected. |
 | Piracy payout multiplier | AXIS / event-specific structural multiplier | P30 `3×` on piracy event, then ordinary eligible yield specialization. |
-| Voyage `Vowner` snapshot | CUSTOM/DERIVED blocker | N14/N16 depend on a canonical formula not yet defined in FFY owner. |
+| Voyage `Vowner` snapshot | CUSTOM/DERIVED boundary | N14/N16 consume the canonical launch-time owner-side voyage value owned by `FFY_ECONOMY.md`. |
 | P52/P53 alternative passive sources | CUSTOM source providers | Produce All/general FFY source values from authoritative state. |
 
 ## 8.9 Strategic Spawn
@@ -473,8 +473,8 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Population-bearing quota classification | Consumes terrain AXIS | P48 can alter Shallow-Water quota counting for holder. |
 | Influence radius, foreign spacing, spawn immunity | PARAMETER | 400 / 50 / 5s under current V1. |
 | Deterministic tie/hash/fallback algorithms | COMPILER / RESOLVER | Bound by `spawnResolverVersion`; not ordinary modifier axes. |
-| Star template/rasterization constants | COMPILER / RESOLVER | Exact constants are a P54 blocker in Spawn owner. |
-| Random/Fixed × transforming-Origin profile | CUSTOM blocker | #32 owner. |
+| Star template/rasterization constants | COMPILER / RESOLVER | Exact P54 realization is owned by `STRATEGIC_SPAWN.md`. |
+| Random/Fixed × transforming-Origin profile | CUSTOM / RESOLVER | Mode-independent P39/P54 profile semantics and mode-specific origin resolution are owned by `STRATEGIC_SPAWN.md`. |
 
 ## 8.10 Minor Factions / Goons
 
@@ -508,12 +508,12 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P02 | BASE REPLACEMENT + CUSTOM BOUNDARY | `population.growth.utilizationProfile`: replacement curve; exact curve anchors remain Population-owned. |
 | P03 | COMPONENT SUPPRESSION | Attacker suppresses hostile `FORT` defensive-pressure field component only. |
 | P04 | FINAL OVERRIDE | `combat.counterResponse.responseEffectiveness = 1.0` as terminal `FINAL_OVERRIDE`; response-effectiveness Echoes remain legal but are inert while P04 applies. |
-| P05 | CUSTOM event | successful qualifying structure capture -> Military/conquest FFY event; base value/location still blocker. |
+| P05 | CUSTOM event | successful qualifying structure capture -> Military/conquest FFY event; base value/location remain owned by `FFY_ECONOMY.md`. |
 | P06 | NUMERIC AXIS | `unit.movementSpeed[TRADE_SHIP]`: Origin `+25%`. |
 | P07 | CUSTOM scheduler | every fourth normal primary Factory Train dispatch in each ownership epoch creates a bonus Train; ownership transfer resets owner-scoped scheduler state under `FFY_ECONOMY.md`. |
 | P08 | BASE REPLACEMENT | `ffy.externalWartimeTradeMultiplier`: `0.50 -> 1.00`. |
 | P09 | MULTI-AXIS | Fort coverage area `+10%`; Fort effective defensive pressure `+9%`; Fort build/upgrade price `-8%` on applicable Fort transaction hooks. |
-| P10 | NUMERIC AXIS | `weapon.projectileSpeed[...] +100%`; exact projectile class/stage scope remains weapon-owner blocker. |
+| P10 | NUMERIC AXIS | `weapon.projectileSpeed[...] +100%`; exact projectile class/stage scope remains strategic-weapons-owned. |
 | P11 | DYNAMIC CAP + TERMINAL COST | SAM build **and upgrade** FFY cost `HARD_ZERO`; symbolic dynamic `structure.ownershipCap[SAM] = floor(peakTotalPopulation / 25,000)` provider composes with N07 through `MIN`. |
 | P12 | NUMERIC AXIS | `unit.movementSpeed[TRANSPORT] +25%`. |
 | P13 | CONDITIONAL PRESSURE | Mountain target defensive-pressure contribution `+33%`; combat aggregation retains terrain/source provenance. |
@@ -523,32 +523,32 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P17 | SYMBOLIC DYNAMIC MULTIPLIER | `structure.transaction.upgradeCost`: exact rational `(99/100)^S`, `S=current owned structures`; compiled symbolically and materialized without basis-point rounding. |
 | P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in qualifying self/team Fort area; one qualification regardless of overlapping Fort count. |
 | P19 | SYMBOLIC DYNAMIC CONDITIONAL PRESSURE | `+500 bp` offense per distinct active other faction with current Territorial Contact; includes Goons and fixed teammate under current literal rule. |
-| P20 | CUSTOM start grant | one free starting Missile Silo; #32 owns exact start-state placement/order; canonical grant admission materializes an immediate active completed L1 Silo, while initial charge readiness remains strategic-weapon-owned. |
+| P20 | CUSTOM start grant | starting-structure grant boundary; exact Spawn placement/order is owned by `STRATEGIC_SPAWN.md`, generic grant admission/materialization by `TERRAIN_AND_STRUCTURES.md`, and initial charge readiness by `NAVAL_AND_STRATEGIC_WEAPONS.md`. |
 | P21 | CUSTOM transaction override | first successful purchase per structure type passes ordinary legality + affordability, then consumes `0 FFY`; grant/capture not purchase. |
 | P22 | FLAT AXIS | `unit.maximumRank[WARSHIP] +2`. |
 | P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`; canonical Warship build admission/reservation enforces the cap transactionally. |
-| P24 | CONDITIONAL FFY | event inside qualifying Fort area `+20%`; Fort affiliation blocker remains external. |
-| P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection external. |
+| P24 | CONDITIONAL FFY | event inside qualifying Fort area `+20%`; Fort affiliation/field realization remains structure-owned. |
+| P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection remains strategic-weapons-owned. |
 | P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
-| P27 | CAPABILITY | SAM may attack ships; exact target/damage/cadence/charge arbitration external blocker. |
-| P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order external blocker. |
-| P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; launcher charge/readiness lifecycle external. |
+| P27 | CAPABILITY | SAM may attack ships; exact targeting/damage/cadence/charge arbitration remains focused SAM/strategic-weapons behavior. |
+| P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order remains amphibious-lifecycle behavior. |
+| P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; launcher charge/readiness lifecycle remains strategic-weapons-owned. |
 | P30 | MIXED | Warship movement `+50%`; piracy event `3×`; hard prohibit Warship naval gunfire against ships while preserving Trade capture. |
 | P31 | POST-ECHO CONDITIONAL SCALARS + CUSTOM | Warship-specific Port repair radius `2×` and rate `1.5×` run in `CONTEXTUAL_SCALAR` after ordinary Port/Echo specialization; operational-while-repairing remains an explicit non-scalar boundary. |
 | P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
 | P33 | CUSTOM event side effect | qualifying Train event at owned City also grants `20 × City level` Available Population, Capacity-capped. |
 | P34 | MIXED CAPTURED-FACTORY PROFILE | Under `CAPTURE_TRANSFER`, Factory Train-event base value `×1.50`; Tank/Heavy-Artillery Factory construction work rate `×1.50`; repair rate `×1.50`; repair radius `FINAL_OVERRIDE(8 cells)`. Train dispatch-time profile snapshot persistence remains the explicit Factory/FFY lifecycle boundary. |
-| P35 | CUSTOM territorial lifecycle | deliberate relinquishment -> neutral Fallout; ordinary abandonment semantics external. |
+| P35 | CUSTOM territorial lifecycle | deliberate relinquishment -> neutral Fallout; ordinary abandonment semantics remain terrain/territory-owned. |
 | P36 | AXIS + residual lifecycle | neutral settlement Population cost `0.5/cell`; faction-level persistent residual accounting. |
-| P37 | MIXED | Transport embark cost flat `+250 FFY`; after successful amphibious landing/capture resolution, attempt one exact-cell active completed L1 Fort grant through canonical structure admission; failed grant does not roll back landing. |
+| P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing can emit the authored Fort-grant boundary while amphibious execution and generic structure admission remain with their focused owners. |
 | P38 | CUSTOM capture consequence | automatic defender survives successful capture and remains/returns Available. |
-| P39 | STRUCTURAL SPAWN PROFILE | two half-area influence regions, two origins, split one final quota; one global Population pool. |
+| P39 | STRUCTURAL SPAWN PROFILE | mode-independent two-origin/split-footprint profile; exact Strategic/Random/Fixed resolution is owned by `STRATEGIC_SPAWN.md`. |
 | P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`. |
 | P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; fresh construction targets L5 directly and completes after the canonical City build duration without hidden intermediate levels. |
 | P42 | MIXED | Warship FFY purchase cost `HARD_ZERO`; purchase Population cost `2,000`; attack range Origin `-33%`. |
 | P43 | STRUCTURAL CHASSIS PROFILE | Tank -> Heavy Artillery; establishes cost/build/speed/range/health/attack/capability profile before Tank-scoped Echo specialization. |
 | P44 | CUSTOM attack aftermath | successful Tank-chassis Population attack neutralizes deterministic nearby cells + Fallout; not ordinary capture. |
-| P45 | STRUCTURAL VISIBILITY | Forest-owned concealment filter; interior/boundary/manifestation exact projection external blocker. |
+| P45 | STRUCTURAL VISIBILITY | Forest-owned concealment filter; exact visibility/manifestation projection remains with the focused visibility owner. |
 | P46 | PERMISSION | allow persistent structures on owned Tundra; separate structure-type prohibitions still win. |
 | P47 | CUSTOM capture aftermath | enemy successfully capturing holder's Marsh -> capturer loses +1 Population after ordinary capture. |
 | P48 | CLASSIFICATION AXIS | holder-owned Shallow Water becomes population-bearing / +1 Capacity per cell through normal Capacity derivation. |
@@ -557,7 +557,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P51 | STRUCTURAL FIELD PROJECTION | Command Post also projects defense equal to **effective** Command offensive magnitude; cross-type reducer as above. |
 | P52 | CUSTOM passive source | All/general FFY source `max(0, Capacity-TotalPopulation)/250`. |
 | P53 | CUSTOM passive source | All/general FFY source `2,000/s × ready persistent Silo charges`; excludes P29/SAM charges. |
-| P54 | STRUCTURAL SPAWN PROFILE | footprint shape compact -> canonical star profile; quota/Starting Population unchanged. |
+| P54 | STRUCTURAL SPAWN PROFILE | footprint shape compact -> canonical star profile; exact resolver realization is owned by `STRATEGIC_SPAWN.md`; quota/Starting Population unchanged. |
 
 ---
 
@@ -577,10 +577,10 @@ The table below maps every current positive Origin trait to the game-wide invent
 | N10 | NUMERIC AXIS | Fort coverage **area** Origin `-25%`; same Origin slot as P09 area modifier. |
 | N11 | TERMINAL HARD ZERO | qualifying FFY event inside applicable SAM area yields exactly zero after ordinary percentages; event identity/side effects remain. |
 | N12 | HARD BUILD PROHIBITION | cannot build Warships; P42 Population funding/free FFY cannot bypass. |
-| N13 | LANDING SURVIVAL/CUSTOM BOUNDARY | `50%` carried Population dies at landing; exact lifecycle point/rounding external. |
-| N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; depends on missing FFY `Vowner` snapshot definition. |
+| N13 | LANDING SURVIVAL/CUSTOM BOUNDARY | `50%` carried Population dies at landing; exact lifecycle point/rounding remains amphibious-lifecycle-owned. |
+| N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; canonical snapshot definition remains `FFY_ECONOMY.md`-owned. |
 | N15 | FLAT AXIS | Transport embarkation `+500 FFY`; same flat slot as P37 `+250`, producing +750 together. |
-| N16 | CUSTOM Trade payout inversion | uncaptured success -> owner `-Vowner`; first hostile capture -> owner `+Vowner` once; `Vowner` blocker shared with N14. |
+| N16 | CUSTOM Trade payout inversion | uncaptured success -> owner `-Vowner`; first hostile capture -> owner `+Vowner` once; canonical snapshot definition remains `FFY_ECONOMY.md`-owned. |
 | N17 | STRUCTURAL CAPTURE OUTCOME | canonical structure-capture disposition transforms transfer to destruction; the territorial capture still succeeds and successful-transfer effects do not fire. |
 | N18 | LATE CONDITIONAL MULTIPLIER | final capture/settlement progress against **non-Fallout** target `×0.50`; Fallout targets exempt. This is not an ordinary additive terrain percentage. |
 
@@ -649,7 +649,7 @@ The 12,927 derived Echo identities remain generated from these concrete keys and
 
 ---
 
-# 12. Authoritative #43 composition cases
+# 12. Authoritative composition cases
 
 These are composition decisions owned by this contract rather than by a focused subsystem's geometry/lifecycle implementation.
 
@@ -664,7 +664,7 @@ effectiveFortCoverageArea
 = ordinaryFortCoverageArea × 0.85
 ```
 
-This contract stops at effective area. Deterministic area -> radius/raster realization is owned by the structure/geometry work (#44).
+This contract stops at effective area. Deterministic area -> radius/raster realization is owned by `TERRAIN_AND_STRUCTURES.md`.
 
 ## 12.2 P23 + P42 — Warship ordinary attack range
 
@@ -826,37 +826,24 @@ P21/P26 are different: they are transaction-consumption rules that still require
 
 ---
 
-# 14. External mechanic blockers discovered during classification
+# 14. Focused subsystem ownership boundaries
 
-The composition registry must not invent focused subsystem semantics. The following remain external blockers/owners even though this inventory records the affected axes:
+The composition registry must not invent or duplicate focused subsystem realization. This contract owns **how** rule-bearing sources combine; exact geometry, lifecycle, transaction, scheduler, visibility, and resolver mechanics remain with the canonical owners listed at the top of this document and in [`docs/README.md`](./README.md).
 
-- **#32 / Spawn:** Random/Fixed interaction with spawn-transforming Origins; singular start-state grant placement/uniqueness under multi-origin profiles.
-- **#44 / structure geometry:** deterministic Fort/SAM/Command area -> radius/raster geometry and affiliation contracts.
-- **P02:** exact replacement 30–70% utilization-curve anchors must be available canonically.
-- **P05:** structure-capture FFY base value/location.
-- **P10:** exact projectile classes/stages covered by `warhead projectile speed`.
-- **P20:** exact start-state Silo placement/order remains #32-owned; initial ready-charge state remains strategic-weapon/charge-lifecycle-owned. Generic structure grant admission, resulting active L1 state, and cap handling are already canonical.
-- **P24:** qualifying Fort affiliation.
-- **P25:** deterministic +50% Hydrogen blast-area geometry including Water-Nukes behavior.
-- **P27:** SAM anti-ship targets/damage/cadence/charge/priority semantics.
-- **P28:** Transport theft attribution/recipient/order.
-- **P29/P53:** readiness of newly created launcher charge slots on dynamic level/capacity increase.
-- **P35:** generic deliberate-abandonment result for structure-occupied cells.
-- **P36:** exact residual debit ordering/destination across concurrent settlement commitments.
-- **P37 / #50:** amphibious landing/capture execution remains with the amphibious owner. Once a successful landing establishes ownership and resolves any captured structure, exact-cell L1 Fort grant admission/activation/cap failure behavior is already canonical.
-- **P45/P49/#51:** exact tactical concealment/manifestation/blackout geometry and information contract.
-- **P54:** committed fixed-point star template constants.
-- **N11:** qualifying SAM affiliation/effective area, coordinated with structure geometry.
-- **N13:** exact landing casualty lifecycle point and deterministic half-Population rounding.
-- **N14/N16/#48:** canonical launch-time `Vowner` snapshot formula and included modifier state.
+Stable boundaries relevant to the current V1 profile include:
 
-P07/P34 Factory semantics are no longer blockers here: #58 / the Factory owner defines ownership epochs, dispatch snapshots, P07 cadence/reset behavior, P34 `CAPTURE_TRANSFER` provenance, and P34's exact transformed effect set. Structure acquisition/capture admission and Warship ownership reservation are likewise no longer blockers: `TERRAIN_AND_STRUCTURES.md` owns atomic persistent-structure admission/capture resolution, and `NAVAL_AND_STRATEGIC_WEAPONS.md` owns Warship build admission/reservation. P41's direct-L5 fresh-construction lifecycle is canonical in the structure owner.
+- Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, field geometry/affiliation, and generic structure grant realization; this layer owns effective modifier axes and hard-cap/permission composition.
+- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, SAM/launcher behavior, charge readiness, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
+- `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
+- `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.
+- Focused visibility/territory owners retain concealment, manifestation, abandonment, and other lifecycle realization where this inventory exposes only a profile/custom boundary.
 
-These remaining items are not reasons to add arbitrary priority values or hidden compatibility vetoes. Each focused owner must supply the missing semantic input; the composition layer then consumes it through the appropriate typed axis/profile/event contract.
+Work/progress state for any focused subsystem belongs in GitHub issues and pull requests, not in this canonical mechanics contract. A focused owner becoming more complete does not require this document to mirror its implementation-status ledger; this document changes only when the composition interface or owned algebra changes.
 
 ---
 
-# 15. Compiled and normalized effective-rule representation
+# 15. Compiled, normalized, and materialized effective-rule representation
 
 The machine-readable implementation compiles the **complete** rule-bearing profile before subsystem execution. Static contributions, symbolic dynamic providers, and explicit custom-domain declarations are all first-class compiled content.
 
@@ -885,6 +872,14 @@ value        = +2000 bp
 P42 contributes `-3300 bp` to the same slot. Normalization produces the canonical mathematical result for that slot while the compiled profile retains authored provenance for diagnostics.
 
 A symbolic dynamic provider instead records the same target/stage/provenance identity plus an authoritative state dependency, closed formula, and result operand kind. It remains symbolic in canonical compilation; runtime materialization evaluates only that closed provider against authoritative state. P17's result is therefore an exact rational rather than an approximated basis-point scalar.
+
+At runtime, an evaluated dynamic provider is converted into the same normalized reducer-term vocabulary used by static rules:
+
+- `ADD_PERCENT + BASIS_POINTS` -> `SUM`;
+- `MULTIPLY + exact rational` -> `PRODUCT`;
+- `CAP_LIMIT + INTEGER` -> `MIN`.
+
+Scope selection then combines matching static normalized rules and resolved dynamic terms in the axis's declared stage order. Wildcard authored scopes participate normally. Condition-bearing terms must be resolved against authoritative domain context before materialization; the generic materializer rejects unresolved conditions rather than guessing applicability.
 
 Custom-domain declarations name the genuine lifecycle/resolver boundary instead of allowing an unimplemented axis effect to disappear behind a generic `CUSTOM` label.
 
@@ -920,7 +915,7 @@ Before a rule-bearing catalogue/ruleset version is deployable, static validation
 16. source provenance is valid for the semantic stage it authors, while provenance and execution stage remain independent concepts;
 17. malformed runtime scope/condition payloads, wildcard equality predicates, and noncanonical unknown fields are rejected;
 18. set-valued operands have one canonical sorted/deduplicated identity;
-19. focused subsystem blockers are reported as missing dependencies rather than silently guessed by the normalizer.
+19. focused subsystem ownership boundaries are surfaced explicitly rather than silently guessed by the normalizer or duplicated as secondary mechanics.
 
 For the current finite Origin catalogue, the structural/static compiler enumerates **every builder-legal trait combination using the complete profile representation**. Expensive runtime/headless certification remains domain-focused under the existing Origin-validation architecture rather than simulating every possible dynamic state value or every named Origin instance.
 
@@ -928,11 +923,11 @@ Property tests additionally permute raw static/dynamic/custom input streams and 
 
 ---
 
-# 17. Implementation boundary and closure status for issue #43
+# 17. Implementation boundary and closure status
 
-Issue #43 lands the code-readable composition foundation without requiring every gameplay subsystem to be migrated to the new runtime in the same change.
+This V1 composition change lands the code-readable composition foundation without requiring every gameplay subsystem to be migrated to the new runtime in the same change.
 
-The #43 branch now contains:
+The implementation contains:
 
 1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
 2. code-readable axis/slot/operator/unit/reducer types and registry;
@@ -940,25 +935,26 @@ The #43 branch now contains:
 4. conjunction-capable exact-shape conditions and canonical acquisition-path provenance;
 5. complete compiled profiles containing normalized static rules, symbolic dynamic providers, and exact custom-domain declarations;
 6. exact rational dynamic evaluation where basis points cannot faithfully represent the formula;
-7. canonical normalization/serialization and full profile validation;
-8. exhaustive builder-legal **complete Origin-profile** compilation validation;
-9. permutation/property and authoritative golden-case coverage;
-10. provenance-vs-stage validation and conjunction-aware singleton-conflict validation;
-11. explicit focused-subsystem blocker boundaries rather than guessed composition semantics.
+7. runtime materialization that combines normalized static terms and authoritative-state-resolved dynamic terms through the same axis stage reducers;
+8. canonical normalization/serialization and full profile validation;
+9. exhaustive builder-legal **complete Origin-profile** compilation validation;
+10. permutation/property and authoritative golden-case coverage;
+11. provenance-vs-stage validation and conjunction-aware singleton-conflict validation;
+12. explicit focused-subsystem ownership boundaries rather than guessed composition semantics.
 
-The remaining work in §14 is deliberately **not** #43 composition work. Owning subsystem implementations consume this compiled/effective-rule contract as those mechanics are implemented.
+The focused realization work named in §14 is deliberately not composition-layer work. Owning subsystem implementations consume this compiled/effective-rule contract as those mechanics are implemented.
 
-The closure gate for #43 is:
+The closure gate for this composition foundation is:
 
-> **No ambiguous current Origin/Echo modifier definition remains in the composition layer; the complete current V1 modifiable-axis vocabulary is represented; every current static, dynamic, and explicitly custom rule declaration can be classified and compiled; normalization/serialization is deterministic; every builder-legal complete Origin profile statically compiles; and remaining unresolved semantics are explicitly identified as focused subsystem dependencies rather than hidden arithmetic.**
+> **No ambiguous current Origin/Echo modifier definition remains in the composition layer; the complete current V1 modifiable-axis vocabulary is represented; every current static, dynamic, and explicitly custom rule declaration can be classified and compiled; normalization/serialization is deterministic; every builder-legal complete Origin profile statically compiles; and focused subsystem semantics remain explicit ownership boundaries rather than hidden arithmetic or duplicated status.**
 
-That composition-layer closure gate is satisfied by the executable registry/manifests/compiler/normalizer and current validation suite on the #43 branch once the exact final head passes the repository and deep-validation gates.
+That composition-layer closure gate is satisfied by the executable registry/manifests/compiler/normalizer/materializer and validation suite once the exact final head passes the repository and deep-validation gates.
 
 ---
 
 ## Follow-up integration work
 
 - Consume the compiled/effective-rule contract from each focused gameplay subsystem as that subsystem's implementation lands; do not reimplement Origin/Echo precedence locally.
-- Keep §14 blockers with their named focused owners/issues, especially #32, #44, #48, #50, and #51 where applicable.
+- Keep focused mechanics with their canonical owners; do not copy GitHub blocker/progress state into this contract.
 - Preserve the mandatory gameplay / Origins-traits / Character-AI cross-layer impact record when downstream mechanics begin consuming these effective rules.
 - Increment `RULE_COMPOSITION_VERSION` only for a semantic/schema compatibility change that can alter normalized interpretation or replay identity.
