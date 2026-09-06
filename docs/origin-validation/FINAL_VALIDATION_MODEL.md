@@ -102,8 +102,8 @@ The following groups are required by the completed audit. This is a validation r
 
 - **P01 + P39** — modified total Initial-Territory quota is split only after P01 changes the total.
 - **P01 + P54** — star geometry preserves P01's modified quota.
-- **P39 + P54** — both P39 footprints use the star profile while preserving one total faction quota/Population pool.
-- **P39 + P20** — singular starting-Silo grant under a multi-origin profile; exact unresolved mode semantics are routed to #32. Once #32 selects the grant location/order, #45's generic grant admission/lifecycle applies.
+- **P39 + P54** — both stable P39 footprints use independent `P54_STAR_V1` priority fields while preserving one total faction quota/Population pool.
+- **P39 + P20** — after Initial-Territory ownership, exactly one starting-Silo grant is requested at stable primary `originSlot 0`; P39 never duplicates the singular grant, and #45's generic exact-cell admission/lifecycle applies without a fallback Silo location.
 - **P48 with P01/P39/P54 footprint accounting** — faction-effective population-bearing Shallow Water must be respected wherever Spawn quota accounting queries population-bearing classification.
 
 ### Population / growth / settlement
@@ -142,7 +142,7 @@ The following groups are required by the completed audit. This is a validation r
 - **P05 + N17** — P05 consumes `STRUCTURE_TRANSFERRED`, so it does not fire on N17 `DESTROYED_ON_CAPTURE`.
 - **P05 + P34** — when transfer is admitted, capture FFY and conquered-Factory provenance can coexist on one atomic capture resolution.
 - **P07 + P33** — bonus Trains produce ordinary qualifying Train events and therefore P33 Population side effects.
-- **P07 + P34** — transformed Factory semantics must define how P07 scheduling participates; routed to #49.
+- **P07 + P34** — #49 closes their interaction through owner-scoped Factory Train-service epochs and dispatch-time Factory economic snapshots; P07 cadence remains unchanged while qualifying primary/bonus Trains consume the P34-transformed Factory profile.
 - **P14 + P24** — independent eligible spatial FFY modifiers may apply to the same event through the canonical FFY modifier algebra.
 - **P14/P24/N04 + N11** — N11's explicit hard zero cannot be resurrected by ordinary positive/negative yield percentages.
 - **N14 + N16** — first-hostile-capture owner-side `-Vowner` and `+Vowner` deltas cancel exactly while physical cargo continues normally.
@@ -187,14 +187,14 @@ The full audit intentionally did not invent missing gameplay semantics inside #3
 
 | Issue | Canonical closure scope | Principal audit blockers routed there |
 | --- | --- | --- |
-| **#32 — Random/Fixed Spawn × spawn-transforming Origins** | Strategic Spawn profiles/resolver | P39/P54 Random/Fixed behavior, multi-origin singular grants including P20 ordering, exact resolver-v1 P54 star representation/constants |
+| **#32 — Random/Fixed Spawn × spawn-transforming Origins** | Spawn profiles/resolver | **resolved by #32:** mode-independent P39/P54 semantics across Strategic/Random/Fixed, stable P39 slots and quota split, deterministic Random origins, strict Fixed inputs, singular P20 slot-0 ordering, and exact `P54_STAR_V1` template/scoring/replay binding |
 | **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition, generic normalization of multiple cap-valued rule sources |
 | **#44 — structure-field geometry and affiliation** | effective Fort/SAM fields | area→geometry/raster conversion, P24 qualifying Fort affiliation, N11 qualifying SAM affiliation/effective P40 area |
 | **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved by #45:** generic structure acquisition/grants/capture resolver, in-progress structure-state preservation, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
 | **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
 | **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
 | **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
-| **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | P07 counter transfer lifecycle, P34 exact `2× ordinary Factory effect` axes and focused provenance lifecycle |
+| **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | **resolved by #49:** owner-scoped P07 Factory Train-service epochs/serialized phase, exact P34 transformed Factory axes, current-ownership conquest provenance, and dispatch-time Train economic snapshots |
 | **#50 — naval/amphibious Origin interactions** | Transport/SAM-vs-ship mechanics | N13 landing casualty order/rounding, P27 complete anti-ship SAM behavior, P28 Transport-Population theft |
 | **#51 — tactical observation/concealment** | observation visibility contract | P45 Forest interior/boundary geometry, P45/P49 minimum hostile-manifestation reveal payload/precedence/lifetime |
 
@@ -202,9 +202,11 @@ No remaining discovered mechanic-definition blocker is owned by issue #31. #31 o
 
 Closed dependencies and resolved downstream contracts are consumed directly from their canonical owners:
 
+- **#32** closes P39/P54 all-mode Spawn semantics, P20 multi-origin singular-grant ordering, and resolver-v1 `P54_STAR_V1` geometry/replay binding;
 - **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
 - **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
-- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #32/#43/#46/#48/#49/#50 boundaries;
+- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #43/#46/#48/#50 boundaries;
+- **#49** closes P07 Factory Train-service ownership-epoch behavior and P34 conquered-Factory effectiveness/provenance, consumed directly from the Factory/Train canonical owners;
 - **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
 
 ---
@@ -224,6 +226,6 @@ The #31 design/documentation work is complete when all of the following are true
 - discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
 - neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
 
-All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#32, #43, #44, #46–#51) is owned by those systems/issues; #45's scoped mechanics are resolved by #45's canonical contract. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
+All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#43, #44, #46–#48, #50–#51) is owned by those systems/issues; #32, #45, and #49 scoped mechanics are resolved by their canonical contracts. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
 
 Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.
