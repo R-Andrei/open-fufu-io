@@ -65,38 +65,47 @@ function readAtGitRef(ref: string, path: string): string | undefined {
   }
 }
 
-function issueReferenceCounts(markdown: string): ReadonlyMap<string, number> {
+function mutableGitHubReferenceCounts(text: string): ReadonlyMap<string, number> {
   const counts = new Map<string, number>();
-  const issueRef = /(^|[^A-Za-z0-9_])#(\d+)\b/gm;
-  for (const match of markdown.matchAll(issueRef)) {
-    const issue = match[2];
-    if (issue === undefined) continue;
-    counts.set(issue, (counts.get(issue) ?? 0) + 1);
-  }
-  return counts;
-}
+  const add = (key: string): void => {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  };
 
-function canonicalMarkdownOwners(
-  owners: readonly CanonicalOwner[],
-): readonly CanonicalOwner[] {
-  return owners.filter((owner) => owner.path.endsWith(".md"));
+  const shorthand = /(^|[^A-Za-z0-9_])#(\d+)\b/gm;
+  for (const match of text.matchAll(shorthand)) {
+    const number = match[2];
+    if (number !== undefined) add(`#${number}`);
+  }
+
+  const githubWorkUrl =
+    /https?:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/(?:issues|pull)\/(\d+)\b/gm;
+  for (const match of text.matchAll(githubWorkUrl)) {
+    const url = match[0];
+    if (url !== undefined) add(`URL:${url}`);
+  }
+
+  return counts;
 }
 
 function assertOwnerMapIntegrity(owners: readonly CanonicalOwner[]): void {
   for (const owner of owners) readCurrent(owner.path);
 }
 
-function assertStrictNoIssueReferences(owners: readonly CanonicalOwner[]): void {
+function assertStrictNoMutableGitHubReferences(
+  owners: readonly CanonicalOwner[],
+): void {
   const violations: string[] = [];
-  for (const owner of canonicalMarkdownOwners(owners)) {
-    const counts = issueReferenceCounts(readCurrent(owner.path));
-    for (const [issue, count] of counts) {
-      violations.push(`${owner.path}: #${issue} (${count} occurrence${count === 1 ? "" : "s"})`);
+  for (const owner of owners) {
+    const counts = mutableGitHubReferenceCounts(readCurrent(owner.path));
+    for (const [reference, count] of counts) {
+      violations.push(
+        `${owner.path}: ${reference} (${count} occurrence${count === 1 ? "" : "s"})`,
+      );
     }
   }
   if (violations.length > 0) {
     fail(
-      `strict mode forbids GitHub issue-number status/dependency references in canonical docs:\n${violations
+      `strict mode forbids mutable GitHub issue/PR work-state references in canonical owners:\n${violations
         .sort()
         .map((entry) => `  - ${entry}`)
         .join("\n")}`,
@@ -104,15 +113,15 @@ function assertStrictNoIssueReferences(owners: readonly CanonicalOwner[]): void 
   }
 }
 
-function assertNoNewIssueReferences(
+function assertNoNewMutableGitHubReferences(
   owners: readonly CanonicalOwner[],
   baseRef: string,
 ): void {
   const baseMap = readAtGitRef(baseRef, OWNER_MAP_PATH);
   const baseOwners = baseMap === undefined ? [] : parseCanonicalOwners(baseMap);
   const paths = new Set([
-    ...canonicalMarkdownOwners(baseOwners).map((owner) => owner.path),
-    ...canonicalMarkdownOwners(owners).map((owner) => owner.path),
+    ...baseOwners.map((owner) => owner.path),
+    ...owners.map((owner) => owner.path),
   ]);
   const violations: string[] = [];
 
@@ -120,13 +129,13 @@ function assertNoNewIssueReferences(
     const current = existsSync(resolve(REPO_ROOT, path)) ? readCurrent(path) : undefined;
     if (current === undefined) continue;
     const base = readAtGitRef(baseRef, path);
-    const baseCounts = issueReferenceCounts(base ?? "");
-    const currentCounts = issueReferenceCounts(current);
-    for (const [issue, currentCount] of currentCounts) {
-      const baseCount = baseCounts.get(issue) ?? 0;
+    const baseCounts = mutableGitHubReferenceCounts(base ?? "");
+    const currentCounts = mutableGitHubReferenceCounts(current);
+    for (const [reference, currentCount] of currentCounts) {
+      const baseCount = baseCounts.get(reference) ?? 0;
       if (currentCount > baseCount) {
         violations.push(
-          `${path}: #${issue} increased from ${baseCount} to ${currentCount}`,
+          `${path}: ${reference} increased from ${baseCount} to ${currentCount}`,
         );
       }
     }
@@ -134,7 +143,7 @@ function assertNoNewIssueReferences(
 
   if (violations.length > 0) {
     fail(
-      `canonical docs may not add mutable GitHub issue-number status/dependency copies:\n${violations
+      `canonical owners may not add mutable GitHub issue/PR work-state references:\n${violations
         .sort()
         .map((entry) => `  - ${entry}`)
         .join("\n")}`,
@@ -154,9 +163,9 @@ const currentOwners = parseCanonicalOwners(currentMap);
 
 assertOwnerMapIntegrity(currentOwners);
 if (strict) {
-  assertStrictNoIssueReferences(currentOwners);
+  assertStrictNoMutableGitHubReferences(currentOwners);
 } else if (baseRef !== undefined) {
-  assertNoNewIssueReferences(currentOwners, baseRef);
+  assertNoNewMutableGitHubReferences(currentOwners, baseRef);
 }
 
 console.log(
