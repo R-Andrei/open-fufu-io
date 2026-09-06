@@ -42,6 +42,26 @@ They do not escalate based on prior launches.
 | MIRV carrier | **150 cells/s** |
 | MIRV warhead after separation | **220 cells/s** |
 
+### 1.2.1 Canonical projectile taxonomy and motion snapshots
+
+V1 distinguishes a **warhead projectile** from the pre-separation MIRV carrier. This classification is semantic, not presentation shorthand:
+
+```text
+warhead projectile:
+  Atom Bomb projectile
+  Hydrogen Bomb projectile
+  separated MIRV warhead
+
+not a warhead projectile:
+  pre-separation MIRV carrier
+```
+
+Origin rules such as P10 may transform the `warhead projectile` class; the modifier itself remains authored in `ORIGIN_TRAIT_CATALOGUE.md`. A projectile class outside that set does not inherit a warhead-only modifier merely because it participates in the same strategic weapon.
+
+Changing projectile speed changes elapsed travel time and therefore the physical interception opportunity. It does **not** by itself change blast geometry/effect, weapon cost, launcher legality, target distribution, MIRV payload count, or MIRV separation progress.
+
+At accepted launch commit, the authoritative simulation binds the effective motion profile used by the projectile. A MIRV launch binds **both** its carrier motion profile and the child-warhead motion profile that will be used if/when separation occurs. Later state changes do not retroactively recalculate an already launched projectile's speed, and MIRV separation materializes child warheads from the launch-bound child profile rather than re-reading mutable faction state.
+
 ## 1.3 Atom and Hydrogen blast geometry
 
 | Weapon | Fully affected inner radius | Irregular outer radius |
@@ -49,7 +69,346 @@ They do not escalate based on prior launches.
 | Atom Bomb | **12** | **30** |
 | Hydrogen Bomb | **80** | **100** |
 
-The inner zone is fully affected. The annulus between inner and outer radius uses a deterministic irregular boundary/fill so the blast is not a perfect circle while remaining replay-stable.
+The inner zone is fully affected. The annulus between inner and outer radius uses the versioned deterministic irregular footprint profile below.
+
+### 1.3.1 Area transforms
+
+Blast **area** transforms act on squared radial geometry. They are not interpreted as the same percentage change to radius.
+
+For a positive rational effective area multiplier `p/q`, `p` and `q` are positive exact integers and the authoritative representation is always reduced:
+
+```text
+p > 0
+q > 0
+gcd(p, q) = 1
+```
+
+Equivalent unreduced fractions are normalized before effective-profile binding, serialization, hashing, comparison, or replay. P25's authored Hydrogen area multiplier is therefore canonically `3/2`, never `6/4`, `150/100`, or another equivalent representation.
+
+Keep the transformed squared profile as exact integers with one common positive denominator:
+
+```text
+innerNumerator  = baselineInnerRadius² × p
+outerNumerator  = baselineOuterRadius² × p
+profileDenominator = q
+```
+
+A candidate squared distance `d2` is therefore inside the transformed full core exactly when:
+
+```text
+d2 × profileDenominator <= innerNumerator
+```
+
+and outside the maximum transformed outer bound exactly when:
+
+```text
+d2 × profileDenominator > outerNumerator
+```
+
+The multiplier value is owned by the rule that supplies it. For example, P25 supplies its authored Hydrogen-only blast-area multiplier from `ORIGIN_TRAIT_CATALOGUE.md`; this document owns how an effective area multiplier becomes strategic-blast geometry.
+
+The rational representation is authoritative. Implementations must not turn an area multiplier into the same multiplier on radius, round an intermediate radius or transformed irregular threshold, or force the final discrete lattice footprint to contain an exact proportional cell count. Map edges, Impassable cells, and lattice discretization can change the realized count without changing the rule.
+
+### 1.3.2 `STRATEGIC_BLAST_V1` — exact deterministic footprint
+
+All Atom-Bomb, Hydrogen-Bomb, and MIRV-warhead blast footprints use one canonical profile in V1:
+
+```text
+profileVersion = STRATEGIC_BLAST_V1
+```
+
+The resolver inputs are:
+
+```text
+centerCell
+innerNumerator
+outerNumerator
+profileDenominator
+blastSeed : uint32
+profileVersion = STRATEGIC_BLAST_V1
+```
+
+All arithmetic that participates in membership is exact integer/rational arithmetic. Implementations may use `BigInt`, checked wide integers, or an exactly equivalent representation; floating-point rounding is not authoritative.
+
+#### Canonical 32-bit hash primitive
+
+`STRATEGIC_BLAST_V1` reuses the already-frozen `FNV1A32_LENPREFIX_V1` byte serialization and FNV-1a 32-bit hash defined in `STRATEGIC_SPAWN.md` §3.1. This is reuse of the hash/serialization primitive only; Spawn does not own strategic-blast semantics.
+
+Define:
+
+```text
+blastHash32(domain, matchSeed, ...canonicalKeys)
+= FNV1A32_LENPREFIX_V1(
+    domain,
+    "STRATEGIC_BLAST_V1",
+    matchSeed,
+    ...canonicalKeys
+  )
+```
+
+Strings use exact UTF-8 bytes and exact integers use canonical base-10 ASCII exactly as specified by that primitive. Floating-point keys and host-language object serialization are forbidden.
+
+#### Canonical accepted-launch identity
+
+Every physical strategic launcher owns one exact non-negative `acceptedLaunchCount`. It is initialized to `0` when that physical object first becomes an operational strategic launcher. It is physical launcher state: ordinary Silo upgrades, Warship movement/rank changes, and a successful transfer of a physical launcher preserve it; destruction removes it with the launcher. A rejected launch proposal does not increment it.
+
+Every successfully committed strategic launch receives exactly one stable identity:
+
+```text
+strategicLaunchId = (launcherId, acceptedLaunchOrdinal)
+```
+
+For one atomic transaction and one physical launcher, let `baseOrdinal` be that launcher's `acceptedLaunchCount` in the immutable pre-state. Collect every launch from that launcher that the transaction will accept, then canonicalize that multiset independently of source-array position and controller command key:
+
+1. group launches by `(weaponType, targetCellId)`;
+2. order weapon types `ATOM_BOMB < HYDROGEN_BOMB < MIRV`;
+3. order groups lexicographically by that weapon order and then ascending exact `targetCellId`;
+4. for a group containing `n` semantically identical projectile launches, define canonical `duplicateIndex = 0..n-1` and materialize those otherwise fungible projectile results in ascending duplicate index;
+5. walk the ordered groups/duplicate indices and assign `acceptedLaunchOrdinal = baseOrdinal + runningIndex`;
+6. on successful atomic commit, increase `acceptedLaunchCount` by exactly the number of accepted launches from that launcher.
+
+Command keys remain receipt/correlation metadata and never enter this canonicalization. Reordering a controller's source command array cannot exchange blast identities between different weapon/target intents. Exact duplicates receive the same set of consecutive identities regardless of their source ordering.
+
+The immutable match `matchSeed` is the same canonical match-seed value consumed by the deterministic Spawn resolver. A launch-bound root seed is:
+
+```text
+blastSeed = blastHash32(
+  "strategic-blast-root",
+  matchSeed,
+  launcherId,
+  acceptedLaunchOrdinal,
+  weaponType,
+  targetCellId
+)
+```
+
+Two otherwise identical launches from the same launcher therefore receive different blast identities because their accepted-launch ordinals differ. Replaying the same accepted `strategicLaunchId` reproduces the same root seed exactly.
+
+#### Sixteen deterministic boundary knots
+
+The irregular boundary uses these sixteen fixed direction knots in counter-clockwise order from east:
+
+```text
+K0  = ( 1,  0)
+K1  = ( 2,  1)
+K2  = ( 1,  1)
+K3  = ( 1,  2)
+K4  = ( 0,  1)
+K5  = (-1,  2)
+K6  = (-1,  1)
+K7  = (-2,  1)
+K8  = (-1,  0)
+K9  = (-2, -1)
+K10 = (-1, -1)
+K11 = (-1, -2)
+K12 = ( 0, -1)
+K13 = ( 1, -2)
+K14 = ( 1, -1)
+K15 = ( 2, -1)
+```
+
+Let:
+
+```text
+U = 2^32 - 1 = 4,294,967,295
+```
+
+For each knot index `i = 0..15`, derive one unsigned 32-bit irregularity sample without a mutable RNG stream:
+
+```text
+u[i] = blastHash32(
+  "strategic-blast-knot",
+  matchSeed,
+  blastSeed,
+  i
+)
+```
+
+Map that sample linearly onto the exact squared-radius interval:
+
+```text
+rawNumerator[i]
+= innerNumerator × (U - u[i])
++ outerNumerator × u[i]
+
+rawDenominator
+= profileDenominator × U
+```
+
+Then perform exactly one circular smoothing pass from the unchanged `rawNumerator[]` values:
+
+```text
+smoothNumerator[i]
+= 3 × rawNumerator[i]
++ rawNumerator[(i + 15) % 16]
++ rawNumerator[(i + 1) % 16]
+
+smoothDenominator
+= 5 × profileDenominator × U
+```
+
+No iterative/in-place smoothing is allowed.
+
+#### Exact sector interpolation and membership
+
+For candidate cell `(x, y)` around center `(centerX, centerY)`:
+
+```text
+dx = x - centerX
+dy = y - centerY
+d2 = dx × dx + dy × dy
+
+cross((ax, ay), (bx, by)) = ax × by - ay × bx
+```
+
+Classification begins with the exact transformed core/outer comparisons:
+
+```text
+if cell is Impassable:
+    UNAFFECTED
+else if d2 × profileDenominator <= innerNumerator:
+    CORE
+else if d2 × profileDenominator > outerNumerator:
+    UNAFFECTED
+else:
+    continue with irregular FRINGE test
+```
+
+For a non-core candidate vector `P = (dx, dy)`, choose the unique sector `i` whose half-open counter-clockwise cone is bounded by `A = K[i]` and `B = K[(i + 1) % 16]`:
+
+```text
+cross(A, P) >= 0
+and
+cross(P, B) > 0
+```
+
+The first boundary ray belongs to the sector; the second belongs to the next sector. Every non-zero vector belongs to exactly one of the sixteen sectors.
+
+Within that sector define exact non-negative interpolation weights:
+
+```text
+leftWeight  = cross(P, B)
+rightWeight = cross(A, P)
+weightSum   = leftWeight + rightWeight
+```
+
+The candidate lies in the irregular FRINGE exactly when:
+
+```text
+d2 × smoothDenominator × weightSum
+<=
+smoothNumerator[i] × leftWeight
++ smoothNumerator[(i + 1) % 16] × rightWeight
+```
+
+Otherwise it is UNAFFECTED.
+
+This rule requires no trigonometry, no platform-specific floating point, and no mutable random stream. The rectangular scan bound, iteration strategy, cache shape, or other search optimization is non-authoritative as long as every potentially eligible cell is considered and the exact comparison above produces the same set.
+
+Because `rawNumerator` is linear in both transformed squared-profile inputs, multiplying the complete squared profile by an effective area factor preserves the same normalized irregular shape for the same `blastSeed`. An area transformation therefore scales one deterministic profile; it does not reroll or invent a second irregular boundary.
+
+The inherited OpenFront `NukeExecution` implementation is not canonical for this target contract: it currently uses different ordinary-vs-Water-Nukes fringe algorithms and derives randomness from the detonation tick. Downstream runtime migration must converge on `STRATEGIC_BLAST_V1` rather than treating inherited behavior as normative.
+
+### 1.3.3 Stable blast identity and MIRV child seeds
+
+The root `blastSeed` and `strategicLaunchId` are derived/bound at accepted launch commit by the exact rules above and are serialized/replayed directly together with `profileVersion = STRATEGIC_BLAST_V1`.
+
+The seed **must not** depend on:
+
+```text
+detonation tick
+arrival tick
+elapsed flight duration
+controller completion order
+controller command-array order
+controller command key
+mutable global-RNG position
+```
+
+Changing only projectile motion therefore cannot silently reroll a blast footprint.
+
+A MIRV root launch binds one `rootBlastSeed` with the same `strategic-blast-root` rule using `weaponType = MIRV`, its own accepted-launch ordinal, and the submitted primary target. Once its canonical deterministic child target/order list is resolved, child blast seeds are assigned independently by canonical child index:
+
+```text
+childBlastSeed[childIndex]
+= blastHash32(
+    "strategic-blast-child",
+    matchSeed,
+    rootBlastSeed,
+    childIndex
+  )
+```
+
+Canonical child index is the child's index in the deterministic MIRV target/payload order. Seed assignment depends on neither separation timing nor later interception, so destroying one child cannot shift the seeds of its siblings.
+
+Replay may store each child seed explicitly or store the root seed plus the profile version and complete canonical child ordering from which the same child seeds are regenerated. Either representation must reproduce the identical affected-cell set.
+
+### 1.3.4 `STRATEGIC_BLAST_V1` golden vectors
+
+Implementations claiming `STRATEGIC_BLAST_V1` compatibility must reproduce these vectors exactly. They use the canonical `FNV1A32_LENPREFIX_V1` primitive from `STRATEGIC_SPAWN.md` §3.1.
+
+Root-launch vectors use:
+
+```text
+matchSeed             = "seed-0001"
+launcherId            = "SILO-A"
+targetCellId          = 12345
+profileVersion        = STRATEGIC_BLAST_V1
+```
+
+| Root call | Expected uint32 | Hex |
+| --- | ---: | --- |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "HYDROGEN_BOMB", 12345)` | `3895629164` | `0xE832956C` |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 1, "HYDROGEN_BOMB", 12345)` | `2879337487` | `0xAB9F340F` |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "MIRV", 12345)` | `1024784900` | `0x3D14FA04` |
+
+The first two rows intentionally prove that two accepted launches with otherwise identical launcher/weapon/target inputs receive different stable roots through their distinct accepted-launch ordinals.
+
+For Hydrogen root seed `3895629164` (`0xE832956C`), representative knot samples are normative:
+
+| Knot | Expected `u[i]` | Hex |
+| ---: | ---: | --- |
+| `0` | `3659862710` | `0xDA2512B6` |
+| `1` | `3676640329` | `0xDB251449` |
+| `7` | `3710195567` | `0xDD25176F` |
+| `15` | `4028001839` | `0xF0166E2F` |
+
+For MIRV root seed `1024784900` (`0x3D14FA04`), child-seed derivation is normative:
+
+| `childIndex` | Expected child seed | Hex |
+| ---: | ---: | --- |
+| `0` | `3314979209` | `0xC5969189` |
+| `1` | `3298201590` | `0xC4968FF6` |
+| `249` | `3481733626` | `0xCF8709FA` |
+
+For the authored P25 Hydrogen area multiplier `3/2`, baseline Hydrogen radii `80/100` bind the exact effective profile as:
+
+```text
+innerNumerator     = 80² × 3  = 19,200
+outerNumerator     = 100² × 3 = 30,000
+profileDenominator = 2
+```
+
+This is exactly equivalent to squared thresholds `9,600` and `15,000`; the reduced rational representation above is the authoritative serialized form.
+
+Using that P25 profile, Hydrogen root seed `0xE832956C`, center `(0,0)`, and non-Impassable candidate cells, these classifications are normative:
+
+| Relative cell `(dx,dy)` | Class |
+| --- | --- |
+| `(0,0)` | `CORE` |
+| `(90,0)` | `CORE` |
+| `(69,69)` | `CORE` |
+| `(70,70)` | `FRINGE` |
+| `(99,0)` | `FRINGE` |
+| `(100,50)` | `FRINGE` |
+| `(110,0)` | `FRINGE` |
+| `(109,54)` | `UNAFFECTED` |
+| `(120,0)` | `UNAFFECTED` |
+| `(123,0)` | `UNAFFECTED` |
+
+`(100,50)` lies exactly on one fixed direction-knot ray and therefore also exercises the half-open sector convention. Enabling Water Nukes must preserve every classification in this table; only the effect applied to `CORE` changes.
+
+Changing field serialization, the root-identity inputs, hash constants/order, knot hashes, smoothing, sector convention, exact rational comparisons, or another normative vector requires a new blast profile version; it must not silently redefine `STRATEGIC_BLAST_V1`.
 
 ## 1.4 Standard strategic-weapon effect
 
@@ -67,15 +426,22 @@ A persistent structure or mobile unit whose physical cell lies inside the resolv
 
 ## 1.5 Optional Water Nukes
 
-Water Nukes are a **default-OFF optional V1 ruleset**. When enabled, the fully affected inner blast zone also becomes a permanent Deep-Water conversion core; the irregular outer annulus keeps ordinary neutralization + Fallout.
+Water Nukes are a **default-OFF optional V1 ruleset**. They do not own or replace blast geometry. Every weapon first resolves one ordinary `STRATEGIC_BLAST_V1` footprint using its already-effective squared profile and launch-bound seed.
 
-| Weapon | Deep-Water core | Ordinary Fallout fringe |
-| --- | ---: | ---: |
-| Atom Bomb | **0–12** | **12–30** |
-| Hydrogen Bomb | **0–80** | **80–100** |
-| MIRV warhead | **0–12** | **12–18** |
+When Water Nukes is enabled, it changes the effect applied to the resolved footprint classes:
 
-For each eligible cell inside the core, apply ordinary nuclear ownership/Population/Capacity/unit/structure consequences first, then convert terrain:
+```text
+CORE:
+    ordinary nuclear ownership/Population/Capacity/unit/structure consequences
+    then eligible terrain converts to Deep Water
+
+FRINGE:
+    ordinary nuclear neutralization/Fallout consequences
+```
+
+There is no Water-Nukes-specific fringe generator and no second radius/area transformation.
+
+For each eligible CORE cell, apply ordinary nuclear consequences first, then convert terrain:
 
 ```text
 ordinary land   → Deep Water
@@ -89,6 +455,59 @@ A converted cell is unowned, non-population-bearing, non-buildable, removed from
 The resulting Deep Water immediately affects naval connectivity, pathing, coast/shore derivation, Capacity, and victory calculations. Segment membership remains immutable.
 
 The ruleset intentionally provides no anti-cheese protection against terrain destruction.
+
+## 1.6 Strategic-launch transaction and replay binding
+
+Every player/controller strategic launch identifies one exact physical launcher. Launch legality is evaluated against one immutable pre-state and includes at minimum:
+
+```text
+launcher ownership/activity
++ effective launcher level / weapon access
++ weapon-use permission
++ target legality
++ effective FFY/other transaction requirements
++ at least one ready launcher charge
+```
+
+For each exact launcher, aggregate validation reserves READY charge slots from the immutable pre-state using that launcher's canonical slot rule and canonicalizes all accepted launch identities using Section 1.3.2 before any gameplay mutation occurs. Sibling launch commands cannot spend the same ready charge twice, and source-array order cannot choose either a charge slot or a strategic-launch ordinal.
+
+A successful launch transaction commits atomically. For each accepted launch it binds/commits all of the following as one authoritative result:
+
+- exact physical `launcherId` and launch cell;
+- canonical consumed charge `slotId` and that slot's new `readyAtTick`;
+- `strategicLaunchId = (launcherId, acceptedLaunchOrdinal)`;
+- the launcher's incremented `acceptedLaunchCount`;
+- required resource payment;
+- root projectile and effective motion profile;
+- submitted target and required target snapshot;
+- effective reduced rational blast-area profile;
+- `STRATEGIC_BLAST_V1` profile version and root seed;
+- for MIRV, launch-bound child motion plus canonical child ordering/seed derivation.
+
+A rejected transaction performs none of those mutations: it consumes no resource or charge, creates no projectile, binds no committed strategic-launch identity, and does not increment `acceptedLaunchCount`.
+
+The replay/version binding for an accepted launch contains, directly or through versioned authoritative references, enough state to reproduce at least:
+
+- exact physical launcher identity and launch cell;
+- `strategicLaunchId` / accepted-launch ordinal;
+- projectile/weapon class;
+- effective projectile motion profile;
+- for MIRV, both carrier and child-warhead motion profiles;
+- submitted target and any launch-time target snapshot required by the weapon;
+- effective canonical reduced blast-area inputs;
+- `STRATEGIC_BLAST_V1` profile identity and launch-bound seed/root seed;
+- for MIRV, the canonical child ordering required for child-seed derivation;
+- consumed `slotId`, post-launch slot deadline/state, and launcher-local accepted-launch counter transition.
+
+Replays consume those bound values; they do not infer historical in-flight mechanics from whatever Origin/Echo/ruleset configuration happens to be current when the replay is viewed.
+
+### 1.6.1 Controller/API migration boundary
+
+This mechanic-definition closure does **not** require a `ControllerApi.ts` patch inside #46. Existing exact `launcherId` selection and aggregate charge-state projections are sufficient for controller intent/readiness. They are not, however, a second canonical mechanics definition.
+
+Downstream runtime/API migration must reconcile the current radius-oriented `StrategicWeaponMechanicsSpec` with the effective versioned blast profile defined here. Legacy fields such as `innerRadius`, `outerRadius`, and especially independent-looking Water-Nukes fields such as `deepWaterCoreRadius` are compatibility/presentation projections only. They must be derived from the same effective `STRATEGIC_BLAST_V1` CORE/FRINGE profile, or be replaced by a first-class effective-profile representation; they must never evolve into separately authoritative geometry.
+
+Likewise, controller-facing charge summaries may remain aggregate projections while simulation/replay state retains canonical per-slot identity. No Origin-specific parallel strategic-weapon API is introduced by this closure.
 
 ---
 
@@ -132,13 +551,15 @@ Before separation, the MIRV carrier is one interceptable strategic projectile. D
 
 The carrier separates at approximately **50% of planned physical flight progress**. The exact deterministic motion-plan index/tick is implementation/versioning detail.
 
+The carrier is not in the canonical `warhead projectile` class, while each separated child is. Therefore a warhead-only Origin motion transformation does not alter carrier motion or the physical separation fraction; if separation occurs, each child uses the launch-bound effective child-warhead motion profile.
+
 After separation:
 
 - the carrier ceases to exist as one target;
 - every spawned warhead is independently interceptable;
 - destroying one warhead affects only that warhead.
 
-SAM interception uses actual physical entry into SAM coverage.
+SAM interception uses actual physical entry into SAM coverage. A faster warhead may therefore spend fewer simulation ticks inside a given coverage geometry, but interception geometry itself is not changed by projectile speed.
 
 ---
 
@@ -250,6 +671,20 @@ XP above a threshold carries toward the next rank until the current rank cap is 
 
 Origin-specific rank-cap or launcher transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
+## 4.2 P29 mobile strategic launchers
+
+When an Origin rule makes an owned Warship a strategic launcher, that Warship is one exact physical launcher whose launch cell is its **current cell**. A launch identifies the exact Warship; the simulation must not silently substitute a different ready Silo/Warship merely because another launcher could legally fire.
+
+The Origin layer supplies the Warship's effective Silo level. Ordinary Silo level → weapon access and charge capacity remain canonical in `TERRAIN_AND_STRUCTURES.md`; this naval owner consumes that effective level for the mobile launcher rather than copying the persistent structure.
+
+Mobile charge slots use the same canonical identity convention locally to the physical Warship: at capacity `N`, slot IDs are exactly `0..N-1`, existing slots are never renumbered, and the canonical spent charge is the lowest currently READY `slotId`.
+
+A newly operational mobile strategic launcher creates every slot in its current effective capacity READY. When a later Warship rank/effective-level change raises capacity from `N` to `M`, every pre-existing slot preserves its exact ID/state/deadline and new slots `N..M-1` begin **RECHARGING**, with one full effective Silo recharge duration measured from the authoritative capacity-activation tick. Capacity growth therefore never grants a free immediate launch, renumbers an existing charge, or resets an existing cooldown.
+
+For each mobile charge that begins recharging—whether because it was spent or because capacity growth created the slot—the effective recharge duration is resolved when that transition begins and represented by an absolute `readyAtTick` (or exactly equivalent deterministic deadline). Later modifier changes do not retroactively move an established deadline. The charge becomes READY on the first simulation tick satisfying `currentTick >= readyAtTick`.
+
+Mobile launcher charge state and the launcher-local `acceptedLaunchCount` from Section 1.3.2 are serialized/replayed by physical Warship identity and survive ordinary movement/rank changes. Destruction of the Warship destroys the launcher/charge/launch-sequencing state. It remains Warship state rather than a hidden persistent Missile Silo structure.
+
 ---
 
 # 5. Transport Ships
@@ -317,4 +752,19 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - Atom/Hydrogen blast impact on representative territories;
 - MIRV target saturation on compact, fragmented, coastal, and very large factions;
 - carrier interception versus post-separation SAM-charge saturation;
-- strategic-weapon costs and projectile speeds under the ordinary surfaced modifier system.
+- strategic-weapon costs and projectile speeds under the ordinary surfaced modifier system;
+- `P10_PROJECTILE_CLASSIFICATION`: canonical warhead-projectile members receive P10 while non-members do not;
+- `P10_MIRV_CARRIER_UNCHANGED`: warhead-only motion transforms preserve the carrier's physical separation semantics;
+- `P10_SAM_PHYSICAL_WINDOW`: SAM interception consumes actual effective projectile motion;
+- `P10_BLAST_SEED_UNCHANGED_BY_ARRIVAL`: changing only travel duration cannot alter a bound blast footprint;
+- `STRATEGIC_LAUNCH_ID_DISTINCT_REPEATS`: two accepted launches from one launcher with the same weapon/target receive different ordinals/root seeds, while replay of either accepted identity reproduces its exact seed;
+- `STRATEGIC_LAUNCH_ID_SOURCE_ORDER_INDEPENDENT`: reordering one transaction's source command array or changing command keys does not change the canonical launch-identity assignment for distinct weapon/target intents or the identity multiset for exact duplicates;
+- `BLAST_V1_GOLDEN_VECTORS`: root, knot, MIRV-child, reduced-rational P25, sector-boundary, and representative raster vectors match Section 1.3.4 exactly;
+- `BLAST_V1_SAME_SEED_SAME_FOOTPRINT`: identical profile inputs and seed reproduce the same CORE/FRINGE cell set;
+- `BLAST_V1_TRAVEL_TIME_INDEPENDENCE`: arrival/detonation timing does not participate in footprint generation;
+- `BLAST_V1_P25_NORMALIZED_SHAPE_PRESERVED`: an authored area transform scales the same seeded normalized profile rather than rerolling it;
+- `BLAST_V1_WATER_NUKES_GEOMETRY_IDENTICAL`: enabling Water Nukes changes CORE effects but not resolved footprint membership;
+- `BLAST_V1_MIRV_CHILD_SEED_STABILITY`: canonical child indices receive stable seeds independent of separation/interception timing;
+- mobile-launcher initial readiness, stable `slotId` creation, lowest-READY consumption, dynamic-capacity append/recharge, and preservation of existing slot identities/deadlines;
+- transactional multi-launch validation preventing two sibling commands from consuming one ready charge and binding each successful launch's exact slot transition plus strategic-launch identity atomically;
+- replay/save reproduction of launch-bound motion profiles, accepted-launch counters/IDs, blast profile/seeds/footprints, exact charge slots, and mobile charge deadlines.

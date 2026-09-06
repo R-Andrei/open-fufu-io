@@ -303,23 +303,29 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Direct transformation / owner**
 
-- Strategic-weapon projectile/motion mechanics.
-- Applies `+100%` speed to the canonical projectile class(es) covered by `warhead projectile speed`.
+- The Origin layer supplies P10's authored speed modifier to the canonical `warhead projectile` class.
+- Projectile classification and baseline/effective physical motion remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
 **Required seams / dependencies**
 
-- `projectile motion -> SAM interception`.
-- `projectile motion -> MIRV separation` where the affected class participates; changing speed must preserve canonical physical separation semantics while changing elapsed time.
-- `projectile motion -> replay/determinism`.
-- Depends on canonical projectile classification, deterministic motion, physical-entry interception, and MIRV carrier/separation semantics.
+- `P10 effective modifier -> canonical projectile classification/motion snapshot -> physical SAM interception`.
+- A MIRV launch must bind the canonical carrier and child motion profiles; warhead-only transformation must not alter carrier classification or the physical separation semantics.
+- Changing only projectile travel duration must not alter the launch-bound `STRATEGIC_BLAST_V1` profile/seed or resulting footprint.
+
+**Required validation**
+
+- `P10_PROJECTILE_CLASSIFICATION`: every canonical warhead-projectile member receives P10 and every non-member does not.
+- `P10_MIRV_CARRIER_UNCHANGED`: the warhead-only modifier does not transform the carrier class or separation semantics.
+- `P10_SAM_PHYSICAL_WINDOW`: interception consumes the transformed physical motion rather than a display-only value.
+- `P10_BLAST_SEED_UNCHANGED_BY_ARRIVAL`: changed arrival timing cannot alter a bound blast footprint.
 
 **Non-effects**
 
-- Does not by itself change blast geometry/effect, weapon cost, launcher legality, MIRV target distribution, or payload count.
+- P10 does not by itself change blast geometry/effect, weapon cost, launcher legality, MIRV target distribution, payload count, or physical separation fraction.
 
-**Blocker**
+**Resolved mechanic-definition result (#46)**
 
-- Canonical rules must identify whether `warhead projectile speed` includes Atom/Hydrogen projectiles, the pre-separation MIRV carrier, and/or separated MIRV warheads.
+- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns the exact projectile membership, baseline motion, launch-bound motion snapshots, and blast-profile independence consumed by these assertions. This registry deliberately does not copy those values.
 
 ---
 
@@ -563,28 +569,27 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Direct transformation / owners**
 
 - Pre-match/start-state initialization: grants one free Missile Silo.
-- Persistent-structure lifecycle: after admission the result is one immediately active completed L1 Missile Silo.
-- Strategic-weapon subsystem consumes the resulting Silo level/charges/access exactly as it would any other legal persistent Silo.
+- Persistent-structure lifecycle: after admission the authored result is one immediately active completed L1 Missile Silo.
+- Charge state is not P20-specific; the admitted structure enters the ordinary newly materialized persistent-Silo lifecycle in `TERRAIN_AND_STRUCTURES.md`.
 
 **Required seams / dependencies**
 
-- `resolved exact origins -> Initial-Territory ownership -> exactly one P20 GRANT request at stable originSlot 0 -> canonical structure admission -> active completed L1 Missile Silo -> ordinary Silo weapon/charge lifecycle`.
+- `resolved exact origins -> Initial-Territory ownership -> exactly one P20 GRANT request at stable originSlot 0 -> canonical structure admission -> active completed L1 Missile Silo -> ordinary new persistent-Silo lifecycle -> strategic-launch subsystem`.
 - The singular grant resolves after Initial-Territory ownership in every spawn mode and is **once per faction**, not once per origin/footprint. P39 therefore does not duplicate it.
 - Grant occurs as a **grant**, not a purchase; no FFY purchase transaction is performed and no P21 first-Silo entitlement is consumed.
 - Generic #45 structure admission still applies, including hard ownership limits such as N07. If exact-cell admission rejects the grant, no Silo is created, Spawn searches no alternate cell, and the valid territorial start is not rolled back.
-- #45 closes resulting level/activation/admission; initial charge/readiness state remains #46-owned.
 
 **Explicit interactions**
 
 - `P20 + P21`: the grant does **not** consume P21's first-Silo purchase entitlement.
-- `P20 + P53`: explicitly legal; P53 must count the granted Silo's ready persistent charges exactly when #46 says those charges are canonically ready.
+- `P20 + P53`: explicitly legal; P53 consumes whatever READY projection the ordinary newly materialized persistent-Silo lifecycle produces rather than defining a P20-only readiness exception.
 - `P20 + N07`: the grant passes ordinary structure ownership admission and cannot bypass N07.
 - `P20 + N06`: the granted L1 Silo is immediately completed/active, but N06's upgrade-spending prohibition applies normally to later attempted upgrades.
 - `P20 + P39`: exactly one grant is requested at P39's stable primary `originSlot 0`; there is no secondary-core grant.
 
-**Remaining dependency**
+**Resolved mechanic-definition result (#46)**
 
-- #46 must close initial ready-charge state for a newly granted Silo. #32 no longer blocks P20 placement, ordering, or multi-origin uniqueness, and #45 no longer blocks its resulting structure level, activation state, or generic admission lifecycle.
+- `TERRAIN_AND_STRUCTURES.md` now owns the ordinary newly materialized persistent-Silo charge state consumed by P20. #32 owns placement/order/multi-origin uniqueness and #45 owns generic admission/activation; this registry maintains no second readiness rule.
 
 ---
 
@@ -636,7 +641,7 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Explicit interactions**
 
-- `P22 + P29`: explicitly canonical. P29 derives `effective Silo level = max(1, Warship rank)`; P22 therefore permits rank-4/5 launcher states and rank 5 can reach ordinary L5 Silo weapon access.
+- `P22 + P29`: explicitly canonical. P29 derives its effective launcher level from Warship rank, so P22 can expose later mobile-launcher states; the resulting charge lifecycle is consumed from #46's NAVAL owner.
 - `P22 + P23`: P23's base Warship profile changes must coexist with ordinary rank progression; P22 extends the rank-derived health/damage portion rather than replacing the P23 profile.
 - `P22 + P30`: P30 may make rank-derived shell damage strategically inert against ships because ordinary naval gunfire is disabled, but rank-derived max health and the rank lifecycle remain valid.
 
@@ -707,27 +712,32 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 **Direct transformations / owner**
 
-- Strategic-weapon action legality: Atom Bomb and MIRV are unavailable to the holder.
-- Hydrogen Bomb transaction: effective FFY cost is `+50%` over the ordinary Hydrogen cost.
-- Hydrogen Bomb geometry: affected blast **area** is `+50%`; the catalogue explicitly says this is not `1.5x` radius.
+- The Origin layer owns P25's weapon-family prohibitions and authored Hydrogen FFY-cost / blast-area transformations.
+- Strategic blast realization is external: `NAVAL_AND_STRATEGIC_WEAPONS.md` consumes the effective area multiplier through `STRATEGIC_BLAST_V1`.
 
 **Required seams / dependencies**
 
-- `launcher/effective level -> weapon-access list -> P25 hard weapon-family restriction` must remove Atom/MIRV without changing ordinary launcher legality for Hydrogen Bombs.
-- `effective Hydrogen price -> ordinary affordability/payment transaction` must use the P25 price.
-- `P25 Hydrogen geometry -> deterministic blast resolver -> ordinary ownership/Population/Capacity/Fallout/unit/structure consequences`.
-- Replay must reproduce the exact transformed Hydrogen footprint.
+- `launcher/effective level -> weapon-access list -> P25 hard weapon-family restriction` must remove forbidden families without changing ordinary launcher legality for an allowed Hydrogen launch.
+- `effective Hydrogen price -> ordinary affordability/payment transaction` must consume P25's authored transaction transform.
+- `P25 effective blast-area multiplier -> STRATEGIC_BLAST_V1 -> ordinary nuclear ownership/Population/Capacity/Fallout/unit/structure consequences`.
+- Optional Water Nukes must consume the same resolved footprint and change CORE effects only; it must not introduce another geometry resolver or area transform.
+- Replay must reproduce the same bound profile/seed footprint independently of projectile travel duration.
 
 **Explicit interactions**
 
-- `P25 + P26` is builder-legal. P25's MIRV prohibition remains a hard legality restriction; P26's one free successful MIRV cannot manufacture permission to use a weapon P25 forbids, so the P26 entitlement remains unusable while P25 is active.
-- `P25 + P29`: a P29 Warship launcher may launch only weapon families legal under both its effective Silo level and P25; P25 restrictions/costs remain in force from mobile launchers.
-- `P25 + P10`: if P10's canonical projectile classification includes Hydrogen Bombs, its speed transformation composes independently with P25's Hydrogen-only cost/geometry changes.
+- `P25 + P26` is builder-legal. P25's MIRV prohibition remains a hard legality restriction; P26 cannot manufacture permission to use a forbidden family.
+- `P25 + P29`: a mobile Warship launcher must still satisfy P25's Origin-level weapon legality/cost transformations.
+- `P25 + P10`: projectile-motion transformation and blast-area transformation remain independent axes; a changed arrival time must not alter the bound P25 footprint.
 - P20/P53 consume ordinary persistent-Silo/charge state; P25 does not create a special charge system.
 
-**Blocker / mechanic-definition finding**
+**Required validation**
 
-- `+50% Hydrogen Bomb blast area` still needs one exact deterministic geometry transformation. The canonical rules must state how the ordinary fully affected inner zone and irregular outer zone are transformed to achieve the authored area increase, including how the optional Water-Nukes Deep-Water core/fringe behaves. The validation layer must not infer radii or raster rules merely from the area percentage.
+- `BLAST_V1_P25_NORMALIZED_SHAPE_PRESERVED`: the authored area transform scales the same seeded normalized blast profile rather than rerolling it.
+- `BLAST_V1_WATER_NUKES_GEOMETRY_IDENTICAL`: Water Nukes changes effects without changing the resolved strategic footprint.
+
+**Resolved mechanic-definition result (#46)**
+
+- `ORIGIN_TRAIT_CATALOGUE.md` remains authoritative for P25's authored transforms; `NAVAL_AND_STRATEGIC_WEAPONS.md` now owns their exact deterministic blast realization. This registry intentionally does not copy the multiplier-derived geometry or raster algorithm.
 
 ---
 
@@ -747,8 +757,8 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 **Explicit interactions**
 
 - `P26 + P25`: P25 forbids MIRV, so P26 cannot bypass that hard prohibition. No hidden compatibility exception is created.
-- `P26 + P29`: a Warship may supply the launcher only if its P29 effective Silo level legally exposes MIRV; P22 can raise the rank ceiling enough to make rank-5 Warship MIRV access possible.
-- `P26 + P53`: zero FFY consumption does **not** mean zero charge consumption. A successful P26 MIRV must expend the ordinary ready charge, so P53 income from a persistent Silo naturally falls until that charge is ready again.
+- `P26 + P29`: a Warship may supply the launcher only if its P29 effective Silo level legally exposes MIRV; P22 can raise the rank ceiling enough to make such access possible.
+- `P26 + P53`: zero FFY consumption does **not** mean zero charge consumption. A successful P26 MIRV must expend the ordinary ready charge, so P53 naturally observes the resulting persistent-Silo state when the launch used one.
 
 **Non-effects**
 
@@ -811,30 +821,35 @@ Mechanic holes are recorded here only as blockers/references. This file must not
 
 ## P29 — The Kaiser
 
-**Direct transformations / owners**
+**Direct transformation / owner**
 
-- Naval Warship state becomes an eligible strategic-weapon launcher state.
-- Strategic-weapon launcher identity/location: the controller identifies the physical owned Warship and launches from that Warship's current cell.
-- For P29, `effective Silo level = max(1, Warship rank)`.
+- The Origin layer makes owned Warships eligible strategic launchers and supplies the canonical Warship-rank -> effective-Silo-level transform.
+- Physical launcher selection, mobile charge state, and strategic launch transactionality remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
 **Required seams / dependencies**
 
-- `Warship identity/current cell -> strategic launch origin`.
-- `Warship rank -> effective Silo level -> ordinary weapon access + charge capacity/cooldown`.
-- Launcher-specific charge/cooldown state must remain attached to the correct physical Warship and survive ordinary movement while disappearing with that Warship's destruction.
-- Accepted P29 launches use ordinary strategic-weapon costs, targeting, projectile behavior, directed-hostility/`atWar`, and replay rules.
+- `Warship identity/current cell -> exact strategic launcher`; no ready sibling launcher may be silently substituted.
+- `Origin-resolved effective Silo level -> ordinary Silo level/access/capacity -> NAVAL mobile-launcher charge lifecycle`.
+- Mobile charge state must stay attached to physical Warship identity, survive ordinary movement, serialize/replay deterministically, and disappear on Warship destruction.
+- Accepted launches must use the ordinary strategic-weapon cost, targeting, projectile, hostility, and exact-launch transaction pipeline.
 
 **Explicit interactions**
 
-- `P29 + P22`: explicitly canonical. Higher Warship rank raises effective Silo level; rank 5 can reach ordinary L5 weapon access.
-- `P29 + P25`: P25's weapon-family restrictions and Hydrogen cost/geometry apply from Warship launchers exactly as from persistent Silos.
-- `P29 + P26`: a rank-5-capable Warship launcher may supply the legal MIRV launcher for the one permitted P26 launch; P26 still consumes ordinary launcher charge/cooldown state.
-- `P29 + P53`: explicitly negative. P53 counts ready charges on **persistent Missile Silo structures only**; P29 Warship launcher charges must never contribute to P53 income.
+- `P29 + P22`: P22 changes the available Warship-rank ceiling; P29's Origin transform then supplies the effective launcher level and #46's mobile lifecycle consumes the resulting capacity.
+- `P29 + P25`: P25's weapon-family restrictions and Hydrogen transforms remain in force from a mobile launcher.
+- `P29 + P26`: a mobile launcher can satisfy P26 only when its ordinary effective Silo level exposes MIRV, and the successful launch still consumes that launcher's ordinary charge state.
+- `P29 + P53`: explicitly negative. Mobile Warship launcher state must never enter P53's persistent-Missile-Silo-only input.
 - P23/P30/P42 movement/profile transformations may change where the mobile launcher can reach, but do not redefine P29 launcher legality.
 
-**Blocker / mechanic-definition finding**
+**Required validation**
 
-- P29 says ordinary charge/cooldown behavior follows the effective Silo level, but certification still needs exact charge-state semantics as Warship rank changes the effective level/capacity: especially whether newly added charge slots on rank-up begin ready, cooling down, or in another canonical state. If the generic Silo level/charge contract closes this for dynamic capacity changes, P29 should consume that rule rather than invent its own.
+- `P29_NEW_WARSHIP_USES_INITIAL_MOBILE_STATE`: newly operational mobile launchers consume NAVAL's canonical initial mobile state.
+- `P29_RANK_UP_NEW_SLOT_RECHARGES`: capacity growth consumes the canonical dynamic mobile charge transition rather than inventing an Origin-specific reload rule.
+- `P29_DESTRUCTION_REMOVES_CHARGE_BANK`: physical launcher destruction deletes its mobile charge state.
+
+**Resolved mechanic-definition result (#46)**
+
+- `NAVAL_AND_STRATEGIC_WEAPONS.md` now owns the dynamic mobile-launcher lifecycle after P29 supplies the effective Silo level. This registry does not restate the rank/access/capacity table or charge algorithm.
 
 ---
 
@@ -1232,19 +1247,19 @@ These are **not #31 validation-design decisions**. They are mechanic-definition 
 | P05 | `FFY_ECONOMY.md` now owns the previously missing P05 value/location/capture-tick sampling semantics from #48. | P05 is no longer blocked on its own FFY semantics; runtime coverage must exercise type valuation, faction-wide/spatial snapshot inputs, structureless same-tick territory changes, and capture-tick order invariants. Exact P24/N11 membership cases remain conditional on their separate field contract. |
 | P07 | Factory Train-service ownership epochs, P07 phase transfer/reset, in-flight old-epoch Train behavior, and serialization are closed by #49. | P07 is no longer blocked on Factory ownership-transfer scheduler semantics; runtime coverage must reproduce the canonical lifecycle. |
 | P09 | `+10% Fort coverage area` needs deterministic representation against radius-based baseline data; `+9% Fort defensive pressure` needs unambiguous composition semantics. | Structure/combat projection cannot finalize by guesswork. |
-| P10 | `warhead projectile speed` must identify the exact affected projectile classes, especially MIRV carrier vs separated warheads. | P10 projectile/interception projection remains incomplete until classified. |
-| P20 | **Resolved by #32:** singular start-state placement/order is once per faction at stable primary `originSlot 0` after Initial-Territory ownership; #45 owns exact-cell admission/result. Initial charge readiness remains #46-owned. | Spawn/grant placement conformance is no longer blocked by #32; full Silo start-state certification still depends on #46 charge readiness. |
+| P10 | #46 closes the canonical warhead-projectile classification, launch-bound motion profiles, and travel-time-independent blast binding in the strategic-weapons owner. | P10 validation consumes those canonical mechanics through the named classification/interception/blast-independence assertions rather than maintaining copied projectile constants. |
+| P20 | **Resolved by #32/#45/#46:** #32 owns singular start-grant placement/order, #45 owns exact-cell admission/active L1 result, and #46 supplies the ordinary newly materialized persistent-Silo lifecycle consumed by that result. | P20's semantic start state is closed without a validation-owned charge exception. |
 | P24 | Qualifying Fort affiliation for `inside Fort areas` is not explicit. | Spatial FFY qualification cannot be certified for own/team/enemy Fort overlap cases without a canonical ownership/team boundary. |
-| P25 | `+50%` Hydrogen blast **area** lacks an exact deterministic inner/outer geometry transformation, including optional Water-Nukes core/fringe behavior. | P25 runtime/replay footprint certification cannot infer radii/raster rules from the percentage alone. |
+| P25 | #46 closes deterministic blast realization through `STRATEGIC_BLAST_V1`; the Origin catalogue remains authoritative for P25's authored weapon/cost/area transforms. | Runtime/replay must consume the canonical profile and prove area-transform shape preservation, seed stability, and Water-Nukes geometry identity. |
 | P27 | Anti-ship SAM semantics do not yet specify target classes, damage/effect, cadence, charge use, or target-priority arbitration. | P27 naval/SAM conformance is blocked on the focused mechanic definition. |
 | P28 | Transport-Population theft lacks exact qualifying kill attribution, recipient Population state, and resolution ordering. | P28 destruction-to-Population-transfer conformance cannot have one canonical expected result yet. |
-| P29 | Dynamic Warship-rank -> effective-Silo-level changes do not yet state new charge-slot readiness semantics. | P29 charge/cooldown certification is incomplete when rank changes launcher capacity. |
+| P29 | #46 closes the mobile strategic-launcher lifecycle after the Origin layer resolves P29's effective Silo level. | Runtime/replay must consume NAVAL's initial/dynamic mobile state and exact physical-launcher transaction rather than a validation-owned rank/charge table. |
 | P34 | P34's exact four transformed Factory axes, current-owner `CAPTURE_TRANSFER` provenance, Train economic snapshot, Tank-build speed semantics, and Factory/P07 transfer lifecycle are closed by #49. | P34 is no longer blocked on a generic Factory-effect interpretation; runtime/AI must consume the explicit effective profile. |
 | P35 | Generic deliberate-abandonment semantics do not yet define eligibility/fate for persistent structures or other ownership-bound state on relinquished cells. | P35 can certify the Fallout overlay only after the ordinary abandonment result is canonical for occupied cells. |
 | P36 | Faction-level half-Population residual accounting does not define the eventual whole-Population debit destination/order across multiple concurrent expansion commitments. | P36 multi-operation settlement accounting cannot have one deterministic expected state yet. |
 | P39 | **Resolved by #32:** Strategic/Random/Fixed two-origin semantics, stable slot identity, strict Fixed validation, deterministic Random resolution, quota split, replay binding, and P20 singular-grant interaction are canonical. | P39 semantic coverage is no longer blocked by #32; executable certification may remain unavailable until the Spawn runtime/harness exists. |
 
-The former P23 concurrent-cap and P37 grant-placement/lifecycle blockers are resolved by #45. Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
+The former P23 concurrent-cap and P37 grant-placement/lifecycle blockers are resolved by #45. The former P10/P20-charge/P25/P29 strategic-mechanics blockers are resolved by #46 and are now consumed from their focused canonical owners. Implementation-specific deterministic numeric representation/rounding requirements, such as P17's `0.99^S` and P40's fractional effective range, must also be testable, but they do not become new gameplay mechanics unless the canonical numeric rules need a semantic rounding decision.
 
 ---
 

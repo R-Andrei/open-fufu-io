@@ -162,9 +162,19 @@ P19 counts distinct currently active other factions with current Territorial Con
 
 `Other faction` is literal: a fixed teammate may count, and an active Minor Faction counts once regardless of the number of disconnected contact components. Minor-Faction identity/lifecycle is owned by `MINOR_FACTIONS.md`.
 
-### P25 — Hydrogen blast-area interpretation
+### P10 — warhead projectile speed
 
-P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Strategic-weapon baseline geometry is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+P10 applies its authored `+100% projectile speed` modifier to the canonical `warhead projectile` class defined by `NAVAL_AND_STRATEGIC_WEAPONS.md`. It does not transform other strategic-projectile classes or any non-motion weapon axis. Projectile classification, baseline motion, launch-bound motion snapshots, MIRV separation behavior, and interception consumption remain owned by that strategic-weapons document.
+
+### P25 — Hydrogen specialization
+
+P25 supplies three Origin-level transformations:
+
+- Atom Bomb use is forbidden;
+- MIRV use is forbidden;
+- Hydrogen Bomb FFY cost and Hydrogen Bomb blast **area** each receive the authored `+50%` multiplier, equivalently `3/2`.
+
+The blast modifier is an area multiplier, not a radius multiplier. `NAVAL_AND_STRATEGIC_WEAPONS.md` is the sole owner of how an effective blast-area multiplier becomes deterministic squared geometry, `STRATEGIC_BLAST_V1` raster membership, Water-Nukes CORE/FRINGE effects, seed/version binding, and replay state.
 
 ### P11 — Population-unlocked SAMs
 
@@ -197,12 +207,12 @@ If N17 changes the structure disposition to destruction, or transfer admission f
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
-- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. Its initial ready-charge state remains owned by #46.
+- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. The admitted Silo uses the ordinary newly materialized persistent-Silo lifecycle rather than a P20-specific charge exception.
 - P21 still requires ordinary legality/affordability validation; the first successful purchase of each structure type consumes `0 FFY`.
-- P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
+- P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY` but still consumes one ordinary ready launcher charge on commit.
 - P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
 
-Grant placement/admission and lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; these traits only create the grant request and define its authored result.
+Grant placement/admission and persistent-Silo charge lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; strategic-launch transactionality is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. These traits only create/transform their authored requests/results.
 
 ### P23 — single-Warship ownership cap
 
@@ -214,15 +224,13 @@ P42's Population-funded Warship purchase does not bypass P23. Destruction/cancel
 
 ### P29 — Warships as strategic-weapon launchers
 
-P29 makes an owned Warship a legal strategic-weapon launcher from its current cell. The controller must identify the physical launcher when launch origin matters.
-
-For P29 only:
+P29 makes each owned Warship a legal strategic-weapon launcher from its current cell and supplies:
 
 ```text
 effective Silo level = max(1, Warship rank)
 ```
 
-All ordinary weapon costs, launcher requirements, charge/cooldown behavior, and Warship rank mechanics remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. P22 composes normally with P29 by raising the rank ceiling.
+P29 does not itself change the Warship rank cap; P22 composes normally by raising that cap. `NAVAL_AND_STRATEGIC_WEAPONS.md` owns exact physical-launcher selection and the mobile-launcher charge lifecycle, while `TERRAIN_AND_STRUCTURES.md` owns ordinary Silo level → weapon access/capacity. P29's mobile Warship state never becomes a persistent Missile Silo structure.
 
 ### P30 — pirate Warship conversion
 
@@ -458,13 +466,15 @@ P53 adds a global non-spatial passive FFY source:
 
 ```text
 readyPersistentSiloCharges
-= sum of currently ready charges across owned active persistent Missile Silo structures
+= sum of READY charges across owned active persistent Missile Silo structures
 
 P53BonusFFYPerSecond
 = 2,000 × readyPersistentSiloCharges
 ```
 
-Only actual persistent Missile Silo structures count; P29 Warship launcher capability does not. Expending a charge removes its contribution until that charge is ready again. The source is classified as a global/general FFY source for modifier eligibility. P20 + P53 is legal.
+Only actual persistent Missile Silo structures count; P29 mobile Warship launcher charges and SAM charges do not. Capacity by itself does not count. P53 consumes the current canonical persistent-Silo charge state without redefining it; creation, spending, recharge, upgrade, capture, serialization, and replay of that state are owned by `TERRAIN_AND_STRUCTURES.md`.
+
+The source is classified as a global/general FFY source for modifier eligibility. P20 + P53 is legal because the admitted P20 structure enters the same ordinary persistent-Silo lifecycle as any other newly materialized completed Silo.
 
 ### P54 — star Initial-Territory profile
 

@@ -240,7 +240,7 @@ A structure grant is an acquisition, not a purchase. Unless the grant's canonica
 - on success it materializes immediately as an **active completed structure at the authored level**, with no ordinary paid-construction delay;
 - on failure nothing is created and the triggering gameplay result is not rolled back merely because the bonus grant failed.
 
-The Origin catalogue owns which traits create grants. Strategic Spawn owns P20 start-state placement/order; this structure owner defines what happens once that exact grant request reaches admission. Strategic-weapon charge readiness for a newly granted Silo is owned by the strategic-weapon/charge lifecycle, not by the generic grant contract.
+The Origin catalogue owns which traits create grants. Strategic Spawn owns P20 start-state placement/order; this structure owner defines what happens once that exact grant request reaches admission. Once a granted Missile Silo materializes as active/completed, its initial charge state is the same fully loaded state defined by the Missile-Silo lifecycle below. P20 therefore produces an immediately ready `1/1` L1 Silo after a successful grant; it does not create a purchase transaction or a special delayed reload.
 
 ## 2.4 Structure capture resolution
 
@@ -302,7 +302,7 @@ Fresh construction therefore remains fresh construction after transfer, includin
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
-Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`, and a focused subsystem may close the previous owner's operational epoch and initialize the new owner's epoch while preserving the physical structure. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. Silo charge readiness remains owned by the strategic-weapon/charge owner.
+Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`, and a focused subsystem may close the previous owner's operational epoch and initialize the new owner's epoch while preserving the physical structure. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
 
 ### 2.4.3 Typed capture consequences, not mutating event listeners
 
@@ -414,9 +414,59 @@ Factory consumers must request an **effective Factory profile** rather than infe
 | L3–L4 | Atom Bomb + Hydrogen Bomb |
 | L5 | Atom Bomb + Hydrogen Bomb + MIRV |
 
-Charge capacity equals completed level. Baseline recharge cooldown is **9s per expended charge**.
+Charge capacity equals completed level. Baseline recharge cooldown is **9s / 90 simulation ticks per charge**.
 
-Strategic-weapon projectile, blast, cost, and resolution mechanics are defined in `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+#### Persistent-Silo charge bank
+
+Each active completed Missile Silo owns one deterministic physical charge bank. Capacity is the current completed level. Each authoritative charge slot has:
+
+```text
+slotId : exact non-negative integer local to this physical Silo
+state  : READY
+      | RECHARGING until absolute readyAtTick
+```
+
+For completed capacity `N`, the slot IDs are exactly `0..N-1`. Existing slots are never renumbered. Initial activation creates the complete current range in ascending ID order; a later capacity increase from `N` to `M` appends exactly `N..M-1` and leaves every earlier slot identity unchanged.
+
+The controller-facing summary may expose only `ready`, `capacity`, and remaining recharge ticks. That projection is derived state. The authoritative simulation/replay retains every `slotId`, state, and absolute deadline so charge consumption cannot be ambiguous or duplicated.
+
+A fresh Silo contributes **no active charge state while its first construction is incomplete**. When a newly materialized/completed Silo first becomes active, every slot in its current completed-level capacity starts **READY**. This applies equally to ordinary completed construction and to an immediate completed grant unless the grant's own canonical mechanic explicitly says otherwise. Consequently, a successful P20 L1 starting-Silo grant begins with slot `0` READY (`1/1`) immediately.
+
+During an ordinary upgrade, the previous completed level and its existing charge bank remain active. At the exact tick the higher level activates atomically:
+
+1. capacity becomes the new completed level;
+2. every pre-existing slot keeps the same `slotId`, READY/recharge state, and existing deadline;
+3. every newly added slot `oldCapacity..newCapacity-1` begins **RECHARGING**, not READY;
+4. each new slot's deadline is `activationTick + effectiveRechargeTicks` using the effective recharge duration resolved for that transition.
+
+Thus an ordinary L1→L2 activation at tick `T` preserves slot `0` and creates slot `1` with baseline `readyAtTick = T + 90`. Completing an upgrade never grants a free instant strategic launch, renumbers an existing slot, or resets an older cooling charge.
+
+When a legal strategic launch spends a persistent-Silo charge, the canonical consumed charge is the **lowest `slotId` currently READY** on that exact physical Silo. Exactly that slot enters RECHARGING from the authoritative launch-commit tick. The effective recharge duration is resolved/snapshotted when the transition begins; later changes to a recharge modifier do not retroactively move its deadline. A slot becomes READY at the first simulation tick satisfying:
+
+```text
+currentTick >= readyAtTick
+```
+
+A successful `CAPTURE_TRANSFER` preserves the physical Silo's complete charge bank: every `slotId`, state, and absolute recharge deadline remains unchanged. Capture does not refill the Silo, renumber charges, or restart cooldowns. After transfer, the new owner's effective rules apply to **future** recharge transitions only.
+
+Persistent-Silo charge state is deterministic serialized/replay state keyed by physical structure identity. Saving/reloading or replaying at any tick must reproduce the same capacity, ordered slot identities, READY count, per-slot deadlines, and next transition tick.
+
+P53 reads this canonical state but does not alter it: its ready-charge income counts exactly the slots currently in READY across owned **active persistent Missile Silo structures**. Capacity without readiness, cooling slots, SAM charges, and P29 Warship-launcher charges do not become P53 income merely because they use a similar charge-state representation.
+
+Strategic-launch transactionality, projectile/blast profiles, launcher-local accepted-launch identity, and P29 mobile-launcher charge behavior are defined in `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+
+Required Silo lifecycle validation includes at minimum:
+
+- a newly completed ordinary L1 Silo creates slot `0` READY;
+- a successfully granted P20 L1 Silo creates slot `0` READY;
+- spending with multiple READY charges always consumes the lowest READY `slotId`;
+- spending a charge preserves every sibling slot and makes exactly the selected slot unavailable for the full effective recharge duration;
+- L1→L2 activation preserves slot `0` and creates slot `1` cooling for one full effective recharge duration;
+- larger capacity increases append exactly the new `slotId` range without renumbering old slots;
+- upgrading while an older charge is cooling preserves that older slot ID and deadline exactly;
+- capture preserves slot identities, ready/cooling state, and deadlines;
+- P53 income changes with current READY persistent-Silo slots and does not count new capacity until its new slot becomes ready;
+- save/replay reproduces every slot identity and charge transition on the same tick.
 
 ### SAM Launcher
 
