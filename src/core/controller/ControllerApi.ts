@@ -1077,8 +1077,16 @@ export interface SpawnOriginValidation {
 }
 
 /**
- * Local Phase-3 validation only. Foreign exact-origin spacing/conflict acceptance
- * cannot be predicted here because all factions resolve simultaneously.
+ * Local Phase-3 preflight only. This reports whether a prospective choice/set
+ * passes local placement rules without authoritative resolver repair. A locally
+ * invalid semantic placement (`OUTSIDE_INFLUENCE`, `SPAWN_INELIGIBLE`, or
+ * `DUPLICATE_ORIGIN`) does not mean a structurally valid chooseOrigins() result
+ * is discarded; its requested real map CellIds still enter authoritative Spawn
+ * resolution and affected slots may be displaced deterministically. By contrast,
+ * `WRONG_ORIGIN_COUNT` / `INVALID_CELL` identify structural failures handled by
+ * the whole-hook default contract in docs/STRATEGIC_SPAWN.md. Foreign exact-origin
+ * spacing/conflict acceptance cannot be predicted here because all factions
+ * resolve simultaneously.
  */
 export interface SpawnOriginApi {
   isValidOriginChoice(cellId: CellId, slotIndex: number): boolean;
