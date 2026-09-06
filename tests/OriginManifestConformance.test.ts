@@ -2,12 +2,14 @@ import {
   EXPECTED_ORIGIN_TRAIT_IDS,
   ORIGIN_RULE_MANIFEST_BY_ID,
   originDynamicRuleProviders,
+  type OriginCustomRuleDomain,
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
-import type {
-  RuleCondition,
-  RuleContribution,
-  RuleScope,
+import {
+  canonicalRuleJson,
+  type RuleCondition,
+  type RuleContribution,
+  type RuleScope,
 } from "../src/core/rules/RuleComposition";
 
 function scopeKey(scope: RuleScope): string {
@@ -27,8 +29,7 @@ function scopeKey(scope: RuleScope): string {
   }
 }
 
-function conditionKey(condition: RuleCondition | undefined): string {
-  if (condition === undefined) return "";
+function conditionKey(condition: RuleCondition): string {
   switch (condition.kind) {
     case "SOURCE_TERRAIN_IS":
     case "TARGET_TERRAIN_IS":
@@ -43,14 +44,21 @@ function conditionKey(condition: RuleCondition | undefined): string {
     case "EVENT_INSIDE_FIELD":
     case "SOURCE_INSIDE_FIELD":
       return `${condition.kind}:${condition.field}`;
-    case "STRUCTURE_PROVENANCE_IS":
-      return `${condition.kind}:${condition.provenance}`;
+    case "STRUCTURE_ACQUISITION_PATH_IS":
+      return `${condition.kind}:${condition.path}`;
   }
+}
+
+function conditionSetKey(contribution: RuleContribution): string {
+  return [...(contribution.conditions ?? [])]
+    .map(conditionKey)
+    .sort()
+    .join("&");
 }
 
 function valueKey(value: RuleContribution["value"]): string {
   if (value === undefined) return "";
-  return Array.isArray(value) ? [...value].sort().join(",") : String(value);
+  return Array.isArray(value) ? [...new Set(value)].sort().join(",") : String(value);
 }
 
 function descriptor(contribution: RuleContribution): string {
@@ -61,11 +69,13 @@ function descriptor(contribution: RuleContribution): string {
     contribution.operator,
     contribution.valueUnit,
     valueKey(contribution.value),
-    conditionKey(contribution.condition),
+    conditionSetKey(contribution),
   ].join("|");
 }
 
-const EXPECTED_PROJECTIONS: Readonly<Partial<Record<OriginTraitId, readonly string[]>>> = {
+const EXPECTED_PROJECTIONS: Readonly<
+  Partial<Record<OriginTraitId, readonly string[]>>
+> = {
   P01: ["INITIAL_TERRITORY_QUOTA|GLOBAL|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|1500|"],
   P02: ["POPULATION_GROWTH_UTILIZATION_PROFILE|GLOBAL|STRUCTURAL_PROFILE|STRUCTURAL_TRANSFORM|PROFILE_ID|ORIGIN_P02_30_70|"],
   P03: ["LAND_PRESSURE_SUPPRESSED_COMPONENTS|GLOBAL|COMPONENT_SUPPRESSION|SUPPRESS_COMPONENT|COMPONENT_SET|HOSTILE_FORT_DEFENSIVE_PRESSURE|"],
@@ -79,7 +89,10 @@ const EXPECTED_PROJECTIONS: Readonly<Partial<Record<OriginTraitId, readonly stri
     "STRUCTURE_UPGRADE_COST|STRUCTURE:FORT|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|-800|",
   ],
   P10: ["WEAPON_PROJECTILE_SPEED|WEAPON:ALL|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|10000|"],
-  P11: ["STRUCTURE_BUILD_COST|STRUCTURE:SAM_LAUNCHER|TERMINAL|HARD_ZERO|NONE||"],
+  P11: [
+    "STRUCTURE_BUILD_COST|STRUCTURE:SAM_LAUNCHER|TERMINAL|HARD_ZERO|NONE||",
+    "STRUCTURE_UPGRADE_COST|STRUCTURE:SAM_LAUNCHER|TERMINAL|HARD_ZERO|NONE||",
+  ],
   P12: ["UNIT_MOVEMENT_SPEED|UNIT:TRANSPORT_SHIP|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|2500|"],
   P13: ["TERRAIN_DEFENSIVE_PRESSURE|TERRAIN:MOUNTAIN|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|3300|"],
   P14: ["FFY_EVENT_YIELD|FFY:ALL|ORIGIN_PERCENT|ADD_PERCENT|BASIS_POINTS|3300|EVENT_TERRAIN_IS:DESERT"],
@@ -107,10 +120,19 @@ const EXPECTED_PROJECTIONS: Readonly<Partial<Record<OriginTraitId, readonly stri
     "UNIT_ATTACK_CAPABILITIES|UNIT:WARSHIP|CAPABILITY_REMOVE|REMOVE_CAPABILITY|CAPABILITY_SET|NAVAL_GUNFIRE_AGAINST_SHIPS|",
   ],
   P31: [
-    "STRUCTURE_REPAIR_RADIUS|STRUCTURE:PORT|ORIGIN_SCALAR|MULTIPLY|BASIS_POINTS|20000|TARGET_UNIT_IS:WARSHIP",
-    "STRUCTURE_REPAIR_RATE|STRUCTURE:PORT|ORIGIN_SCALAR|MULTIPLY|BASIS_POINTS|15000|TARGET_UNIT_IS:WARSHIP",
+    "STRUCTURE_REPAIR_RADIUS|STRUCTURE:PORT|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|20000|TARGET_UNIT_IS:WARSHIP",
+    "STRUCTURE_REPAIR_RATE|STRUCTURE:PORT|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|TARGET_UNIT_IS:WARSHIP",
   ],
   P32: ["UNIT_CHASSIS_PROFILE|UNIT:TRANSPORT_SHIP|STRUCTURAL_PROFILE|STRUCTURAL_TRANSFORM|PROFILE_ID|ARMORED_PORT_TRANSPORT|"],
+  P34: [
+    "FACTORY_TRAIN_EVENT_BASE_VALUE|STRUCTURE:FACTORY|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER",
+    "STRUCTURE_UNIT_CONSTRUCTION_WORK_RATE|STRUCTURE:FACTORY|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:TANK",
+    "STRUCTURE_REPAIR_RATE|STRUCTURE:FACTORY|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:TANK",
+    "STRUCTURE_REPAIR_RADIUS|STRUCTURE:FACTORY|FINAL_OVERRIDE|FINAL_OVERRIDE|CELLS|8|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:TANK",
+    "STRUCTURE_UNIT_CONSTRUCTION_WORK_RATE|STRUCTURE:FACTORY|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:HEAVY_ARTILLERY",
+    "STRUCTURE_REPAIR_RATE|STRUCTURE:FACTORY|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|15000|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:HEAVY_ARTILLERY",
+    "STRUCTURE_REPAIR_RADIUS|STRUCTURE:FACTORY|FINAL_OVERRIDE|FINAL_OVERRIDE|CELLS|8|STRUCTURE_ACQUISITION_PATH_IS:CAPTURE_TRANSFER&TARGET_UNIT_IS:HEAVY_ARTILLERY",
+  ],
   P36: ["NEUTRAL_SETTLEMENT_POPULATION_COST|GLOBAL|BASE_REPLACEMENT|REPLACE_BASE|POPULATION|0.5|"],
   P37: ["TRANSPORT_EMBARK_COST|GLOBAL|ORIGIN_FLAT|ADD_FLAT|FFY|250|"],
   P39: ["SPAWN_PROFILE|GLOBAL|STRUCTURAL_PROFILE|STRUCTURAL_TRANSFORM|PROFILE_ID|SPLIT_TWO|"],
@@ -146,11 +168,11 @@ const EXPECTED_PROJECTIONS: Readonly<Partial<Record<OriginTraitId, readonly stri
   N18: ["ACQUISITION_PROGRESS|GLOBAL|CONTEXTUAL_SCALAR|MULTIPLY|BASIS_POINTS|5000|TARGET_LACKS_FALLOUT"],
 };
 
-const DYNAMIC_IDS = new Set<OriginTraitId>(["P17", "P19"]);
+const DYNAMIC_IDS = new Set<OriginTraitId>(["P11", "P17", "P19"]);
 const MIXED_IDS = new Set<OriginTraitId>([
   "P02",
-  "P11",
   "P31",
+  "P34",
   "P36",
   "P37",
   "N13",
@@ -164,7 +186,6 @@ const CUSTOM_IDS = new Set<OriginTraitId>([
   "P28",
   "P29",
   "P33",
-  "P34",
   "P35",
   "P38",
   "P41",
@@ -180,8 +201,79 @@ const CUSTOM_IDS = new Set<OriginTraitId>([
   "N17",
 ]);
 
+const EXPECTED_CUSTOM_DOMAINS: Readonly<
+  Partial<Record<OriginTraitId, readonly OriginCustomRuleDomain[]>>
+> = {
+  P02: ["POPULATION_GROWTH_PROFILE_ANCHORS"],
+  P05: ["STRUCTURE_CAPTURE_FFY_EVENT"],
+  P07: ["FACTORY_DISPATCH_SCHEDULER"],
+  P20: ["STARTING_STRUCTURE_GRANT"],
+  P21: ["FIRST_STRUCTURE_PURCHASE_ZERO_FFY"],
+  P26: ["MIRV_USE_ENTITLEMENT"],
+  P28: ["TRANSPORT_DESTRUCTION_POPULATION_TRANSFER"],
+  P29: ["WARSHIP_STRATEGIC_LAUNCHER"],
+  P31: ["WARSHIP_OPERATIONAL_DURING_PORT_REPAIR"],
+  P33: ["TRAIN_CITY_POPULATION_GRANT"],
+  P34: ["FACTORY_TRAIN_DISPATCH_SNAPSHOT"],
+  P35: ["RELINQUISHMENT_FALLOUT"],
+  P36: ["SETTLEMENT_RESIDUAL_ACCOUNTING"],
+  P37: ["LANDING_FORT_GRANT"],
+  P38: ["AUTOMATIC_DEFENDER_SURVIVAL"],
+  P41: ["DIRECT_LEVEL5_CITY_PURCHASE"],
+  P44: ["RADIOACTIVE_ATTACK_AFTERSHOCK"],
+  P45: ["FOREST_CONCEALMENT"],
+  P47: ["MARSH_CAPTURE_POPULATION_PENALTY"],
+  P50: ["MIRRORED_STRUCTURE_PRESSURE_FIELD"],
+  P51: ["MIRRORED_STRUCTURE_PRESSURE_FIELD"],
+  P52: ["PASSIVE_FFY_SOURCE"],
+  P53: ["PASSIVE_FFY_SOURCE"],
+  N13: ["TRANSPORT_LANDING_CASUALTY"],
+  N14: ["TRADE_CAPTURE_VALUE"],
+  N16: ["TRADE_CAPTURE_VALUE"],
+  N17: ["STRUCTURE_CAPTURE_DISPOSITION"],
+};
+
+const EXPECTED_DYNAMIC = {
+  P11: {
+    id: "P11_SAM_OWNERSHIP_ENTITLEMENT",
+    axis: "STRUCTURE_OWNERSHIP_CAP",
+    scope: { kind: "STRUCTURE", structure: "SAM_LAUNCHER" },
+    stage: "ORIGIN_CAP",
+    operator: "CAP_LIMIT",
+    sourceKind: "ORIGIN",
+    sourceId: "P11",
+    dependency: "PEAK_TOTAL_POPULATION",
+    formula: { kind: "FLOOR_COUNT_PER_UNITS", unitsPerStep: 25_000 },
+    operandKind: "INTEGER",
+  },
+  P17: {
+    id: "P17_UPGRADE_DISCOUNT",
+    axis: "STRUCTURE_UPGRADE_COST",
+    scope: { kind: "STRUCTURE", structure: "ALL" },
+    stage: "ORIGIN_SCALAR",
+    operator: "MULTIPLY",
+    sourceKind: "ORIGIN",
+    sourceId: "P17",
+    dependency: "OWNED_PERSISTENT_STRUCTURE_COUNT",
+    formula: { kind: "RATIONAL_POWER", numerator: 99, denominator: 100 },
+    operandKind: "RATIONAL",
+  },
+  P19: {
+    id: "P19_CONTACT_OFFENSE",
+    axis: "GLOBAL_OFFENSIVE_PRESSURE",
+    scope: { kind: "GLOBAL" },
+    stage: "CONTEXTUAL_PERCENT",
+    operator: "ADD_PERCENT",
+    sourceKind: "ORIGIN",
+    sourceId: "P19",
+    dependency: "TERRITORIAL_CONTACT_COUNT",
+    formula: { kind: "BASIS_POINTS_PER_COUNT", bpPerUnit: 500 },
+    operandKind: "BASIS_POINTS",
+  },
+} as const;
+
 describe("Origin catalogue-to-manifest conformance", () => {
-  it("matches the independently enumerated projection for every static rule-bearing trait", () => {
+  it("matches the independently enumerated static projection for every trait", () => {
     for (const id of EXPECTED_ORIGIN_TRAIT_IDS) {
       const entry = ORIGIN_RULE_MANIFEST_BY_ID.get(id);
       expect(entry, id).toBeDefined();
@@ -205,20 +297,27 @@ describe("Origin catalogue-to-manifest conformance", () => {
     }
   });
 
-  it("keeps the dynamic roster exact and separate from static projection", () => {
-    expect(originDynamicRuleProviders(["P17"])).toEqual([
-      expect.objectContaining({
-        id: "P17_UPGRADE_DISCOUNT",
-        axis: "STRUCTURE_UPGRADE_COST",
-        dependency: "OWNED_PERSISTENT_STRUCTURE_COUNT",
-      }),
-    ]);
-    expect(originDynamicRuleProviders(["P19"])).toEqual([
-      expect.objectContaining({
-        id: "P19_CONTACT_OFFENSE",
-        axis: "GLOBAL_OFFENSIVE_PRESSURE",
-        dependency: "TERRITORIAL_CONTACT_COUNT",
-      }),
-    ]);
+  it("matches every dynamic provider exactly", () => {
+    for (const id of EXPECTED_ORIGIN_TRAIT_IDS) {
+      const actual = originDynamicRuleProviders([id]);
+      const expected = EXPECTED_DYNAMIC[id as keyof typeof EXPECTED_DYNAMIC];
+      expect(actual, id).toEqual(expected === undefined ? [] : [expected]);
+    }
+  });
+
+  it("matches every custom boundary exactly", () => {
+    for (const id of EXPECTED_ORIGIN_TRAIT_IDS) {
+      const actual = [...(ORIGIN_RULE_MANIFEST_BY_ID.get(id)?.customDomains ?? [])].sort();
+      const expected = [...(EXPECTED_CUSTOM_DOMAINS[id] ?? [])].sort();
+      expect(actual, id).toEqual(expected);
+    }
+  });
+
+  it("keeps dynamic descriptors canonically serializable", () => {
+    expect(
+      originDynamicRuleProviders(["P11", "P17", "P19"])
+        .map((provider) => canonicalRuleJson(provider))
+        .sort(),
+    ).toHaveLength(3);
   });
 });
