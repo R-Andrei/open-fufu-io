@@ -62,16 +62,32 @@ For an ordinary positive FFY event:
 
 FFY-yield modifiers affect positive income events. They do not automatically modify purchase prices, Transport embarkation costs, explicit losses/penalties, or other negative currency transactions.
 
-FFY balances are canonically **non-negative**. When one authoritative economic fact produces one or more explicit signed FFY transaction components, the subsystem first combines every component belonging to that same atomic fact and only then applies the balance floor:
+FFY balances are canonically **non-negative**. Explicit signed FFY consequences use a deterministic two-level aggregation rather than applying a balance floor to each debit/credit in incidental execution order.
+
+First, one authoritative economic fact combines all of its own signed components:
 
 ```text
-requestedDelta = sum(all signed FFY components for this atomic economic fact)
-
-balanceAfter
-= max(0, balanceBefore + requestedDelta)
+factRequestedDelta
+= sum(all signed FFY components for this atomic economic fact)
 ```
 
-The floor is therefore applied to the **net transaction**, never independently to sibling debit/credit components. Explicit signed transactions are not ordinary positive FFY events and do not acquire positive-event yield modifiers merely because their net delta is positive. V1 does not create FFY debt; affordability and spending consume the resulting non-negative authoritative balance.
+Then, for each faction and simulation tick `T`, all explicit signed FFY facts resolving on `T` are combined into one tick-stage delta:
+
+```text
+tickSignedDelta[faction, T]
+= sum(factRequestedDelta for that faction on T)
+```
+
+Ordinary positive FFY events resolving on `T` are finalized first. The signed stage then applies exactly once per faction:
+
+```text
+balanceAfterSignedStage
+= max(0, balanceAfterOrdinaryPositiveEventsForTick + tickSignedDelta)
+```
+
+The floor is therefore applied only after both **same-fact** component netting and **same-tick** signed-fact netting. Reordering signed facts within the tick cannot change the resulting balance. Explicit signed transactions are not ordinary positive FFY events and do not acquire positive-event yield modifiers merely because their net delta is positive.
+
+Purchase prices, Transport embarkation costs, strategic-weapon costs, and other affordability-gated spending transactions are **not** folded into this signed-consequence stage; they retain their own canonical validation/payment transactions. V1 creates no FFY debt, and subsequent affordability/spending consumes the resulting non-negative authoritative balance.
 
 ## 3.1 P05 structure-transfer conquest event
 
@@ -371,17 +387,16 @@ If the delivery Port becomes invalid, captured cargo retargets another legal rea
 
 ## 7.3 Original-owner signed voyage transactions
 
-`ORIGIN_TRAIT_CATALOGUE.md` is the canonical owner of which Origin trait creates a signed voyage adjustment, its trigger, and its sign/reference amount. This FFY subsystem owns the `Vowner` reference, atomic aggregation/execution of those signed components, the non-negative balance floor, lifecycle persistence, and separation from ordinary positive-event yield processing.
+`ORIGIN_TRAIT_CATALOGUE.md` is the canonical owner of which Origin trait creates a signed voyage adjustment, its trigger, and its sign/reference amount. This FFY subsystem owns the `Vowner` reference, deterministic aggregation/execution of those signed components, the non-negative balance floor, lifecycle persistence, and separation from ordinary positive-event yield processing.
 
-On one authoritative voyage fact, every applicable Origin-supplied signed component is collected before balance application:
+For one authoritative voyage fact, every applicable Origin-supplied signed component is first combined into that fact's requested delta:
 
 ```text
 requestedOwnerDelta
 = sum(applicable signed voyage components for this atomic fact)
-
-ownerBalanceAfter
-= max(0, ownerBalanceBefore + requestedOwnerDelta)
 ```
+
+That fact-level delta is then queued into the owner's `tickSignedDelta` under §3; it is **not** independently balance-floored at the point where the voyage fact is processed.
 
 For the current catalogue, first hostile capture may supply `-Vowner` from N14 and `+Vowner` from N16. Those catalogue-owned components therefore derive these conformance results:
 
@@ -391,9 +406,9 @@ N16 only       -> requestedOwnerDelta = +Vowner
 N14 + N16      -> requestedOwnerDelta = 0
 ```
 
-The combined N14+N16 result is one net signed transaction of the same first-capture fact. Implementations must not perform a balance-floor-sensitive debit followed by a separate credit and merely hope they cancel. For example, when both components are present, the net requested delta is `0` before the balance floor is consulted.
+The combined N14+N16 result is one net signed transaction of the same first-capture fact. Implementations must not perform a balance-floor-sensitive debit followed by a separate credit and merely hope they cancel. When both components are present, the fact-level requested delta is `0` before same-tick aggregation or the balance floor is consulted.
 
-Likewise, when an Origin rule replaces successful uncaptured Trade completion with an explicit signed owner transaction, FFY suppresses the ordinary positive Trade-success payout and executes the catalogue-supplied signed component through the same net-before-floor rule. The current N16 transformation supplies `-Vowner` on that successful uncaptured path. Paths that do not satisfy the catalogue-defined replacement trigger — such as destruction or return/termination without successful uncaptured completion — create no such replacement transaction.
+Likewise, when an Origin rule replaces successful uncaptured Trade completion with an explicit signed owner transaction, FFY suppresses the ordinary positive Trade-success payout and queues the catalogue-supplied signed component through the same fact-net -> tick-net -> floor pipeline. The current N16 transformation supplies `-Vowner` on that successful uncaptured path. Paths that do not satisfy the catalogue-defined replacement trigger — such as destruction or return/termination without successful uncaptured completion — create no such replacement transaction.
 
 These signed owner transactions are **not ordinary positive FFY events** and are not run through All-FFY, Naval/trade, P14/P24, N04/N11, P08, P30, or other positive-event yield transformations a second time. Any launch-time positive-event modifiers included in `Vowner` have already contributed exactly once to the stored reference amount.
 
