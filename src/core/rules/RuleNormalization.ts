@@ -1,14 +1,18 @@
 import {
   BASIS_POINTS_SCALE,
   RULE_COMPOSITION_VERSION,
+  canonicalRuleJson,
+  canonicalizeRuleConditions,
+  canonicalizeStringSet,
+  compareRuleStrings,
+  reducedRational,
   type RuleAxisRegistry,
-  type RuleCondition,
+  type RuleConditions,
   type RuleContribution,
   type RuleReducer,
   type RuleScope,
   type RuleStageId,
   type RuleValue,
-  validateRuleContributions,
 } from "./RuleComposition";
 
 export interface RuleProvenance {
@@ -40,42 +44,14 @@ export interface NormalizedRuleRecord {
   readonly stage: RuleStageId;
   readonly reducer: RuleReducer;
   readonly valueUnit: RuleContribution["valueUnit"];
-  readonly condition?: RuleCondition;
+  readonly conditions?: RuleConditions;
   readonly component?: string;
   readonly value: NormalizedRuleValue;
   readonly provenance: readonly RuleProvenance[];
 }
 
-function compareStrings(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null) return "null";
-  if (
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    typeof value === "string"
-  ) {
-    return JSON.stringify(value);
-  }
-  if (Array.isArray(value)) {
-    return `[${value.map(canonicalJson).join(",")}]`;
-  }
-  if (typeof value === "object" && value !== null) {
-    const record = value as Record<string, unknown>;
-    const keys = Object.keys(record)
-      .filter((key) => record[key] !== undefined)
-      .sort(compareStrings);
-    return `{${keys
-      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
-      .join(",")}}`;
-  }
-  throw new Error(`Unsupported canonical value: ${typeof value}`);
-}
-
 function canonicalRuleValue(value: RuleValue): RuleValue {
-  return Array.isArray(value) ? [...value].sort(compareStrings) : value;
+  return Array.isArray(value) ? canonicalizeStringSet(value) : value;
 }
 
 function numericValue(contribution: RuleContribution): number {
@@ -85,30 +61,15 @@ function numericValue(contribution: RuleContribution): number {
   return contribution.value;
 }
 
-function capabilityValues(value: RuleValue | undefined): readonly string[] {
+function stringValues(value: RuleValue | undefined): readonly string[] {
   if (typeof value === "string") return [value];
   if (
     Array.isArray(value) &&
     value.every((entry) => typeof entry === "string")
   ) {
-    return value;
+    return canonicalizeStringSet(value);
   }
-  throw new Error("Expected capability ID(s)");
-}
-
-function abs(value: bigint): bigint {
-  return value < 0n ? -value : value;
-}
-
-function gcd(a: bigint, b: bigint): bigint {
-  let left = abs(a);
-  let right = abs(b);
-  while (right !== 0n) {
-    const next = left % right;
-    left = right;
-    right = next;
-  }
-  return left === 0n ? 1n : left;
+  throw new Error("Expected string ID(s)");
 }
 
 function normalizedProduct(
@@ -125,13 +86,9 @@ function normalizedProduct(
     }
     numerator *= BigInt(value);
     denominator *= BigInt(BASIS_POINTS_SCALE);
-    const divisor = gcd(numerator, denominator);
-    numerator /= divisor;
-    denominator /= divisor;
-  }
-  if (denominator < 0n) {
-    numerator = -numerator;
-    denominator = -denominator;
+    const reduced = reducedRational(numerator, denominator);
+    numerator = reduced.numerator;
+    denominator = reduced.denominator;
   }
   return {
     kind: "PRODUCT",
@@ -163,11 +120,11 @@ function normalizedSum(
 function normalizedSet(
   contributions: readonly RuleContribution[],
 ): readonly string[] {
-  const values = new Set<string>();
+  const values: string[] = [];
   for (const contribution of contributions) {
-    for (const value of capabilityValues(contribution.value)) values.add(value);
+    values.push(...stringValues(contribution.value));
   }
-  return [...values].sort(compareStrings);
+  return canonicalizeStringSet(values);
 }
 
 function normalizeValue(
@@ -218,11 +175,11 @@ function normalizeValue(
 }
 
 function semanticGroupKey(contribution: RuleContribution): string {
-  return canonicalJson({
+  return canonicalRuleJson({
     axis: contribution.axis,
     scope: contribution.scope,
     stage: contribution.stage,
-    condition: contribution.condition,
+    conditions: canonicalizeRuleConditions(contribution.conditions),
     component: contribution.component,
   });
 }
@@ -233,24 +190,21 @@ function sortedProvenance(
   return contributions
     .map(({ sourceKind, sourceId }) => ({ sourceKind, sourceId }))
     .sort((a, b) =>
-      compareStrings(
+      compareRuleStrings(
         `${a.sourceKind}\0${a.sourceId}`,
         `${b.sourceKind}\0${b.sourceId}`,
       ),
     );
 }
 
-export function normalizeRuleContributions(
+/**
+ * Internal compiler phase. Callers should enter through compileRuleProfile(),
+ * which performs full wildcard/condition overlap validation before normalization.
+ */
+export function normalizeValidatedRuleContributions(
   registry: RuleAxisRegistry,
   contributions: readonly RuleContribution[],
 ): readonly NormalizedRuleRecord[] {
-  const validationIssues = validateRuleContributions(contributions, registry);
-  if (validationIssues.length > 0) {
-    throw new Error(
-      validationIssues.map((issue) => issue.message).join("; "),
-    );
-  }
-
   const groups = new Map<string, RuleContribution[]>();
   for (const contribution of contributions) {
     const key = semanticGroupKey(contribution);
@@ -270,20 +224,25 @@ export function normalizeRuleContributions(
     if (stage === undefined) {
       throw new Error(`Missing stage ${first.axis}/${first.stage}`);
     }
+    const conditions = canonicalizeRuleConditions(first.conditions);
     records.push({
       axis: first.axis,
       scope: first.scope,
       stage: first.stage,
       reducer: stage.reducer,
       valueUnit: first.valueUnit,
-      ...(first.condition === undefined ? {} : { condition: first.condition }),
+      ...(conditions === undefined || conditions.length === 0
+        ? {}
+        : { conditions }),
       ...(first.component === undefined ? {} : { component: first.component }),
       value: normalizeValue(stage.reducer, group),
       provenance: sortedProvenance(group),
     });
   }
 
-  records.sort((a, b) => compareStrings(canonicalJson(a), canonicalJson(b)));
+  records.sort((a, b) =>
+    compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
+  );
   return Object.freeze(records);
 }
 
@@ -291,9 +250,9 @@ export function serializeNormalizedRuleRecords(
   records: readonly NormalizedRuleRecord[],
 ): string {
   const sorted = [...records].sort((a, b) =>
-    compareStrings(canonicalJson(a), canonicalJson(b)),
+    compareRuleStrings(canonicalRuleJson(a), canonicalRuleJson(b)),
   );
-  return canonicalJson({
+  return canonicalRuleJson({
     version: RULE_COMPOSITION_VERSION,
     rules: sorted,
   });
