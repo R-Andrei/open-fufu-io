@@ -501,13 +501,13 @@ The replay/version binding for an accepted launch contains, directly or through 
 
 Replays consume those bound values; they do not infer historical in-flight mechanics from whatever Origin/Echo/ruleset configuration happens to be current when the replay is viewed.
 
-### 1.6.1 Controller/API migration boundary
+### 1.6.1 Controller/API projection boundary
 
-This mechanic-definition closure does **not** require a `ControllerApi.ts` patch inside #46. Existing exact `launcherId` selection and aggregate charge-state projections are sufficient for controller intent/readiness. They are not, however, a second canonical mechanics definition.
+This mechanics contract does **not** require a separate Origin-specific controller API surface. Exact `launcherId` selection and aggregate charge-state projections are sufficient for controller intent/readiness; controller-facing projections are not a second canonical mechanics definition.
 
-Downstream runtime/API migration must reconcile the current radius-oriented `StrategicWeaponMechanicsSpec` with the effective versioned blast profile defined here. Legacy fields such as `innerRadius`, `outerRadius`, and especially independent-looking Water-Nukes fields such as `deepWaterCoreRadius` are compatibility/presentation projections only. They must be derived from the same effective `STRATEGIC_BLAST_V1` CORE/FRINGE profile, or be replaced by a first-class effective-profile representation; they must never evolve into separately authoritative geometry.
+Any radius-oriented `StrategicWeaponMechanicsSpec` compatibility fields such as `innerRadius`, `outerRadius`, or Water-Nukes presentation fields such as `deepWaterCoreRadius` must be derived from the same effective `STRATEGIC_BLAST_V1` CORE/FRINGE profile, or be replaced by a first-class effective-profile representation. They must never evolve into separately authoritative geometry.
 
-Likewise, controller-facing charge summaries may remain aggregate projections while simulation/replay state retains canonical per-slot identity. No Origin-specific parallel strategic-weapon API is introduced by this closure.
+Likewise, controller-facing charge summaries may remain aggregate projections while simulation/replay state retains canonical per-slot identity. No Origin-specific parallel strategic-weapon API is introduced by this contract.
 
 ---
 
