@@ -269,7 +269,7 @@ Automatic defenders survive when their defended cell is captured. The controller
 
 ## P39 — Stereo Separation
 
-Strategic Spawn uses two half-area influence regions and two exact origins while Starting Population remains global. Spawn planning becomes a paired-position problem with coordination and isolation risk.
+P39 gives the faction two starting cores in every spawn mode. Strategic Spawn must generate and evaluate the pair; Random and Fixed Spawn provide resolved origins, after which the same two-core position, coordination, and isolation reasoning applies. Starting Population remains global.
 
 **Strategic philosophy:** begin from two strategic footholds, trading coordination risk for broader access and multi-theater possibility.
 
@@ -359,7 +359,7 @@ Ready charges on persistent Missile Silos generate passive FFY. A ready charge i
 
 ## P54 — Starlight Breaker
 
-Initial Territory uses a thin five-point star geometry while preserving the same quota. Spawn planning must judge the real reach, frontage, exposure, and corridors of that shape rather than a circular approximation.
+Initial Territory uses the same thin five-point-star geometry in every spawn mode. Strategic Spawn values candidate star positions before resolution; Random and Fixed Spawn receive resolved origins but still evaluate the resulting frontage, exposure, reach, and corridors rather than treating the shape as a circular start.
 
 **Strategic philosophy:** trade compactness for directional reach and unusual starting geometry.
 
@@ -497,7 +497,7 @@ The current V1 sweep identified:
 - **P22 + P23:** one stronger flagship plus an extended rank ceiling creates a singular veteran-flagship progression strategy;
 - **P50 + P51:** Forts and Command Posts become complementary two-way support infrastructure;
 - **P45 + P49:** Forest concealment and Observation-post blackouts create layered counterintelligence geometry;
-- **P39 + P54:** both split starting footprints use star geometry, requiring paired star-spawn evaluation.
+- **P39 + P54:** both split starting footprints use star geometry; Strategic Spawn evaluates the paired star placement, while Random/Fixed consume the resolved split-star state without inventing a spawn-position choice.
 
 Strong but straightforward arithmetic inheritance does **not** need its own combination entry. If final effective mechanics and existing support already produce the correct result, adding a named combination would only duplicate knowledge.
 

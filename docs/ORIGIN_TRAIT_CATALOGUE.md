@@ -58,7 +58,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P08 | **Tea Time** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **Wall Maria** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **Scorpion's Tail** | `+100% warhead projectile speed` | 4 |
-| P11 | **Level Upper** | SAM build and upgrade transactions cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
+| P11 | **Level Upper** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
 | P12 | **Somewhere Not Here** | `+25% Transport Ship speed` | 6 |
 | P13 | **Mountain Training Arc** | Mountains provide `+33% defensive pressure` | 4 |
 | P14 | **60 Billion Double Dollars** | FFY events located on Desert yield `+33% FFY` | 4 |
@@ -86,7 +86,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P36 | **Half-Priced Bento** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
 | P37 | **The City Mouse** | Transport embarkation costs `+250 FFY`; each successful amphibious landing grants a permanent level-1 Fort at the landing location | 7 |
 | P38 | **Return by Death** | When one of your automatically defended cells is captured, its automatic defender survives and remains/returns Available | 10 |
-| P39 | **Stereo Separation** | Strategic Spawn uses two influence areas at 50% ordinary area each and two exact origins; final Initial Territory is split between two footprints; Starting Population remains one global pool | 10 |
+| P39 | **Stereo Separation** | Start from two origins; Initial Territory is split between them | 10 |
 | P40 | **Barrier Magic** | SAMs become giant single-charge shields: provisionally `+50% range`, exactly one charge at every level, `2×` recharge cooldown | 6 |
 | P41 | **Level 5** | Purchased Cities are created directly at level 5 for `95%` of cumulative ordinary level-1 build + level-2–5 upgrade cost | 6 |
 | P42 | **The Price of Empire** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
@@ -101,7 +101,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P51 | **One Flag Beneath the Stars** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 | P52 | **Humanity Has Declined** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
 | P53 | **Money Is Everything** | **Strategic-stockpile economy:** gain `2,000 FFY/s` per ready launch charge on owned active persistent Missile Silo structures; P29 Warship launch capability does not count | 8 |
-| P54 | **Starlight Breaker** | **Star start:** each generated Initial-Territory footprint uses the canonical star spawn profile instead of the ordinary compact profile; final Initial Territory and Starting Population are unchanged | 5 |
+| P54 | **Starlight Breaker** | Initial Territory starts in a five-point star | 5 |
 
 ---
 
@@ -168,7 +168,7 @@ P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Str
 
 ### P11 — Population-unlocked SAMs
 
-Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11 makes both SAM construction and SAM upgrade FFY cost exactly zero; ordinary non-FFY legality and ownership admission still apply.
+Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11's SAM FFY cost is genuinely zero; ordinary non-FFY legality still applies.
 
 The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
 
@@ -197,7 +197,7 @@ If N17 changes the structure disposition to destruction, or transfer admission f
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
-- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. Once #32 supplies its exact start-state location/order, the grant uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. Its initial ready-charge state remains owned by #46.
+- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. Its initial ready-charge state remains owned by #46.
 - P21 still requires ordinary legality/affordability validation; the first successful purchase of each structure type consumes `0 FFY`.
 - P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
 - P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
@@ -319,11 +319,13 @@ P37 then attempts exactly one L1 Fort grant on the exact landing cell; it never 
 
 When one of the holder's automatically defended cells is successfully captured, its one automatic defender survives and remains/returns Available. This changes defender survival only; ownership transfer and the attacker's ordinary capture consequences remain governed by the combat owner.
 
-### P39 — split Strategic Spawn
+### P39 — split spawn profile
 
-P39 selects the canonical split spawn profile: two half-area influence slots, two exact-origin slots, and one final Initial-Territory quota divided between two generated footprints. Starting Population remains one global pool; P39 never creates local Population stores.
+P39 selects a mode-independent split spawn profile with two stable exact-origin slots and one final Initial-Territory quota divided between two generated footprints. Starting Population remains one global pool; P39 never creates local Population stores.
 
-The three-phase protocol, exact influence geometry, exact-origin resolution, footprint division/resolution, deterministic primary/secondary semantics, and P39 + P54 geometry composition are owned by `STRATEGIC_SPAWN.md`.
+Under Strategic Spawn only, P39 additionally uses two influence regions at 50% of ordinary influence area each. Random Spawn instead resolves the two exact origins deterministically without controller spawn hooks. Fixed Spawn requires exactly two authored legal distinct origins and performs no fallback/repair.
+
+The exact influence geometry, Random/Fixed origin rules, foreign spacing, footprint division/resolution, deterministic primary/secondary slot semantics, singular start-effect ordering, replay representation, and P39 + P54 geometry composition are owned by `STRATEGIC_SPAWN.md`.
 
 ### P40 — giant single-charge SAM shield
 
@@ -466,7 +468,7 @@ Only actual persistent Missile Silo structures count; P29 Warship launcher capab
 
 ### P54 — star Initial-Territory profile
 
-P54 selects the canonical star starting-footprint profile defined by `STRATEGIC_SPAWN.md`. It changes starting-footprint geometry only: it does not change final Initial Territory, Starting Population, Capacity per cell, neutral-settlement Population cost, capture/settlement speed, or later territorial-growth geometry.
+P54 selects the canonical star starting-footprint profile defined by `STRATEGIC_SPAWN.md` in Strategic, Random, and Fixed Spawn. It changes starting-footprint geometry only: it does not change final Initial Territory, Starting Population, Capacity per cell, neutral-settlement Population cost, capture/settlement speed, or later territorial-growth geometry.
 
 P39 + P54 is legal; the spawn owner defines how the star profile is applied to each split footprint without duplicating the faction's quota.
 

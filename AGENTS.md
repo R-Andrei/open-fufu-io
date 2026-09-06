@@ -33,6 +33,12 @@ When an agent/thread takes ownership of a GitHub issue, the claim must be unique
 
 The goal is that an agent inspecting the issue can determine, without inference, **who/what work session owns it, which GitHub account is responsible, which remote branches belong to that work, and whether overlapping work is safe**.
 
+## Player-facing copy vs canonical mechanics
+
+- Keep player-facing descriptions/tooltips concise and focused on the ordinary intended effect; do not enumerate rare interactions, resolver details, validation rules, or implementation caveats.
+- Keep developer-facing canonical mechanics explicit and complete, including edge cases, ordering, failure behavior, and cross-system interactions.
+- Do not lengthen player-facing copy merely to make it serve as developer documentation.
+
 ## Three-layer gameplay/Origin/character-AI synchronization invariant
 
 Open Fufu has three strategically coupled design/runtime layers that must remain synchronized:
