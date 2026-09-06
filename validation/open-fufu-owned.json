@@ -1,0 +1,80 @@
+{
+  "schemaVersion": 1,
+  "policyDocument": "docs/VALIDATION_POLICY.md",
+  "ownedWorkflows": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/documentation-authority.yml",
+    ".github/workflows/rule-composition-validation.yml"
+  ],
+  "ownedTests": [
+    "tests/EchoRuleRegistry.test.ts",
+    "tests/OriginCatalogueCompile.test.ts",
+    "tests/OriginManifestConformance.test.ts",
+    "tests/OriginRuleManifest.test.ts",
+    "tests/RuleCompiler.test.ts",
+    "tests/RuleComposition.test.ts",
+    "tests/RuleMaterialization.test.ts",
+    "tests/RuleNormalization.test.ts",
+    "tests/RuleRationalMaterialization.test.ts",
+    "tests/RuleValidationRegression.test.ts",
+    "tests/ValidationBoundaryPolicy.test.ts"
+  ],
+  "ownedSources": [
+    {
+      "path": "src/core/rules/EchoRuleRegistry.ts",
+      "validators": ["tests/EchoRuleRegistry.test.ts"]
+    },
+    {
+      "path": "src/core/rules/OriginRuleManifest.ts",
+      "validators": [
+        "tests/OriginRuleManifest.test.ts",
+        "tests/OriginManifestConformance.test.ts",
+        "tests/OriginCatalogueCompile.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/rules/RuleAxisRegistry.ts",
+      "validators": [
+        "tests/RuleComposition.test.ts",
+        "tests/RuleValidationRegression.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/rules/RuleCompiler.ts",
+      "validators": [
+        "tests/RuleCompiler.test.ts",
+        "tests/OriginCatalogueCompile.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/rules/RuleComposition.ts",
+      "validators": [
+        "tests/RuleComposition.test.ts",
+        "tests/RuleValidationRegression.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/rules/RuleMaterialization.ts",
+      "validators": [
+        "tests/RuleMaterialization.test.ts",
+        "tests/RuleRationalMaterialization.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/rules/RuleNormalization.ts",
+      "validators": ["tests/RuleNormalization.test.ts"]
+    },
+    {
+      "path": "scripts/checkDocumentationAuthority.ts",
+      "validators": [".github/workflows/documentation-authority.yml"]
+    },
+    {
+      "path": "scripts/checkValidationBoundary.ts",
+      "validators": ["tests/ValidationBoundaryPolicy.test.ts"]
+    },
+    {
+      "path": "vitest.config.ts",
+      "validators": ["tests/ValidationBoundaryPolicy.test.ts"]
+    }
+  ]
+}
