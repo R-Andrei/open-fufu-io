@@ -1,6 +1,9 @@
 name: 📚 Documentation Authority
 
 on:
+  merge_group:
+    types:
+      - checks_requested
   pull_request:
   push:
     branches: [main]
@@ -30,6 +33,8 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             npx tsx scripts/checkDocumentationAuthority.ts --base "origin/${{ github.base_ref }}"
+          elif [[ "${{ github.event_name }}" == "merge_group" ]]; then
+            npx tsx scripts/checkDocumentationAuthority.ts --base "${{ github.event.merge_group.base_sha }}"
           else
             npx tsx scripts/checkDocumentationAuthority.ts --base "${{ github.event.before }}"
           fi
