@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -22,7 +22,7 @@ export interface ChangedPath {
 }
 
 const MANIFEST_PATH = "validation/open-fufu-owned.json";
-const EXECUTABLE_CODE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
+const EXECUTABLE_CODE = /\.(?:[cm]?[jt]s|[jt]sx|go|py|sh|bash|zsh|fish|rs|c|cc|cpp|cxx|h|hh|hpp|hxx|cs|java|kt|kts|swift|lua|rb|php)$/;
 
 function unique(values: string[]): boolean {
   return new Set(values).size === values.length;
@@ -34,6 +34,22 @@ function readJson<T>(path: string): T {
 
 export function loadValidationManifest(root = process.cwd()): ValidationManifest {
   return readJson<ValidationManifest>(resolve(root, MANIFEST_PATH));
+}
+
+export function loadValidationManifestAtRef(
+  ref: string,
+  root = process.cwd(),
+): ValidationManifest | null {
+  try {
+    const content = execFileSync(
+      "git",
+      ["show", `${ref}:${MANIFEST_PATH}`],
+      { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    );
+    return JSON.parse(content) as ValidationManifest;
+  } catch {
+    return null;
+  }
 }
 
 export function isExecutableCodePath(path: string): boolean {
@@ -86,6 +102,22 @@ export function validateManifest(
     }
     if (!existsSync(resolve(root, workflow))) {
       errors.push(`Owned workflow is missing: ${workflow}`);
+    }
+  }
+
+  const workflowDirectory = resolve(root, ".github/workflows");
+  if (existsSync(workflowDirectory)) {
+    const registeredWorkflows = new Set(manifest.ownedWorkflows);
+    for (const entry of readdirSync(workflowDirectory, { withFileTypes: true })) {
+      if (!entry.isFile() || !/\.ya?ml$/.test(entry.name)) {
+        continue;
+      }
+      const workflowPath = `.github/workflows/${entry.name}`;
+      if (!registeredWorkflows.has(workflowPath)) {
+        errors.push(
+          `Repository workflow is not registered as Open Fufu-owned: ${workflowPath}.`,
+        );
+      }
     }
   }
 
@@ -152,6 +184,60 @@ export function validateChangedPaths(
       errors.push(
         `Changed executable code is not adopted by Open Fufu: ${change.path}. ` +
           `Either revert the inherited-code change or register the source with at least one owned validator in ${MANIFEST_PATH}.`,
+      );
+    }
+  }
+
+  return errors;
+}
+
+export function validateOwnershipDelta(
+  changes: ChangedPath[],
+  manifest: ValidationManifest,
+  baseManifest: ValidationManifest | null,
+): string[] {
+  // The first introduction of the ownership manifest is the explicit bootstrap.
+  // Once it exists on the target base, every later expansion must carry reviewable
+  // validation evidence in the same change.
+  if (baseManifest === null) {
+    return [];
+  }
+
+  const errors: string[] = [];
+  const changedPaths = new Set(
+    changes
+      .filter((change) => !change.status.startsWith("D"))
+      .map((change) => change.path),
+  );
+  const baseTests = new Set(baseManifest.ownedTests);
+  const baseWorkflows = new Set(baseManifest.ownedWorkflows);
+  const baseSources = new Set(baseManifest.ownedSources.map((entry) => entry.path));
+
+  for (const test of manifest.ownedTests) {
+    if (!baseTests.has(test) && !changedPaths.has(test)) {
+      errors.push(
+        `Newly registered owned test was not added or modified in this change: ${test}. ` +
+          "Do not revive an inherited test by manifest-only registration.",
+      );
+    }
+  }
+
+  for (const workflow of manifest.ownedWorkflows) {
+    if (!baseWorkflows.has(workflow) && !changedPaths.has(workflow)) {
+      errors.push(
+        `Newly registered owned workflow was not added or modified in this change: ${workflow}.`,
+      );
+    }
+  }
+
+  for (const source of manifest.ownedSources) {
+    if (baseSources.has(source.path)) {
+      continue;
+    }
+    if (!source.validators.some((validator) => changedPaths.has(validator))) {
+      errors.push(
+        `Newly adopted source has no validator added or modified in this change: ${source.path}. ` +
+          "Adoption must carry reviewable validation evidence; pointing at an untouched existing validator is insufficient.",
       );
     }
   }
@@ -282,7 +368,15 @@ function main(): void {
   const base = readBaseArgument(process.argv.slice(2));
 
   if (base) {
-    errors.push(...validateChangedPaths(parseGitChanges(base, root), manifest));
+    const changes = parseGitChanges(base, root);
+    errors.push(...validateChangedPaths(changes, manifest));
+    errors.push(
+      ...validateOwnershipDelta(
+        changes,
+        manifest,
+        loadValidationManifestAtRef(base, root),
+      ),
+    );
   }
 
   if (errors.length > 0) {
