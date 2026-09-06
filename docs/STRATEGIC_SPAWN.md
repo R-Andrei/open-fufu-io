@@ -317,6 +317,8 @@ These values use match seed `seed-0001` and are normative:
 | `stableTie32("random-origin-priority", "1", "seed-0001", "F-A", 0)` | `3352854808` | `0xC7D88118` |
 | `stableTie32("random-exact-origin", "1", "seed-0001", "F-A", 0, 12345)` | `887248552` | `0x34E256A8` |
 | `stableTie32("exact-origin-cell", "1", "seed-0001", "F-A", 1, 12345)` | `88442828` | `0x054587CC` |
+| `stableTie32("exact-origin-global-cell", "1", "seed-0001", "F-A", 1, 12345)` | `2434573459` | `0x911CA493` |
+| `stableTie32("default-influence-center", "1", "seed-0001", "F-A", 0, 12345)` | `1179902534` | `0x4653E246` |
 | `stableTie32("spawn-footprint-cell", "1", "seed-0001", 12345, "F-A", 0)` | `1594207403` | `0x5F05ACAB` |
 | `stableTie32("spawn-star-cell", "1", "seed-0001", "F-A", 0, 12345)` | `1777288741` | `0x69EF4625` |
 | `stableTie32("spawn-compact-cell", "1", "seed-0001", "F-A", 0, 12345)` | `786146991` | `0x2EDBA6AF` |
@@ -339,7 +341,7 @@ Cryptographic SHA-256 remains appropriate for stored integrity/cell-set hashes; 
 
 Missing, malformed, rejected, or runtime-faulting Strategic Spawn hooks use these deterministic defaults:
 
-- **`chooseInfluence()`**: for each required influence slot, choose a deterministic legal spawn-seed cell ranked from the compiled legal-seed set using match seed + faction ID + slot + resolver version. Multi-slot profiles choose distinct fallback centers. Using a legal seed as center guarantees at least one legal origin candidate lies inside the area.
+- **`chooseInfluence()`**: for each required influence slot, rank the compiled legal-spawn seed set by `(stableTie32("default-influence-center", version, matchSeed, factionId, influenceSlot, cellId), cellId)` and choose the first candidate not already used by an earlier slot of that same faction; fallback slots are processed in ascending `influenceSlot` only for this within-faction default selection. Using a legal seed as center guarantees at least one legal origin candidate lies inside the area.
 - **`reconsiderInfluence()`**: retain that faction's successfully resolved Phase-1 influence center(s) unchanged.
 - **`chooseOrigins()`**: for each required slot, choose the legal origin inside its final influence region nearest to that influence center, using the canonical tie ordering below.
 
@@ -819,6 +821,7 @@ Before V1 release, deterministic/accelerated tests should cover at least:
 
 - every Section 3.1 `stableTie32` golden vector reproduces the exact unsigned uint32 result, and the first vector reproduces the exact canonical serialized bytes;
 - `stableTie32` field-length endianness, integer canonicalization, UTF-8 handling, and low-32-bit multiplication semantics are identical across TypeScript/server/replay-verifier implementations;
+- deterministic multi-slot `chooseInfluence()` fallback reproduces `default-influence-center` ordering and distinct within-faction fallback centers independent of service iteration order;
 - dense overlapping Strategic influence regions;
 - many Strategic exact-origin conflicts resolved identically regardless of faction/component/service enumeration order;
 - P39 Strategic same-faction duplicate requests deterministically retain one requested cell and displace the other through ordinary fallback without imposing own-faction 50-cell spacing;
