@@ -103,7 +103,7 @@ The following groups are required by the completed audit. This is a validation r
 - **P01 + P39** — modified total Initial-Territory quota is split only after P01 changes the total.
 - **P01 + P54** — star geometry preserves P01's modified quota.
 - **P39 + P54** — both stable P39 footprints use independent `P54_STAR_V1` priority fields while preserving one total faction quota/Population pool.
-- **P39 + P20** — after Initial-Territory ownership, exactly one starting-Silo grant is requested at stable primary `originSlot 0`; P39 never duplicates the singular grant, and #45's generic exact-cell admission/lifecycle applies without a fallback Silo location.
+- **P39 + P20** — after Initial-Territory ownership, exactly one starting-Silo grant is requested at stable primary `originSlot 0`; P39 never duplicates the singular grant, #45's generic exact-cell admission/lifecycle applies without a fallback Silo location, and the admitted result consumes #46's ordinary newly materialized persistent-Silo lifecycle.
 - **P48 with P01/P39/P54 footprint accounting** — faction-effective population-bearing Shallow Water must be respected wherever Spawn quota accounting queries population-bearing classification.
 
 ### Population / growth / settlement
@@ -147,18 +147,21 @@ The following groups are required by the completed audit. This is a validation r
 - **P14/P24/N04 + N11** — N11's explicit hard zero cannot be resurrected by ordinary positive/negative yield percentages.
 - **N14 + N16** — first-hostile-capture owner-side `-Vowner` and `+Vowner` deltas cancel exactly while physical cargo continues normally.
 - **P08 -> canonical `atWar`** — external dependency; canonical semantics are closed by #33. Trade events read current `atWar` at event resolution rather than Origin validation inventing a second war lifecycle.
-- **N14/N16 with P08/spatial yield rules** — exact expectations depend on the canonical `Vowner` snapshot contract routed to #48.
+- **N14/N16 with P08/spatial yield rules** — consume the canonical launch-time `Vowner` snapshot and signed-transaction contract closed by #48; later event-resolution war state must not retroactively mutate that stored reference.
 
 ### Naval / strategic weapons
 
-- **P22 + P29** — Warship rank ceiling changes P29 effective launcher level.
+- **P22 + P29** — consume #46's dynamic mobile-launcher capacity lifecycle after the Origin layer resolves P29's effective launcher level.
 - **P23 + P42** — P23 hard-cap admission is closed by #45; same-axis Warship attack-range composition remains routed to #43.
 - **N12 + P42** — Warship build prohibition wins before P42's Population-funded transaction can consume resources.
 - **P27 + P40** — anti-ship SAM attacks share P40's effective range, one-charge capacity, and recharge lifecycle; mechanic closure routed to #50.
 - **P32/P37/N13/N15 Transport lifecycle combinations** — P37's exact-cell grant lifecycle is closed by #45; unresolved N13 landing-casualty order/rounding remains routed to #50.
-- **P29 with P25/P26** — a mobile Warship launcher obeys ordinary transformed weapon legality/cost/one-use rules while its launcher level derives from rank.
-- **P53 with P20** — starting persistent-Silo charge state is immediately economically observable by P53; charge-state closure is routed to #46.
-- **P53 negative assertion against P29** — mobile Warship launcher charges never count as persistent-Silo charges for P53.
+- **P29 with P25/P26** — consume #46's exact-physical-launcher transaction while applying the Origin-level weapon transforms from the catalogue.
+- **P10 with MIRV/SAM interception** — consume #46's canonical projectile taxonomy, launch-bound motion profiles, physical interception, and travel-time-independent blast identity.
+- **P25 + Water Nukes** — consume the P25 authored area transform through #46's single `STRATEGIC_BLAST_V1` footprint; Water Nukes changes effects rather than geometry.
+- **P53 with P20** — consume the ordinary newly materialized persistent-Silo state from `TERRAIN_AND_STRUCTURES.md` as P53 input.
+- **P53 with persistent-Silo upgrade/capture** — consume the canonical persistent-Silo READY projection after those lifecycle transitions rather than maintaining a validation-owned charge rule.
+- **P53 negative assertion against P29** — assert the Origin-authored persistent-Silo-only eligibility boundary against mobile Warship launcher state.
 - **P30 with N14/N16** — transformed hostile piracy payout remains separate from original-owner N14/N16 voyage deltas.
 
 ### Observation / concealment
@@ -191,9 +194,9 @@ The full audit intentionally did not invent missing gameplay semantics inside #3
 | **#43 — Origin/effective-rule modifier algebra** | reusable effective-rule composition | P09+N10 Fort-area arithmetic, P23+P42 range arithmetic, P09 defensive-pressure composition, generic normalization of multiple cap-valued rule sources |
 | **#44 — structure-field geometry and affiliation** | effective Fort/SAM fields | area→geometry/raster conversion, P24 qualifying Fort affiliation, N11 qualifying SAM affiliation/effective P40 area |
 | **#45 — admission/grants/transfers/caps** | atomic action/result admission | **resolved by #45:** generic structure acquisition/grants/capture resolver, in-progress structure-state preservation, N07 overflow, P37 exact-cell grant lifecycle, P20 generic L1 activation after #32 ordering, P23 concurrent cap reservation, P41 five-second direct-L5 construction |
-| **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | P10 projectile set, P25 Hydrogen area geometry, P20/P29/P53 charge-slot readiness |
+| **#46 — strategic launcher/projectile/charge/blast semantics** | strategic weapon executable contracts | **resolved by #46:** canonical strategic projectile/motion, deterministic blast-profile, persistent/mobile launcher-state, and P53-input contracts in their focused owners |
 | **#47 — Population/territorial accounting edge cases** | Population and territorial state | P02 curve, P35 abandonment state, P36 residual accounting, P47 casualty debit source |
-| **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | P05 event value/location, N14/N16 `Vowner` formula and snapshot state |
+| **#48 — FFY event/Trade snapshot semantics** | FFY event values/locations/snapshots | **resolved by #48:** P05 value/location/capture-tick sampling plus immutable Trade-voyage owner-value snapshots, first-hostile-capture persistence, signed N14/N16 transaction aggregation, and ordinary cargo/value separation |
 | **#49 — Factory/Train transformed lifecycle** | Factory provenance/services | **resolved by #49:** owner-scoped P07 Factory Train-service epochs/serialized phase, exact P34 transformed Factory axes, current-ownership conquest provenance, and dispatch-time Train economic snapshots |
 | **#50 — naval/amphibious Origin interactions** | Transport/SAM-vs-ship mechanics | N13 landing casualty order/rounding, P27 complete anti-ship SAM behavior, P28 Transport-Population theft |
 | **#51 — tactical observation/concealment** | observation visibility contract | P45 Forest interior/boundary geometry, P45/P49 minimum hostile-manifestation reveal payload/precedence/lifetime |
@@ -205,7 +208,9 @@ Closed dependencies and resolved downstream contracts are consumed directly from
 - **#32** closes P39/P54 all-mode Spawn semantics, P20 multi-origin singular-grant ordering, and resolver-v1 `P54_STAR_V1` geometry/replay binding;
 - **#33** closed canonical `atWar` lifecycle consumed by P08/Trade validation;
 - **#34** closed Minor-Faction placement/behavior consumed by P19/contact validation;
-- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving #43/#46/#48/#50 boundaries;
+- **#45** closes the generic admission/grant/capture contract and P23/P41 lifecycle details while preserving neighboring ownership boundaries;
+- **#46** closes the strategic projectile/blast/mobile-launcher contracts in `NAVAL_AND_STRATEGIC_WEAPONS.md` and the persistent-Silo contract in `TERRAIN_AND_STRUCTURES.md`; Origin traits consume those owners rather than duplicating them;
+- **#48** closes P05 FFY event realization and Trade-voyage snapshot/signed-transaction semantics in `FFY_ECONOMY.md`; Origin validation consumes those contracts rather than reopening them;
 - **#49** closes P07 Factory Train-service ownership-epoch behavior and P34 conquered-Factory effectiveness/provenance, consumed directly from the Factory/Train canonical owners;
 - **#30 / #42** closed the Open Fufu CI baseline; exact workflow selection/wiring remains CI-owned rather than Origin-validation-owned.
 
@@ -226,6 +231,6 @@ The #31 design/documentation work is complete when all of the following are true
 - discovered mechanic-definition blockers are routed to focused canonical owners instead of silently resolved in validation metadata;
 - neighboring CI, AI, Echo, Spawn, `atWar`, and Minor-Faction ownership boundaries are preserved.
 
-All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#43, #44, #46–#48, #50–#51) is owned by those systems/issues; #32, #45, and #49 scoped mechanics are resolved by their canonical contracts. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
+All of those #31-scoped design/documentation deliverables are complete. Remaining implementation of gameplay mechanics, validators, CI jobs, and resolution of the still-open downstream contracts (#43, #44, #47, #50, #51) is owned by those systems/issues; #32, #45, #46, #48, and #49 have now closed their scoped mechanic-definition contracts in their canonical owners. Their runtime implementation may still be `UNAVAILABLE` under the architecture without making the design contract `BLOCKED`.
 
 Historical `Next work items` sections inside the per-batch coverage files record the audit sequence at the time each batch was written. They are superseded by this final model and must not be interpreted as remaining #31 work.

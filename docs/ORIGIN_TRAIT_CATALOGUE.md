@@ -2,12 +2,11 @@
 
 ## Status and authority
 
-This file is the **canonical owner for Origin builder rules, Origin trait identities, trait costs/refunds, trait-specific mechanics, and trait-specific interaction semantics**.
+This file is the **canonical owner for Origin builder rules, Origin trait identities, trait costs/refunds, trait-specific mechanics, and Origin-trait composition semantics**.
 
 Neighboring concerns are owned elsewhere and are referenced rather than restated here:
 
 - high-level game-wide invariants: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
-- game-wide effective-rule composition, modifier algebra, normalization, and serialization semantics: [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md);
 - OpenFront → Open Fufu migration sequencing: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
 - Official Origin roster/content: [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md);
 - terrain, persistent structures, and baseline Tank chassis: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
@@ -59,7 +58,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P08 | **Tea Time** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **Wall Maria** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **Scorpion's Tail** | `+100% warhead projectile speed` | 4 |
-| P11 | **Level Upper** | SAMs cost `0 FFY` to build or upgrade; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
+| P11 | **Level Upper** | SAMs cost `0 FFY`; each 25,000 peak Total Population unlocks one SAM ownership/build slot | 8 |
 | P12 | **Somewhere Not Here** | `+25% Transport Ship speed` | 6 |
 | P13 | **Mountain Training Arc** | Mountains provide `+33% defensive pressure` | 4 |
 | P14 | **60 Billion Double Dollars** | FFY events located on Desert yield `+33% FFY` | 4 |
@@ -163,15 +162,25 @@ P19 counts distinct currently active other factions with current Territorial Con
 
 `Other faction` is literal: a fixed teammate may count, and an active Minor Faction counts once regardless of the number of disconnected contact components. Minor-Faction identity/lifecycle is owned by `MINOR_FACTIONS.md`.
 
-### P25 — Hydrogen blast-area interpretation
+### P10 — warhead projectile speed
 
-P25's `+50%` changes affected Hydrogen-Bomb **area**, not radius by `1.5×`. Strategic-weapon baseline geometry is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+P10 applies its authored `+100% projectile speed` modifier to the canonical `warhead projectile` class defined by `NAVAL_AND_STRATEGIC_WEAPONS.md`. It does not transform other strategic-projectile classes or any non-motion weapon axis. Projectile classification, baseline motion, launch-bound motion snapshots, MIRV separation behavior, and interception consumption remain owned by that strategic-weapons document.
+
+### P25 — Hydrogen specialization
+
+P25 supplies three Origin-level transformations:
+
+- Atom Bomb use is forbidden;
+- MIRV use is forbidden;
+- Hydrogen Bomb FFY cost and Hydrogen Bomb blast **area** each receive the authored `+50%` multiplier, equivalently `3/2`.
+
+The blast modifier is an area multiplier, not a radius multiplier. `NAVAL_AND_STRATEGIC_WEAPONS.md` is the sole owner of how an effective blast-area multiplier becomes deterministic squared geometry, `STRATEGIC_BLAST_V1` raster membership, Water-Nukes CORE/FRINGE effects, seed/version binding, and replay state.
 
 ### P11 — Population-unlocked SAMs
 
-Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11 makes both SAM construction and SAM upgrade FFY cost exactly zero; ordinary non-FFY legality still applies.
+Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11's SAM FFY cost is genuinely zero; ordinary non-FFY legality still applies.
 
-The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by `RULE_COMPOSITION.md`.
+The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by #43.
 
 ### N07 — one-per-type structure ownership
 
@@ -198,12 +207,12 @@ If N17 changes the structure disposition to destruction, or transfer admission f
 
 ### Grants, purchases, and entitlements — P20, P21, P26, P37
 
-- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. Initial ready-charge state remains owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+- P20 is a starting structure **grant**, not a purchase, and does not consume P21's first-Silo purchase entitlement. After Initial-Territory ownership is established, Spawn requests exactly one L1 Missile Silo at the faction's stable primary exact origin (`originSlot 0`), even for P39. The request then uses generic structure admission and, on success, materializes one immediately active completed L1 Missile Silo. If exact-cell admission rejects the grant, Spawn does not search for another Silo cell and the territorial start remains valid. The admitted Silo uses the ordinary newly materialized persistent-Silo lifecycle rather than a P20-specific charge exception.
 - P21 still requires ordinary legality/affordability validation; the first successful purchase of each structure type consumes `0 FFY`.
-- P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY`.
+- P26 still requires ordinary MIRV launcher/legality/affordability validation; the one permitted successful MIRV consumes `0 FFY` but still consumes one ordinary ready launcher charge on commit.
 - P37's landing-created Fort is a **grant**, not a purchase, and does not consume P21's first-Fort purchase entitlement. On successful grant admission it materializes as an immediately active completed L1 Fort.
 
-Grant placement/admission and lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; these traits only create the grant request and define its authored result.
+Grant placement/admission and persistent-Silo charge lifecycle are owned generically by `TERRAIN_AND_STRUCTURES.md`; strategic-launch transactionality is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. These traits only create/transform their authored requests/results.
 
 ### P23 — single-Warship ownership cap
 
@@ -215,15 +224,13 @@ P42's Population-funded Warship purchase does not bypass P23. Destruction/cancel
 
 ### P29 — Warships as strategic-weapon launchers
 
-P29 makes an owned Warship a legal strategic-weapon launcher from its current cell. The controller must identify the physical launcher when launch origin matters.
-
-For P29 only:
+P29 makes each owned Warship a legal strategic-weapon launcher from its current cell and supplies:
 
 ```text
 effective Silo level = max(1, Warship rank)
 ```
 
-All ordinary weapon costs, launcher requirements, charge/cooldown behavior, and Warship rank mechanics remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. P22 composes normally with P29 by raising the rank ceiling.
+P29 does not itself change the Warship rank cap; P22 composes normally by raising that cap. `NAVAL_AND_STRATEGIC_WEAPONS.md` owns exact physical-launcher selection and the mobile-launcher charge lifecycle, while `TERRAIN_AND_STRUCTURES.md` owns ordinary Silo level → weapon access/capacity. P29's mobile Warship state never becomes a persistent Missile Silo structure.
 
 ### P30 — pirate Warship conversion
 
@@ -459,13 +466,15 @@ P53 adds a global non-spatial passive FFY source:
 
 ```text
 readyPersistentSiloCharges
-= sum of currently ready charges across owned active persistent Missile Silo structures
+= sum of READY charges across owned active persistent Missile Silo structures
 
 P53BonusFFYPerSecond
 = 2,000 × readyPersistentSiloCharges
 ```
 
-Only actual persistent Missile Silo structures count; P29 Warship launcher capability does not. Expending a charge removes its contribution until that charge is ready again. The source is classified as a global/general FFY source for modifier eligibility. P20 + P53 is legal.
+Only actual persistent Missile Silo structures count; P29 mobile Warship launcher charges and SAM charges do not. Capacity by itself does not count. P53 consumes the current canonical persistent-Silo charge state without redefining it; creation, spending, recharge, upgrade, capture, serialization, and replay of that state are owned by `TERRAIN_AND_STRUCTURES.md`.
+
+The source is classified as a global/general FFY source for modifier eligibility. P20 + P53 is legal because the admitted P20 structure enters the same ordinary persistent-Silo lifecycle as any other newly materialized completed Silo.
 
 ### P54 — star Initial-Territory profile
 
