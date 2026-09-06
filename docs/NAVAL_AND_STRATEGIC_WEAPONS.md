@@ -537,7 +537,7 @@ distribution radius = 750 cells
 minimum warhead-center spacing = 55 cells
 ```
 
-Warhead #1 targets the submitted primary target cell.
+The first warhead targets the submitted primary target cell.
 
 Remaining centers are chosen deterministically from legal land cells within 750 cells of the primary target that belong to the snapshotted target faction, respecting the 55-cell minimum spacing.
 

@@ -426,7 +426,7 @@ Goon defeated
 Territorial Contact: 4 Goons
 ```
 
-Generated individual Goons may still receive map-appropriate/generated faction names; `Goon` describes their actor class rather than requiring every map label literally to be `Goon #37`.
+Generated individual Goons may still receive map-appropriate/generated faction names; `Goon` describes their actor class rather than requiring every map label literally to be `Goon ID 37`.
 
 ---
 
