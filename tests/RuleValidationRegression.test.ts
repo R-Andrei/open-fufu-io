@@ -4,6 +4,7 @@ import {
   type DynamicRuleProvider,
   type RuleCondition,
   type RuleContribution,
+  type RuleCustomDomainDeclaration,
 } from "../src/core/rules/RuleComposition";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
@@ -271,13 +272,11 @@ describe("runtime payload validation", () => {
         domain: "START",
         hidden: true,
       },
-    ] as unknown as NonNullable<
-      Parameters<typeof validateRuleProfile>[1] extends infer T ? never : never
-    >;
+    ] as unknown as readonly RuleCustomDomainDeclaration[];
     const input = {
       contributions: [],
       customDomains: badCustoms,
-    } as unknown as Parameters<typeof validateRuleProfile>[1];
+    };
     expect(() => validateRuleProfile(RULE_AXIS_REGISTRY, input)).not.toThrow();
     expect(
       validateRuleProfile(RULE_AXIS_REGISTRY, input).filter(
