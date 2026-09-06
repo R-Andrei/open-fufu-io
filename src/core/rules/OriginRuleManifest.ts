@@ -505,9 +505,11 @@ define("P09", "DECLARATIVE", {
 });
 define("P10", "DECLARATIVE", {
   contributions: [
-    pct("P10", "WEAPON_PROJECTILE_SPEED", scope.weapon("ALL"), 10_000),
+    pct("P10", "WEAPON_PROJECTILE_SPEED", scope.weapon("ALL"), 10_000, {
+      kind: "PROJECTILE_IS_WARHEAD",
+    }),
   ],
-  note: "Projectile-family/stage membership remains owned by the strategic-weapon subsystem.",
+  note: "Applies only to the canonical warhead projectile class; projectile taxonomy and launch-bound motion snapshots remain strategic-weapon-owned.",
 });
 define("P11", "DYNAMIC", {
   contributions: [
@@ -621,7 +623,7 @@ define("P19", "DYNAMIC", {
 custom(
   "P20",
   "STARTING_STRUCTURE_GRANT",
-  "Starting-structure grant boundary; exact Spawn placement/order is owned by STRATEGIC_SPAWN.md, generic admission/materialization by the structure owner, and initial charge readiness by the strategic-weapons owner.",
+  "Starting-structure grant boundary; exact Spawn placement/order is owned by STRATEGIC_SPAWN.md, generic admission/materialization and persistent-Silo charge lifecycle by TERRAIN_AND_STRUCTURES.md, and launch transactionality by NAVAL_AND_STRATEGIC_WEAPONS.md.",
 );
 custom(
   "P21",
@@ -673,7 +675,7 @@ define("P25", "DECLARATIVE", {
 custom(
   "P26",
   "MIRV_USE_ENTITLEMENT",
-  "At most one successful MIRV; ordinary legality/affordability remain and the successful use consumes zero FFY.",
+  "At most one successful MIRV; ordinary launcher legality/affordability remain, the successful use consumes zero FFY, and commit still consumes one ordinary ready launcher charge.",
 );
 define("P27", "DECLARATIVE", {
   contributions: [
