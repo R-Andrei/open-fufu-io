@@ -62,6 +62,17 @@ For an ordinary positive FFY event:
 
 FFY-yield modifiers affect positive income events. They do not automatically modify purchase prices, Transport embarkation costs, explicit losses/penalties, or other negative currency transactions.
 
+FFY balances are canonically **non-negative**. When one authoritative economic fact produces one or more explicit signed FFY transaction components, the subsystem first combines every component belonging to that same atomic fact and only then applies the balance floor:
+
+```text
+requestedDelta = sum(all signed FFY components for this atomic economic fact)
+
+balanceAfter
+= max(0, balanceBefore + requestedDelta)
+```
+
+The floor is therefore applied to the **net transaction**, never independently to sibling debit/credit components. Explicit signed transactions are not ordinary positive FFY events and do not acquire positive-event yield modifiers merely because their net delta is positive. V1 does not create FFY debt; affordability and spending consume the resulting non-negative authoritative balance.
+
 ## 3.1 P05 structure-transfer conquest event
 
 P05 **Big Shot** consumes the canonical persistent-structure capture result rather than defining another capture path.
@@ -91,13 +102,21 @@ Therefore an L1 and L5 structure of the same type produce the same P05 base valu
 
 The canonical P05 event location is the captured structure's **physical occupied cell**.
 
-Every P05 event in one deterministic capture-resolution batch evaluates **all mutable earning-side inputs** from one authoritative frozen **pre-transfer / pre-batch earning-state snapshot** taken before that batch's cell/structure ownership mutations and capture consequences are committed. The snapshot includes every mutable input that the ordinary positive-event pipeline would otherwise read while resolving P05, including faction-wide derived earning state such as terrain-share All-FFY effects, the captured cell's terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force for the capturing faction.
+For simulation tick `T`, every P05 event caused by a successful territorial capture whose ownership change resolves on `T` evaluates **all mutable earning-side inputs** from the same authoritative **capture-tick earning-state snapshot** for its capturing faction. That snapshot is taken after the authoritative successful territorial-capture claimant/result set for `T` is fixed, but before **any** successful territorial ownership mutation for `T` — structure-bearing or structureless — and before any structure fate or capture consequence for `T` is committed.
 
-State changed or created by any capture in that same batch therefore cannot retroactively change any sibling P05 event. In particular, captured Desert territory cannot first change the capturer's Desert-share All-FFY bonus and then affect a later P05 consequence in the same batch, and a newly captured Fort or SAM Launcher cannot make its own or a sibling P05 payout newly qualify for a Fort/SAM field merely because the transfer has already been processed internally.
+The snapshot includes every mutable input that the ordinary positive-event pipeline would otherwise read while resolving P05, including faction-wide derived earning state such as terrain-share All-FFY effects, the captured cell's terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force for the capturing faction.
 
-The P05 event then follows the ordinary positive-event pipeline in this section using that frozen earning-state snapshot. P14/N04 consume the captured cell's frozen underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says existed at that cell in the same frozen snapshot. Exact Fort/SAM field geometry and affiliation remain owned by `TERRAIN_AND_STRUCTURES.md` and the focused structure-field closure. #48 therefore fixes P05's event location and temporal sampling boundary, but does not invent unresolved Fort/SAM membership rules.
+The structure-capture resolver may subsequently determine that a particular occupied-cell capture transfers or destroys its structure. Only final `STRUCTURE_TRANSFERRED` results emit P05, but every emitted P05 event still consumes the capturing faction's frozen earning-state view from the tick boundary above.
 
-Because every sibling P05 event in the batch consumes the same pre-batch earning-state snapshot, payouts are invariant to incidental consequence iteration order.
+State changed or created by **any** ownership change on that same tick therefore cannot retroactively change a P05 event from that tick. In particular:
+
+- gaining or losing a structureless Desert cell on `T` cannot change Desert-share All-FFY for a P05 event resolving on `T`;
+- a captured Desert structure cell cannot first change Desert share and then alter its own or a sibling P05 payout;
+- a newly captured Fort or SAM Launcher cannot make its own or a sibling P05 payout newly qualify for a Fort/SAM field merely because one internal consequence happened to process first.
+
+The P05 event then follows the ordinary positive-event pipeline in this section using that frozen capture-tick earning-state snapshot. P14/N04 consume the captured cell's frozen underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says existed at that cell in the same snapshot. Exact Fort/SAM field geometry and affiliation remain owned by `TERRAIN_AND_STRUCTURES.md` and the focused structure-field closure. #48 therefore fixes P05's event location and temporal sampling boundary, but does not invent unresolved Fort/SAM membership rules.
+
+Given the same pre-mutation state and same authoritative territorial-capture results for `T`, P05 values are invariant to incidental ordering of structureless ownership commits, structure admission/fate resolution, and capture-consequence iteration.
 
 ---
 
@@ -221,7 +240,7 @@ Every launched Trade voyage stores one immutable **owner-side success reference 
 
 ```text
 Vowner
-= the ordinary positive uncaptured Trade-success value
+= the finalized ordinary positive uncaptured Trade-success value
   predicted once at launch from the original owner's launch-time state,
   using the launch-time planned destination cell as the valuation location,
   with the external wartime-trade multiplier stage omitted
@@ -247,21 +266,35 @@ The omission of wartime state is deliberate. Ordinary external Trade payout eval
 
 The launch-time planned destination cell is the immutable `Vowner` valuation location. If the physical voyage later reroutes, changes destination ownership, or loses access to that original Port, neither the valuation cell nor `Vowner` is recomputed.
 
-The physical voyage/cargo identity serializes enough authoritative economic state to restore the snapshot without consulting mutable current match state. At minimum the snapshot binds:
+`ownerSuccessValueFfy` stores the canonical finalized FFY amount produced by the ordinary numeric/effective-rule contract. `Vowner` does not define a second rounding or floating-point policy of its own; whatever deterministic numeric finalization is bound to the match ruleset/effective-rule contract applies once, before this value is stored.
+
+The physical voyage/cargo identity serializes enough authoritative economic state to restore the immutable launch snapshot without consulting mutable current match state. At minimum the economic snapshot binds:
 
 ```text
-originalOwnerId
-sourcePortId
-launchDestinationPortId
-valuationCellId
-plannedRouteLengthCells
-rawCargoFfy
-ownerSuccessValueFfy   // Vowner
+TradeVoyageEconomicSnapshotV1 {
+    originalOwnerId
+    sourcePortId
+    launchDestinationPortId
+    valuationCellId
+    plannedRouteLengthCells
+    rawCargoFfy
+    ownerSuccessValueFfy   // Vowner
+}
 ```
 
-Replay/regeneration from the same versioned launch state must reproduce the same `rawCargo` and `Vowner` and may verify them against the serialized values. Save/load restoration consumes the serialized snapshot rather than recalculating `Vowner` from present-day terrain, fields, ownership, or modifiers.
+The immutable economic snapshot is distinct from mutable voyage lifecycle state. Each in-flight voyage also serializes at least:
 
-`Vowner` is **not** the authoritative later ordinary Trade payout. It is a fixed reference amount consumed only by rules that explicitly name the snapshotted owner-side voyage value, currently N14/N16. An uncaptured ordinary Trade completion still resolves its actual positive event at completion under the then-current ordinary event rules.
+```text
+TradeVoyageLifecycleStateV1 {
+    firstHostileCaptureResolved: boolean
+}
+```
+
+`firstHostileCaptureResolved` starts `false`, becomes `true` atomically when the first valid hostile capture resolves, and never returns to `false` on recapture or rerouting. Once it becomes `true`, the original uncaptured commercial-completion path is permanently canceled for that voyage.
+
+Replay/regeneration from the same versioned launch state must reproduce the same `rawCargo` and `Vowner` and may verify them against the serialized values. Save/load restoration consumes the serialized economic snapshot rather than recalculating `Vowner` from present-day terrain, fields, ownership, or modifiers, and separately restores the serialized mutable voyage lifecycle state rather than inferring whether a first hostile capture already occurred from current ownership.
+
+`Vowner` is **not** the authoritative later ordinary Trade payout. It is a fixed reference amount consumed only by rules that explicitly name the snapshotted owner-side voyage value. An uncaptured ordinary Trade completion still resolves its actual positive event at completion under the then-current ordinary event rules unless an Origin transformation replaces that completion consequence.
 
 ## 5.4 Destination selection
 
@@ -321,43 +354,50 @@ A hostile Warship may capture a Trade Ship only when the Warship's faction has a
 
 ## 7.2 Captured cargo lifecycle
 
-On first hostile capture:
+A hostile capture checks the voyage's serialized `firstHostileCaptureResolved` state.
 
-- the original ordinary commercial completion is canceled;
-- the cargo remains aboard the vessel;
-- no ordinary piracy FFY is paid immediately;
-- the vessel routes toward a legal reachable owned active Port of its current holder;
-- any original-owner N14/N16 first-capture adjustment resolves exactly once from the voyage's immutable `Vowner` under §7.3.
+When a valid hostile capture resolves while that state is `false`, the same atomic voyage transition:
+
+- cancels the original ordinary commercial-completion path permanently;
+- collects any first-hostile-capture signed owner-adjustment components supplied by the active Origin rules and processes them under §7.3;
+- sets `firstHostileCaptureResolved = true`;
+- leaves the physical cargo aboard the vessel;
+- pays no ordinary piracy FFY immediately;
+- routes the vessel toward a legal reachable owned active Port of its current holder.
+
+When a later hostile capture or recapture occurs with `firstHostileCaptureResolved == true`, the physical ownership/routing transition proceeds normally but **no first-hostile-capture owner adjustment can fire again** and ordinary uncaptured commercial completion remains canceled.
 
 If the delivery Port becomes invalid, captured cargo retargets another legal reachable owned active Port. If none exists, it remains physically in play without paying out until delivery again becomes possible, it is recaptured, or it is destroyed.
 
-## 7.3 N14/N16 owner-side voyage adjustments
+## 7.3 Original-owner signed voyage transactions
 
-N14 and N16 consume the exact same stored launch-time `Vowner`; they never recompute it when capture/completion occurs.
+`ORIGIN_TRAIT_CATALOGUE.md` is the canonical owner of which Origin trait creates a signed voyage adjustment, its trigger, and its sign/reference amount. This FFY subsystem owns the `Vowner` reference, atomic aggregation/execution of those signed components, the non-negative balance floor, lifecycle persistence, and separation from ordinary positive-event yield processing.
 
-On the **first hostile capture only**, the original owner's signed FFY adjustment is resolved atomically as:
-
-```text
-firstCaptureOwnerDelta
-= (N16 selected ? +Vowner : 0)
-+ (N14 selected ? -Vowner : 0)
-```
-
-Therefore:
+On one authoritative voyage fact, every applicable Origin-supplied signed component is collected before balance application:
 
 ```text
-N14 only       -> -Vowner
-N16 only       -> +Vowner
-N14 + N16      -> exactly 0
+requestedOwnerDelta
+= sum(applicable signed voyage components for this atomic fact)
+
+ownerBalanceAfter
+= max(0, ownerBalanceBefore + requestedOwnerDelta)
 ```
 
-The combined N14+N16 result is one net signed consequence of the same first-capture fact. Implementations must not perform a balance-floor-sensitive debit followed by a separate credit and merely hope they cancel.
+For the current catalogue, first hostile capture may supply `-Vowner` from N14 and `+Vowner` from N16. Those catalogue-owned components therefore derive these conformance results:
 
-For N16, a **successful uncaptured** voyage suppresses the ordinary owner Trade-success payout and instead applies one explicit owner FFY delta of `-Vowner`. Destruction, return/termination without successful ordinary completion, or another path that never reaches successful uncaptured completion does not create that N16 success loss. Once first hostile capture has occurred, the uncaptured-success path is permanently canceled for that voyage.
+```text
+N14 only       -> requestedOwnerDelta = -Vowner
+N16 only       -> requestedOwnerDelta = +Vowner
+N14 + N16      -> requestedOwnerDelta = 0
+```
 
-The N14 loss, N16 first-capture return, and N16 uncaptured-success loss are explicit signed currency transactions. They are **not ordinary positive FFY events** and are not run through All-FFY, Naval/trade, P14/P24, N04/N11, P08, P30, or other positive-event yield transformations a second time. Any ordinary launch-time positive-event modifiers included in `Vowner` have already contributed exactly once to the stored reference amount.
+The combined N14+N16 result is one net signed transaction of the same first-capture fact. Implementations must not perform a balance-floor-sensitive debit followed by a separate credit and merely hope they cancel. For example, when both components are present, the net requested delta is `0` before the balance floor is consulted.
 
-These original-owner adjustments do not change the physical cargo lifecycle. The same cargo remains available for recapture, destruction, or one terminal captured-cargo payout below.
+Likewise, when an Origin rule replaces successful uncaptured Trade completion with an explicit signed owner transaction, FFY suppresses the ordinary positive Trade-success payout and executes the catalogue-supplied signed component through the same net-before-floor rule. The current N16 transformation supplies `-Vowner` on that successful uncaptured path. Paths that do not satisfy the catalogue-defined replacement trigger — such as destruction or return/termination without successful uncaptured completion — create no such replacement transaction.
+
+These signed owner transactions are **not ordinary positive FFY events** and are not run through All-FFY, Naval/trade, P14/P24, N04/N11, P08, P30, or other positive-event yield transformations a second time. Any launch-time positive-event modifiers included in `Vowner` have already contributed exactly once to the stored reference amount.
+
+The signed owner transaction does not change the physical cargo lifecycle. The same cargo remains available for recapture, destruction, or one terminal captured-cargo payout below.
 
 ## 7.4 Terminal captured-cargo payout
 
@@ -369,11 +409,11 @@ base captured-cargo value = original rawCargo
 
 A hostile final holder receives a **Naval / trade piracy FFY** event and applies its own eligible modifiers. If the original owner recaptures and returns the spoiled cargo, it may recover the same one cargo value as a Naval/trade recovery event.
 
-`Vowner` is not substituted for this physical-cargo value. N14/N16 are original-owner voyage adjustments; piracy/recovery continues to value the actual captured cargo from original `rawCargo` under the final holder's/recovering owner's ordinary eligible event rules.
+`Vowner` is not substituted for this physical-cargo value. Origin-defined original-owner voyage adjustments and physical piracy/recovery are separate economic consequences; piracy/recovery continues to value the actual captured cargo from original `rawCargo` under the final holder's/recovering owner's ordinary eligible event rules.
 
 If cargo changes hands repeatedly, only the faction that ultimately completes legal delivery receives the terminal cargo payout. Destruction before delivery yields `0` terminal cargo payout.
 
-Origin-specific capture, loss, inversion, or piracy transformations are defined only in `ORIGIN_TRAIT_CATALOGUE.md`.
+Origin-specific selection, trigger, and sign/reference semantics for capture/loss/inversion/piracy transformations are defined only in `ORIGIN_TRAIT_CATALOGUE.md`; this FFY owner defines the ordinary voyage/cargo lifecycle and execution of the resulting economic consequences.
 
 ---
 
@@ -395,6 +435,7 @@ The following are implementation or balance-validation details, not unresolved s
 
 - exact retry scheduling when a Trade Ship dispatch timer fires with no legal destination;
 - exact deterministic hash/RNG representation for equal-age Trade destination ties and Train service queues;
-- runtime/replay conformance for P05 frozen pre-batch earning-state qualification and the serialized Trade-voyage `Vowner` snapshot once the corresponding Open Fufu gameplay implementation exists;
+- runtime/replay conformance for P05 capture-tick earning-state qualification and serialized Trade-voyage economic snapshot/lifecycle state once the corresponding Open Fufu gameplay implementation exists;
+- generic effective-rule numeric representation/finalization remains owned by its composition contract rather than by a Vowner-specific rounding rule;
 - benchmark/playtest retuning of provisional Train/Trade values;
 - accelerated simulation benchmarks across baseline passive income, optimized industry, maritime trade, piracy, Factory levels, and relevant Origin/Echo combinations.
