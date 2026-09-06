@@ -23,6 +23,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Origin trait validation coverage, dependency traces, integration seams, and certification blockers | [`origin-validation/README.md`](./origin-validation/README.md) |
 | Official Origin roster/content | [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
 | Echo identities, acquisition, rewards, progression, naming, and Gacha | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
+| Approved external fiction/media reference-source IPs/franchises | [`REFERENCE_SOURCES.md`](./REFERENCE_SOURCES.md) |
 | Official PvE AI subsystem | [`official-ai/README.md`](./official-ai/README.md) |
 | Minor Factions / Goons | [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md) |
 
