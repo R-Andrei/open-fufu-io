@@ -19,17 +19,7 @@ Other authorities remain separate because they own different concerns:
 
 A named-Origin configuration does **not** duplicate the entire derived `OriginStrategicProfile`. The complete profile is derived from the Origin's canonical trait membership, trait support, support suppression, additive combination support, final effective rules, and only then any genuinely necessary named-Origin support.
 
-## Progress
-
-```text
-Configured Official Origins: 49 / 49
-Canonical roster coverage: complete in library/UI order
-Remaining Official Origins: 0
-```
-
-O35 is retired; the canonical roster contains 49 active Official Origins.
-
-The V1 named-Origin AI-support phase is closed. Future Origin roster or trait-composition changes must update the gameplay owner, exact AI configuration, affected reusable trait/combination support, and this rationale in the same change.
+When the Official Origin roster or trait composition changes, update the gameplay owner, exact AI configuration, affected reusable trait/combination support, and this rationale in the same change.
 
 ---
 
@@ -149,7 +139,7 @@ Reduced City growth and Mountain FFY further discourage treating all geography a
 
 This Origin activates two reusable combination entries.
 
-`CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates with P34's `50% increased effectiveness` Factory profile. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
+`CONQUEST_FACTORY_SNOWBALL` combines P05 and P34: taking a hostile Factory produces conquest FFY while the captured Factory then operates with P34's transformed Factory profile. `CONQUEST_ONLY_INDUSTRY` combines P34 and N09: the faction cannot build Factories, so captured hostile industry is not merely a bonus but the principal route to Factory capability.
 
 Highland offense helps create acquisition opportunities while weaker Plains offense makes route/terrain selection matter. No named-Origin-specific support is needed because the reusable combination layer already captures both strategic loops.
 
@@ -411,7 +401,7 @@ No new combination hook is required. P52's existing Capacity-acquisition and Pop
 
 P53 makes each ready persistent Missile-Silo charge generate passive FFY, and P20 provides a free starting level-1 Missile Silo. Because that starting Silo is an ordinary active persistent Silo, its ready charge can immediately participate in P53 income. No P20+P53 combination adapter is required: P53 already reads actual owned ready charges and therefore naturally sees the starting state.
 
-P16 + N18 does require reusable combination support and activates `FALLOUT_ACQUISITION_INVERSION`. N18 halves acquisition progress on non-Fallout cells, while P16 removes ordinary Fallout acquisition resistance. The resulting relative rule is intentional: ordinary land remains at 0.5× progress while Fallout is acquired at 1.0× before terrain-specific differences. Expansion and land-war planners therefore need to recognize Fallout as comparatively privileged acquisition terrain rather than merely another contaminated penalty surface.
+P16 + N18 does require reusable combination support and activates `FALLOUT_ACQUISITION_INVERSION`. N18 halves acquisition progress on non-Fallout cells, while P16 removes ordinary Fallout acquisition resistance. The resulting relative rule is intentional: ordinary land remains slower while Fallout avoids both authored transforms before terrain-specific differences. Expansion and land-war planners therefore need to recognize Fallout as comparatively privileged acquisition terrain rather than merely another contaminated penalty surface.
 
 N12 removes Warship construction.
 
@@ -422,53 +412,3 @@ N12 removes Warship construction.
 P54 changes Initial-Territory geometry into the canonical thin five-point star in every spawn mode while preserving the same final territory quota. Strategic Spawn chooses/evaluates the star's position; Random and Fixed Spawn instead provide a resolved origin, after which the same frontage, exposure, directional-reach, and neutral-contact reasoning applies. No extra Population, territory, settlement speed, or capture-speed benefit exists.
 
 **AI identity:** exploit unusual opening reach and boundary geometry while respecting the exposure created by a thin, non-compact start.
-
----
-
-# Batch consistency and full-library audit
-
-### First 10
-
-- O12, O15, and O17 require reusable trait-combination support.
-- No named-Origin-specific support is required.
-
-### Second 10
-
-- O04 requires `CONQUEST_FACTORY_SNOWBALL` and `CONQUEST_ONLY_INDUSTRY`.
-- No named-Origin-specific support is required.
-
-### Third 10
-
-- O29 requires `RADIOACTIVE_HEAVY_ARTILLERY`.
-- O32 requires `POPULATION_SCALED_GIANT_SAM_NETWORK`.
-- O33 requires `REVERSIBLE_SCORCHED_EARTH` and `RADIOACTIVE_FALLOUT_ADVANCE`.
-- O34 requires `RADIOACTIVE_FALLOUT_ADVANCE`.
-- No named-Origin-specific support is required.
-
-### Fourth 10
-
-- O37 reuses `LAYERED_COUNTERINTELLIGENCE`.
-- O43 reuses `ELITE_SINGLE_FLAGSHIP_PROGRESSION`.
-- The other substantial interactions remain ordinary planner composition rather than new candidate types.
-- No named-Origin-specific support is required.
-
-### Final 9
-
-- O03 reuses `TRAIN_POPULATION_ENGINE_ACCELERATION`.
-- O49 requires the new reusable `FALLOUT_ACQUISITION_INVERSION` combination.
-- O48's underpopulation/growth/cheap-settlement loop remains correctly expressible through P52's existing rules-aware support rather than a bespoke combination.
-- O45's free anti-ship SAM network likewise composes through existing P11/P27/N11 support.
-- No named-Origin-specific support is required.
-
-## Global result
-
-The complete 49-Origin V1 library is represented in the canonical AI Origin config in the same library/UI order as `OFFICIAL_ORIGINS.md`.
-
-- **49 / 49** active Official Origins have exact AI configuration entries.
-- **12 / 49** Origins require at least one reusable trait-combination support entry.
-- **0 / 49** require named-Origin-specific AI support.
-- The reusable combination-support registry now contains **13** definitions after the Origin-wide audit exposed the P16+P44 and P16+N18 omissions from the initial trait-only sweep.
-- No current Official Origin selects a positive trait whose AI support is actually removed by a suppression rule. Suppression remains necessary for the broader legal Custom-Origin space and future content.
-- No character personality, Doctrine, Arbiter, Expression, or Persistence behavior is encoded here; those remain character-owned.
-
-The Origin configuration phase is therefore closed. Character configuration can now consume a complete, concrete Origin-support layer without reopening named-Origin mechanics unless a later content change genuinely changes the underlying roster or trait rules.
