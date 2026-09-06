@@ -83,9 +83,28 @@ Every paying station event imposes a **1.5-second / 15-tick dwell** before the T
 
 Dense/highly optimized rail layouts are intentionally allowed to outperform ordinary layouts; balance intervention is reserved for demonstrated pathological scaling.
 
-## 4.1 Train FFY event value
+## 4.1 Factory Train-service ownership epoch
 
-Each qualifying station event is an **Industrial FFY** event owned by the Train owner. Its base value is determined by the originating Factory's completed level:
+Factory Train scheduling is owner-scoped operational state rather than an indivisible part of the physical structure state.
+
+Each owned Factory has one current **Train-service ownership epoch** containing the primary-service scheduler state and any owner-specific scheduler state such as P07's normal-primary-dispatch phase. The epoch is serialized/replayed as authoritative state; implementations must not reconstruct it from aggregate Train history.
+
+A newly operational Factory begins its service through the ordinary deterministic initial-service path. Temporary inactivity pauses the current service epoch without discarding its scheduler state. Factory upgrades preserve the current service epoch.
+
+A successful Factory ownership transfer atomically closes the previous owner's service epoch and creates a fresh epoch for the new owner. The new epoch does not inherit the previous owner's turnaround, active-primary occupancy, route queue position, or P07 dispatch phase. The physical Factory's structure identity, completed level, health, construction state, and other transfer-preserved structure state remain governed by `TERRAIN_AND_STRUCTURES.md`.
+
+Every dispatched Train snapshots the Factory service epoch that created it. If the Factory later changes owner while that Train is still in flight:
+
+- the Train remains owned by its dispatching owner and is not transferred with the Factory;
+- it continues its already generated finite route and retains its dispatch-time economic profile;
+- it no longer occupies or blocks the new owner's Factory primary-service slot;
+- its later return, route termination, or destruction closes only its old dispatch and cannot mutate the new ownership epoch's primary scheduler, turnaround, route queue, or P07 phase.
+
+At completion of an old-epoch route after the origin Factory has changed ownership, the Train terminates normally rather than transferring ownership or reattaching itself to the new epoch.
+
+## 4.2 Train FFY event value and dispatch snapshot
+
+Each qualifying station event is an **Industrial FFY** event owned by the Train owner. Its ordinary base value is determined by the originating Factory's completed level:
 
 | Factory level | Base Train event value |
 | ---: | ---: |
@@ -95,13 +114,17 @@ Each qualifying station event is an **Industrial FFY** event owned by the Train 
 | **L4** | **13,750 FFY** |
 | **L5** | **15,000 FFY** |
 
+At dispatch, each Train snapshots the originating Factory's completed level and any explicit Factory-specific transformation of the Train-event **base value**. All station events and pending interception cargo for that Train use this dispatch-time Factory economic profile for the Train's lifetime. A later Factory upgrade, ownership transfer, or loss of an owner-specific Factory transformation does not retroactively alter an already dispatched Train.
+
+P34 is the current V1 Factory-specific base-value transformation: a Train dispatched from a qualifying P34 conquered Factory snapshots a `1.50×` Factory Train-event base-value multiplier. That multiplier is applied at step 2 of the FFY ordering in §3, before ordinary earning-side yield percentages. A P07 bonus Train dispatched simultaneously with a primary Train snapshots the same Factory economic profile while retaining its independently generated route.
+
 A foreign station does not receive an automatic payout merely for being traversed.
 
 If a qualifying external station belongs to a faction currently `atWar` with the Train owner, the earning-side event uses the ordinary wartime external-trade multiplier from §6.
 
-## 4.2 Train interception / land piracy
+## 4.3 Train interception / land piracy
 
-For its next eligible paying stop, a Train carries a snapshotted pending base cargo value equal to its originating Factory-level event value.
+For its next eligible paying stop, a Train carries a snapshotted pending base cargo value equal to the Train's dispatch-time Factory event base value after any explicit Factory-specific base-value transformation such as P34.
 
 If a hostile Tank successfully intercepts the Train before that payout:
 
