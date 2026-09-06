@@ -81,7 +81,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P31 | **Heart-Under-Blade** | Warships inside owned active Port repair fields receive `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate; they may remain operational while receiving it | 6 |
 | P32 | **Armored Titan** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
 | P33 | **Misaka Network** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
-| P34 | **Spoils of the Empire** | Factories acquired by conquest operate at `2×` ordinary Factory effect while owned | 6 |
+| P34 | **Spoils of the Empire** | Factories acquired through conquest operate at `50% increased effectiveness` while owned | 6 |
 | P35 | **It's a Matter of Visualization** | Deliberately relinquished cells become neutral Fallout until next successful capture | 6 |
 | P36 | **Half-Priced Bento** | Neutral settlement costs `0.5 Population/cell` instead of `1`, using faction-level persistent residual accounting | 5 |
 | P37 | **The City Mouse** | Transport embarkation costs `+250 FFY`; each successful amphibious landing grants a permanent level-1 Fort at the landing location | 7 |
@@ -236,7 +236,7 @@ Both traits use the canonical launch-time owner-side voyage value (`Vowner`) def
 - N16 replaces successful uncaptured owner payout with a loss of `Vowner`; on first hostile capture, the original owner instead receives `Vowner` once.
 - N14 + N16 is legal; their first-hostile-capture owner-side deltas cancel without a compatibility exception.
 
-All ordinary voyage, rerouting, cargo, capture, and captor-payout rules remain in the FFY owner.
+All ordinary voyage, rerouting, cargo, capture, and payout rules remain in the FFY owner.
 
 ### P31 — enhanced Warship Port repair
 
@@ -265,9 +265,33 @@ The gain is Capacity-capped and enters Available Population. P33 follows the can
 
 ### P34 — conquered Factories
 
-Only Factories that **successfully transfer** to the holder through the canonical structure-capture resolver count as acquired by conquest for P34. Built or granted Factories remain ordinary. A Factory destroyed on capture by N17 or by failed ownership admission never becomes a P34 Factory. P34 + N09 remains legal, enabling conquest-only access to the transformed Factory behavior.
+Only Factories that **successfully transfer** to the holder through the canonical structure-capture resolver count as acquired through conquest for P34. Built or granted Factories remain ordinary. A Factory destroyed on capture by N17 or by failed ownership admission never becomes a P34 Factory. P34 + N09 remains legal, enabling conquest-only access to the transformed Factory behavior.
 
-The exact transformed Factory axes and provenance/counter lifecycle after later ownership changes remain owned by #49; this catalogue only fixes the successful-transfer trigger.
+P34's player-facing `50% increased effectiveness` is a compact description of exactly these developer-facing transformations while the qualifying Factory remains owned by the P34 holder:
+
+```text
+Train event base value                 ×1.50
+Tank-chassis construction speed        ×1.50
+Tank repair rate                       ×1.50 (100 -> 150 HP/s currently)
+Tank repair radius                     8 cells (5 ordinarily)
+```
+
+No other Factory axis is changed by P34. In particular, P34 does **not** change primary Train count/service slots, Train speed, routing, station dwell, the 5-second primary-service turnaround, P07's every-fourth-dispatch cadence, concurrent Tank-build capacity, Tank purchase cost, simultaneous repair capacity, Factory level, Factory construction/upgrade duration, or Factory construction/upgrade cost.
+
+`+50% Tank-chassis construction speed` is a work-rate multiplier, not a 50% duration subtraction. The effective duration is therefore ordinary resulting-chassis duration divided by `1.5`, with authoritative tick scheduling using the canonical deterministic completion rounding. With the current 10-tick/second timing, the baseline 5-second/50-tick Tank completes in `ceil(50 / 1.5) = 34` ticks; P43 Heavy Artillery's 10-second/100-tick build completes in `ceil(100 / 1.5) = 67` ticks. P34 does not alter P43's authored purchase-cost or chassis transformation.
+
+P34 modifies the Factory-originating Train **base event value** before ordinary earning-side FFY yield modifiers. A Train dispatched while the Factory qualifies for P34 snapshots that `1.50×` Factory event-value profile for its lifetime, so later Factory ownership/level changes do not retroactively change that Train's station-event base value or pending interception cargo. P07 bonus Trains use the same dispatch-time Factory economic profile as their paired primary Train; P34 does not create additional P07 bonus Trains.
+
+The conquest qualification belongs to the **current ownership epoch**, not to the physical Factory forever. On every successful acquisition the structure records the current owner's acquisition path. A later transfer creates a new current-owner `CAPTURE_TRANSFER` provenance; P34 is active only when the current owner has P34 and that current ownership was acquired through `CAPTURE_TRANSFER`. Losing ownership removes the previous owner's P34 transformation rather than permanently enchanting the Factory.
+
+Interaction consequences are exact:
+
+- **P05 + P34:** one successful Factory transfer may independently produce one P05 conquest event and establish P34 Factory provenance; P34 does not multiply the P05 event.
+- **P07 + P34:** P07's dispatch sequence is unchanged; every actual primary or P07 bonus Train dispatched under the P34 profile uses the `1.50×` Factory Train-event base value.
+- **P33 + P34:** P34 changes the Train's FFY base value only. It does not increase P33's `20 × City level` Population grant and does not create extra Train events.
+- **P43 + P34:** the Heavy-Artillery chassis is produced at `1.50×` construction speed and may receive the Factory's 150 HP/s repair inside the 8-cell radius; P43's other authored chassis values remain unchanged.
+- **N09 + P34:** N09 blocks Factory construction but not legal capture transfer, so captured Factories may qualify for P34.
+- **N17 + P34:** N17 resolves the Factory as destroyed instead of transferred, so P34 never activates.
 
 ### P35 — scorched-earth Fallout
 
@@ -354,7 +378,7 @@ Resolution is deterministic:
 1. collect enemy-owned population-bearing candidate cells in the authored Manhattan footprint;
 2. exclude structure-occupied cells;
 3. order by Manhattan distance from target, then stable cell ID;
-4. neutralize/apply Fallout to at most 10 cells within radius 2 for a baseline Tank chassis, or at most 50 within radius 5 for P43 Heavy Artillery;
+4. neutralize/apply Fallout to at most 10 cells within radius 2 for a baseline Tank chassis, or at most 50 inside radius 5 for P43 Heavy Artillery;
 5. if fewer eligible cells exist, affect fewer cells rather than expanding the footprint.
 
 P43 + P44 is explicitly legal and yields radioactive Heavy Artillery.
@@ -398,9 +422,22 @@ P50 + P51 is legal and applies the same cross-type composition in both direction
 
 ### P07 — deterministic +25% Train throughput
 
-Each Factory maintains its own count of normal primary Train dispatches. Every fourth normal primary dispatch simultaneously launches one additional bonus Train, giving exactly `+25%` Train count over the sequence. The bonus Train does not occupy or delay the primary slot, uses an independently generated deterministic ordinary route, and destruction does not reset the per-Factory sequence.
+Each Factory maintains one owner-scoped P07 phase for the current Factory Train-service ownership epoch:
 
-All ordinary Train routing/service/event semantics remain owned by `FFY_ECONOMY.md`.
+```text
+phase 0 -> primary dispatch -> 1
+phase 1 -> primary dispatch -> 2
+phase 2 -> primary dispatch -> 3
+phase 3 -> primary dispatch + one bonus Train -> 0
+```
+
+Only normal primary Train dispatches advance the phase. A P07 bonus Train never advances it. The bonus Train does not occupy or delay the primary slot, uses an independently generated deterministic ordinary route, and behaves as an ordinary Train for station events, dwell, interception, destruction, and P33.
+
+The P07 phase is persistent authoritative Factory-scheduler state and is serialized/replayed directly; it must not be reconstructed from aggregate Train counts or event history. Temporary inactivity pauses/preserves the phase. Factory upgrade preserves it. Ordinary Train destruction does not reset it. Physical Factory destruction deletes it.
+
+A successful Factory ownership transfer closes the old owner's Train-service epoch and creates a fresh scheduler epoch for the new owner. The new epoch starts at P07 phase `0` if the new owner has P07; no latent phase is inherited from the prior owner or advanced on behalf of a non-P07 owner. An old-owner Train already in flight remains that old owner's Train and retains its dispatch-time route/economic snapshot, but it no longer occupies or blocks the new owner's primary service slot. Its later return or destruction cannot mutate the new ownership epoch's turnaround or P07 phase.
+
+All ordinary Train routing/service/event semantics and dispatch-time Factory economic snapshots remain owned by `FFY_ECONOMY.md`.
 
 ### P52 — underpopulation economy
 

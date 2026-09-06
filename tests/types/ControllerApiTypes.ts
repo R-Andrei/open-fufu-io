@@ -6,7 +6,9 @@ import type {
   HostilityMechanicsSpec,
   PersistentDirective,
   PurchasableUnitType,
+  StructureAcquisitionPath,
   StructureBuildQuote,
+  StructureMechanicsSpec,
   StructureView,
   TransportMechanicsSpec,
   UnitAttackSpec,
@@ -34,6 +36,20 @@ const buildTank: BuildUnitCommand = {
   producerId: "factory-1",
 };
 void buildTank;
+
+const capturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
+void capturedFactoryPath;
+
+const conqueredFactorySpec: StructureMechanicsSpec = {
+  type: "FACTORY",
+  level: 1,
+  repairRadius: 8,
+  repairRateHpPerSecond: 150,
+  simultaneousRepairCapacity: 1,
+  trainEventBaseValueMultiplier: 1.5,
+  tankConstructionSpeedMultiplier: 1.5,
+};
+void conqueredFactorySpec;
 
 const cappedStructureQuote: StructureBuildQuote = {
   legal: false,
