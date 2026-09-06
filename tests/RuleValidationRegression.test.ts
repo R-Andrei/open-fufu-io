@@ -199,6 +199,22 @@ describe("dynamic-provider compile-time validation", () => {
     ).toEqual([]);
   });
 
+  it("rejects a non-object provider payload without throwing", () => {
+    const malformed = null as unknown as DynamicRuleProvider;
+    expect(() =>
+      validateRuleProfile(RULE_AXIS_REGISTRY, {
+        contributions: [],
+        dynamicProviders: [malformed],
+      }),
+    ).not.toThrow();
+    expect(
+      validateRuleProfile(RULE_AXIS_REGISTRY, {
+        contributions: [],
+        dynamicProviders: [malformed],
+      }).map((issue) => issue.code),
+    ).toContain("INVALID_DYNAMIC_PROVIDER_SHAPE");
+  });
+
   it("rejects unknown state dependencies", () => {
     const provider = {
       ...canonicalDynamicProvider(),
