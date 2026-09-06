@@ -65,6 +65,7 @@ export interface OriginTraitRuleManifestEntry {
   readonly contributions: readonly RuleContribution[];
   readonly dynamicProviders: readonly DynamicRuleProvider[];
   readonly customDomains: readonly OriginCustomRuleDomain[];
+  /** Navigation/boundary context only; canonical mechanic values live with their focused owners. */
   readonly note?: string;
 }
 
@@ -437,7 +438,7 @@ define("P02", "MIXED", {
     ),
   ],
   customDomains: ["POPULATION_GROWTH_PROFILE_ANCHORS"],
-  note: "The replacement profile is typed here; exact 30–70% curve anchors remain Population-mechanics-owned.",
+  note: "Profile identity is encoded here; exact growth-curve semantics remain OPEN_FUFU_DESIGN-owned.",
 });
 define("P03", "DECLARATIVE", {
   contributions: [
@@ -462,7 +463,7 @@ define("P04", "DECLARATIVE", {
 custom(
   "P05",
   "STRUCTURE_CAPTURE_FFY_EVENT",
-  "Successful qualifying structure transfer creates a Military/conquest FFY event; event base value/location remain FFY-owner inputs.",
+  "Custom capture-event hook; qualification, value, and location remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY-owned.",
 );
 define("P06", "DECLARATIVE", {
   contributions: [
@@ -472,7 +473,7 @@ define("P06", "DECLARATIVE", {
 custom(
   "P07",
   "FACTORY_DISPATCH_SCHEDULER",
-  "Each Factory ownership epoch tracks the every-fourth normal-primary-dispatch phase; every fourth primary dispatch simultaneously creates one bonus Train.",
+  "Custom Factory dispatch-scheduler hook; cadence and ownership-epoch lifecycle remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY-owned.",
 );
 define("P08", "DECLARATIVE", {
   contributions: [
@@ -509,7 +510,7 @@ define("P10", "DECLARATIVE", {
       kind: "PROJECTILE_IS_WARHEAD",
     }),
   ],
-  note: "Applies only to the canonical warhead projectile class; projectile taxonomy and launch-bound motion snapshots remain strategic-weapon-owned.",
+  note: "Warhead eligibility is encoded here; projectile taxonomy and launch-bound motion remain NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 });
 define("P11", "DYNAMIC", {
   contributions: [
@@ -533,7 +534,7 @@ define("P11", "DYNAMIC", {
       "INTEGER",
     ),
   ],
-  note: "SAM FFY transactions are free; the hard ownership entitlement is floor(peak Total Population / 25,000) and composes through the cap reducer.",
+  note: "Dynamic entitlement and zero-cost contributions are encoded above; SAM admission/lifecycle remains TERRAIN_AND_STRUCTURES-owned.",
 });
 define("P12", "DECLARATIVE", {
   contributions: [
@@ -591,7 +592,7 @@ define("P17", "DYNAMIC", {
       "RATIONAL",
     ),
   ],
-  note: "Dynamic multiplier is exactly (99/100)^S where S is current owned persistent-structure count.",
+  note: "Dynamic structure-count multiplier is encoded above; upgrade transaction semantics remain TERRAIN_AND_STRUCTURES-owned.",
 });
 define("P18", "DECLARATIVE", {
   contributions: [
@@ -618,17 +619,17 @@ define("P19", "DYNAMIC", {
       "BASIS_POINTS",
     ),
   ],
-  note: "Dynamic contextual contribution is +500 bp per distinct active other faction with Territorial Contact.",
+  note: "Dynamic contact-count contribution is encoded above; Territorial Contact semantics remain OPEN_FUFU_DESIGN/MINOR_FACTIONS-owned.",
 });
 custom(
   "P20",
   "STARTING_STRUCTURE_GRANT",
-  "Starting-structure grant boundary; exact Spawn placement/order is owned by STRATEGIC_SPAWN.md, generic admission/materialization and persistent-Silo charge lifecycle by TERRAIN_AND_STRUCTURES.md, and launch transactionality by NAVAL_AND_STRATEGIC_WEAPONS.md.",
+  "Custom starting-structure grant hook; Spawn placement/order remains STRATEGIC_SPAWN-owned, persistent-Silo admission/lifecycle TERRAIN_AND_STRUCTURES-owned, and launch transactionality NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 );
 custom(
   "P21",
   "FIRST_STRUCTURE_PURCHASE_ZERO_FFY",
-  "First successful purchase per persistent-structure type consumes zero FFY after ordinary legality and affordability.",
+  "Custom first-purchase entitlement hook; eligibility, consumption, and transaction ordering remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 );
 define("P22", "DECLARATIVE", {
   contributions: [addCap("P22", "UNIT_MAX_RANK", scope.unit("WARSHIP"), 2)],
@@ -675,7 +676,7 @@ define("P25", "DECLARATIVE", {
 custom(
   "P26",
   "MIRV_USE_ENTITLEMENT",
-  "At most one successful MIRV; ordinary launcher legality/affordability remain, the successful use consumes zero FFY, and commit still consumes one ordinary ready launcher charge.",
+  "Custom MIRV-use entitlement hook; allowance, consumption, and launcher transaction ordering remain ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 );
 define("P27", "DECLARATIVE", {
   contributions: [
@@ -689,17 +690,17 @@ define("P27", "DECLARATIVE", {
       "ATTACK_SHIPS",
     ),
   ],
-  note: "Exact anti-ship target selection, damage, cadence, charge arbitration, and priority remain SAM-owner mechanics.",
+  note: "Capability addition is encoded above; anti-ship targeting/damage/cadence/charge arbitration remain NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 });
 custom(
   "P28",
   "TRANSPORT_DESTRUCTION_POPULATION_TRANSFER",
-  "Qualifying Transport destruction transfers carried Population; attribution/recipient/order remain amphibious-owner semantics.",
+  "Custom Transport-destruction Population-transfer hook; attribution, recipient, and ordering remain ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 );
 custom(
   "P29",
   "WARSHIP_STRATEGIC_LAUNCHER",
-  "Warship becomes a strategic launcher with effective Silo level max(1, rank); charge/readiness lifecycle remains strategic-weapon-owned.",
+  "Custom Warship strategic-launcher hook; level projection, charge/readiness, and launch lifecycle remain ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 );
 define("P30", "DECLARATIVE", {
   contributions: [
@@ -734,7 +735,7 @@ define("P31", "MIXED", {
     ),
   ],
   customDomains: ["WARSHIP_OPERATIONAL_DURING_PORT_REPAIR"],
-  note: "Warship-specific Port radius/rate specialize the already-effective Port field after Echo; operational-during-repair remains non-scalar.",
+  note: "Warship-specific Port scalars are encoded above; operational-during-repair behavior remains ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 });
 define("P32", "DECLARATIVE", {
   contributions: [
@@ -749,7 +750,7 @@ define("P32", "DECLARATIVE", {
 custom(
   "P33",
   "TRAIN_CITY_POPULATION_GRANT",
-  "Qualifying Train event at an owned City grants 20 × completed City level Available Population, Capacity-capped.",
+  "Custom Train-to-City Population-grant hook; qualification and grant arithmetic remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY/OPEN_FUFU_DESIGN-owned.",
 );
 const p34Captured = {
   kind: "STRUCTURE_ACQUISITION_PATH_IS",
@@ -794,12 +795,12 @@ define("P34", "MIXED", {
     ]),
   ],
   customDomains: ["FACTORY_TRAIN_DISPATCH_SNAPSHOT"],
-  note: "Captured-Factory numeric transformations are typed here; Factory service epochs and dispatch-time Train economic snapshots remain Factory/FFY lifecycle state.",
+  note: "Captured-Factory numeric contributions are encoded above; Factory service epochs and dispatch snapshots remain FFY_ECONOMY-owned.",
 });
 custom(
   "P35",
   "RELINQUISHMENT_FALLOUT",
-  "Deliberate relinquishment creates neutral Fallout until the next successful capture.",
+  "Custom relinquishment-to-Fallout hook; exact trigger and terrain-state lifecycle remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 );
 define("P36", "MIXED", {
   contributions: [
@@ -812,7 +813,7 @@ define("P36", "MIXED", {
     ),
   ],
   customDomains: ["SETTLEMENT_RESIDUAL_ACCOUNTING"],
-  note: "Fractional debit residual accounting remains lifecycle state.",
+  note: "Settlement-cost replacement is encoded above; residual debit accounting remains OPEN_FUFU_DESIGN-owned.",
 });
 define("P37", "MIXED", {
   contributions: [
@@ -827,12 +828,12 @@ define("P37", "MIXED", {
     ),
   ],
   customDomains: ["LANDING_FORT_GRANT"],
-  note: "Successful landing additionally attempts one exact-cell active completed L1 Fort grant through canonical structure admission.",
+  note: "Embark-cost contribution is encoded above; landing Fort-grant semantics remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 });
 custom(
   "P38",
   "AUTOMATIC_DEFENDER_SURVIVAL",
-  "Automatic defender survives a successful capture of the defended cell and remains/returns Available.",
+  "Custom automatic-defender survival hook; capture/Population lifecycle remains ORIGIN_TRAIT_CATALOGUE/OPEN_FUFU_DESIGN-owned.",
 );
 define("P39", "DECLARATIVE", {
   contributions: [structural("P39", "SPAWN_PROFILE", scope.global, "SPLIT_TWO")],
@@ -862,7 +863,7 @@ define("P40", "DECLARATIVE", {
 custom(
   "P41",
   "DIRECT_LEVEL5_CITY_PURCHASE",
-  "Purchased Cities are one direct-L5 transaction at 95% cumulative ordinary cost with the canonical City build duration.",
+  "Custom direct-City-purchase hook; level/cost/build-duration transaction semantics remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 );
 define("P42", "DECLARATIVE", {
   contributions: [
@@ -890,12 +891,12 @@ define("P43", "DECLARATIVE", {
 custom(
   "P44",
   "RADIOACTIVE_ATTACK_AFTERSHOCK",
-  "Successful Tank-chassis Population attack neutralizes a deterministic nearby footprint and applies Fallout.",
+  "Custom radioactive attack-aftershock hook; trigger, footprint, neutralization, and Fallout semantics remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 );
 custom(
   "P45",
   "FOREST_CONCEALMENT",
-  "Forest-owned concealment filter; exact tactical manifestation/boundary projection remains visibility-owner semantics.",
+  "Custom Forest-concealment hook; visibility-boundary/manifestation semantics remain ORIGIN_TRAIT_CATALOGUE/OPEN_FUFU_DESIGN-owned.",
 );
 define("P46", "DECLARATIVE", {
   contributions: [
@@ -911,7 +912,7 @@ define("P46", "DECLARATIVE", {
 custom(
   "P47",
   "MARSH_CAPTURE_POPULATION_PENALTY",
-  "Enemy successfully capturing holder-owned Marsh loses one additional Population after ordinary capture.",
+  "Custom Marsh-capture Population-penalty hook; trigger and debit ordering remain ORIGIN_TRAIT_CATALOGUE/OPEN_FUFU_DESIGN-owned.",
 );
 define("P48", "DECLARATIVE", {
   contributions: [
@@ -936,22 +937,22 @@ define("P49", "DECLARATIVE", {
 custom(
   "P50",
   "MIRRORED_STRUCTURE_PRESSURE_FIELD",
-  "Fort also projects offense equal to its effective defensive magnitude; cross-type overlap uses the named complement reducer.",
+  "Custom mirrored structure-pressure hook; derived magnitude and cross-type composition remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES/RULE_COMPOSITION-owned.",
 );
 custom(
   "P51",
   "MIRRORED_STRUCTURE_PRESSURE_FIELD",
-  "Command Post also projects defense equal to its effective offensive magnitude; cross-type overlap uses the named complement reducer.",
+  "Custom mirrored structure-pressure hook; derived magnitude and cross-type composition remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES/RULE_COMPOSITION-owned.",
 );
 custom(
   "P52",
   "PASSIVE_FFY_SOURCE",
-  "Adds passive all/general FFY source max(0, Capacity - TotalPopulation) / 250.",
+  "Custom passive-FFY-source hook; source arithmetic and event-family semantics remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY-owned.",
 );
 custom(
   "P53",
   "PASSIVE_FFY_SOURCE",
-  "Adds 2,000 FFY/s per ready persistent Silo charge, excluding P29/SAM charges.",
+  "Custom passive-FFY-source hook; source arithmetic and eligible Silo state remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY/TERRAIN_AND_STRUCTURES-owned.",
 );
 define("P54", "DECLARATIVE", {
   contributions: [
@@ -1080,12 +1081,12 @@ define("N13", "MIXED", {
     ),
   ],
   customDomains: ["TRANSPORT_LANDING_CASUALTY"],
-  note: "Landing lifecycle point and deterministic half-Population rounding remain amphibious-owner semantics.",
+  note: "Landing-survival contribution is encoded above; casualty lifecycle/rounding remains ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 });
 custom(
   "N14",
   "TRADE_CAPTURE_VALUE",
-  "First hostile Trade capture applies original-owner -Vowner once; canonical voyage Vowner snapshot remains FFY-owner semantics.",
+  "Custom Trade-capture-value hook; debit qualification and voyage snapshot semantics remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY-owned.",
 );
 define("N15", "DECLARATIVE", {
   contributions: [
@@ -1103,12 +1104,12 @@ define("N15", "DECLARATIVE", {
 custom(
   "N16",
   "TRADE_CAPTURE_VALUE",
-  "Trade success/capture inverts owner Vowner payout/loss; canonical voyage Vowner snapshot remains FFY-owner semantics.",
+  "Custom Trade-capture-value hook; terminal payout/loss and voyage snapshot semantics remain ORIGIN_TRAIT_CATALOGUE/FFY_ECONOMY-owned.",
 );
 custom(
   "N17",
   "STRUCTURE_CAPTURE_DISPOSITION",
-  "Enemy structure that would transfer on territorial capture is resolved as destroyed instead.",
+  "Custom structure-capture-disposition hook; destruction/transfer consequences remain ORIGIN_TRAIT_CATALOGUE/TERRAIN_AND_STRUCTURES-owned.",
 );
 define("N18", "DECLARATIVE", {
   contributions: [

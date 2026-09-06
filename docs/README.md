@@ -22,10 +22,19 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Controller public TypeScript surface | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
 | Authentication, identity, sessions, and provisioning | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
 | Origin trait mechanics/cost catalogue | [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) |
-| Origin trait validation coverage, dependency traces, integration seams, and certification blockers | [`origin-validation/README.md`](./origin-validation/README.md) |
+| Origin trait validation coverage, validation domains, dependency traces, integration seams, and explicit interaction obligations | [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md) |
 | Official Origin roster/content | [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
 | Echo identities, acquisition, rewards, progression, naming, and Gacha | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
-| Official PvE AI subsystem | [`official-ai/README.md`](./official-ai/README.md) |
+| Official-AI architecture | [`official-ai/OFFICIAL_AI_ARCHITECTURE.md`](./official-ai/OFFICIAL_AI_ARCHITECTURE.md) |
+| Shared Official-AI configuration/profile contract | [`official-ai/OFFICIAL_AI_CONFIGURATION.md`](./official-ai/OFFICIAL_AI_CONFIGURATION.md) |
+| Official-AI preset roster, difficulty targets, allowed-Origin pools, and Origin selection/reveal rules | [`official-ai/OFFICIAL_AI_PRESETS.md`](./official-ai/OFFICIAL_AI_PRESETS.md) |
+| Generic Official-AI Origin support, composition, suppression, and character adaptation contract | [`official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md`](./official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md) |
+| Official-AI Origin-trait strategic rationale | [`official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md`](./official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md) |
+| Official-AI named-Origin strategic rationale | [`official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) |
+| Official-AI Baseline/character behavioral rationale and signature semantics | [`official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) |
+| Exact Official-AI trait-support, combination-support, and suppression mappings | [`../design/official-ai/origin-trait-support.config.ts`](../design/official-ai/origin-trait-support.config.ts) |
+| Exact Official-AI named-Origin mappings, assertions, and named support | [`../design/official-ai/origin-configurations.config.ts`](../design/official-ai/origin-configurations.config.ts) |
+| Exact Difficulty-0 Baseline and Official character `CharacterProfile` mappings | [`../design/official-ai/character-configurations.config.ts`](../design/official-ai/character-configurations.config.ts) |
 | Minor Factions / Goons | [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md) |
 
 ## Inherited/current-state references

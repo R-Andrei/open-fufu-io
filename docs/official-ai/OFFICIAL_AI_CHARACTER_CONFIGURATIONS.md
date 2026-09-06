@@ -24,16 +24,6 @@ Neighboring authorities remain separate:
 
 This rationale explains character intent and bespoke hook semantics. It must not become a duplicate table of exact configuration values.
 
-## Progress
-
-```text
-Difficulty-0 Baseline:        complete
-Character profiles:           20 / 20 complete
-Character quirk/signature pass: complete
-```
-
-The next character work is validation/benchmarking rather than another ordinary content-mapping pass.
-
 ---
 
 ## Signature behavior contract
@@ -149,13 +139,13 @@ Other advanced controllers may use these tactics too. Tanya's distinction is how
 
 ## Kiss-Shot Acerola-Orion Heart-Under-Blade — D3
 
-No new quirk is forced in this pass. Her existing identity remains dominance, overwhelming commitments, snowballing power, and unusual protection of truly exceptional/irreplaceable assets.
+No additional quirk is forced. Her existing identity remains dominance, overwhelming commitments, snowballing power, and unusual protection of truly exceptional/irreplaceable assets.
 
-A more specific visual signature should remain open until the intended interpretation of Acerola/Kiss-Shot/Shinobu is deliberately narrowed rather than filling the slot with generic vampire royalty imagery.
+A more specific visual signature should be introduced only through a deliberate content change rather than filling the slot with generic vampire imagery.
 
 ## Hanekawa Tsubasa — D4
 
-Hanekawa gains **No Blind Spots**.
+Hanekawa's signature is **No Blind Spots**.
 
 She prefers unusually complete, overlapping observation/information coverage and is more willing than peer controllers to close material coverage holes. This remains budget-aware: information completeness is valuable, but she does not bankrupt the economy building Observation Posts for geometric neatness.
 
@@ -171,7 +161,7 @@ He still holds valuable captured Cities/Factories/Ports when doing so is worthwh
 
 ## Misaka Mikoto — D3
 
-Misaka gains the **Railgun Corridor**.
+Misaka's signature is the **Railgun Corridor**.
 
 She prefers a supported offensive axis that can be hammered open with ranged pressure, artillery/armor where available, observation, and other useful supporting assets. It is intentionally broader and more sustained than Übel's surgical cut.
 
@@ -184,7 +174,7 @@ Misaka: build a supported lane and blast the lane open.
 
 ## Edward Wong Hau Pepelu Tivrusky IV — D2
 
-Ed gains **Arcane Borders**.
+Ed's signature is **Arcane Borders**.
 
 Among similarly useful expansion choices, Ed prefers bizarre but legal territorial shapes: tendrils, loops, asymmetric branches, odd terrain-following curves, and boundaries that make another player wonder why the faction looks like that. Territory remains real territory, so the quirk need not be strategically useless.
 
@@ -260,7 +250,7 @@ Higher-difficulty controllers may use synchronized overwhelming attacks too. Rez
 
 ## Hitori Gotou — D2
 
-Bocchi becomes an intentionally **exceptional defender for D2** while remaining weak at proactive offense and mediocre/poor at economic optimization.
+Bocchi is an intentionally **exceptional defender for D2** while remaining weak at proactive offense and mediocre/poor at economic optimization.
 
 Her signature family is **Fortress Bocchi**:
 
@@ -270,9 +260,7 @@ Her signature family is **Fortress Bocchi**:
 - strong preference for retreating toward prepared safety rather than improvising offense;
 - pressure-triggered panic overcommitment remains a separate volatile behavior.
 
-A cross-layer audit found that the approved Fallout-buffer idea could not occur with her previous allowed-Origin set. `Everything Will Turn to Ash` (O33) already contains the necessary P35 scorched-earth mechanic and complete reusable AI support, so O33 is now added to Bocchi's allowed pool. When she rolls it, her Origin adaptation may deliberately create Fallout during planned withdrawal to form defensive safety barriers around fallback positions.
-
-No trait, Origin mechanic, or Origin-support rule changes are required.
+When her selected allowed Origin exposes a legal scorched-earth/Fallout fallback capability, her Origin adaptation may use that capability defensively during planned withdrawal. The actual allowed-Origin pool is owned by `OFFICIAL_AI_PRESETS.md`; the Origin mechanic and reusable support remain owned by their respective Origin owners.
 
 **Identity test:** far harder to invade than her D2 economy/offense would suggest.
 
@@ -300,27 +288,9 @@ Reinhard may still defend brilliantly. Yang may still conquer aggressively. Ferd
 
 ---
 
-## Cross-layer audit result
+## Character differentiation constraints
 
-This signature pass was reviewed through the mandatory mechanics ↔ Origin ↔ character synchronization rule.
-
-- **Gameplay mechanics:** reviewed; no mechanic changes required.
-- **Origin trait support:** reviewed; no trait-support changes required.
-- **Named-Origin configuration:** reviewed; no Origin definition/support changes required.
-- **Character AI:** updated with the approved signature behavior and revised Yang/Thorfinn competitiveness rules.
-- **Preset Origin pools:** Bocchi gains `Everything Will Turn to Ash` so the approved P35 Fallout-fallback behavior is actually reachable.
-
-The O33/P35 support already exposes territorial shaping, denial, sacrifice, and reusable scorched-earth semantics, so Bocchi requires no `CharacterTraitOverride` or `CharacterOriginOverride`; her ordinary `OriginAdaptationProfile` can interpret the rolled capability defensively.
-
-No other character signature requires changing an allowed-Origin pool.
-
----
-
-## Full character consistency result
-
-All 20 characters and Baseline remain inside the existing shared AI architecture. The signature pass adds no new game rule, Origin trait, named Origin, shared AI literal, or generic signature subsystem.
-
-Important contrasts remain:
+These contrasts are durable fidelity boundaries rather than implementation-status results:
 
 - Reinhard vs Yang vs Ferdinand — conquest vs defense vs economy specialization;
 - Askeladd vs Kaiki — strategic leverage manipulation vs profitable avoidance;

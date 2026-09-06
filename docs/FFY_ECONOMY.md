@@ -130,7 +130,7 @@ State changed or created by **any** ownership change on that same tick therefore
 - a captured Desert structure cell cannot first change Desert share and then alter its own or a sibling P05 payout;
 - a newly captured Fort or SAM Launcher cannot make its own or a sibling P05 payout newly qualify for a Fort/SAM field merely because one internal consequence happened to process first.
 
-The P05 event then follows the ordinary positive-event pipeline in this section using that frozen capture-tick earning-state snapshot. P14/N04 consume the captured cell's frozen underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says existed at that cell in the same snapshot. Exact Fort/SAM field geometry and affiliation remain owned by `TERRAIN_AND_STRUCTURES.md` and the focused structure-field closure. #48 therefore fixes P05's event location and temporal sampling boundary, but does not invent unresolved Fort/SAM membership rules.
+The P05 event then follows the ordinary positive-event pipeline in this section using that frozen capture-tick earning-state snapshot. P14/N04 consume the captured cell's frozen underlying terrain identity; P24/N11 consume whatever qualifying effective Fort/SAM field the structure-field owner says existed at that cell in the same snapshot. Exact Fort/SAM field geometry and affiliation remain owned by `TERRAIN_AND_STRUCTURES.md` and its structure-field contract. This fixes P05's event location and temporal sampling boundary without duplicating Fort/SAM membership mechanics.
 
 Given the same pre-mutation state and same authoritative territorial-capture results for `T`, P05 values are invariant to incidental ordering of structureless ownership commits, structure admission/fate resolution, and capture-consequence iteration.
 
@@ -441,16 +441,3 @@ Ordinary faction defeat gives:
 ```
 
 Remaining unspent FFY is not awarded through a universal last-hit bounty. Explicit scenario/objective rewards may define their own events.
-
----
-
-# 9. Remaining implementation/validation work
-
-The following are implementation or balance-validation details, not unresolved subsystem architecture:
-
-- exact retry scheduling when a Trade Ship dispatch timer fires with no legal destination;
-- exact deterministic hash/RNG representation for equal-age Trade destination ties and Train service queues;
-- runtime/replay conformance for P05 capture-tick earning-state qualification and serialized Trade-voyage economic snapshot/lifecycle state once the corresponding Open Fufu gameplay implementation exists;
-- generic effective-rule numeric representation/finalization remains owned by its composition contract rather than by a Vowner-specific rounding rule;
-- benchmark/playtest retuning of provisional Train/Trade values;
-- accelerated simulation benchmarks across baseline passive income, optimized industry, maritime trade, piracy, Factory levels, and relevant Origin/Echo combinations.

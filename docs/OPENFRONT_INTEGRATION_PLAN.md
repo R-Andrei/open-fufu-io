@@ -2,7 +2,7 @@
 
 ## Status and ownership
 
-This document is the **canonical owner for transforming the current OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deterministic version binding, inherited-source traceability, deployment implications, and integration validation.
+This document is the **canonical owner for transforming the OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deterministic version binding, inherited-source traceability, deployment implications, and integration validation.
 
 It does **not** restate target gameplay mechanics. Those belong to the focused canonical owners listed in [`README.md`](./README.md). The high-level target game is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
@@ -14,7 +14,7 @@ No gameplay implementation is authorized merely by this plan.
 
 # 1. Migration strategy
 
-The current fork is a strong basis for Open Fufu and should **not** be rewritten from scratch.
+The OpenFront fork is a strong basis for Open Fufu and should **not** be rewritten from scratch.
 
 Retain OpenFront's useful dense map/cell engine, deterministic Execution machinery, pathfinding/connectivity infrastructure, generic unit/structure lifecycle plumbing, renderer foundations, lobby/network infrastructure, and performance tooling where they fit the target design.
 
@@ -30,9 +30,9 @@ Replace or substantially adapt inherited assumptions that conflict with Open Fuf
 - inherited spawn semantics;
 - inherited bot cheats/privileged state.
 
-A useful implementation seam already exists between high-level input and deterministic state mutation.
+A useful implementation seam exists between high-level input and deterministic state mutation.
 
-Current conceptual path:
+Inherited conceptual path:
 
 ```text
 human input
@@ -58,7 +58,7 @@ Origins, Echoes, terrain, structures, units, and rulesets feed the same explicit
 
 # 2. Migration ownership matrix
 
-| OpenFront/current area | Migration action | Open Fufu target owner |
+| OpenFront/inherited area | Migration action | Open Fufu target owner |
 | --- | --- | --- |
 | Dense raster map/cells | Keep/adapt | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
 | Deterministic tick/Execution machinery | Keep/adapt | this plan + `OPEN_FUFU_DESIGN.md` |
@@ -66,10 +66,10 @@ Origins, Echoes, terrain, structures, units, and rulesets feed the same explicit
 | Browser rendering/camera/map visualization | Keep heavily | this plan |
 | Pathfinding/water/rail graph | Keep/adapt | target subsystem owners |
 | Generic unit/build lifecycle | Keep/adapt internally | target subsystem owners |
-| Current spawn selection | Replace/adapt | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
+| Inherited spawn selection | Replace/adapt | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
 | Map strategic regions | Add | [`SEGMENTS.md`](./SEGMENTS.md) |
 | Scalar troop state | Adapt into global Population | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
-| Current Attack/combat semantics | Reuse structure selectively; replace rules | `OPEN_FUFU_DESIGN.md`, [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
+| Inherited Attack/combat semantics | Reuse structure selectively; replace rules | `OPEN_FUFU_DESIGN.md`, [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
 | Persistent defensive allocation / redeployment model | Do not build | `OPEN_FUFU_DESIGN.md` |
 | Inherited worker/troop gold | Replace | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
 | Terrain/public terrain semantics | Extend/translate | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
@@ -80,7 +80,7 @@ Origins, Echoes, terrain, structures, units, and rulesets feed the same explicit
 | Trade Ships / Factory Trains / piracy economy | Keep/adapt | `FFY_ECONOMY.md` |
 | Origin system | Add | `ORIGIN_TRAIT_CATALOGUE.md`, [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md) |
 | Echo system | Add | [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md) |
-| Existing bots | Reuse strategy ideas selectively; replace privileged behavior | [`official-ai/README.md`](./official-ai/README.md) |
+| Existing bots | Reuse strategy ideas selectively; replace privileged behavior | [`official-ai/OFFICIAL_AI_ARCHITECTURE.md`](./official-ai/OFFICIAL_AI_ARCHITECTURE.md) |
 | Mutable alliances/relations | Remove/replace | `OPEN_FUFU_DESIGN.md` |
 | Operational visibility | Replace with authoritative projection | `OPEN_FUFU_DESIGN.md` + target structure/controller contracts |
 | Public controller surface | Add | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
@@ -415,7 +415,7 @@ Production validation must enforce the public builder/catalogue rules without hi
 
 Mechanical certification applies to the deployed trait catalogue and the distinct gameplay transformations/interactions that catalogue can produce, **not to each named Official or Custom Origin as a separate runtime artifact**. Creating or loading a legal named Origin from a certified catalogue requires only ordinary catalogue-version, trait-ID, builder-legality, canonical-composition, and serialization checks; live matches do not launch background/headless certification for previously unseen named combinations.
 
-Origin validation is distributed to the gameplay domains that own the affected mechanics. Catalogue/intrinsic validation belongs with the Origin layer; runtime conformance belongs with the relevant subsystem; genuine cross-domain interactions receive explicit integration coverage. The complete validation flow, status model, and deployment-eligibility predicate are defined in §15.2. There is no monolithic Origin runtime-validation phase in the dependency spine.
+Origin validation is distributed to the gameplay domains that own the affected mechanics. Catalogue/intrinsic validation belongs with the Origin layer; runtime conformance belongs with the relevant subsystem; genuine cross-domain interactions receive explicit integration coverage. [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md) owns the concrete validation-domain assignments, dependency relationships, integration seams, and explicit interaction obligations. This plan owns the certification architecture and deployment-eligibility predicate in §15.2. There is no monolithic Origin runtime-validation phase in the dependency spine.
 
 ## 10.2 Echoes
 
@@ -431,7 +431,7 @@ Treat inherited Nation AI as behavioral/implementation reference, not as the tar
 
 Official PvE AI must consume lawful Open Fufu observations/actions and must not retain simulation cheats, hidden information access, or privileged gameplay rules.
 
-The Official-AI subsystem is owned by [`official-ai/README.md`](./official-ai/README.md) and its canonical child/configuration files. Echo reward consequences are owned by `ECHO_CATALOGUE.md`.
+Official-AI work enters through [`official-ai/README.md`](./official-ai/README.md). Canonical architecture and each specific rationale/configuration concern are owned by the child/configuration owners registered in [`README.md`](./README.md); the gateway itself owns no subsystem mechanics.
 
 Official AI may run as trusted operational code and therefore need not use the hostile-code sandbox, but trusted execution must not imply gameplay-information privilege.
 
@@ -580,11 +580,11 @@ PRIMARY KEY(provider, provider_subject)
 ```text
 id                   INTEGER PRIMARY KEY
 public_id            TEXT UNIQUE NOT NULL
-user_id              INTEGER NOT NULL REFERENCES users(id)
-name                 TEXT NOT NULL
-created_at_ms        INTEGER NOT NULL
-updated_at_ms        INTEGER NOT NULL
-archived_at_ms       INTEGER
+user_id               INTEGER NOT NULL REFERENCES users(id)
+name                  TEXT NOT NULL
+created_at_ms         INTEGER NOT NULL
+updated_at_ms         INTEGER NOT NULL
+archived_at_ms        INTEGER
 ```
 
 ### 5. `controller_drafts`
@@ -687,7 +687,7 @@ updated_at_ms               INTEGER NOT NULL
 ```text
 id                   INTEGER PRIMARY KEY
 public_id            TEXT UNIQUE NOT NULL
-user_id              INTEGER NOT NULL REFERENCES users(id)
+user_id               INTEGER NOT NULL REFERENCES users(id)
 source_type          TEXT NOT NULL
 source_id            TEXT NOT NULL
 rules_version        TEXT NOT NULL
@@ -853,7 +853,7 @@ Replay files require separate backup handling when retained replay payloads must
 
 ## 13.4 Canonical version binding
 
-A version field has one defined responsibility. Current defaults are resolved only when creating a new match/transaction; retry/replay never silently substitutes today's default.
+A version field has one defined responsibility. Defaults are resolved only when creating a new match/transaction; retry/replay never silently substitutes today's default.
 
 | Binding | Canonical meaning | Bound when | Stored/anchored in | Primary consumers |
 | --- | --- | --- | --- | --- |
@@ -932,15 +932,15 @@ Authoritative/headless processes require deterministic access to the exact map a
 
 The inherited `proprietary/` directory is not a safe long-term dependency. Do not delete it until references are audited and replacements exist.
 
-Current relevant inventory:
+Inherited dependency inventory to audit includes:
 
 - `proprietary/fonts/OpenFront.ttf`;
 - OpenFront/favicon/logo images under `proprietary/images/`;
 - inherited music under `proprietary/sounds/music/`.
 
-Replacement work is Open Fufu branding/favicon/logo, an original or permissively licensed UI font, original/permissively licensed music, removal of code/build references, then directory deletion.
+Replacement direction is Open Fufu branding/favicon/logo, an original or permissively licensed UI font, original/permissively licensed music, removal of code/build references, then directory deletion.
 
-Git history preserves the removed assets' repository history; the active tree should not retain obsolete dependencies for archival purposes.
+Git history preserves removed assets' repository history; the active tree should not retain obsolete dependencies for archival purposes.
 
 ## 14.4 Licensing
 
@@ -977,71 +977,41 @@ The key performance invariant is:
 
 > Authoritative simulation work scales primarily with active strategic work and engaged geometry, not dense `factions × cells` state products.
 
-## 15.1 GitHub Actions / CI migration
+## 15.1 GitHub Actions / CI migration contract
 
-The inherited GitHub Actions audit is complete for the **current Open Fufu migration baseline**. `.github/workflows/ci.yml` is the sole active workflow. Its green/red result is deliberately narrow and must expand as target implementation becomes authoritative.
+CI configuration is executable repository policy and must not be mirrored here as a mutable list of currently active workflows or current check results.
 
-### Current workflow disposition
+Durable migration rules are:
 
-| Inherited workflow | Disposition | Current decision |
-| --- | --- | --- |
-| `ci.yml` | **adapt** | Retain one Open Fufu baseline job: clean install, build/typecheck, and lint. |
-| `claude-code-review.yml` | **remove** | Optional external AI review is not an Open Fufu acceptance gate and must not make PR validity depend on an external reviewer secret/service. |
-| `deploy.yml` | **remove** | Hard-coded OpenFront domains, hosts, credentials, and deployment topology are not Open Fufu deployment authority. |
-| `issue-lifecycle-cron.yml` | **remove** | OpenFront milestone/approval/stale automation conflicts with the claim/work-session model in `AGENTS.md`. |
-| `issue-lifecycle-events.yml` | **remove** | OpenFront milestone/approval assignment policy conflicts with current repository coordination. |
-| `pr-author.yml` | **remove** | Automatic PR-author assignment is non-essential and does not validate the repository. |
-| `pr-close-on-label.yml` | **remove** | OpenFront contribution/AI-close policy is not Open Fufu policy. |
-| `pr-description.yml` | **remove** | Mandatory PR milestones are not an Open Fufu authorization or acceptance requirement. |
-| `pr-gate.yml` | **remove** | The upstream `approved`-issue/Discord contribution gate is not Open Fufu policy. |
-| `pr-stale.yml` | **remove** | Upstream stale-PR policy and maintainer-specific exemptions are not current project policy. |
-| `release.yml` | **remove** | OpenFront image names and alpha/beta/blue/green release topology are not Open Fufu release authority. |
+- preserve a clean-install, build/typecheck, and lint baseline while inherited runtime behavior is being replaced;
+- add mechanic, determinism, replay, sandbox, participant/service, persistence, packaging, and capacity gates when the implementation that makes those contracts authoritative exists;
+- do not add fake/pass-through jobs in advance merely to make a future gate name appear green;
+- inherited OpenFront contribution, deployment, release, stale-management, or external-review workflows are not automatically Open Fufu policy merely because they existed upstream;
+- workflow-specific scripts with no remaining Open Fufu consumer should not be retained solely as historical evidence; Git history preserves them;
+- repository-wide formatting/generated-artifact checks should become blocking only when the repository has an explicit compatible baseline, rather than forcing unrelated inherited drift into feature work;
+- subsystem-specific mechanical checks remain owned with their implementation/canonical contracts even when CI invokes them centrally.
 
-Workflow-specific OpenFront policy scripts that became dead code when those workflows were removed should not be retained merely for history; Git history already preserves them.
+A green CI result proves only the checks actually configured for that exact commit. It must never be described as proof that unimplemented Open Fufu contracts, headless/replay/runtime architecture, deployment, or release packaging already exist.
 
-### Current authoritative PR baseline
+The intended gate families are:
 
-The active baseline runs on Node 24 and performs exactly one dependency installation followed by:
-
-```text
-npm ci
-npm run build-prod
-npm run lint:github
-```
-
-`build-prod` includes `tsc --noEmit`; the TypeScript project includes code-readable Open Fufu configuration under `design/**/*`. The compile-only fixture in `tests/contracts/controller-api.typecheck.ts` consumes the public `ControllerApi.ts` surface so ordinary typechecking also verifies representative external-controller usage without pretending a controller runtime already exists.
-
-A green baseline currently means:
-
-- the dependency lockfile installs successfully in the CI environment;
-- the retained application can produce its current production build;
-- TypeScript source, public controller contracts, the controller-contract consumer fixture, and code-readable Open Fufu design configuration typecheck;
-- currently applicable lint rules pass.
-
-It **does not** mean that all inherited OpenFront tests remain valid, that final Open Fufu gameplay exists, that the target headless/replay/runtime architecture is implemented, or that deployment/release packaging is production-ready.
-
-The inherited Vitest suites, map generator, replay/performance harnesses, and build/deployment scripts remain migration evidence or reusable infrastructure unless separately retired. They are not blanket CI gates merely because they existed upstream. Repository-wide Prettier and generated-map byte-reproducibility are also not current blocking gates while the inherited tree has pre-existing formatting/generated-output drift; re-enable them only after establishing a deliberate Open Fufu baseline rather than forcing unrelated cleanup into feature work.
-
-### Future gates
-
-Validation should normally land with the implementation that makes the corresponding contract authoritative instead of accumulating fake/pass-through jobs in advance.
-
-| Future gate | Activate when the authoritative implementation exists |
+| Gate family | Activation condition |
 | --- | --- |
-| Migrated mechanic unit/integration tests | Each target mechanic/subsystem replaces or adapts inherited behavior. |
-| Origin catalogue/composition/conformance validation | Origin runtime/effective-rule hooks and the accepted exhaustive deployment sequencing are executable. |
-| Strategic/Random/Fixed spawn determinism | The target spawn resolver and Initial Territory pipeline exist. |
-| Headless full-match execution | The authoritative match process can run a complete match without browser/client authority. |
-| Replay hash equivalence | Server-authored bound replay artifacts can reproduce canonical match state/results. |
-| Controller sandbox/certification | The isolated controller runtime, resource limits, validation, and fault model exist. |
-| Participant/service contract integration | Target gateway/API, snapshots/deltas/resume, idempotency, and authorization are implemented. |
-| Persistence migration/transaction/backup checks | The SQLite persistence owner and migration runner exist. |
-| Map/Segment artifact reproducibility | The canonical Open Fufu map compiler/artifact model exists. |
-| Authoritative resource packaging | Headless/server packaging has defined exact rule/map resource inputs. |
-| Open Fufu deployment/release checks | Actual Fufubox deployment and release topology are defined and implemented. |
-| Capacity/performance gates | Representative authoritative runtime workloads exist for the 1/3/5-match benchmark envelope. |
+| Baseline install/build/typecheck/lint | repository development baseline |
+| Migrated mechanic unit/integration tests | corresponding target mechanic/subsystem is implemented |
+| Origin catalogue/composition/conformance validation | relevant Origin/effective-rule and validation owners are executable |
+| Strategic/Random/Fixed spawn determinism | target Spawn resolver and Initial-Territory pipeline exist |
+| Headless full-match execution | authoritative match process can complete a match without browser/client authority |
+| Replay hash equivalence | server-authored bound replay artifacts can reproduce canonical match state/results |
+| Controller sandbox/certification | isolated controller runtime and resource/fault model exist |
+| Participant/service contract integration | gateway/API plus snapshot/delta/resume/idempotency/authorization are implemented |
+| Persistence migration/transaction/backup checks | SQLite persistence and migration runner exist |
+| Map/Segment artifact reproducibility | canonical Open Fufu map compiler/artifact model exists |
+| Authoritative resource packaging | headless/server packaging has exact rule/map resource inputs |
+| Deployment/release checks | actual Open Fufu deployment/release topology is defined |
+| Capacity/performance gates | representative authoritative workloads exist for the 1/3/5-match planning envelope |
 
-This baseline is therefore intentionally provisional. Future implementation PRs must expand validation when they create new authoritative behavior. If the cross-cutting CI architecture itself needs redesign, track that work under this integration owner rather than silently redefining what a green check means.
+When a new implementation creates authoritative behavior, its validation must land with it or before it becomes deployable. Changes to the cross-cutting CI architecture belong to this integration owner; individual workflow presence and pass/fail state remain in repository configuration/CI, not in this canonical plan.
 
 ## 15.2 Origin validation and catalogue certification
 
@@ -1086,7 +1056,7 @@ This layer may enumerate every builder-legal selection when computationally prac
 
 Every deployed trait must declare the gameplay domain or domains whose mechanics it affects or interacts with, or be explicitly classified as intrinsic-only when no runtime mechanic is involved. The validation metadata must therefore provide a mechanically checkable coverage graph from each deployed trait to its conformance owner(s); an unowned trait is a certification failure rather than an implicit pass.
 
-A gameplay domain owns both its ordinary mechanic and the tests proving that the mechanic behaves correctly under the Origin transformations visible to that domain. Examples of possible domains include Spawn, land/combat, terrain/structures, economy/rail/trade, naval/strategic weapons, observation, and Minor-Faction interaction where a trait actually intersects those mechanics. The final domain catalogue and trait assignments belong to focused validation design/implementation work; this migration plan defines the ownership rule, not duplicated trait mechanics.
+A gameplay domain owns both its ordinary mechanic and the tests proving that the mechanic behaves correctly under the Origin transformations visible to that domain. The concrete validation-domain catalogue, deployed trait assignments, dependency relationships, and required integration/interaction seams are owned by [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md). This migration plan defines the certification architecture and deployment boundary; it does not duplicate those assignments or focused mechanics.
 
 The dependency is an intersection, not `Origin → subsystem` ownership:
 
@@ -1151,7 +1121,7 @@ FAIL         required validation executed and failed
 PASS         all required evidence for that unit is available and successful
 ```
 
-`UNAVAILABLE` and `BLOCKED` are never aliases for `PASS`. This permits migration to proceed incrementally without pretending that unimplemented mechanics have already been certified.
+`UNAVAILABLE` and `BLOCKED` are never aliases for `PASS`. These are durable certification-state values, not a project-status ledger in this document.
 
 ### 15.2.4 Catalogue deployment eligibility
 
@@ -1172,7 +1142,7 @@ Any required `UNAVAILABLE`, `BLOCKED`, or `FAIL` result means the candidate is *
 
 ### 15.2.5 When validation runs
 
-Use three practical execution tiers; exact GitHub Actions/workflow wiring remains owned by the CI work in §15.1 rather than this contract.
+Use three practical execution tiers; exact CI/workflow wiring is executable repository policy rather than a duplicated status table here.
 
 **Fast development/PR validation** should cover catalogue/schema/builder/composition/serialization/unit/coverage checks and other cheap relevant tests.
 
@@ -1206,13 +1176,13 @@ Official-AI Origin support remains a separate validation layer. Mechanical certi
 
 Origin/Echo composition remains part of integration validation, but large identity catalogues must use effect/projection equivalence and property coverage rather than a Cartesian `every Origin × every Echo identity × every runtime scenario` test explosion.
 
-CI/workflow selection, scheduling, and blocking-check policy remain owned by the GitHub Actions/CI migration work; §15.2 defines what evidence is meaningful, not how a particular CI provider executes it.
+CI/workflow selection, scheduling, and blocking-check policy are executable repository policy; §15.2 defines what evidence is meaningful, not how a particular CI provider executes it.
 
 ---
 
 # 16. Migration dependency spine
 
-Current high-level implementation order:
+High-level implementation order:
 
 ```text
 1. HEADLESS CORE CLEANUP
@@ -1252,7 +1222,7 @@ Some workstreams may overlap. Typed rule hooks should exist before content depen
 
 There is deliberately **no second/final Origin implementation step** after the runtime domains. Origin-catalogue deployment eligibility is the aggregate release predicate in §15.2.4 over catalogue, domain, cross-domain, and determinism/replay evidence. The spine therefore does not require an impossible pre-implementation runtime certification and does not duplicate completed domain tests in a later monolithic gate.
 
-The shorthand spine does not imply that an Origin interaction may be ignored merely because its gameplay owner is not named as a standalone numbered step. Every deployed trait must still have complete validation ownership. In particular, unresolved or not-yet-implemented mechanics such as Random/Fixed Spawn interactions, canonical `atWar` behavior consumed by wartime Trade, or Minor-Faction behavior relevant to P19 can leave their affected conformance evidence `BLOCKED`/`UNAVAILABLE` without changing the Origin trait merely to make validation green. Their exact mechanics remain owned by their focused documents/issues.
+The shorthand spine does not imply that an Origin interaction may be ignored merely because its gameplay owner is not named as a standalone numbered step. Every deployed trait must still have complete validation ownership. If required implementation/evidence is unavailable or a canonical semantic dependency is unresolved, its conformance result remains `UNAVAILABLE` or `BLOCKED` under §15.2.3; that status does not authorize changing the trait merely to make validation green. Exact mechanics remain with their focused canonical owners.
 
 ---
 
@@ -1284,37 +1254,35 @@ The migration must account for every inherited subsystem before implementation d
 
 ## 17.1 Concrete inherited source-owner map
 
-Paths below identify the principal current owners/entry points to inspect; they are not claims that every helper used by the concern is listed.
+Paths below identify the principal inherited owners/entry points to inspect; they are not claims that every helper used by the concern is listed. When an inherited path is moved or removed, update this source-traceability map rather than preserving a dead path for history.
 
-| Concern | Principal inherited source owner(s) | Current role | Target owner | Migration consequence | Validation |
+| Concern | Principal inherited source owner(s) | Inherited role | Target owner | Migration consequence | Validation |
 | --- | --- | --- | --- | --- | --- |
-| Server lobby / turn relay / reconnect | `src/server/GameServer.ts`, `GameManager.ts`, `MasterLobbyService.ts`, `SocketIngress.ts`, `src/core/Schemas.ts`, `ZbinWire.ts` | admits clients, queues Intents, broadcasts Turns, reconnects clients, encodes current wire | this plan + `service/*` | retain useful ingress/lobby/wire plumbing, but remove Turn relay/client consensus as simulation authority; route live viewers through target participant projection | authoritative server match continues with zero browsers; reconnect snapshot/resume tests |
+| Server lobby / turn relay / reconnect | `src/server/GameServer.ts`, `GameManager.ts`, `MasterLobbyService.ts`, `SocketIngress.ts`, `src/core/Schemas.ts`, `ZbinWire.ts` | admits clients, queues Intents, broadcasts Turns, reconnects clients, encodes inherited wire | this plan + `service/*` | retain useful ingress/lobby/wire plumbing, but remove Turn relay/client consensus as simulation authority; route live viewers through target participant projection | authoritative server match continues with zero browsers; reconnect snapshot/resume tests |
 | Browser-local simulation | `src/core/GameRunner.ts`, `src/core/worker/Worker.worker.ts`, `WorkerClient.ts`, `WorkerMessages.ts` | browser worker reconstructs Game and executes received Turns locally | this plan | move GameRunner-like execution server-side/headless; remove `GameRunner` client/HUD dependency; browser worker may remain presentation/decoding only | headless full match without DOM/client imports; browser receives projection only |
-| Core state / mutation substrate | `src/core/game/Game.ts`, `GameImpl.ts`, `PlayerImpl.ts`, `UnitImpl.ts`, `UnitGrid.ts`, `GameUpdates.ts` | current canonical state interfaces, ownership/player/unit mutation and update generation | high-level/focused mechanics owners + this plan | retain/adapt efficient state containers/indexes; replace inherited troop/gold/diplomacy/mechanics semantics | owner invariants + deterministic state/replay tests |
+| Core state / mutation substrate | `src/core/game/Game.ts`, `GameImpl.ts`, `PlayerImpl.ts`, `UnitImpl.ts`, `UnitGrid.ts`, `GameUpdates.ts` | inherited state interfaces, ownership/player/unit mutation and update generation | high-level/focused mechanics owners + this plan | retain/adapt efficient state containers/indexes; replace inherited troop/gold/diplomacy/mechanics semantics | owner invariants + deterministic state/replay tests |
 | Intent → Execution dispatch | `src/core/execution/ExecutionManager.ts`, `src/core/GameRunner.ts` | converts inherited Turn Intents into deterministic Executions | this plan + `ControllerApi.ts` | keep Execution seam; replace external Intent/Turn authority with validated controller decisions + simulation transitions | atomic decision tests; deterministic execution ordering |
 | Map / terrain substrate | `GameMap.ts`, `GameMapLoader.ts`, `BinaryLoaderGameMapLoader.ts`, `FetchGameMapLoader.ts`, `TerrainMapLoader.ts`, `Maps.gen.ts` | dense map storage/loading/topology | `OPEN_FUFU_DESIGN.md`, `TERRAIN_AND_STRUCTURES.md`, `SEGMENTS.md` | retain/adapt compact cell/map infrastructure; compile target terrain and Segment artifacts into exact map binding | map hash, terrain, Segment determinism |
-| Land attacks / retreat | `AttackImpl.ts`, `AttackExecution.ts`, `RetreatExecution.ts`, `PlayerImpl.ts` | current sparse attacks, border resolution, troop transfer/casualties | `OPEN_FUFU_DESIGN.md`, `COMBAT_TUNING.md` | reuse identity/lifecycle/border machinery selectively; replace rules with operations/frontage/automatic defense/counter-response/capture model | combat fixtures + anti-fragmentation/same-tick-chain tests |
+| Land attacks / retreat | `AttackImpl.ts`, `AttackExecution.ts`, `RetreatExecution.ts`, `PlayerImpl.ts` | sparse attacks, border resolution, troop transfer/casualties | `OPEN_FUFU_DESIGN.md`, `COMBAT_TUNING.md` | reuse identity/lifecycle/border machinery selectively; replace rules with operations/frontage/automatic defense/counter-response/capture model | combat fixtures + anti-fragmentation/same-tick-chain tests |
 | Spawn | `SpawnExecution.ts`, `SpawnTimerExecution.ts`, `execution/utils/PlayerSpawner.ts`, `GameRunner.init()` | inherited player/random spawn phase and placement | `STRATEGIC_SPAWN.md` | replace behavior with Strategic/Random/Fixed protocol and versioned resolver; reuse only suitable map-placement primitives | spawn resolver/reveal/fallback/footprint tests |
 | Persistent structures | `ConstructionExecution.ts`, `UpgradeStructureExecution.ts`, `CityExecution.ts`, `DefensePostExecution.ts`, `FactoryExecution.ts`, `PortExecution.ts`, `UnitImpl.ts` | inherited build/upgrade/unit-backed structure lifecycle | `TERRAIN_AND_STRUCTURES.md` | reuse generic construction/unit plumbing where compatible; translate structure registry and remove inherited-only semantics | structure cost/time/placement/effect fixtures |
 | Warships / Transport | `WarshipExecution.ts`, `MoveWarshipExecution.ts`, `TransportShipExecution.ts`, `TransportShipUtils.ts`, `WaterManager.ts`, water pathfinders | naval movement/combat/pathing and amphibious transport | `NAVAL_AND_STRATEGIC_WEAPONS.md` | reuse motion/water/pathing infrastructure; replace controller/control and exact target mechanics | autonomous targeting, move-only control, embark/landing/return tests |
 | Trade / rail economy | `TradeShipExecution.ts`, `TrainExecution.ts`, `TrainStationExecution.ts`, `RailNetworkImpl.ts`, `Railroad.ts`, `TrainStation.ts`, rail pathfinder | physical Trade Ships, Trains, stations and rail graph | `FFY_ECONOMY.md` | retain useful physical traffic/rail graph; replace timing/cargo/FFY/piracy rules with canonical owner | deterministic routes/events/payout/interception tests |
 | Strategic weapons / SAM | `NukeExecution.ts`, `MIRVExecution.ts`, `MissileSiloExecution.ts`, `SAMLauncherExecution.ts`, `SAMMissileExecution.ts`, `ShellExecution.ts`, air/parabola pathfinders | projectile, launch, interception and blast infrastructure | `NAVAL_AND_STRATEGIC_WEAPONS.md`, `TERRAIN_AND_STRUCTURES.md` | reuse trajectory/interception infrastructure selectively; replace costs/access/blast/charge semantics | weapon geometry/interception/charge/replay tests |
-| Inherited major AI | `NationExecution.ts`, `game/NationCreation.ts`, `execution/nation/*`, `execution/utils/AiAttackBehavior.ts` | privileged engine-level Nation/bot behavior | `official-ai/README.md` | retain algorithms/strategy ideas only; target Official AI must consume the lawful controller observation/action surface | same-information/action parity + character/Origin validation |
-| Inherited simple tribes | `TribeExecution.ts`, `TribeSpawner.ts` | simple non-human territorial actors | `MINOR_FACTIONS.md` | possible implementation ancestry only; replace with canonical Minor-Faction mechanics | deterministic placement/behavior tests after the Minor-Faction mechanics are closed |
-| Visibility / client deltas | `GameUpdates.ts`, `GameUpdateUtils.ts`, `WorkerClient.ts`, `WorkerMessages.ts`, `ZbinWire.ts` | current full-client simulation update/packing and worker bridge | `OPEN_FUFU_DESIGN.md`, `service/PARTICIPANT_PROTOCOL.md` | reuse packing/encoding ideas where useful, but generate viewer-specific legal projections server-side | hidden-information, snapshot/delta/gap/resync tests |
+| Inherited major AI | `NationExecution.ts`, `game/NationCreation.ts`, `execution/nation/*`, `execution/utils/AiAttackBehavior.ts` | privileged engine-level Nation/bot behavior | `official-ai/OFFICIAL_AI_ARCHITECTURE.md` + registered child/config owners | retain algorithms/strategy ideas only; target Official AI must consume the lawful controller observation/action surface | same-information/action parity + character/Origin validation |
+| Inherited simple tribes | `TribeExecution.ts`, `TribeSpawner.ts` | simple non-human territorial actors | `MINOR_FACTIONS.md` | possible implementation ancestry only; replace with canonical Minor-Faction mechanics | deterministic placement/behavior tests |
+| Visibility / client deltas | `GameUpdates.ts`, `GameUpdateUtils.ts`, `WorkerClient.ts`, `WorkerMessages.ts`, `ZbinWire.ts` | full-client simulation update/packing and worker bridge | `OPEN_FUFU_DESIGN.md`, `service/PARTICIPANT_PROTOCOL.md` | reuse packing/encoding ideas where useful, but generate viewer-specific legal projections server-side | hidden-information, snapshot/delta/gap/resync tests |
 | Lobby/account HTTP schemas | `src/core/ApiSchemas.ts`, `src/core/Schemas.ts`, inherited `docs/API.md`, server route modules | inherited OpenFront HTTP/game/lobby contracts | `service/SERVICE_API.md`, `AUTH_AND_IDENTITY.md` | treat old routes/schemas as evidence only; implement target resources/auth boundary instead of extending inherited public API by default | service contract/idempotency/authorization tests |
 | Replay / archive | `src/server/Archive.ts`, `tests/replay/ReplayGame.ts`, `src/core/Schemas.ts`, `GameRunner.ts` | uploads client-produced GameRecord; headless harness replays archived Turns/hashes | this plan + `service/SERVICE_API.md` | keep deterministic replay-harness technique, replace external archive/client-consensus record with server-authored bound replay artifact | exact-version replay hash equivalence + retention/integrity tests |
 | Authentication / join authorization | `JoinVerify.ts`, `IntentAuthorization.ts`, `Roster.ts`, inherited identity fields in `Schemas.ts` | inherited admission/session/intent authority | `AUTH_AND_IDENTITY.md` | replace conflicting auth assumptions; pass only resolved internal participant identity into match runtime | auth/session/Origin/CSRF/WS integration tests |
-| Build / deploy / assets / licensing | `.github/workflows/`, `Dockerfile`, `package.json`, `vite.config.ts`, `build.sh`, `build-deploy.sh`, `deploy.sh`, `nginx.conf`, `supervisord.conf`, `LICENSE-ASSETS`, `LICENSING.md`, `proprietary/`, `resources/` | current minimal Open Fufu CI plus inherited build/deploy packaging, browser/server build assumptions, runtime process config, and asset/license inputs | this plan | keep the current build/typecheck/lint migration baseline; add authoritative gates as target runtimes land; separately adapt target packaging/deployment and remove or replace proprietary asset dependencies only after reference audit; preserve required source/asset licensing obligations | reproducible target build/deploy, authoritative resource-loading test, asset-reference/provenance audit, meaningful Open Fufu CI baseline |
-| Victory / stats | `WinCheckExecution.ts`, `Stats.ts`, `StatsImpl.ts`, current finalization in `GameServer.ts` | inherited victory/stat collection and client-assisted final reporting | `OPEN_FUFU_DESIGN.md` + this plan | replace target victory semantics and make result/stat production server-authoritative | deterministic terminal result/stat/replay tests |
+| Build / deploy / assets / licensing | `.github/workflows/`, `Dockerfile`, `package.json`, `vite.config.ts`, `build.sh`, `build-deploy.sh`, `deploy.sh`, `nginx.conf`, `supervisord.conf`, `LICENSE-ASSETS`, `LICENSING.md`, `proprietary/`, `resources/` | inherited/current build, workflow, deployment, process, asset, and license inputs | this plan | maintain meaningful baseline CI and add gates with authoritative implementations; adapt target packaging/deployment; replace proprietary dependencies after reference audit; preserve required source/asset licensing obligations | reproducible target build/deploy, authoritative resource-loading test, asset-reference/provenance audit, meaningful Open Fufu CI |
+| Victory / stats | `WinCheckExecution.ts`, `Stats.ts`, `StatsImpl.ts`, finalization in `GameServer.ts` | inherited victory/stat collection and client-assisted final reporting | `OPEN_FUFU_DESIGN.md` + this plan | replace target victory semantics and make result/stat production server-authoritative | deterministic terminal result/stat/replay tests |
 
 A row marked `add` in §2 with no inherited principal owner is a genuinely new subsystem; do not invent an OpenFront owner merely to fill the table. Origins, Echo progression, Segments, controller sandbox/runtime, and Open Fufu persistence are primarily new systems, though they integrate with the inherited seams above.
 
 ---
 
-# 18. Remaining migration work
-
-The principal remaining work is implementation and the already-identified unresolved contract/mechanics closures, not creation of more overlapping documentation.
+# 18. Migration execution discipline
 
 Before implementation begins in a subsystem:
 

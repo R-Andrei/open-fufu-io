@@ -24,16 +24,7 @@ Other authorities remain separate because they own different concerns:
 - `OFFICIAL_AI_ORIGIN_SUPPORT.md` — reusable support/composition/adaptation contract;
 - `OFFICIAL_AI_CONFIGURATION.md` — shared AI signal/goal/planner/profile vocabulary.
 
-## Progress
-
-```text
-Configured traits: 72 / 72
-Positive traits:   P01–P54 complete
-Drawbacks:         N01–N18 complete
-Global synergy/suppression sweep: complete
-```
-
-The current V1 trait-support phase is closed. Any later trait change must update the gameplay trait catalogue, this rationale when strategic intent changes, the canonical config mapping, and any affected combination/suppression cases in the same change.
+Any trait change must update the gameplay trait catalogue, this rationale when strategic intent changes, the canonical config mapping, and affected combination/suppression cases in the same change.
 
 ---
 

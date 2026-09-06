@@ -13,7 +13,7 @@ The values below are provisional V1 values and may be retuned through developmen
 Current invariants:
 
 - Echoes are collectible mechanical modifiers with **deterministically generated anime-themed item names**.
-- V1 Echoes do **not** carry authored anime dialogue/voice-line content. Anime dialogue/reference content is reserved for the much smaller Origin-trait / Official-Origin content surface where it is practical and meaningful; Echo dialogue may be revisited after V1 only as a future presentation expansion.
+- V1 Echoes do **not** carry authored anime dialogue/voice-line content. Anime dialogue/reference content is reserved for the much smaller Origin-trait / Official-Origin content surface where it is practical and meaningful.
 - Standard PvE equipped set size is **7 Echoes**.
 - An Echo **mechanical identity** has fixed:
   - identity ID;
@@ -176,8 +176,8 @@ A retained or newly acquired Echo instance is conceptually:
 
 ```text
 echoIdentityId
-+ rolled magnitude for modifier #1
-+ optional rolled magnitude for modifier #2
++ rolled magnitude for modifier 1
++ optional rolled magnitude for modifier 2
 ```
 
 The mechanical identity already fixes:
@@ -330,7 +330,7 @@ The same Echo identity may therefore be seen many times with different magnitude
 Example:
 
 ```text
-Echo #4821 identity:
+Echo identity 4821:
   +Tank Damage
   +Tank Movement Speed
 
@@ -1045,7 +1045,7 @@ Important retained conclusions:
 - P44's radioactive territorial footprint remains fixed rather than Echo-scalable;
 - extreme local offense/defense cases should be driven mainly by deliberate Origin combinations and conditional geography rather than Echoes alone.
 
-These checks must eventually become executable/property tests against implemented formulas.
+Executable/property validation should cover these checks against the implemented formulas.
 
 ---
 
@@ -1268,12 +1268,12 @@ Pity belongs only to **paid Gacha Store pulls**.
 Singles and 10-pull batches use the same sequential pity state. A batch is processed pull by pull in deterministic order:
 
 ```text
-pull #1 updates pity before pull #2
+pull 1 updates pity before pull 2
 ...
-pull #10 sees the state left by pull #9
+pull 10 sees the state left by pull 9
 ```
 
-If pull #4 in a batch is Lucky/Cheater, pity resets before pulls #5–#10.
+If pull 4 in a batch is Lucky/Cheater, pity resets before pulls 5–10.
 
 **Match reward acquisitions neither advance nor reset Gacha pity.** A Lucky/Cheater earned from ordinary match rewards therefore does not erase paid-pull bad-luck protection.
 
@@ -1396,7 +1396,7 @@ Each Echo Set references Echo **identity IDs**, not frozen copies of historical 
 
 Therefore, when duplicate resolution replaces the retained roll for an identity, every Echo Set containing that identity automatically uses the newly retained roll. The player does not need to re-equip an upgraded copy.
 
-Standard PvE uses one selected seven-Echo set for the match. PvP progression/loadout standardization remains deliberately deferred.
+Standard PvE uses one selected seven-Echo set for the match. This contract does not define PvP progression/loadout standardization.
 
 ---
 
@@ -1518,111 +1518,3 @@ pity state before/after where applicable
 ```
 
 The game should **not** materialize the roughly hundreds of thousands of legal magnitude permutations as separate permanent collectible definitions, nor persist generated display-name strings when they can be reproduced from identity + retained roll + naming version.
-
----
-
-## 19. Required stale-document migration
-
-Any other design/integration documentation must be updated so none of the following retired assumptions remain authoritative:
-
-- magnitude-specific finalized signatures are separate collectible Echo identities;
-- an exhaustive magnitude catalogue is the player-facing item table;
-- `0.5%` magnitude quantization;
-- `40% / 25% / 35%` single/dual/mixed generation;
-- raw catalogue cardinality directly determines shape drop frequency;
-- exact finalized magnitude signature de-duplication is part of identity generation;
-- owned Echoes are excluded from future acquisition rather than rerolled as duplicates;
-- duplicates have no magnitude comparison / replacement choice;
-- end-of-match rewards require victory;
-- defeat yields zero Echo rewards;
-- multiple earned candidates are rolled and only the best is retained;
-- human teammates each own isolated reward accounting when they are one fixed human team;
-- magnitude-derived sampling rarity is an immutable property of the Echo identity;
-- a bad-but-statistically-rare result may satisfy positive-quality Gacha pity;
-- the store has no batch pulls, recycling, or bad-luck protection;
-- legal magnitudes are uniformly sampled;
-- Echoes require anime dialogue-line assignments, MAL harvesting, quote/subtitle import, or one unique authored content line per identity;
-- generated Echo names are stored as 12,927 manually authored strings;
-- generated stat names are formed by mechanically prefixing schema scopes into awkward phrases by default;
-- duplicate/Gacha currency still needs a final name;
-- saved seven-Echo configurations still need a V1 name;
-- Official-AI bonus uses `difficulty - 1` or total AI defeat rolls equal difficulty rather than ordinary opponent reward plus a separate `+difficulty` bonus.
-
-The canonical replacement concepts are:
-
-```text
-12,927 fixed mechanical Echo identities
-+ 50% mixed / 35% dual / 15% single shape acquisition
-+ uniform identity selection within selected shape
-+ magnitude rerolled on every acquisition
-+ EchoScore-weighted magnitude sampling
-+ rolled-quality tiers / gradient card presentation
-+ one retained roll per identity
-+ deterministic generated names from character + stat token(s) + magnitude descriptor(s)
-+ stable identity-level character/stat words; roll-dependent adjectives
-+ universal -6..+6 descriptor table
-+ Single / Dual / Mixed grammar templates, including "with a side of" for Mixed
-+ no V1 authored anime dialogue/voice-line content on Echoes
-+ Middle Fingers duplicate/Gacha currency
-+ tier-based Middle Fingers salvage
-+ Pareto automatic upgrade/downgrade
-+ player choice only for surviving incomparable candidates
-+ pending batch settlement
-+ all accumulated match rolls become drops
-+ defeat preserves earned rolls
-+ fixed human teams share reward accounting
-+ AI defeat reward = ordinary +1 qualifying-opponent roll + difficulty bonus
-+ fixed human teams share reward accounting
-+ searchable/filterable Echoes collection and provisional Echo Sets
-+ Gacha Store at 10 Middle Fingers single / 100 Middle Fingers ten-pull
-+ paid-pull-only power-12 Lucky+ pity with a 50-pull hard guarantee
-+ no Cheater guarantee
-```
-
----
-
-## 20. Remaining work / design closure
-
-The V1 Echo **mechanical architecture and initial generated-naming content are design-complete**. Remaining Echo work is implementation/versioning, validation, visual production, optional future naming-version revisions, and later playtest tuning.
-
-Deferred implementation/content work includes:
-
-1. implement/version the accepted shape-specific character pools and 93-key stat-token dictionary in the deterministic naming configuration;
-2. implement the naming generator and tests for stable identity components, polarity-aware descriptors, deterministic dual ordering, and roll-dependent adjective changes;
-3. implement the concrete SQLite/account schema/indexes/migrations for owned rolls, Echo Sets, Middle Fingers, pity, settlements, and audit events;
-4. implement the exact visual recipe renderer, card motion, quality effects, and responsive/touch behavior consistent with the accepted presentation rules;
-5. implement executable/property tests for identity generation/distribution, EchoScore-weighted magnitude sampling, quality tiers, Middle Fingers accounting, reward accounting, duplicate Pareto resolution, Origin/Echo composition, pending settlement, saved-set propagation, generated naming, and Gacha pity;
-6. later playtest-retune versioned numerical values or revise a future naming version if real play/content review provides a reason.
-
-The following are no longer open design questions for V1:
-
-- identity weighting inside each shape — uniform;
-- base magnitude distribution — EchoScore-weighted per §5;
-- quality metric — EchoScore;
-- quality bands — Trash / Questionable / Decent / Not Bad / Lucky / Cheater;
-- single/ten-pull Gacha price — 10 / 100 Middle Fingers;
-- batch discount/bonus — none;
-- duplicate salvage values — 1 / 2 / 3 / 4 / 6 / 8 Middle Fingers by acquired roll tier;
-- pity qualification — Lucky or above (`EchoScore >= 1.00`);
-- pity shape — power-12 nonlinear rescue curve;
-- hard pity — the 50th consecutive non-Lucky+ paid pull is guaranteed Lucky-or-better;
-- Gacha pity scope — paid pulls only; match rewards neither advance nor reset it;
-- Cheater pity — none;
-- batch pity behavior — sequential pulls sharing one counter;
-- incomparable duplicate UI — only surviving Pareto-frontier candidates are shown;
-- unresolved-result persistence — pending settlement until accepted;
-- V1 Echo authored dialogue/voice-line content — none; anime-line/reference effort is reserved for Origin traits/Official Origins and may be revisited for Echoes after V1;
-- generated naming grammar — character possessive + magnitude descriptor(s) + stat token(s), with shape-specific templates;
-- V1 shape-specific character-owner pools — accepted 10/10/10 pools in §7.1;
-- V1 concrete-key naming content — one deliberately authored phrase for each of the 93 keys in §7.2, with no mechanical scope-prefix construction;
-- Mixed connector — `with a side of`;
-- magnitude descriptor vocabulary — Catastrophic / Cursed / Wretched / Dreadful / Shoddy / Questionable / Decent / Good / Great / Amazing / Fantastic / Absurd for naming magnitudes `-6..-1/+1..+6`;
-- descriptor semantics — beneficial/harmful polarity, not naive arithmetic sign;
-- public/runtime boundary — reusable engine/contracts/naming configuration may be public; live account/progression state remains runtime/private;
-- duplicate/Gacha currency name — Middle Fingers;
-- saved configuration name — Echo Sets provisionally;
-- visual identity rule — stable identity components plus roll-dependent naming adjectives and quality treatment;
-- collection concept — searchable/filterable/favoritable Echo card grid with multiple saved equipped sets and no unknown silhouettes;
-- Official AI reward contribution — ordinary qualifying-opponent reward remains `+1`, and the bound AI difficulty independently contributes `+difficulty` bonus rolls; Baseline Difficulty 0 therefore adds no extra bonus and character difficulties `1..5` add `1..5` extra rolls.
-
-These implementation/content tasks are not reasons to reopen the accepted **12,927 stable mechanical identities + rerolled score-weighted magnitudes + deterministic generated naming + duplicate progression + all-earned-roll rewards + Middle Fingers Gacha Store** architecture.

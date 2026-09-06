@@ -89,7 +89,8 @@ terrain.pressure.offense
   { terrain = FOREST }
 
 weapon.projectileSpeed
-  { weapon = HYDROGEN_BOMB, projectileStage = PRIMARY }
+  { weapon = HYDROGEN_BOMB }
+  conditions = { PROJECTILE_IS_WARHEAD }
 ```
 
 The implementation may expose ergonomic enums/types rather than these literal strings. Canonical serialization must nevertheless produce one stable, versioned identity for the same family+scope pair.
@@ -523,7 +524,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P17 | SYMBOLIC DYNAMIC MULTIPLIER | `structure.transaction.upgradeCost`: exact rational `(99/100)^S`, `S=current owned structures`; compiled symbolically and materialized without basis-point rounding. |
 | P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in qualifying self/team Fort area; one qualification regardless of overlapping Fort count. |
 | P19 | SYMBOLIC DYNAMIC CONDITIONAL PRESSURE | `+500 bp` offense per distinct active other faction with current Territorial Contact; includes Goons and fixed teammate under current literal rule. |
-| P20 | CUSTOM start grant | starting-structure grant boundary; exact Spawn placement/order is owned by `STRATEGIC_SPAWN.md`, generic grant admission/materialization by `TERRAIN_AND_STRUCTURES.md`, and initial charge readiness by `NAVAL_AND_STRATEGIC_WEAPONS.md`. |
+| P20 | CUSTOM start grant | starting-structure grant boundary; exact Spawn placement/order is owned by `STRATEGIC_SPAWN.md`, while generic grant admission/materialization and persistent-Silo level/charge/readiness lifecycle are owned by `TERRAIN_AND_STRUCTURES.md`; strategic launch transactionality remains owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. |
 | P21 | CUSTOM transaction override | first successful purchase per structure type passes ordinary legality + affordability, then consumes `0 FFY`; grant/capture not purchase. |
 | P22 | FLAT AXIS | `unit.maximumRank[WARSHIP] +2`. |
 | P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`; canonical Warship build admission/reservation enforces the cap transactionally. |
@@ -532,7 +533,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
 | P27 | CAPABILITY | SAM may attack ships; exact targeting/damage/cadence/charge arbitration remains focused SAM/strategic-weapons behavior. |
 | P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order remains amphibious-lifecycle behavior. |
-| P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; launcher charge/readiness lifecycle remains strategic-weapons-owned. |
+| P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; mobile launcher charge/readiness lifecycle remains strategic-weapons-owned. |
 | P30 | MIXED | Warship movement `+50%`; piracy event `3×`; hard prohibit Warship naval gunfire against ships while preserving Trade capture. |
 | P31 | POST-ECHO CONDITIONAL SCALARS + CUSTOM | Warship-specific Port repair radius `2×` and rate `1.5×` run in `CONTEXTUAL_SCALAR` after ordinary Port/Echo specialization; operational-while-repairing remains an explicit non-scalar boundary. |
 | P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
@@ -833,8 +834,8 @@ The composition registry must not invent or duplicate focused subsystem realizat
 Stable boundaries relevant to the current V1 profile include:
 
 - Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
-- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, field geometry/affiliation, and generic structure grant realization; this layer owns effective modifier axes and hard-cap/permission composition.
-- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, SAM/launcher behavior, charge readiness, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, field geometry/affiliation, generic structure grant realization, and persistent Silo/SAM structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes and hard-cap/permission composition.
+- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
 - `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
 - `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.
 - Focused visibility/territory owners retain concealment, manifestation, abandonment, and other lifecycle realization where this inventory exposes only a profile/custom boundary.
@@ -923,11 +924,9 @@ Property tests additionally permute raw static/dynamic/custom input streams and 
 
 ---
 
-# 17. Implementation boundary and closure status
+# 17. Implementation and conformance boundary
 
-This V1 composition change lands the code-readable composition foundation without requiring every gameplay subsystem to be migrated to the new runtime in the same change.
-
-The implementation contains:
+The V1 composition foundation defines and requires:
 
 1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
 2. code-readable axis/slot/operator/unit/reducer types and registry;
@@ -942,17 +941,17 @@ The implementation contains:
 11. provenance-vs-stage validation and conjunction-aware singleton-conflict validation;
 12. explicit focused-subsystem ownership boundaries rather than guessed composition semantics.
 
-The focused realization work named in §14 is deliberately not composition-layer work. Owning subsystem implementations consume this compiled/effective-rule contract as those mechanics are implemented.
+Focused realization work named in §14 is deliberately not composition-layer work. Owning subsystem implementations consume this compiled/effective-rule contract as those mechanics are implemented.
 
-The closure gate for this composition foundation is:
+A conforming composition implementation must satisfy this durable gate:
 
 > **No ambiguous current Origin/Echo modifier definition remains in the composition layer; the complete current V1 modifiable-axis vocabulary is represented; every current static, dynamic, and explicitly custom rule declaration can be classified and compiled; normalization/serialization is deterministic; every builder-legal complete Origin profile statically compiles; and focused subsystem semantics remain explicit ownership boundaries rather than hidden arithmetic or duplicated status.**
 
-That composition-layer closure gate is satisfied by the executable registry/manifests/compiler/normalizer/materializer and validation suite once the exact final head passes the repository and deep-validation gates.
+Repository/test gates provide evidence that an implementation conforms to this contract; candidate-head or CI completion state belongs in GitHub/CI rather than in this canonical document.
 
 ---
 
-## Follow-up integration work
+## Downstream integration requirements
 
 - Consume the compiled/effective-rule contract from each focused gameplay subsystem as that subsystem's implementation lands; do not reimplement Origin/Echo precedence locally.
 - Keep focused mechanics with their canonical owners; do not copy GitHub blocker/progress state into this contract.
