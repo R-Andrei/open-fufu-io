@@ -1,4 +1,8 @@
+Before EVERY repository investigation/action/commit: freshly read ALL current `AGENTS.md`; prior reads/memory do not count. Verify the specific action conforms; otherwise MUST NOT proceed.
+
 Applies to automated coding/documentation agents in this repository.
+
+EVERY repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion + concrete recommended next action grounded in them+these rules. Investigations/work MUST disclose results; observation-only reporting is forbidden. Repository file content is excluded.
 
 ## Git/ownership
 
