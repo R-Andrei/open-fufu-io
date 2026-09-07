@@ -74,6 +74,17 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
       ? context.factions.atWar(context.me.id, otherFaction.id)
       : false;
 
+    const samSpec = context.mechanics.structureTypeSpec(
+      "SAM_LAUNCHER",
+      1,
+      context.me.id,
+    );
+    const antiShipDamage = samSpec.antiShipAttack?.damage ?? 0;
+    const landing = context.mechanics.transportLanding(5, context.me.id);
+    const destruction = context.mechanics.transportDestructionSpec(context.me.id);
+    const transferDestination =
+      destruction.creditedPopulationTransfer?.destination ?? "NONE";
+
     return {
       memory: {
         ...context.memory,
@@ -85,10 +96,23 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
           kind: "TEAM_SIGNAL",
           key: "fixture:signal",
           channel: "contract-fixture",
-          payload: { atWar, tick: context.game.tick },
+          payload: {
+            atWar,
+            tick: context.game.tick,
+            antiShipDamage,
+            landingSurvivors: landing.survivingPopulation,
+            transferDestination,
+          },
         },
       ],
-      debug: [{ kind: "METRIC", name: "fixture.atWar", value: atWar }],
+      debug: [
+        { kind: "METRIC", name: "fixture.atWar", value: atWar },
+        {
+          kind: "METRIC",
+          name: "fixture.landingSurvivors",
+          value: landing.survivingPopulation,
+        },
+      ],
     };
   },
 };
