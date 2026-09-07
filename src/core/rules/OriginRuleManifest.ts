@@ -438,7 +438,7 @@ define("P02", "MIXED", {
     ),
   ],
   customDomains: ["POPULATION_GROWTH_PROFILE_ANCHORS"],
-  note: "Profile identity is encoded here; exact growth-curve semantics remain OPEN_FUFU_DESIGN-owned.",
+  note: "Profile identity is encoded here; the exact P02 replacement profile is ORIGIN_TRAIT_CATALOGUE-owned over the ordinary OPEN_FUFU_DESIGN growth model.",
 });
 define("P03", "DECLARATIVE", {
   contributions: [

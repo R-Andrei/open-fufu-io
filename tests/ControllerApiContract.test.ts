@@ -1,5 +1,76 @@
 import path from "node:path";
 import * as ts from "typescript";
+import type {
+  CaptureCalculation,
+  GrowthCalculation,
+  MechanicsApi,
+  PopulationView,
+  RelinquishQuote,
+} from "../src/core/controller/ControllerApi";
+
+// Compile-time fixtures for #47's newly surfaced controller mechanics. This file
+// is itself included in the focused compiler program below, so these assignments
+// fail the owned contract test if the public API drifts.
+const issue47PopulationState: PopulationView = {
+  total: 500,
+  available: 300,
+  committedOffense: 200,
+  committedCounterResponse: 0,
+  aboardTransports: 0,
+  capacity: 1_000,
+  growthPerSecond: 10,
+  utilization: 0.5,
+  neutralSettlementHalfResidual: 1,
+};
+void issue47PopulationState;
+
+const issue47GrowthProjection: GrowthCalculation = {
+  capacity: 1_000,
+  population: 700,
+  utilization: 0.7,
+  utilizationMultiplier: 1,
+  growthPerSecond: 8.89,
+};
+void issue47GrowthProjection;
+
+const issue47CaptureProjection: CaptureCalculation = {
+  sourceCellId: 41,
+  targetCellId: 42,
+  inputAttackingPressure: 1,
+  inputDefendingPressure: 1,
+  effectiveAttackingPressure: 1,
+  effectiveDefendingPressure: 0.9,
+  advantage: 0.1,
+  acquisitionProgressMultiplier: 0.7,
+  requiredProgress: 1,
+  progressPerSecond: 0.07,
+  estimatedSecondsToCapture: 14.29,
+  postCaptureAttackerPopulationLoss: 1,
+  postCaptureAttackerPopulationDebitOrder: [
+    "WINNING_OFFENSIVE_COMMITMENTS",
+    "AVAILABLE",
+  ],
+};
+void issue47CaptureProjection;
+
+const issue47RelinquishQuote: RelinquishQuote = {
+  legal: false,
+  failureCode: "PERSISTENT_STRUCTURE_PRESENT",
+  cost: {
+    ffyRequired: 0,
+    ffySpent: 0,
+    populationSpent: 0,
+  },
+  selectedCellCount: 3,
+  populationBearingCellCount: 2,
+  capacityDelta: -2,
+  appliesFallout: true,
+};
+void issue47RelinquishQuote;
+
+const issue47RelinquishFromMechanics: ReturnType<MechanicsApi["relinquishQuote"]> =
+  issue47RelinquishQuote;
+void issue47RelinquishFromMechanics;
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
@@ -33,6 +104,7 @@ describe("Open Fufu Controller API contract", () => {
   it("typechecks the owned contract fixtures without compiling inherited application code", () => {
     const options = compilerOptions();
     const fixturePaths = [
+      path.resolve("tests/ControllerApiContract.test.ts"),
       path.resolve("tests/contracts/controller-api.typecheck.ts"),
       path.resolve("tests/types/ControllerApiTypes.ts"),
     ];
