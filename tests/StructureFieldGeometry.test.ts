@@ -1,3 +1,4 @@
+import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
 import {
   STRUCTURE_RADIAL_FIELD_VERSION,
   serializeStructureRadialFieldProfile,
@@ -59,6 +60,45 @@ describe("STRUCTURE_RADIAL_FIELD_V1", () => {
     });
     expect(structureRadialFieldContainsOffset(profile, 27, 6)).toBe(true);
     expect(structureRadialFieldContainsOffset(profile, 27, 7)).toBe(false);
+  });
+
+  it("applies Fort coverage Echo specialization after the Origin area stage", () => {
+    const origin = originRuleProfileInput(["P09", "N10"]);
+    const compiled = compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: [
+        ...origin.contributions,
+        echoRuleContribution(
+          "fort.coverage_area",
+          "BENEFICIAL",
+          1000,
+          "echo:test-fort-coverage",
+        ),
+      ],
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+    const areaFactor = materializeCompiledScalarScaleFactor(
+      compiled,
+      RULE_AXIS_REGISTRY,
+      "STRUCTURE_FIELD_COVERAGE_AREA",
+      { kind: "STRUCTURE", structure: "FORT" },
+      baseState,
+    );
+    expect(areaFactor).toEqual({ numerator: 187n, denominator: 200n });
+
+    const profile = structureRadialFieldFromAreaFactor(
+      30,
+      areaFactor.numerator,
+      areaFactor.denominator,
+    );
+    expect(serializeStructureRadialFieldProfile(profile)).toEqual({
+      version: STRUCTURE_RADIAL_FIELD_VERSION,
+      empty: false,
+      squaredRadiusNumerator: "1683",
+      squaredRadiusDenominator: "2",
+    });
+    expect(structureRadialFieldContainsOffset(profile, 29, 0)).toBe(true);
+    expect(structureRadialFieldContainsOffset(profile, 29, 1)).toBe(false);
   });
 
   it("projects the same P09 + N10 area factor exactly at every Fort level", () => {
