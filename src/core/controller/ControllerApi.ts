@@ -301,6 +301,15 @@ export type CellSelector =
       readonly referenceFactionId: FactionId;
       readonly affiliation: StructureFieldAffiliation;
     }
+  | {
+      /**
+       * Authoritative effective field of one lawfully observable physical structure.
+       * Runtime owns field geometry; inactive or field-mismatched structures resolve empty.
+       */
+      readonly kind: "STRUCTURE_FIELD_INSTANCE";
+      readonly structureId: StructureId;
+      readonly field: StructureFieldId;
+    }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
   | {
       readonly kind: "INTERSECTION";
@@ -530,13 +539,14 @@ export type SamAntiShipTargetType = "TRANSPORT_SHIP" | "WARSHIP";
 
 /**
  * Effective autonomous SAM-vs-ship profile. Presence means the structure can
- * attack ships; ordinary chargeCapacity/rechargeTicks/interceptionRange on the
- * containing StructureMechanicsSpec remain the shared effective SAM state.
+ * attack ships. Exact spatial eligibility uses eligibilityField through a
+ * STRUCTURE_FIELD_INSTANCE selector; numeric interceptionRange is ergonomic only.
+ * chargeCapacity/rechargeTicks remain the shared effective SAM charge state.
  */
 export interface SamAntiShipAttackSpec {
   readonly targetUnitTypes: readonly SamAntiShipTargetType[];
   readonly damage: number;
-  readonly rangeRule: "CURRENT_CELL_INSIDE_EFFECTIVE_SAM_RANGE";
+  readonly eligibilityField: Extract<StructureFieldId, "SAM">;
   readonly lineOfSightRequired: false;
   readonly chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT";
   readonly sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST";
@@ -563,7 +573,7 @@ export interface StructureMechanicsSpec {
   readonly tankConstructionSpeedMultiplier?: number;
   readonly chargeCapacity?: number;
   readonly rechargeTicks?: number;
-  /** Ergonomic effective range; use STRUCTURE_FIELD for authoritative SAM cells. */
+  /** Ergonomic effective range; use structure-field selectors for authoritative SAM cells. */
   readonly interceptionRange?: number;
   readonly observationRadius?: number;
   readonly observationEffect?: ObservationStructureEffect;
