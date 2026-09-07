@@ -10,7 +10,7 @@ function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
 }
 
 describe("Open Fufu Controller API contract", () => {
-  it("typechecks the owned contract fixture without compiling inherited application code", () => {
+  it("typechecks the owned contract fixtures without compiling inherited application code", () => {
     const configPath = path.resolve("tsconfig.json");
     const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
 
@@ -28,11 +28,12 @@ describe("Open Fufu Controller API contract", () => {
 
     expect(formatDiagnostics(parsed.errors)).toBe("");
 
-    const fixturePath = path.resolve(
-      "tests/contracts/controller-api.typecheck.ts",
-    );
+    const fixturePaths = [
+      path.resolve("tests/contracts/controller-api.typecheck.ts"),
+      path.resolve("tests/types/ControllerApiTypes.ts"),
+    ];
     const program = ts.createProgram({
-      rootNames: [fixturePath],
+      rootNames: fixturePaths,
       options: parsed.options,
     });
     const diagnostics = ts.getPreEmitDiagnostics(program);
@@ -44,9 +45,11 @@ describe("Open Fufu Controller API contract", () => {
       .map((sourceFile) => path.relative(process.cwd(), sourceFile.fileName))
       .filter((fileName) => !fileName.startsWith("node_modules"));
 
-    expect(repositorySources).toContain(
-      path.normalize("tests/contracts/controller-api.typecheck.ts"),
-    );
+    for (const fixturePath of fixturePaths) {
+      expect(repositorySources).toContain(
+        path.relative(process.cwd(), fixturePath),
+      );
+    }
     expect(repositorySources).toContain(
       path.normalize("src/core/controller/ControllerApi.ts"),
     );
