@@ -80,6 +80,19 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
       context.me.id,
     );
     const antiShipDamage = samSpec.antiShipAttack?.damage ?? 0;
+    const activeSam = context.structures
+      .list(context.me.id)
+      .find(
+        (structure) => structure.type === "SAM_LAUNCHER" && structure.active,
+      );
+    const antiShipCoveredCells =
+      activeSam && samSpec.antiShipAttack
+        ? context.cells.count({
+            kind: "STRUCTURE_FIELD_INSTANCE",
+            structureId: activeSam.id,
+            field: samSpec.antiShipAttack.eligibilityField,
+          })
+        : 0;
     const landing = context.mechanics.transportLanding(5, context.me.id);
     const destruction = context.mechanics.transportDestructionSpec(context.me.id);
     const transferDestination =
@@ -100,6 +113,7 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
             atWar,
             tick: context.game.tick,
             antiShipDamage,
+            antiShipCoveredCells,
             landingSurvivors: landing.survivingPopulation,
             transferDestination,
           },
@@ -107,6 +121,11 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
       ],
       debug: [
         { kind: "METRIC", name: "fixture.atWar", value: atWar },
+        {
+          kind: "METRIC",
+          name: "fixture.antiShipCoveredCells",
+          value: antiShipCoveredCells,
+        },
         {
           kind: "METRIC",
           name: "fixture.landingSurvivors",
