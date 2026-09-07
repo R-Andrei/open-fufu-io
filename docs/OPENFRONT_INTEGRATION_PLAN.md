@@ -34,7 +34,7 @@ Conceptually:
                  canonical Open Fufu owners
                            |
                            v
-                  Open Fufu-owned contracts
+                  Open Fufu contracts
               rules / API / visibility / math
                            |
                            v
@@ -102,7 +102,7 @@ Delete-first migration is not the default.
 
 ## 1.3 Effective rules are foundational, not retrofit work
 
-The current Open Fufu-owned rule compiler/composition/materialization infrastructure is part of the starting foundation.
+The Open Fufu rule compiler/composition/materialization infrastructure is part of the intended starting foundation; exact executable ownership remains defined by [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md) and its machine-readable registry.
 
 Every new rule-bearing mechanic should consume the ordinary effective-rule surface from its first authoritative implementation. Do not implement a vanilla mechanic first and retrofit Origin/Echo/ruleset transformations after many systems already depend on hard-coded baselines.
 
@@ -116,7 +116,7 @@ The old `keep/adapt` vocabulary is too broad. Every inherited area considered fo
 
 | Disposition | Meaning |
 | --- | --- |
-| **ADOPT** | Suitable Open Fufu code is intentionally part of the maintained target surface and is used directly. Existing Open Fufu-owned code remains adopted; inherited executable code becomes adopted only through the explicit process in `VALIDATION_POLICY.md`. |
+| **ADOPT** | Suitable Open Fufu code is intentionally part of the maintained target surface and is used directly. Inherited executable code becomes adopted only through the explicit process in `VALIDATION_POLICY.md`. |
 | **EXTRACT** | Useful algorithm/data-structure engineering exists, but broad legacy dependencies must be removed. Define a narrow dependency-neutral interface, characterize the useful behavior, extract/reimplement, then deliberately adopt the resulting source with focused Open Fufu validation. |
 | **REFERENCE** | Read/use as implementation evidence or algorithmic inspiration, but create no target architectural dependency by default. |
 | **REPLACE** | The inherited semantics/authority/model conflict with Open Fufu and must not survive as target behavior. Useful sub-algorithms may still be independently extracted. |
@@ -127,11 +127,11 @@ Architectural disposition does not override validation ownership. `VALIDATION_PO
 
 | Area | Default disposition | Open Fufu target owner / consequence |
 | --- | --- | --- |
-| Existing Open Fufu rule compiler/composition/materializer/registries | **ADOPT** | `RULE_COMPOSITION.md` + owned `src/core/rules/**` |
+| Open Fufu rule compiler/composition/materializer/registries | **ADOPT** | `RULE_COMPOSITION.md`; exact executable ownership from `VALIDATION_POLICY.md`/registry |
 | `ControllerApi.ts` public contract | **ADOPT** | public controller surface |
-| Tactical visibility primitive already explicitly owned | **ADOPT** | high-level design / controller projection |
-| `DetMath` and other already adopted deterministic utilities | **ADOPT** | ordinary Open Fufu utility surface |
-| `FactionRelations` where consistent with target rules | **ADOPT** | high-level design |
+| Tactical visibility primitive | **ADOPT** | high-level design / controller projection; exact executable ownership from validation registry |
+| Deterministic math utilities selected for the target surface | **ADOPT** | ordinary Open Fufu utility surface; exact executable ownership from validation registry |
+| Faction-relations implementation where consistent with target rules | **ADOPT** | high-level design; exact executable ownership from validation registry |
 | Validation ownership/guard infrastructure | **ADOPT** | `VALIDATION_POLICY.md` |
 | Dense raster/cell storage techniques | **EXTRACT** | new simulation map ports; do not expose legacy `Game` |
 | Compact cell-reference arithmetic / deterministic adjacency | **EXTRACT** | map substrate ports |
@@ -215,7 +215,7 @@ MatchState
 ├─ factions
 │  ├─ Population
 │  ├─ FFY
-│  └─ EffectiveRules
+│  └─ effective rule profile
 ├─ operations
 ├─ structures
 ├─ mobile units
@@ -239,7 +239,7 @@ MatchState
 deterministic TickEngine
 tiny synthetic map support
 at least two factions
-EffectiveRules attached from the beginning
+effective rule profile attached from the beginning
 at least one accepted deterministic action/state transition
 state fingerprint
 fresh-runtime replay/regeneration equivalence
@@ -599,7 +599,7 @@ Useful extraction candidates may include:
 
 Do not carry broad inherited `UnitImpl` state simply to inherit construction, transport, warship, train, missile, SAM, health, ownership-transfer, and update-generation behavior in one object. If only one portion is valuable, extract that portion.
 
-Every new rule-bearing physical system consumes `EffectiveRules`/typed rule surfaces from its first authoritative implementation rather than adding Origin/Echo support later through pairwise exceptions.
+Every new rule-bearing physical system consumes the typed effective-rule surface from its first authoritative implementation rather than adding Origin/Echo support later through pairwise exceptions.
 
 ---
 
@@ -616,9 +616,9 @@ Production validation must enforce the public builder/catalogue rules without hi
 
 Mechanical certification applies to the deployed trait catalogue and the distinct gameplay transformations/interactions that catalogue can produce, **not to each named Official or Custom Origin as a separate runtime artifact**. Creating or loading a legal named Origin from a certified catalogue requires only ordinary catalogue-version, trait-ID, builder-legality, canonical-composition, and serialization checks; live matches do not launch background/headless certification for previously unseen named combinations.
 
-Origin validation is distributed to the gameplay domains that own the affected mechanics. Catalogue/intrinsic validation belongs with the Origin layer; runtime conformance belongs with the relevant subsystem; genuine cross-domain interactions receive explicit integration coverage. [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md) owns the concrete validation-domain assignments, dependency relationships, integration seams, and explicit interaction obligations. This plan owns the certification architecture and deployment-eligibility predicate in §15.3.
+Origin validation is distributed to the gameplay domains that own the affected mechanics. Catalogue/intrinsic validation belongs with the Origin layer; runtime conformance belongs with the relevant subsystem; genuine cross-domain interactions receive explicit integration coverage. [`ORIGIN_VALIDATION_COVERAGE.md`](./ORIGIN_VALIDATION_COVERAGE.md) owns the concrete validation-domain assignments, dependency relationships, integration seams, and explicit interaction obligations. This plan owns the certification architecture and deployment-eligibility predicate in §15.4.4.
 
-Existing Open Fufu-owned rule compiler/materialization/Origin manifest infrastructure is an adopted starting asset, not a future phase that waits until after basic gameplay.
+The Open Fufu rule compiler/materialization/Origin-manifest infrastructure is an intended **ADOPT** starting asset; exact executable ownership remains defined by `VALIDATION_POLICY.md` and its registry rather than by this document.
 
 ## 10.2 Echoes
 
@@ -1167,7 +1167,7 @@ OpenFront code is AGPL-3.0; applicable source and attribution obligations must r
 
 # 15. Test-driven validation and performance
 
-Repository validation ownership and executable-code adoption are defined exclusively by [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md). This plan defines implementation sequencing and the kind of evidence each migration stage should produce; it does not broaden the current owned test surface by prose.
+Repository validation ownership and executable-code adoption are defined exclusively by [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md). This plan defines implementation sequencing and the kind of evidence each migration stage should produce; it does not broaden the owned test surface by prose.
 
 Inherited OpenFront tests are migration/characterization evidence by default. They do not become merge gates merely because the implementation area is related. New/adopted authoritative Open Fufu executable code and its validators must be explicitly registered together as required by `VALIDATION_POLICY.md`.
 
@@ -1236,7 +1236,7 @@ CI configuration is executable repository policy and must not be mirrored here a
 
 Durable migration rules are:
 
-- obey the current owned validation boundary in `VALIDATION_POLICY.md`;
+- obey the owned validation boundary defined in `VALIDATION_POLICY.md`;
 - do **not** reactivate repository-wide inherited build/typecheck/lint/test suites as ordinary merge gates merely because implementation has begun;
 - adopt/register new or extracted authoritative sources and focused validators in the same change that makes them maintained Open Fufu code;
 - add mechanic, determinism, replay, sandbox, participant/service, persistence, packaging, and capacity gates only when the corresponding authoritative implementation exists;
@@ -1434,7 +1434,7 @@ Origin/Echo composition remains part of integration validation, but large identi
 
 This section is a **durable dependency architecture**, not a pre-created GitHub backlog.
 
-The logical thread labels below are descriptive categories only. They do **not** assign issue numbers, create issues, or freeze eventual issue titles/scopes. Concrete issues should be created only when their prerequisite gate is sufficiently stable to scope the work correctly.
+Each row in §16.4 is a planned **workstream category expected to produce one or more concrete implementation issues later**. The labels are descriptive planning handles only: they do **not** assign issue numbers, create issues, or freeze eventual issue titles/scopes. Concrete issues should be created only when their prerequisite gate is sufficiently stable to scope the work correctly.
 
 ## 16.1 Gate graph
 
@@ -1445,7 +1445,7 @@ The logical thread labels below are descriptive categories only. They do **not**
               authoritative simulation kernel
               deterministic tick/test harness
               tiny map + faction/state skeleton
-              EffectiveRules integration
+              effective-rule integration
               replay/fingerprint skeleton
                              |
                              v
@@ -1495,7 +1495,7 @@ The logical thread labels below are descriptive categories only. They do **not**
              APPLICATION CUTOVER
 ```
 
-This graph is schematic. A thread may split into several focused issues or several small PRs once real implementation boundaries are known.
+This graph is schematic. A thread may split into several focused issues or several small PRs once real implementation boundaries are known. §16.4 is the more complete planning inventory; the graph intentionally shows only the major dependency spine.
 
 ## 16.2 Foundation gate
 
@@ -1516,28 +1516,50 @@ This gate establishes the first genuinely playable headless Open Fufu semantics 
 | Logical development thread | Earliest prerequisite gate | Concurrency | Important downstream gate / consumer |
 | --- | --- | --- | --- |
 | Authoritative simulation foundation | revised canonical integration architecture | initially serialized; only tightly coordinated supporting work | all executable gameplay/runtime work |
+| Simulation test harness / dependency firewall / replay fingerprint | foundation implementation begins | same foundation owner or tightly coordinated support | foundation gate; all later TDD work |
 | Population/state accounting | foundation | operation system and projection adapter once shared state contracts settle | land slice; economy; transport |
 | Land operations/automatic defense/capture | foundation + Population contracts | projection/controller integration | land slice; AI; combat conformance |
 | Observation/action runtime integration | foundation + required state vocabulary | Population/land mechanics | land slice; controller host; Official AI; participant projection |
-| Map/navigation extraction | stable simulation map/navigation ports | controller runtime, physical systems, platform work | production maps; naval; rail; spawn |
-| Controller isolated host/worker runtime | stable `ControllerHost` contract | map extraction, physical systems, platform | untrusted-controller deployment/certification |
-| Structures/economy | land-slice foundations + effective-rule/state contracts | sandbox, navigation extraction, platform | richer matches; naval/rail; Official AI |
+| Effective-rule runtime integration / domain conformance harness | foundation rule attachment + relevant domain state | every rule-bearing gameplay domain as it arrives | Origin/Echo/ruleset correctness; catalogue certification |
+| Map artifact/substrate extraction | stable simulation map/ownership ports | navigation extraction, controller runtime, platform | production maps; Segments; spawn; packaging |
+| Navigation/pathfinding extraction | stable map/navigation ports | controller runtime, structures/economy, platform | naval; rail; strategic movement; spawn support |
+| Controller-host contract / in-process test host | stable observation/action boundary | land mechanics, map extraction | sandbox; Official AI; controller certification |
+| Controller isolated host/worker pool | stable `ControllerHost` contract | map/navigation extraction, physical systems, platform | untrusted-controller deployment/certification |
+| Controller publication/bundling/certification | stable controller API + isolated-host contract | service/account work, gameplay fan-out | deployable player controllers; match admission |
+| Structures / baseline land units | playable land-slice foundations + terrain/effective-rule state | sandbox, navigation, economy, platform | richer combat; naval/economy dependencies; AI |
+| FFY economy / trade / rail economy | Population/state + relevant structure/navigation foundations | naval, sandbox, service/platform | production economy; rewards/stats; AI |
 | Segment compiler/runtime | stable map-artifact/query ports | sandbox and physical-system work | production observation, strategic planning, spawn |
 | Spawn systems | match initialization interface + relevant map/Segment support + pre-match controller boundary | physical systems/platform work | normal match lifecycle |
-| Naval/rail/strategic weapons | relevant navigation + structures/economy foundations | service/browser/platform | feature-complete physical simulation |
-| Official AI | lawful observation/action surface; fidelity expands as mechanics arrive | controller/runtime and later domain work | PvE readiness / accelerated validation |
+| Origin runtime/content integration | effective-rule runtime + affected gameplay domains as they become available | domain implementations; Official AI Origin support | Origin conformance/certification; match creation |
+| Echo mechanical/loadout integration | effective-rule runtime + match binding/state | Origins, physical systems, persistence work | PvE loadouts; replay/version binding; rewards |
+| Minor Factions | foundation + required map/land mechanics | broader gameplay/AI work | complete target match ecology |
+| Naval/amphibious systems | navigation + relevant economy/structure foundations | strategic weapons, service/browser | feature-complete physical simulation |
+| Strategic weapons / SAM / projectile systems | trajectory/navigation + relevant structures/economy | naval, service/browser | feature-complete physical simulation |
+| Official AI lawful runtime | lawful observation/action surface; fidelity expands as mechanics arrive | controller runtime and later domain work | PvE readiness / accelerated validation |
+| Official AI strategy/content fidelity | corresponding mechanics + Origin support + lawful AI runtime | late gameplay/domain implementation | intended character/preset behavior; PvE release quality |
+| Match lifecycle / victory / results / authoritative stats | stable core match state + enough terminal semantics | process/service/persistence work | complete headless matches; rewards; archival replay |
 | Match child process/supervisor | stable `MatchRuntime` lifecycle | sandbox and gameplay fan-out | deployed authoritative runtime |
-| Persistence/service/auth integration | stable runtime/service lifecycle contracts | gameplay/physical-system work | durable hosted product |
-| Participant/browser integration | stable legal projection + participant protocol implementation boundary | platform/game-domain work | visible playable product |
-| Archival replay/resource packaging | foundation replay semantics + stable version/resource bindings | service/process/persistence | historical playback/deployable matches |
+| Service/control-plane API | stable match lifecycle/resource contracts | persistence/auth, gameplay fan-out | hosted match/controller/account operations |
+| Authentication/identity/session integration | stable service boundary | persistence, gameplay fan-out | hosted user/session security |
+| SQLite persistence / migrations / retention | stable persistent-resource contracts | service/auth, gameplay fan-out | durable hosted product; rewards/history |
+| Echo progression/reward settlement | Echo mechanics + match results + persistence transaction boundary | service/browser work | durable PvE progression/Gacha |
+| Participant live protocol/runtime | stable legal projection + match lifecycle | platform/game-domain work | viewer/reconnect support; application cutover |
+| Browser match viewer / projection rendering | participant runtime + target projection | controller-authoring UX, platform | visible playable product |
+| Browser controller editor/debugger | controller publication/certification + service APIs | viewer/content UX | player authoring product |
+| Browser Origin/Echo/lobby/content UX | corresponding service/content/runtime contracts | viewer/editor work | complete product workflows |
+| Archival replay/resource packaging | foundation replay semantics + stable version/resource bindings | service/process/persistence | historical playback; deployable reproducible matches |
+| Deployment/capacity/performance hardening | process/runtime/product paths representative enough to measure | late platform/browser/gameplay work | production readiness |
+| Asset/licensing replacement and packaging cleanup | concrete active dependency inventory | browser/deployment work | production/legal cleanup before release |
 | Final application cutover | sufficient simulation + participant + platform readiness | narrowly coordinated cutover work only | retirement of inherited simulation authority |
-| Legacy deletion | corresponding target has cut over and references are audited | ordinary focused cleanup PRs | migration completion |
+| Legacy authority/code deletion | corresponding target has cut over and references are audited | ordinary focused cleanup PRs | migration completion |
 
 ## 16.5 Parallel-work rule
 
 A development “thread” means a stable ownership area and a sequence of short-lived tested PRs, **not** a giant long-lived branch.
 
-Foundation work is intentionally more serialized while high-coupling interfaces settle. After the land slice, parallelism should increase by keeping map/navigation, controller-host, physical systems, process/service, AI, and participant/browser work behind narrow interfaces rather than having all contributors edit `GameImpl`, `PlayerImpl`, `UnitImpl`, `ExecutionManager`, or `GameRunner`.
+Foundation work is intentionally more serialized while high-coupling interfaces settle. After the land slice, parallelism should increase by keeping map/navigation, controller-host, physical systems, process/service, AI, content, persistence, and participant/browser work behind narrow interfaces rather than having all contributors edit `GameImpl`, `PlayerImpl`, `UnitImpl`, `ExecutionManager`, or `GameRunner`.
+
+The table does not require one issue per row. A row may become several issues when implementation boundaries are independently reviewable, or several adjacent rows may share one narrowly scoped issue when they cannot be implemented coherently apart. The dependency/concurrency gate is authoritative; future issue packaging is project-management detail.
 
 ## 16.6 Cutover is a bounded special gate
 
