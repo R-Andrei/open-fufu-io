@@ -56,7 +56,11 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     originSpecificSupport: null,
     profileAssertions: {
       requiredThemes: ["FORTIFICATION", "POSITIONAL_CONTROL", "SPECIALIZATION"],
-      requiredAffordances: ["HOLD_GROUND", "EXPLOIT_TERRAIN", "CREATE_BREAKTHROUGH"],
+      requiredAffordances: [
+        "HOLD_GROUND",
+        "EXPLOIT_TERRAIN",
+        "CREATE_BREAKTHROUGH",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -89,8 +93,17 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["ELITE_SINGLE_FLAGSHIP_PROGRESSION"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["NAVAL_PROJECTION", "DECISIVE_FORCE", "FORCE_PRESERVATION", "SPECIALIZATION"],
-      requiredAffordances: ["PROJECT_FROM_SEA", "FIGHT_FROM_RANGE", "PRESERVE_FORCE"],
+      requiredThemes: [
+        "NAVAL_PROJECTION",
+        "DECISIVE_FORCE",
+        "FORCE_PRESERVATION",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "PROJECT_FROM_SEA",
+        "FIGHT_FROM_RANGE",
+        "PRESERVE_FORCE",
+      ],
       requiredCautions: ["REQUIRES_VETERANCY", "EXPENSIVE_FAILURE"],
     },
     validationFocus: [
@@ -107,8 +120,18 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DECISIVE_FORCE", "ESCALATION", "DETERRENCE", "TERRITORIAL_SHAPING", "SPECIALIZATION"],
-      requiredAffordances: ["DENY_AREA", "SHAPE_TERRITORY", "FORCE_ENEMY_RESPONSE"],
+      requiredThemes: [
+        "DECISIVE_FORCE",
+        "ESCALATION",
+        "DETERRENCE",
+        "TERRITORIAL_SHAPING",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "FORCE_ENEMY_RESPONSE",
+      ],
       requiredCautions: ["HIGH_UPFRONT_COST"],
     },
     validationFocus: [
@@ -124,7 +147,12 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DISTRIBUTED_PLAY", "POSITIONAL_CONTROL", "EXPANSION", "SPECIALIZATION"],
+      requiredThemes: [
+        "DISTRIBUTED_PLAY",
+        "POSITIONAL_CONTROL",
+        "EXPANSION",
+        "SPECIALIZATION",
+      ],
       requiredAffordances: ["DISTRIBUTE_START", "MULTI_THEATER_ACCESS"],
       requiredCautions: ["SPLIT_FRONT_RISK", "ISOLATED_CORE_RISK"],
     },
@@ -145,7 +173,11 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     originSpecificSupport: null,
     profileAssertions: {
       requiredThemes: ["INFRASTRUCTURE", "POSITIONAL_CONTROL", "FORTIFICATION"],
-      requiredAffordances: ["HOLD_GROUND", "CREATE_BREAKTHROUGH", "PROTECT_HIGH_VALUE_ASSET"],
+      requiredAffordances: [
+        "HOLD_GROUND",
+        "CREATE_BREAKTHROUGH",
+        "PROTECT_HIGH_VALUE_ASSET",
+      ],
       requiredCautions: [],
     },
     validationFocus: [
@@ -162,7 +194,11 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     originSpecificSupport: null,
     profileAssertions: {
       requiredThemes: ["FORCE_PRESERVATION", "ATTRITION", "SACRIFICE"],
-      requiredAffordances: ["PRESERVE_FORCE", "TRADE_GROUND_FOR_CASUALTIES", "LURE_OVEREXTENSION"],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "TRADE_GROUND_FOR_CASUALTIES",
+        "LURE_OVEREXTENSION",
+      ],
       requiredCautions: [],
     },
     validationFocus: [
@@ -177,14 +213,22 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["LAYERED_COUNTERINTELLIGENCE"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["INFORMATION", "POSITIONAL_CONTROL", "FORCE_PRESERVATION", "SPECIALIZATION"],
-      requiredAffordances: ["GAIN_INFORMATION_ADVANTAGE", "PROTECT_HIGH_VALUE_ASSET"],
+      requiredThemes: [
+        "INFORMATION",
+        "POSITIONAL_CONTROL",
+        "FORCE_PRESERVATION",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "GAIN_INFORMATION_ADVANTAGE",
+        "PROTECT_HIGH_VALUE_ASSET",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
       "OBSERVATION_POST_BLACKOUT_ROLE",
       "NO_SELF_TACTICAL_OBSERVATION_FROM_POSTS",
-      "FOREST_INTERIOR_CONCEALMENT",
+      "OWNED_FOREST_CONCEALMENT",
       "LAYERED_CONCEALMENT_POSITIONING",
       "PLAINS_OFFENSE_PENALTY",
     ],
@@ -197,8 +241,18 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["FORCE_PRESERVATION", "FORTIFICATION", "POSITIONAL_CONTROL", "ATTRITION"],
-      requiredAffordances: ["PRESERVE_FORCE", "HOLD_GROUND", "EXPLOIT_TERRAIN", "TRADE_GROUND_FOR_CASUALTIES"],
+      requiredThemes: [
+        "FORCE_PRESERVATION",
+        "FORTIFICATION",
+        "POSITIONAL_CONTROL",
+        "ATTRITION",
+      ],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "HOLD_GROUND",
+        "EXPLOIT_TERRAIN",
+        "TRADE_GROUND_FOR_CASUALTIES",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -215,8 +269,18 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["FORCE_PRESERVATION", "ATTRITION", "FORTIFICATION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["PRESERVE_FORCE", "RETALIATE_EFFICIENTLY", "HOLD_GROUND", "EXPLOIT_TERRAIN"],
+      requiredThemes: [
+        "FORCE_PRESERVATION",
+        "ATTRITION",
+        "FORTIFICATION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "RETALIATE_EFFICIENTLY",
+        "HOLD_GROUND",
+        "EXPLOIT_TERRAIN",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -232,8 +296,20 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["FORCE_PRESERVATION", "ATTRITION", "TRADE", "ECONOMIC_COMPOUNDING", "SPECIALIZATION", "INFRASTRUCTURE"],
-      requiredAffordances: ["PRESERVE_FORCE", "RETALIATE_EFFICIENTLY", "SCALE_TRADE", "TRADE_GROUND_FOR_CASUALTIES"],
+      requiredThemes: [
+        "FORCE_PRESERVATION",
+        "ATTRITION",
+        "TRADE",
+        "ECONOMIC_COMPOUNDING",
+        "SPECIALIZATION",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "RETALIATE_EFFICIENTLY",
+        "SCALE_TRADE",
+        "TRADE_GROUND_FOR_CASUALTIES",
+      ],
       requiredCautions: ["EXPENSIVE_FAILURE"],
     },
     validationFocus: [
@@ -250,7 +326,14 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["TRADE", "ECONOMIC_COMPOUNDING", "GROWTH", "INFRASTRUCTURE", "SPECIALIZATION", "POSITIONAL_CONTROL"],
+      requiredThemes: [
+        "TRADE",
+        "ECONOMIC_COMPOUNDING",
+        "GROWTH",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "POSITIONAL_CONTROL",
+      ],
       requiredAffordances: ["SCALE_TRADE", "SCALE_GROWTH"],
       requiredCautions: ["HIGH_LIQUIDITY_NEED", "EXPENSIVE_FAILURE"],
     },
@@ -268,8 +351,18 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["FORCE_PRESERVATION", "ATTRITION", "SACRIFICE", "GROWTH", "ECONOMIC_COMPOUNDING"],
-      requiredAffordances: ["PRESERVE_FORCE", "TRADE_GROUND_FOR_CASUALTIES", "SCALE_GROWTH"],
+      requiredThemes: [
+        "FORCE_PRESERVATION",
+        "ATTRITION",
+        "SACRIFICE",
+        "GROWTH",
+        "ECONOMIC_COMPOUNDING",
+      ],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "TRADE_GROUND_FOR_CASUALTIES",
+        "SCALE_GROWTH",
+      ],
       requiredCautions: [],
     },
     validationFocus: [
@@ -286,8 +379,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DECISIVE_FORCE", "DISTRIBUTED_PLAY", "EXPANSION", "SIEGE", "POSITIONAL_CONTROL", "SPECIALIZATION"],
-      requiredAffordances: ["CREATE_BREAKTHROUGH", "SIEGE_STATIC_POSITIONS", "EXPLOIT_TERRAIN"],
+      requiredThemes: [
+        "DECISIVE_FORCE",
+        "DISTRIBUTED_PLAY",
+        "EXPANSION",
+        "SIEGE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "CREATE_BREAKTHROUGH",
+        "SIEGE_STATIC_POSITIONS",
+        "EXPLOIT_TERRAIN",
+      ],
       requiredCautions: ["SPLIT_FRONT_RISK", "TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -301,11 +405,27 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
   {
     originId: "O04",
     traitIds: ["P05", "P34", "P15", "N09", "N02"],
-    requiredCombinationSupportIds: ["CONQUEST_FACTORY_SNOWBALL", "CONQUEST_ONLY_INDUSTRY"],
+    requiredCombinationSupportIds: [
+      "CONQUEST_FACTORY_SNOWBALL",
+      "CONQUEST_ONLY_INDUSTRY",
+    ],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["RAIDING", "INDUSTRIALIZATION", "ECONOMIC_COMPOUNDING", "EXPANSION", "DECISIVE_FORCE", "SPECIALIZATION"],
-      requiredAffordances: ["RAID_INFRASTRUCTURE", "SCALE_INDUSTRY", "SCALE_ECONOMY", "CREATE_BREAKTHROUGH", "EXPLOIT_TERRAIN"],
+      requiredThemes: [
+        "RAIDING",
+        "INDUSTRIALIZATION",
+        "ECONOMIC_COMPOUNDING",
+        "EXPANSION",
+        "DECISIVE_FORCE",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "RAID_INFRASTRUCTURE",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+        "CREATE_BREAKTHROUGH",
+        "EXPLOIT_TERRAIN",
+      ],
       requiredCautions: ["INFRASTRUCTURE_DEPENDENCE", "TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -323,7 +443,13 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["RAIDING", "EXPANSION", "ECONOMIC_COMPOUNDING", "TRADE", "MOBILITY"],
+      requiredThemes: [
+        "RAIDING",
+        "EXPANSION",
+        "ECONOMIC_COMPOUNDING",
+        "TRADE",
+        "MOBILITY",
+      ],
       requiredAffordances: ["RAID_INFRASTRUCTURE", "SCALE_TRADE"],
       requiredCautions: [],
     },
@@ -340,9 +466,30 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION", "DISTRIBUTED_PLAY", "EXPANSION"],
-      requiredAffordances: ["FIGHT_FROM_RANGE", "SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "FORCE_ENEMY_RESPONSE", "EXPLOIT_TERRAIN"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE", "TERRAIN_DEPENDENCE", "SPLIT_FRONT_RISK"],
+      requiredThemes: [
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "DISTRIBUTED_PLAY",
+        "EXPANSION",
+      ],
+      requiredAffordances: [
+        "FIGHT_FROM_RANGE",
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "FORCE_ENEMY_RESPONSE",
+        "EXPLOIT_TERRAIN",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+        "TERRAIN_DEPENDENCE",
+        "SPLIT_FRONT_RISK",
+      ],
     },
     validationFocus: [
       "HEAVY_ARTILLERY_REPLACES_TANKS",
@@ -359,9 +506,27 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION"],
-      requiredAffordances: ["SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "FIGHT_FROM_RANGE", "FORCE_ENEMY_RESPONSE", "EXPLOIT_TERRAIN"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE", "TERRAIN_DEPENDENCE"],
+      requiredThemes: [
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "FIGHT_FROM_RANGE",
+        "FORCE_ENEMY_RESPONSE",
+        "EXPLOIT_TERRAIN",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+        "TERRAIN_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "IGNORE_ENEMY_FORT_DEFENSIVE_PRESSURE",
@@ -380,9 +545,32 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["RAIDING", "EXPANSION", "ECONOMIC_COMPOUNDING", "SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION", "ATTRITION", "FORCE_PRESERVATION"],
-      requiredAffordances: ["RAID_INFRASTRUCTURE", "FIGHT_FROM_RANGE", "SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "RETALIATE_EFFICIENTLY", "PRESERVE_FORCE"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE"],
+      requiredThemes: [
+        "RAIDING",
+        "EXPANSION",
+        "ECONOMIC_COMPOUNDING",
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "ATTRITION",
+        "FORCE_PRESERVATION",
+      ],
+      requiredAffordances: [
+        "RAID_INFRASTRUCTURE",
+        "FIGHT_FROM_RANGE",
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "RETALIATE_EFFICIENTLY",
+        "PRESERVE_FORCE",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "CONQUEST_STRUCTURE_FFY_REWARD",
@@ -399,9 +587,30 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION", "ESCALATION", "DETERRENCE", "TERRITORIAL_SHAPING"],
-      requiredAffordances: ["FIGHT_FROM_RANGE", "SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "DENY_AREA", "SHAPE_TERRITORY", "FORCE_ENEMY_RESPONSE"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE"],
+      requiredThemes: [
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "ESCALATION",
+        "DETERRENCE",
+        "TERRITORIAL_SHAPING",
+      ],
+      requiredAffordances: [
+        "FIGHT_FROM_RANGE",
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "FORCE_ENEMY_RESPONSE",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "HEAVY_ARTILLERY_REPLACES_TANKS",
@@ -418,9 +627,31 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DECISIVE_FORCE", "ESCALATION", "DETERRENCE", "TERRITORIAL_SHAPING", "SPECIALIZATION", "FORTIFICATION", "POSITIONAL_CONTROL", "INFRASTRUCTURE"],
-      requiredAffordances: ["DENY_AREA", "SHAPE_TERRITORY", "FORCE_ENEMY_RESPONSE", "REDUCE_INTERCEPTION_WINDOW", "INTERCEPT_OVER_LARGE_AREA", "PROTECT_HIGH_VALUE_ASSET"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_THROUGHPUT", "BAITABLE_DEFENSE", "LONG_RELOAD", "EXPENSIVE_FAILURE"],
+      requiredThemes: [
+        "DECISIVE_FORCE",
+        "ESCALATION",
+        "DETERRENCE",
+        "TERRITORIAL_SHAPING",
+        "SPECIALIZATION",
+        "FORTIFICATION",
+        "POSITIONAL_CONTROL",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "FORCE_ENEMY_RESPONSE",
+        "REDUCE_INTERCEPTION_WINDOW",
+        "INTERCEPT_OVER_LARGE_AREA",
+        "PROTECT_HIGH_VALUE_ASSET",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_THROUGHPUT",
+        "BAITABLE_DEFENSE",
+        "LONG_RELOAD",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "HYDROGEN_ONLY_PLANNING",
@@ -436,9 +667,31 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["RADIOACTIVE_HEAVY_ARTILLERY"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION", "ATTRITION", "TERRITORIAL_SHAPING"],
-      requiredAffordances: ["FIGHT_FROM_RANGE", "SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "DENY_AREA", "SHAPE_TERRITORY", "CUT_CONNECTIVITY", "ERODE_TERRITORY_AT_RANGE"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE", "SELF_GEOMETRY_RISK"],
+      requiredThemes: [
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "ATTRITION",
+        "TERRITORIAL_SHAPING",
+      ],
+      requiredAffordances: [
+        "FIGHT_FROM_RANGE",
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "CUT_CONNECTIVITY",
+        "ERODE_TERRITORY_AT_RANGE",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+        "SELF_GEOMETRY_RISK",
+      ],
     },
     validationFocus: [
       "HEAVY_ARTILLERY_REPLACES_TANKS",
@@ -455,9 +708,30 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["SIEGE", "DECISIVE_FORCE", "POSITIONAL_CONTROL", "SPECIALIZATION", "DETERRENCE", "ESCALATION", "INFRASTRUCTURE"],
-      requiredAffordances: ["FIGHT_FROM_RANGE", "SIEGE_STATIC_POSITIONS", "CREATE_BREAKTHROUGH", "FORCE_ENEMY_RESPONSE", "REDUCE_INTERCEPTION_WINDOW"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "LOW_MOBILITY", "LONG_RELOAD", "CLOSE_RANGE_VULNERABILITY", "EXPENSIVE_FAILURE", "TERRAIN_DEPENDENCE"],
+      requiredThemes: [
+        "SIEGE",
+        "DECISIVE_FORCE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "DETERRENCE",
+        "ESCALATION",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "FIGHT_FROM_RANGE",
+        "SIEGE_STATIC_POSITIONS",
+        "CREATE_BREAKTHROUGH",
+        "FORCE_ENEMY_RESPONSE",
+        "REDUCE_INTERCEPTION_WINDOW",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "LOW_MOBILITY",
+        "LONG_RELOAD",
+        "CLOSE_RANGE_VULNERABILITY",
+        "EXPENSIVE_FAILURE",
+        "TERRAIN_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "FREE_STARTING_MISSILE_SILO",
@@ -474,9 +748,24 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DETERRENCE", "ESCALATION", "INFRASTRUCTURE", "DECISIVE_FORCE", "TERRITORIAL_SHAPING", "SPECIALIZATION"],
-      requiredAffordances: ["DENY_AREA", "SHAPE_TERRITORY", "FORCE_ENEMY_RESPONSE"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "SELF_GEOMETRY_RISK", "INFRASTRUCTURE_DEPENDENCE"],
+      requiredThemes: [
+        "DETERRENCE",
+        "ESCALATION",
+        "INFRASTRUCTURE",
+        "DECISIVE_FORCE",
+        "TERRITORIAL_SHAPING",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "FORCE_ENEMY_RESPONSE",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "SELF_GEOMETRY_RISK",
+        "INFRASTRUCTURE_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "FREE_STARTING_MISSILE_SILO",
@@ -492,9 +781,25 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["POPULATION_SCALED_GIANT_SAM_NETWORK"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["GROWTH", "FORTIFICATION", "INFRASTRUCTURE", "DETERRENCE", "SPECIALIZATION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["INTERCEPT_OVER_LARGE_AREA", "PROTECT_HIGH_VALUE_ASSET"],
-      requiredCautions: ["LOW_THROUGHPUT", "BAITABLE_DEFENSE", "LONG_RELOAD", "SELF_GEOMETRY_RISK", "INFRASTRUCTURE_DEPENDENCE"],
+      requiredThemes: [
+        "GROWTH",
+        "FORTIFICATION",
+        "INFRASTRUCTURE",
+        "DETERRENCE",
+        "SPECIALIZATION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "INTERCEPT_OVER_LARGE_AREA",
+        "PROTECT_HIGH_VALUE_ASSET",
+      ],
+      requiredCautions: [
+        "LOW_THROUGHPUT",
+        "BAITABLE_DEFENSE",
+        "LONG_RELOAD",
+        "SELF_GEOMETRY_RISK",
+        "INFRASTRUCTURE_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "POPULATION_UNLOCKED_ZERO_FFY_SAM_SLOTS",
@@ -507,11 +812,26 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
   {
     originId: "O33",
     traitIds: ["P44", "P16", "P35", "N12", "N01"],
-    requiredCombinationSupportIds: ["REVERSIBLE_SCORCHED_EARTH", "RADIOACTIVE_FALLOUT_ADVANCE"],
+    requiredCombinationSupportIds: [
+      "REVERSIBLE_SCORCHED_EARTH",
+      "RADIOACTIVE_FALLOUT_ADVANCE",
+    ],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ATTRITION", "TERRITORIAL_SHAPING", "POSITIONAL_CONTROL", "SIEGE", "EXPANSION", "SACRIFICE"],
-      requiredAffordances: ["DENY_AREA", "SHAPE_TERRITORY", "CUT_CONNECTIVITY", "FORCE_ENEMY_RESPONSE"],
+      requiredThemes: [
+        "ATTRITION",
+        "TERRITORIAL_SHAPING",
+        "POSITIONAL_CONTROL",
+        "SIEGE",
+        "EXPANSION",
+        "SACRIFICE",
+      ],
+      requiredAffordances: [
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "CUT_CONNECTIVITY",
+        "FORCE_ENEMY_RESPONSE",
+      ],
       requiredCautions: ["SELF_GEOMETRY_RISK", "REQUIRES_GIVING_GROUND"],
     },
     validationFocus: [
@@ -530,8 +850,22 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["RADIOACTIVE_FALLOUT_ADVANCE"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ATTRITION", "TERRITORIAL_SHAPING", "POSITIONAL_CONTROL", "SIEGE", "EXPANSION", "SACRIFICE"],
-      requiredAffordances: ["DENY_AREA", "SHAPE_TERRITORY", "CUT_CONNECTIVITY", "FORCE_ENEMY_RESPONSE", "TRADE_GROUND_FOR_CASUALTIES", "LURE_OVEREXTENSION"],
+      requiredThemes: [
+        "ATTRITION",
+        "TERRITORIAL_SHAPING",
+        "POSITIONAL_CONTROL",
+        "SIEGE",
+        "EXPANSION",
+        "SACRIFICE",
+      ],
+      requiredAffordances: [
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "CUT_CONNECTIVITY",
+        "FORCE_ENEMY_RESPONSE",
+        "TRADE_GROUND_FOR_CASUALTIES",
+        "LURE_OVEREXTENSION",
+      ],
       requiredCautions: ["SELF_GEOMETRY_RISK", "TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -550,8 +884,22 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["INFRASTRUCTURE", "POSITIONAL_CONTROL", "SPECIALIZATION", "FORTIFICATION", "GROWTH", "EXPANSION", "FORCE_PRESERVATION"],
-      requiredAffordances: ["EXPLOIT_TERRAIN", "SCALE_GROWTH", "EXPAND_CHEAPLY", "EXPAND_WITH_LOW_POPULATION", "PRESERVE_FORCE"],
+      requiredThemes: [
+        "INFRASTRUCTURE",
+        "POSITIONAL_CONTROL",
+        "SPECIALIZATION",
+        "FORTIFICATION",
+        "GROWTH",
+        "EXPANSION",
+        "FORCE_PRESERVATION",
+      ],
+      requiredAffordances: [
+        "EXPLOIT_TERRAIN",
+        "SCALE_GROWTH",
+        "EXPAND_CHEAPLY",
+        "EXPAND_WITH_LOW_POPULATION",
+        "PRESERVE_FORCE",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -571,13 +919,28 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["LAYERED_COUNTERINTELLIGENCE"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["INFORMATION", "POSITIONAL_CONTROL", "FORCE_PRESERVATION", "SPECIALIZATION", "ECONOMIC_COMPOUNDING", "INFRASTRUCTURE"],
-      requiredAffordances: ["GAIN_INFORMATION_ADVANTAGE", "PROTECT_HIGH_VALUE_ASSET", "BUILD_HIGH_LEVEL_INFRASTRUCTURE"],
-      requiredCautions: ["TERRAIN_DEPENDENCE", "INFRASTRUCTURE_DEPENDENCE", "EXPENSIVE_FAILURE"],
+      requiredThemes: [
+        "INFORMATION",
+        "POSITIONAL_CONTROL",
+        "FORCE_PRESERVATION",
+        "SPECIALIZATION",
+        "ECONOMIC_COMPOUNDING",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "GAIN_INFORMATION_ADVANTAGE",
+        "PROTECT_HIGH_VALUE_ASSET",
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+      ],
+      requiredCautions: [
+        "TERRAIN_DEPENDENCE",
+        "INFRASTRUCTURE_DEPENDENCE",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "OBSERVATION_POST_BLACKOUT_ROLE",
-      "FOREST_INTERIOR_CONCEALMENT",
+      "OWNED_FOREST_CONCEALMENT",
       "LAYERED_CONCEALMENT_POSITIONING",
       "STRUCTURE_COUNT_UPGRADE_DISCOUNT",
       "ONE_PER_STRUCTURE_TYPE_LIMIT",
@@ -590,8 +953,18 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ECONOMIC_COMPOUNDING", "INFRASTRUCTURE", "SPECIALIZATION", "ATTRITION", "FORCE_PRESERVATION"],
-      requiredAffordances: ["BUILD_HIGH_LEVEL_INFRASTRUCTURE", "RETALIATE_EFFICIENTLY", "PRESERVE_FORCE"],
+      requiredThemes: [
+        "ECONOMIC_COMPOUNDING",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "ATTRITION",
+        "FORCE_PRESERVATION",
+      ],
+      requiredAffordances: [
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "RETALIATE_EFFICIENTLY",
+        "PRESERVE_FORCE",
+      ],
       requiredCautions: ["HIGH_LIQUIDITY_NEED", "TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -609,8 +982,23 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["TRADE", "ECONOMIC_COMPOUNDING", "MOBILITY", "INDUSTRIALIZATION", "INFRASTRUCTURE", "GROWTH", "SPECIALIZATION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["SCALE_TRADE", "SCALE_INDUSTRY", "SCALE_ECONOMY", "BUILD_HIGH_LEVEL_INFRASTRUCTURE", "SCALE_GROWTH"],
+      requiredThemes: [
+        "TRADE",
+        "ECONOMIC_COMPOUNDING",
+        "MOBILITY",
+        "INDUSTRIALIZATION",
+        "INFRASTRUCTURE",
+        "GROWTH",
+        "SPECIALIZATION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "SCALE_TRADE",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "SCALE_GROWTH",
+      ],
       requiredCautions: ["HIGH_UPFRONT_COST", "EXPENSIVE_FAILURE"],
     },
     validationFocus: [
@@ -628,9 +1016,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ECONOMIC_COMPOUNDING", "INFRASTRUCTURE", "SPECIALIZATION", "GROWTH", "POSITIONAL_CONTROL"],
+      requiredThemes: [
+        "ECONOMIC_COMPOUNDING",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "GROWTH",
+        "POSITIONAL_CONTROL",
+      ],
       requiredAffordances: ["BUILD_HIGH_LEVEL_INFRASTRUCTURE", "SCALE_GROWTH"],
-      requiredCautions: ["HIGH_LIQUIDITY_NEED", "HIGH_UPFRONT_COST", "EXPENSIVE_FAILURE"],
+      requiredCautions: [
+        "HIGH_LIQUIDITY_NEED",
+        "HIGH_UPFRONT_COST",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "STRUCTURE_COUNT_UPGRADE_DISCOUNT",
@@ -647,8 +1045,21 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["GROWTH", "ECONOMIC_COMPOUNDING", "FORCE_PRESERVATION", "INFRASTRUCTURE", "SPECIALIZATION", "INDUSTRIALIZATION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["SCALE_GROWTH", "BUILD_HIGH_LEVEL_INFRASTRUCTURE", "SCALE_INDUSTRY", "SCALE_ECONOMY"],
+      requiredThemes: [
+        "GROWTH",
+        "ECONOMIC_COMPOUNDING",
+        "FORCE_PRESERVATION",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "INDUSTRIALIZATION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "SCALE_GROWTH",
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+      ],
       requiredCautions: ["EXPENSIVE_FAILURE"],
     },
     validationFocus: [
@@ -665,8 +1076,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ECONOMIC_COMPOUNDING", "INFRASTRUCTURE", "SPECIALIZATION", "INDUSTRIALIZATION", "GROWTH"],
-      requiredAffordances: ["BUILD_HIGH_LEVEL_INFRASTRUCTURE", "SCALE_INDUSTRY", "SCALE_ECONOMY", "SCALE_GROWTH"],
+      requiredThemes: [
+        "ECONOMIC_COMPOUNDING",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "INDUSTRIALIZATION",
+        "GROWTH",
+      ],
+      requiredAffordances: [
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+        "SCALE_GROWTH",
+      ],
       requiredCautions: ["HIGH_UPFRONT_COST"],
     },
     validationFocus: [
@@ -683,8 +1105,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["EXPANSION", "POSITIONAL_CONTROL", "ECONOMIC_COMPOUNDING", "INFRASTRUCTURE", "SPECIALIZATION", "INDUSTRIALIZATION"],
-      requiredAffordances: ["BUILD_HIGH_LEVEL_INFRASTRUCTURE", "SCALE_INDUSTRY", "SCALE_ECONOMY"],
+      requiredThemes: [
+        "EXPANSION",
+        "POSITIONAL_CONTROL",
+        "ECONOMIC_COMPOUNDING",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "INDUSTRIALIZATION",
+      ],
+      requiredAffordances: [
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -701,8 +1134,23 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["RAIDING", "MOBILITY", "NAVAL_PROJECTION", "ECONOMIC_COMPOUNDING", "SPECIALIZATION", "TRADE", "FORCE_PRESERVATION", "FORTIFICATION", "INFRASTRUCTURE"],
-      requiredAffordances: ["SCALE_ECONOMY", "SCALE_TRADE", "PRESERVE_FORCE", "PROJECT_FROM_SEA"],
+      requiredThemes: [
+        "RAIDING",
+        "MOBILITY",
+        "NAVAL_PROJECTION",
+        "ECONOMIC_COMPOUNDING",
+        "SPECIALIZATION",
+        "TRADE",
+        "FORCE_PRESERVATION",
+        "FORTIFICATION",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "SCALE_ECONOMY",
+        "SCALE_TRADE",
+        "PRESERVE_FORCE",
+        "PROJECT_FROM_SEA",
+      ],
       requiredCautions: ["INFRASTRUCTURE_DEPENDENCE", "COAST_DEPENDENCE"],
     },
     validationFocus: [
@@ -720,9 +1168,28 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["AMPHIBIOUS", "FORTIFICATION", "NAVAL_PROJECTION", "POSITIONAL_CONTROL", "FORCE_PRESERVATION", "INFRASTRUCTURE", "MOBILITY"],
-      requiredAffordances: ["FORTIFY_BEACHHEAD", "CREATE_SECOND_FRONT", "PROJECT_FROM_SEA", "HOLD_GROUND", "PRESERVE_FORCE"],
-      requiredCautions: ["HIGH_UPFRONT_COST", "EXPENSIVE_FAILURE", "COAST_DEPENDENCE", "INFRASTRUCTURE_DEPENDENCE"],
+      requiredThemes: [
+        "AMPHIBIOUS",
+        "FORTIFICATION",
+        "NAVAL_PROJECTION",
+        "POSITIONAL_CONTROL",
+        "FORCE_PRESERVATION",
+        "INFRASTRUCTURE",
+        "MOBILITY",
+      ],
+      requiredAffordances: [
+        "FORTIFY_BEACHHEAD",
+        "CREATE_SECOND_FRONT",
+        "PROJECT_FROM_SEA",
+        "HOLD_GROUND",
+        "PRESERVE_FORCE",
+      ],
+      requiredCautions: [
+        "HIGH_UPFRONT_COST",
+        "EXPENSIVE_FAILURE",
+        "COAST_DEPENDENCE",
+        "INFRASTRUCTURE_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "FORTIFIED_LANDING_CREATES_LEVEL1_FORT",
@@ -740,9 +1207,26 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["ELITE_SINGLE_FLAGSHIP_PROGRESSION"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["NAVAL_PROJECTION", "SPECIALIZATION", "FORCE_PRESERVATION", "DECISIVE_FORCE", "FORTIFICATION", "INFRASTRUCTURE", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["PROJECT_FROM_SEA", "FIGHT_FROM_RANGE", "PRESERVE_FORCE"],
-      requiredCautions: ["EXPENSIVE_FAILURE", "REQUIRES_VETERANCY", "INFRASTRUCTURE_DEPENDENCE", "COAST_DEPENDENCE"],
+      requiredThemes: [
+        "NAVAL_PROJECTION",
+        "SPECIALIZATION",
+        "FORCE_PRESERVATION",
+        "DECISIVE_FORCE",
+        "FORTIFICATION",
+        "INFRASTRUCTURE",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "PROJECT_FROM_SEA",
+        "FIGHT_FROM_RANGE",
+        "PRESERVE_FORCE",
+      ],
+      requiredCautions: [
+        "EXPENSIVE_FAILURE",
+        "REQUIRES_VETERANCY",
+        "INFRASTRUCTURE_DEPENDENCE",
+        "COAST_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "ONE_WARSHIP_OWNERSHIP_CAP",
@@ -761,8 +1245,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["TRAIN_POPULATION_ENGINE_ACCELERATION"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["GROWTH", "ECONOMIC_COMPOUNDING", "FORCE_PRESERVATION", "INDUSTRIALIZATION", "INFRASTRUCTURE"],
-      requiredAffordances: ["SCALE_GROWTH", "SCALE_INDUSTRY", "SCALE_ECONOMY", "BUILD_HIGH_LEVEL_INFRASTRUCTURE"],
+      requiredThemes: [
+        "GROWTH",
+        "ECONOMIC_COMPOUNDING",
+        "FORCE_PRESERVATION",
+        "INDUSTRIALIZATION",
+        "INFRASTRUCTURE",
+      ],
+      requiredAffordances: [
+        "SCALE_GROWTH",
+        "SCALE_INDUSTRY",
+        "SCALE_ECONOMY",
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+      ],
       requiredCautions: ["INFRASTRUCTURE_DEPENDENCE"],
     },
     validationFocus: [
@@ -780,8 +1275,20 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["INFRASTRUCTURE", "ECONOMIC_COMPOUNDING", "SPECIALIZATION", "EXPANSION", "GROWTH", "FORCE_PRESERVATION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["EXPAND_CHEAPLY", "EXPAND_WITH_LOW_POPULATION", "PRESERVE_FORCE"],
+      requiredThemes: [
+        "INFRASTRUCTURE",
+        "ECONOMIC_COMPOUNDING",
+        "SPECIALIZATION",
+        "EXPANSION",
+        "GROWTH",
+        "FORCE_PRESERVATION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "EXPAND_CHEAPLY",
+        "EXPAND_WITH_LOW_POPULATION",
+        "PRESERVE_FORCE",
+      ],
       requiredCautions: ["HIGH_LIQUIDITY_NEED"],
     },
     validationFocus: [
@@ -799,9 +1306,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DISTRIBUTED_PLAY", "POSITIONAL_CONTROL", "EXPANSION", "SPECIALIZATION", "INFRASTRUCTURE"],
+      requiredThemes: [
+        "DISTRIBUTED_PLAY",
+        "POSITIONAL_CONTROL",
+        "EXPANSION",
+        "SPECIALIZATION",
+        "INFRASTRUCTURE",
+      ],
       requiredAffordances: ["DISTRIBUTE_START", "MULTI_THEATER_ACCESS"],
-      requiredCautions: ["SPLIT_FRONT_RISK", "ISOLATED_CORE_RISK", "EXPENSIVE_FAILURE"],
+      requiredCautions: [
+        "SPLIT_FRONT_RISK",
+        "ISOLATED_CORE_RISK",
+        "EXPENSIVE_FAILURE",
+      ],
     },
     validationFocus: [
       "STRATEGIC_TWO_HALF_AREA_INFLUENCE_REGIONS",
@@ -818,9 +1335,25 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["GROWTH", "FORTIFICATION", "INFRASTRUCTURE", "DETERRENCE", "POSITIONAL_CONTROL", "NAVAL_PROJECTION", "SPECIALIZATION"],
-      requiredAffordances: ["INTERCEPT_OVER_LARGE_AREA", "PROTECT_HIGH_VALUE_ASSET", "DENY_AREA"],
-      requiredCautions: ["COAST_DEPENDENCE", "SELF_GEOMETRY_RISK", "INFRASTRUCTURE_DEPENDENCE"],
+      requiredThemes: [
+        "GROWTH",
+        "FORTIFICATION",
+        "INFRASTRUCTURE",
+        "DETERRENCE",
+        "POSITIONAL_CONTROL",
+        "NAVAL_PROJECTION",
+        "SPECIALIZATION",
+      ],
+      requiredAffordances: [
+        "INTERCEPT_OVER_LARGE_AREA",
+        "PROTECT_HIGH_VALUE_ASSET",
+        "DENY_AREA",
+      ],
+      requiredCautions: [
+        "COAST_DEPENDENCE",
+        "SELF_GEOMETRY_RISK",
+        "INFRASTRUCTURE_DEPENDENCE",
+      ],
     },
     validationFocus: [
       "POPULATION_UNLOCKED_ZERO_FFY_SAM_SLOTS",
@@ -836,8 +1369,22 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["DECISIVE_FORCE", "DISTRIBUTED_PLAY", "EXPANSION", "ATTRITION", "TERRITORIAL_SHAPING", "POSITIONAL_CONTROL", "SIEGE"],
-      requiredAffordances: ["CREATE_BREAKTHROUGH", "DENY_AREA", "SHAPE_TERRITORY", "CUT_CONNECTIVITY", "FORCE_ENEMY_RESPONSE"],
+      requiredThemes: [
+        "DECISIVE_FORCE",
+        "DISTRIBUTED_PLAY",
+        "EXPANSION",
+        "ATTRITION",
+        "TERRITORIAL_SHAPING",
+        "POSITIONAL_CONTROL",
+        "SIEGE",
+      ],
+      requiredAffordances: [
+        "CREATE_BREAKTHROUGH",
+        "DENY_AREA",
+        "SHAPE_TERRITORY",
+        "CUT_CONNECTIVITY",
+        "FORCE_ENEMY_RESPONSE",
+      ],
       requiredCautions: ["SPLIT_FRONT_RISK", "SELF_GEOMETRY_RISK"],
     },
     validationFocus: [
@@ -854,8 +1401,19 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["RAIDING", "ATTRITION", "GROWTH", "NAVAL_PROJECTION", "FORCE_PRESERVATION", "SACRIFICE"],
-      requiredAffordances: ["PRESERVE_FORCE", "TRADE_GROUND_FOR_CASUALTIES", "LURE_OVEREXTENSION"],
+      requiredThemes: [
+        "RAIDING",
+        "ATTRITION",
+        "GROWTH",
+        "NAVAL_PROJECTION",
+        "FORCE_PRESERVATION",
+        "SACRIFICE",
+      ],
+      requiredAffordances: [
+        "PRESERVE_FORCE",
+        "TRADE_GROUND_FOR_CASUALTIES",
+        "LURE_OVEREXTENSION",
+      ],
       requiredCautions: [],
     },
     validationFocus: [
@@ -872,8 +1430,20 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: [],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ECONOMIC_COMPOUNDING", "EXPANSION", "SPECIALIZATION", "GROWTH", "FORCE_PRESERVATION"],
-      requiredAffordances: ["SCALE_ECONOMY", "EXPAND_WITH_LOW_POPULATION", "SCALE_GROWTH", "EXPAND_CHEAPLY", "PRESERVE_FORCE"],
+      requiredThemes: [
+        "ECONOMIC_COMPOUNDING",
+        "EXPANSION",
+        "SPECIALIZATION",
+        "GROWTH",
+        "FORCE_PRESERVATION",
+      ],
+      requiredAffordances: [
+        "SCALE_ECONOMY",
+        "EXPAND_WITH_LOW_POPULATION",
+        "SCALE_GROWTH",
+        "EXPAND_CHEAPLY",
+        "PRESERVE_FORCE",
+      ],
       requiredCautions: ["TERRAIN_DEPENDENCE"],
     },
     validationFocus: [
@@ -892,8 +1462,20 @@ export const OFFICIAL_AI_ORIGIN_CONFIGURATIONS = [
     requiredCombinationSupportIds: ["FALLOUT_ACQUISITION_INVERSION"],
     originSpecificSupport: null,
     profileAssertions: {
-      requiredThemes: ["ECONOMIC_COMPOUNDING", "DETERRENCE", "INFRASTRUCTURE", "SPECIALIZATION", "ESCALATION", "EXPANSION", "POSITIONAL_CONTROL"],
-      requiredAffordances: ["SCALE_ECONOMY", "BUILD_HIGH_LEVEL_INFRASTRUCTURE", "EXPLOIT_TERRAIN"],
+      requiredThemes: [
+        "ECONOMIC_COMPOUNDING",
+        "DETERRENCE",
+        "INFRASTRUCTURE",
+        "SPECIALIZATION",
+        "ESCALATION",
+        "EXPANSION",
+        "POSITIONAL_CONTROL",
+      ],
+      requiredAffordances: [
+        "SCALE_ECONOMY",
+        "BUILD_HIGH_LEVEL_INFRASTRUCTURE",
+        "EXPLOIT_TERRAIN",
+      ],
       requiredCautions: ["INFRASTRUCTURE_DEPENDENCE", "SETUP_TIME"],
     },
     validationFocus: [

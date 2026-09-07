@@ -81,7 +81,7 @@ Automatic defenders survive loss of defended cells. The Origin's trait support a
 
 ## O17 — Section 9
 
-Observation Posts become blackout infrastructure while owned Forest interiors provide another concealment layer; Plains offense is weaker. Reusable combination support handles the layered counterintelligence geometry.
+Observation Posts become blackout infrastructure while owned Forest cells provide another concealment layer; Plains offense is weaker. Reusable combination support handles the layered counterintelligence geometry.
 
 **AI identity:** shape operations around information denial and concealed staging rather than conventional observation/control geometry.
 
@@ -261,7 +261,7 @@ N13 keeps amphibious projection risky despite the Origin's unusual relationship 
 
 ## O37 — Hacker's Paradise
 
-P49 and P45 reuse `LAYERED_COUNTERINTELLIGENCE`: Observation Posts create blackout zones while owned Forest interiors provide concealed staging space. P17 adds long-horizon upgrade optimization, while N07 sharply constrains infrastructure count and makes every structure slot globally important.
+P49 and P45 reuse `LAYERED_COUNTERINTELLIGENCE`: Observation Posts create blackout zones while owned Forest cells provide concealed staging space. P17 adds long-horizon upgrade optimization, while N07 sharply constrains infrastructure count and makes every structure slot globally important.
 
 P17 + N07 does not require a special combination rule. The upgrade planner already reasons from the actual owned structure count, so the one-per-type cap simply limits how far the structure-count discount can scale. The AI must not forecast discounts from structures it can never legally own.
 

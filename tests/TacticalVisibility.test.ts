@@ -111,7 +111,7 @@ describe("direct hostile manifestation reveal", () => {
         resolved: false,
         hostile: true,
         identifiableSource: true,
-        affectedFactionIds: ["B"],
+        observingFactionIds: ["B"],
       }),
     ).toEqual([]);
     expect(
@@ -119,7 +119,7 @@ describe("direct hostile manifestation reveal", () => {
         resolved: true,
         hostile: false,
         identifiableSource: true,
-        affectedFactionIds: ["B"],
+        observingFactionIds: ["B"],
       }),
     ).toEqual([]);
     expect(
@@ -127,20 +127,32 @@ describe("direct hostile manifestation reveal", () => {
         resolved: true,
         hostile: true,
         identifiableSource: false,
-        affectedFactionIds: ["B"],
+        observingFactionIds: ["B"],
       }),
     ).toEqual([]);
   });
 
-  it("reveals independently to every actually affected faction and nobody else", () => {
+  it("reveals independently to every lawful manifestation observer and nobody else", () => {
     expect(
       directRevealRecipients({
         resolved: true,
         hostile: true,
         identifiableSource: true,
-        affectedFactionIds: ["C", "B", "B"],
+        observingFactionIds: ["C", "B", "B"],
       }),
     ).toEqual(["B", "C"]);
+  });
+
+  it("includes an independent lawful witness without leaking to a non-observer", () => {
+    const recipients = directRevealRecipients({
+      resolved: true,
+      hostile: true,
+      identifiableSource: true,
+      // B is affected; C independently observes the resolved manifestation.
+      observingFactionIds: ["B", "C"],
+    });
+    expect(recipients).toEqual(["B", "C"]);
+    expect(recipients).not.toContain("D");
   });
 
   it("lets active direct reveal pierce overlapping concealment without exposing neighbors", () => {

@@ -186,7 +186,7 @@ UNREVEALED
 
 Multiple applicable concealment/blackout predicates compose as a boolean union. They do not stack into concealment strength. Remote observation never defeats an applicable concealment/blackout; an explicit-public rule or an active source-specific direct reveal does.
 
-A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction whose owned state is actually targeted or affected receives the direct reveal independently; unrelated third parties receive no reveal merely because the action occurred.
+A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction to which that resolved manifestation itself is lawfully observable receives the direct reveal independently. An affected faction is therefore a recipient, and an independent third-party witness receives the reveal only when the same manifestation is lawfully observable to that viewer; a faction that does not lawfully observe the manifestation receives no reveal merely because the action occurred.
 
 Direct reveal exposes the **source itself at its complete ordinary visible representation**, exactly as that unit, structure, or operation would be surfaced outside concealment. It does not reveal neighboring units, structures, operations, same-cell contents, or any other concealed state. The reveal follows source identity as it moves rather than leaving a marker at the manifestation location.
 
@@ -312,19 +312,19 @@ u = TotalPopulation / PopulationCapacity
 
 The ordinary utilization multiplier `U(u)` uses piecewise-linear interpolation through these anchors:
 
-| Utilization | `U(u)` |
-| ---: | ---: |
-| 0% | **20%** |
-| 10% | **45%** |
-| 20% | **70%** |
-| 30% | **88%** |
-| 40% | **100%** |
-| 50% | **100%** |
-| 60% | **100%** |
-| 70% | **85%** |
-| 80% | **60%** |
-| 90% | **35%** |
-| 100% | **0%** |
+| Utilization |   `U(u)` |
+| ----------: | -------: |
+|          0% |  **20%** |
+|         10% |  **45%** |
+|         20% |  **70%** |
+|         30% |  **88%** |
+|         40% | **100%** |
+|         50% | **100%** |
+|         60% | **100%** |
+|         70% |  **85%** |
+|         80% |  **60%** |
+|         90% |  **35%** |
+|        100% |   **0%** |
 
 For `u >= 1`, ordinary positive growth is zero. If Capacity is zero, ordinary growth is zero.
 

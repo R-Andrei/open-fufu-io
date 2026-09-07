@@ -106,7 +106,7 @@ export interface DirectRevealRecord {
 }
 
 /**
- * Hostile manifestation refresh is keyed by source identity and affected viewer,
+ * Hostile manifestation refresh is keyed by source identity and lawful viewer,
  * so movement never clears the reveal and unrelated factions gain no reveal.
  */
 export function refreshDirectReveal(
@@ -137,8 +137,11 @@ export interface HostileManifestationInput {
   readonly hostile: boolean;
   /** Direct reveal requires one canonical source entity/operation identity. */
   readonly identifiableSource: boolean;
-  /** Factions whose owned state was actually targeted or affected. */
-  readonly affectedFactionIds: readonly string[];
+  /**
+   * Factions to which the resolved manifestation itself is lawfully observable,
+   * including affected factions and any independent lawful witnesses.
+   */
+  readonly observingFactionIds: readonly string[];
 }
 
 /**
@@ -158,7 +161,7 @@ export function directRevealRecipients(
   return Object.freeze(
     [
       ...new Set(
-        manifestation.affectedFactionIds.filter((id) => id.length > 0),
+        manifestation.observingFactionIds.filter((id) => id.length > 0),
       ),
     ].sort(),
   );
