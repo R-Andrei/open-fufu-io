@@ -65,12 +65,7 @@ export const STRUCTURE_ACQUISITION_PATHS = [
 export type StructureAcquisitionPath =
   (typeof STRUCTURE_ACQUISITION_PATHS)[number];
 
-export const STRUCTURE_FIELD_IDS = [
-  "FORT",
-  "SAM",
-  "OBSERVATION",
-  "COMMAND_POST",
-] as const;
+export const STRUCTURE_FIELD_IDS = ["FORT", "SAM", "COMMAND_POST"] as const;
 export type StructureFieldId = (typeof STRUCTURE_FIELD_IDS)[number];
 export const STRUCTURE_FIELD_AFFILIATIONS = [
   "SELF",
@@ -211,7 +206,7 @@ export type RuleCondition =
     }
   | {
       readonly kind: "SOURCE_INSIDE_FIELD";
-      readonly field: Exclude<StructureFieldId, "SAM" | "OBSERVATION">;
+      readonly field: Exclude<StructureFieldId, "SAM">;
       readonly affiliation: StructureFieldAffiliation;
     }
   | {

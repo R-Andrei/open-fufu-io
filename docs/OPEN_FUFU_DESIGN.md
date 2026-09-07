@@ -166,6 +166,45 @@ The conceptual action surface includes lawful primitives for:
 
 There is no controller primitive for manually assigning passive defensive Population quantities across owned cells. Passive defensive quantity is automatic; the controller may influence priority only.
 
+### 5.1.1 Tactical visibility projection
+
+Tactical operational visibility is **requester-relative**. A viewer always knows its own operational state. For every other unit, persistent structure, manifested operation, and derived operational fact, the authoritative simulation applies one lawful visibility projection before any player controller, Official AI, player/controller-facing debug surface, event/contact projection, mechanics lookup, or entity-addressed convenience API is materialized.
+
+For non-self operational state, V1 visibility precedence is exactly:
+
+```text
+EXPLICIT_PUBLIC
+    >
+DIRECT_REVEAL
+    >
+CONCEALMENT / BLACKOUT
+    >
+REMOTE_OBSERVATION
+    >
+UNREVEALED
+```
+
+Multiple applicable concealment/blackout predicates compose as a boolean union. They do not stack into concealment strength. Remote observation never defeats an applicable concealment/blackout; an explicit-public rule or an active source-specific direct reveal does.
+
+A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction whose owned state is actually targeted or affected receives the direct reveal independently; unrelated third parties receive no reveal merely because the action occurred.
+
+Direct reveal exposes the **source itself at its complete ordinary visible representation**, exactly as that unit, structure, or operation would be surfaced outside concealment. It does not reveal neighboring units, structures, operations, same-cell contents, or any other concealed state. The reveal follows source identity as it moves rather than leaving a marker at the manifestation location.
+
+The V1 direct-reveal lifetime is exactly:
+
+```text
+15.0 seconds
+= 150 simulation ticks at the V1 10 Hz cadence
+```
+
+The ruleset resolves the duration onto its deterministic tick lattice. A manifestation committed/resolved at tick `T` produces an exclusive expiry at `T + directRevealDurationTicks`; the reveal is active while `currentTick < expiryExclusiveTick`. Another qualifying manifestation by the same source against the same viewer refreshes that viewer/source expiry from the new manifestation tick. Movement, being attacked, or ordinary observation does not refresh it.
+
+Same-tick ordering is authoritative-action resolution, manifestation identification/direct-reveal refresh, completion of canonical tick state, then requester-relative projection. The attacker is therefore visible in the observation produced from the attack tick. When the reveal expires, visibility is immediately reevaluated from the source's current location/state; it may reconceal immediately if concealment still applies, remain visible through ordinary observation, or otherwise disappear from current observation. Destruction never creates a ghost entity lasting until the reveal timer expires.
+
+Current observation contains no engine-created `lastKnown` substitute for a subject that has reconcealed. Controllers may retain lawful historical knowledge in their own memory. A previously learned entity ID is not a visibility capability: `get`, list, mechanics, legality/quote, contact, event, debug, or other ID-addressable/derived surfaces must not disclose current existence, location, state, or a distinguishable failure solely because an otherwise hidden subject still exists. Blind cell-targeted actions remain legal when their own subsystem permits them, but their legality/quote result must not disclose concealed contents of the target cell.
+
+The public controller contract expresses visibility primarily by lawful presence/absence of ordinary views rather than a global mutable `hidden` field. The internal projection reason is not itself required to be public. Origin-owned concealment transformations such as P45/P49 are defined by `ORIGIN_TRAIT_CATALOGUE.md`; Observation Post baseline behavior and authoritative structure-field geometry are owned by `TERRAIN_AND_STRUCTURES.md`.
+
 ## 5.2 Starter controller
 
 Every player begins with a minimal complete working controller. It should demonstrate lawful basic mechanics while remaining strategically weak and understandable.
@@ -625,3 +664,4 @@ The following are the game-wide invariants this document owns:
 12. Strategically meaningful modifiers come from explicit surfaced rule-bearing sources rather than hidden corrective bonuses.
 13. Focused subsystem documents own their detailed mechanics; this contract does not shadow-copy them.
 14. `atWar` is symmetric team-normalized recent controller-directed hostility with a ruleset-bound 600-tick post-hostility grace; autonomous unit violence does not itself create or refresh it.
+15. Tactical operational visibility is requester-relative and uses one authoritative projection with explicit-public/direct-reveal/concealment/remote-observation precedence; player controllers, Official AI, derived/debug surfaces, and ID-addressable helpers receive no hidden-state bypass.

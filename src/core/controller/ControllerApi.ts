@@ -8,7 +8,9 @@
 //
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
-// into these types and validate returned decisions transactionally.
+// into these types and validate returned decisions transactionally. Current-state
+// entity, derived, mechanics, event, and quote surfaces must all obey the same
+// requester-relative tactical-visibility projection from OPEN_FUFU_DESIGN.md.
 
 import type {
   StructureFieldAffiliation,
@@ -21,6 +23,9 @@ export {
   type StructureFieldAffiliation,
   type StructureFieldId,
 } from "../rules/RuleComposition";
+
+/** Structure fields queryable by controllers; OBSERVATION is not a rule-condition field ID. */
+export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";
 
 export type Tick = number;
 export type CellId = number;
@@ -294,9 +299,10 @@ export type CellSelector =
       /**
        * Authoritative union of active effective structure fields. Runtime owns
        * field geometry; controllers must not approximate this with CIRCLE.
+       * OBSERVATION selects active Observation-Post reveal/blackout geometry.
        */
       readonly kind: "STRUCTURE_FIELD";
-      readonly field: StructureFieldId;
+      readonly field: ControllerStructureFieldId;
       readonly referenceFactionId: FactionId;
       readonly affiliation: StructureFieldAffiliation;
     }
@@ -351,6 +357,7 @@ export interface ContactsApi {
     a: FactionId,
     b: FactionId,
   ): readonly TerritorialContactView[];
+  /** Current operational contacts are already requester-lawful visibility projections. */
   operational(): readonly OperationalContactView[];
   operationalBetween(
     a: FactionId,
@@ -366,18 +373,24 @@ export interface FactionsApi {
 }
 
 export interface OperationsApi {
+  /** Hidden/unknown operations are indistinguishable and return undefined. */
   get(id: OperationId): OperationView | undefined;
   own(): readonly OperationView[];
+  /** Contains only incoming operations lawfully visible to this requester. */
   incoming(): readonly OperationView[];
 }
 
 export interface StructuresApi {
+  /** Hidden/unknown structures are indistinguishable and return undefined. */
   get(id: StructureId): StructureView | undefined;
+  /** Contains only structures lawfully visible to this requester. */
   list(ownerId?: FactionId): readonly StructureView[];
 }
 
 export interface UnitsApi {
+  /** Hidden/unknown units are indistinguishable and return undefined. */
   get(id: UnitId): UnitView | undefined;
+  /** Contains only units lawfully visible to this requester. */
   list(ownerId?: FactionId): readonly UnitView[];
 }
 
@@ -455,6 +468,9 @@ export interface EffectiveActionCost {
  * or conflicting actions can therefore still make the complete atomic proposal reject.
  * When legal=false, ffySpent and populationSpent are always zero; ffyRequired may
  * remain non-zero to expose the effective affordability requirement independently.
+ * Entity-addressed quotes must not distinguish a concealed known ID from an unknown
+ * or otherwise unavailable ID, and blind cell-targeted quotes must not leak concealed
+ * contents through failureCode/detail/cost differences.
  */
 export interface ActionQuote {
   readonly legal: boolean;
@@ -544,6 +560,7 @@ export interface StructureMechanicsSpec {
   readonly rechargeTicks?: number;
   /** Ergonomic effective range; use STRUCTURE_FIELD for authoritative SAM cells. */
   readonly interceptionRange?: number;
+  /** Ergonomic only; use STRUCTURE_FIELD/OBSERVATION for authoritative cells. */
   readonly observationRadius?: number;
   readonly observationEffect?: ObservationStructureEffect;
   readonly canAttackShips?: boolean;
@@ -672,10 +689,10 @@ export interface MechanicsApi {
     acquisitionPath?: StructureAcquisitionPath,
   ): StructureMechanicsSpec;
   /**
-   * Effective currently active mechanics for a physical structure, including its
-   * authoritative current-owner acquisition provenance. Fresh inactive construction
-   * has no completed mechanics yet and returns undefined; an upgrade returns the
-   * previous completed level's active mechanics until completion.
+   * Effective currently active mechanics for a lawfully visible physical structure,
+   * including its authoritative current-owner acquisition provenance. A hidden or
+   * unknown ID and fresh inactive construction all return undefined; an upgrade
+   * returns the previous completed level's active mechanics until completion.
    */
   structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
@@ -683,7 +700,8 @@ export interface MechanicsApi {
     type: MobileUnitType,
     factionId?: FactionId,
   ): UnitMechanicsSpec;
-  unitSpec(unitId: UnitId): UnitMechanicsSpec;
+  /** Hidden and unknown unit IDs are indistinguishable and return undefined. */
+  unitSpec(unitId: UnitId): UnitMechanicsSpec | undefined;
   transportSpec(factionId?: FactionId): TransportMechanicsSpec;
 
   weaponSpec(
@@ -850,6 +868,7 @@ export type ControllerEvent =
     };
 
 export interface EventsApi {
+  /** Events are requester-lawful projections and never act as a hidden-state side channel. */
   readonly sinceLastDecision: readonly ControllerEvent[];
 }
 
