@@ -13,6 +13,23 @@ function ownTerritory(factionId: string): CellSelector {
   return { kind: "OWNER", factionId };
 }
 
+const ownSamLauncherField: CellSelector = {
+  kind: "STRUCTURE_FIELD",
+  field: "SAM_LAUNCHER",
+  referenceFactionId: "faction-a",
+  affiliation: "SELF",
+};
+void ownSamLauncherField;
+
+const legacySamField: CellSelector = {
+  kind: "STRUCTURE_FIELD",
+  // @ts-expect-error SAM_LAUNCHER is the only canonical SAM structure-field ID.
+  field: "SAM",
+  referenceFactionId: "faction-a",
+  affiliation: "SELF",
+};
+void legacySamField;
+
 export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
   chooseInfluence(context) {
     const candidates = context.cells.query(
