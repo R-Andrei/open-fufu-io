@@ -301,7 +301,7 @@ function basisPointDeltaScale(deltaBasisPoints: number): ExactRuleScaleFactor {
     throw new Error("Scale-factor basis-point delta must be a safe integer");
   }
   return reducedRational(
-    BigInt(BASIS_POINTS_SCALE + deltaBasisPoints),
+    BigInt(BASIS_POINTS_SCALE) + BigInt(deltaBasisPoints),
     BigInt(BASIS_POINTS_SCALE),
   );
 }
