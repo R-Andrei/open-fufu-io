@@ -1,0 +1,163 @@
+name: Issue 51 current-main reconciliation
+
+"on":
+  push:
+    branches:
+      - "issue-51/of-issue51-20260907-cccaaa-observation-contract"
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    env:
+      CLAIM_ID: OF-ISSUE51-20260907-cccaaa
+      TOPIC_BRANCH: issue-51/of-issue51-20260907-cccaaa-observation-contract
+      TARGET_MAIN_SHA: 6e23aa7425ea9b9e985e91c9c88b60360a4c7256
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-51/of-issue51-20260907-cccaaa-observation-contract
+          fetch-depth: 0
+
+      - name: Fresh rules and ownership guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          test "${GITHUB_REF_NAME}" = "${TOPIC_BRANCH}"
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/51/comments" --paginate --jq '.[].body')"
+          grep -F "${CLAIM_ID}" <<<"${comments}" >/dev/null
+          grep -F 'Branch registration: `issue-51/of-issue51-20260907-cccaaa-observation-contract`' <<<"${comments}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.head.ref')" = "${TOPIC_BRANCH}"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = "${TARGET_MAIN_SHA}"
+
+      - name: Merge audited current main without committing
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${TARGET_MAIN_SHA}"
+          git config user.name "R-Andrei"
+          git config user.email "30163089+R-Andrei@users.noreply.github.com"
+          git merge --no-commit --no-ff "${TARGET_MAIN_SHA}"
+
+      - name: Verify four-way semantic preservation
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          python3 <<'PY'
+          from pathlib import Path
+
+          controller = Path("src/core/controller/ControllerApi.ts").read_text()
+          assert 'export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";' in controller
+          union = '''readonly kind: "STRUCTURE_FIELD";\n      readonly field: ControllerStructureFieldId;'''
+          instance = '''readonly kind: "STRUCTURE_FIELD_INSTANCE";\n      readonly structureId: StructureId;\n      readonly field: StructureFieldId;'''
+          assert union in controller
+          assert instance in controller
+          assert 'readonly eligibilityField: Extract<StructureFieldId, "SAM">;' in controller
+          assert 'docs/NAVAL_AND_STRATEGIC_WEAPONS.md' in controller
+
+          projection_test = Path("tests/ControllerStructureFieldProjection.test.ts").read_text()
+          assert 'expect(source).toContain("readonly field: ControllerStructureFieldId;");' in projection_test
+          assert 'expect(source).toContain("readonly field: StructureFieldId;");' in projection_test
+          assert 'readonly kind: "STRUCTURE_FIELD_INSTANCE";' in projection_test
+
+          catalogue = Path("docs/ORIGIN_TRAIT_CATALOGUE.md").read_text()
+          assert "### P45" in catalogue and "### P49" in catalogue
+          assert "### P27" in catalogue and "### P28" in catalogue
+          assert "exposed Forest-front boundary" not in catalogue
+          assert "Forest interior" not in catalogue
+
+          coverage = Path("docs/ORIGIN_VALIDATION_COVERAGE.md").read_text()
+          assert "P45" in coverage and "P49" in coverage
+          assert "P27" in coverage and "P28" in coverage
+
+          visibility = Path("src/core/visibility/TacticalVisibility.ts").read_text()
+          assert "observingFactionIds" in visibility
+          assert "affectedFactionIds" not in visibility
+
+          design = Path("docs/OPEN_FUFU_DESIGN.md").read_text()
+          assert "independent third-party witness" in design
+          assert "one-shot Population" in design or "one-shot population" in design
+          PY
+          git diff --check
+
+      - name: Verify stale issue-51 terminology is absent
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          if grep -R -n --exclude-dir=.git --exclude-dir=node_modules --exclude=issue51-reconcile.yml -E 'FOREST_INTERIOR_CONCEALMENT|owned Forest interiors|exposed Forest-front boundary|affectedFactionIds|whose owned state is actually targeted or affected receives' .; then
+            echo "stale issue-51 terminology remains after current-main reconciliation" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Remove temporary reconciliation runner from validation tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          rm .github/workflows/issue51-reconcile.yml
+          git add -A
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npm ci
+
+      - name: Run repository tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npm test
+
+      - name: Run strict documentation authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npx tsx scripts/checkDocumentationAuthority.ts --strict
+
+      - name: Recheck ownership and commit reconciliation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/51/comments" --paginate --jq '.[].body')"
+          grep -F "${CLAIM_ID}" <<<"${comments}" >/dev/null
+          grep -F 'Branch registration: `issue-51/of-issue51-20260907-cccaaa-observation-contract`' <<<"${comments}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.head.ref')" = "${TOPIC_BRANCH}"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = "${TARGET_MAIN_SHA}"
+          test ! -e .github/workflows/issue51-reconcile.yml
+          git diff --check
+
+          cat AGENTS.md >/dev/null
+          git commit \
+            -m "${CLAIM_ID}: reconcile current main" \
+            -m "${CLAIM_ID}
+
+          Conclusion: reconcile current main ${TARGET_MAIN_SHA} while preserving issue #51 requester-relative visibility/P45/P49 contracts and current-main P27/P28/N13 naval/controller semantics.
+          Recommendation: run normal PR CI and complete the post-reconciliation four-way, stale-reference, canonical-owner, and Game/Origin/Character-AI audits before merging PR #74."
+          git push origin "HEAD:${TOPIC_BRANCH}"
