@@ -49,35 +49,33 @@ jobs:
               text = p.read_text()
               actual = text.count(old)
               if actual != count:
-                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old[:100]!r}")
+                  raise SystemExit(f"{path}: expected {count} occurrence(s), found {actual}: {old!r}")
               p.write_text(text.replace(old, new))
 
+          # Game-wide direct-reveal recipient rule: affected factions plus lawful witnesses.
           replace_exact(
               "docs/OPEN_FUFU_DESIGN.md",
-              "A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction whose owned state is actually targeted or affected receives the direct reveal independently; unrelated third parties receive no reveal merely because the action occurred.",
-              "A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction to which that resolved manifestation itself is lawfully observable receives the direct reveal independently. An affected faction is therefore a recipient, and an independent third-party witness receives the reveal only when the same manifestation is lawfully observable to that viewer; a faction that does not lawfully observe the manifestation receives no reveal merely because the action occurred.",
+              "Each faction whose owned state is actually targeted or affected receives the direct reveal independently; unrelated third parties receive no reveal merely because the action occurred.",
+              "Each faction to which that resolved manifestation itself is lawfully observable receives the direct reveal independently. An affected faction is therefore a recipient, and an independent third-party witness receives the reveal only when the same manifestation is lawfully observable to that viewer; a faction that does not lawfully observe the manifestation receives no reveal merely because the action occurred.",
           )
 
+          # Baseline Observation Post owns the ordinary OBSERVATION/REVEAL field semantics.
           replace_exact(
               "docs/TERRAIN_AND_STRUCTURES.md",
-              """### Observation Post
-
-          Reveals legally revealable operational state inside its completed-level radius, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.
-
-          It never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts do not stack.""",
-              """### Observation Post
-
-          An active Observation Post projects the canonical `OBSERVATION` structure field using its currently active completed-level effective observation radius and `STRUCTURE_RADIAL_FIELD_V1`. Its ordinary effect is `REVEAL`: inside that field, the owning faction gains remote observation of tactical operational state that is otherwise legally revealable under the requester-relative visibility projection in `OPEN_FUFU_DESIGN.md`, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.
-
-          Observation is not a hidden-state bypass. An applicable concealment/blackout predicate remains higher-precedence than remote observation, and the Post never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts form a union and do not stack reveal strength.
-
-          Origin transformations may replace the Observation field's ordinary effect, but they consume this same effective `OBSERVATION` field rather than defining a second radius or raster footprint. Exact Origin transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.""",
+              "Reveals legally revealable operational state inside its completed-level radius, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.",
+              "An active Observation Post projects the canonical `OBSERVATION` structure field using its currently active completed-level effective observation radius and `STRUCTURE_RADIAL_FIELD_V1`. Its ordinary effect is `REVEAL`: inside that field, the owning faction gains remote observation of tactical operational state that is otherwise legally revealable under the requester-relative visibility projection in `OPEN_FUFU_DESIGN.md`, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.",
+          )
+          replace_exact(
+              "docs/TERRAIN_AND_STRUCTURES.md",
+              "It never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts do not stack.",
+              "Observation is not a hidden-state bypass. An applicable concealment/blackout predicate remains higher-precedence than remote observation, and the Post never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts form a union and do not stack reveal strength.\n\nOrigin transformations may replace the Observation field's ordinary effect, but they consume this same effective `OBSERVATION` field rather than defining a second radius or raster footprint. Exact Origin transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.",
           )
 
+          # Executable direct-reveal input is the lawful observer set, not affected-only factions.
           replace_exact(
               "src/core/visibility/TacticalVisibility.ts",
-              " * Hostile manifestation refresh is keyed by source identity and affected viewer,\n * so movement never clears the reveal and unrelated factions gain no reveal.",
-              " * Hostile manifestation refresh is keyed by source identity and lawful viewer,\n * so movement never clears the reveal and unrelated factions gain no reveal.",
+              "Hostile manifestation refresh is keyed by source identity and affected viewer,",
+              "Hostile manifestation refresh is keyed by source identity and lawful viewer,",
           )
           replace_exact(
               "src/core/visibility/TacticalVisibility.ts",
@@ -90,6 +88,7 @@ jobs:
               "manifestation.observingFactionIds.filter",
           )
 
+          # Focused tests use the lawful observer vocabulary and explicitly cover a third-party witness.
           replace_exact(
               "tests/TacticalVisibility.test.ts",
               "affectedFactionIds:",
@@ -98,61 +97,52 @@ jobs:
           )
           replace_exact(
               "tests/TacticalVisibility.test.ts",
-              """  it("reveals independently to every actually affected faction and nobody else", () => {
-            expect(
-              directRevealRecipients({
-                resolved: true,
-                hostile: true,
-                identifiableSource: true,
-                observingFactionIds: ["C", "B", "B"],
-              }),
-            ).toEqual(["B", "C"]);
-          });""",
-              """  it("reveals independently to every lawful manifestation observer and nobody else", () => {
+              "reveals independently to every actually affected faction and nobody else",
+              "reveals independently to every lawful manifestation observer and nobody else",
+          )
+          replace_exact(
+              "tests/TacticalVisibility.test.ts",
+              "  it(\"lets active direct reveal pierce overlapping concealment without exposing neighbors\", () => {",
+              """  it(\"includes an independent lawful witness without leaking to a non-observer\", () => {
             const recipients = directRevealRecipients({
               resolved: true,
               hostile: true,
               identifiableSource: true,
-              // B is affected; C is an independent lawful witness; D is unrelated.
-              observingFactionIds: ["C", "B", "B"],
+              // B is affected; C independently observes the resolved manifestation.
+              observingFactionIds: [\"B\", \"C\"],
             });
-            expect(recipients).toEqual(["B", "C"]);
-            expect(recipients).not.toContain("D");
-          });""",
+            expect(recipients).toEqual([\"B\", \"C\"]);
+            expect(recipients).not.toContain(\"D\");
+          });
+
+          it(\"lets active direct reveal pierce overlapping concealment without exposing neighbors\", () => {""",
           )
 
+          # Controller API already owns REVEAL/ENEMY_BLACKOUT; test both without widening rule-condition fields.
           replace_exact(
               "tests/ObservationFieldVocabulary.test.ts",
-              """import type {
-            CellSelector,
-            ControllerStructureFieldId,
-          } from "../src/core/controller/ControllerApi";""",
-              """import type {
-            CellSelector,
-            ControllerStructureFieldId,
-            ObservationStructureEffect,
-          } from "../src/core/controller/ControllerApi";""",
+              "  ControllerStructureFieldId,\n} from \"../src/core/controller/ControllerApi\";",
+              "  ControllerStructureFieldId,\n  ObservationStructureEffect,\n} from \"../src/core/controller/ControllerApi\";",
           )
           replace_exact(
               "tests/ObservationFieldVocabulary.test.ts",
-              """    expect(selector.field).toBe("OBSERVATION");
-            expect(STRUCTURE_FIELD_IDS).not.toContain("OBSERVATION");
+              """  });
           });
-          });""",
-              """    expect(selector.field).toBe("OBSERVATION");
-            expect(STRUCTURE_FIELD_IDS).not.toContain("OBSERVATION");
-          });
+          """,
+              """  });
 
-            it("surfaces ordinary reveal and transformed blackout effects", () => {
-              const reveal: ObservationStructureEffect = "REVEAL";
-              const blackout: ObservationStructureEffect = "ENEMY_BLACKOUT";
+            it(\"surfaces ordinary reveal and transformed blackout effects\", () => {
+              const reveal: ObservationStructureEffect = \"REVEAL\";
+              const blackout: ObservationStructureEffect = \"ENEMY_BLACKOUT\";
 
-              expect(reveal).toBe("REVEAL");
-              expect(blackout).toBe("ENEMY_BLACKOUT");
+              expect(reveal).toBe(\"REVEAL\");
+              expect(blackout).toBe(\"ENEMY_BLACKOUT\");
             });
-          });""",
+          });
+          """,
           )
 
+          # Named-Origin AI consumers must match the all-owned-Forest P45 mechanic.
           replace_exact(
               "design/official-ai/origin-configurations.config.ts",
               '"FOREST_INTERIOR_CONCEALMENT"',
