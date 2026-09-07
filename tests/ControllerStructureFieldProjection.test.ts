@@ -9,9 +9,15 @@ import {
 } from "../src/core/rules/RuleComposition";
 
 describe("controller structure-field projection", () => {
-  it("re-exports the exact rule-condition field vocabulary", () => {
+  it("re-exports the exact canonical rule-condition field vocabulary", () => {
     expect(CONTROLLER_FIELD_IDS).toBe(STRUCTURE_FIELD_IDS);
     expect(CONTROLLER_FIELD_AFFILIATIONS).toBe(STRUCTURE_FIELD_AFFILIATIONS);
+    expect([...CONTROLLER_FIELD_IDS]).toEqual([
+      "FORT",
+      "SAM_LAUNCHER",
+      "COMMAND_POST",
+    ]);
+    expect(CONTROLLER_FIELD_IDS).not.toContain("SAM" as never);
   });
 
   it("surfaces one opaque authoritative STRUCTURE_FIELD selector", () => {
@@ -33,7 +39,7 @@ describe("controller structure-field projection", () => {
     expect(source).toContain("readonly structureId: StructureId;");
     expect(source).toContain("readonly field: StructureFieldId;");
     expect(source).toContain(
-      'readonly eligibilityField: Extract<StructureFieldId, "SAM">;',
+      'readonly eligibilityField: Extract<StructureFieldId, "SAM_LAUNCHER">;',
     );
     expect(source).toContain("numeric interceptionRange is ergonomic only");
   });
