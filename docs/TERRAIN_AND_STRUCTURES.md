@@ -242,7 +242,7 @@ SELF_OR_FIXED_TEAMMATE
 
 Baseline subsystem effects may define another explicit subject/owner relation when their own mechanic requires it—for example, defensive pressure is resolved relative to the defended side—but no consumer may silently reinterpret an Origin condition's affiliation.
 
-For boolean conditions such as “inside a qualifying Fort/SAM area,” same-type overlap is union/existence: one or more qualifying fields makes the condition true once. Overlap does not multiply P18/P24 and cannot make N11 “more zero.” Numeric pressure/support consumers separately retain the strongest-applicable same-type reducer and the canonical Fort/Command cross-type composition rule.
+For boolean conditions such as “inside a qualifying Fort/SAM Launcher area,” same-type overlap is union/existence: one or more qualifying fields makes the condition true once. Overlap does not multiply P18/P24 and cannot make N11 “more zero.” Numeric pressure/support consumers separately retain the strongest-applicable same-type reducer and the canonical Fort/Command cross-type composition rule.
 
 #### 2.1.1.3 Canonical consumers and controller projection
 
@@ -251,8 +251,8 @@ All authoritative consumers query the same effective field profile. Current requ
 - P09/N10/Echo Fort coverage first compose on the semantic Fort **area** axis, then this owner projects the resulting exact area factor through `STRUCTURE_RADIAL_FIELD_V1`;
 - P18 consumes self/fixed-teammate Fort membership;
 - P24 consumes self-owned Fort membership;
-- N11 consumes self-owned SAM membership;
-- N11 uses the SAM's **current effective interception range geometry**, including P40 and ordinary SAM-range Echo specialization; it has no separate economic radius;
+- N11 consumes self-owned SAM Launcher membership;
+- N11 uses the SAM Launcher's **current effective interception range geometry**, including P40 and ordinary SAM-range Echo specialization; it has no separate economic radius;
 - P40 changes N11 geometry only because it changes that canonical effective SAM range; charge READY/RECHARGING state does not change membership.
 
 Controller/Official-AI mechanics projection must expose the same authoritative physical-structure field as a queryable selector/helper. Numeric compatibility fields such as a displayed coverage radius or interception range are derived ergonomic information only; they must never become a second raster-membership authority, especially for area-scaled fields where an exact radius may be irrational.
@@ -446,7 +446,7 @@ Each completed City contributes its listed percentage additively to the faction'
 
 ### Fort
 
-A Fort never creates Population defenders. Its defensive-pressure effect applies only to a real automatic defender on a covered cell.
+A Fort never creates Population defenders. Its defensive-pressure effect applies only to a real automatic defender on a covered cell. Baseline Fort defensive pressure is owner-only: the Fort owner must be the defended faction. A fixed teammate's Fort does not provide this baseline defensive-pressure effect unless another explicit mechanic creates a separate cross-faction effect.
 
 ### Port
 
@@ -543,6 +543,8 @@ Required Silo lifecycle validation includes at minimum:
 ### SAM Launcher
 
 Targeting/interception is automatic. Charge capacity equals completed level. Baseline recharge cooldown is **9s per expended charge**. Range is `70 / 80 / 90 / 100 / 105`.
+
+An active SAM Launcher considers an otherwise eligible strategic projectile for interception only when that projectile's owner is an **enemy** of the SAM owner under the game-wide ally/enemy relation owned by `OPEN_FUFU_DESIGN.md`. Self-owned and allied projectiles are ignored. This qualification is independent of the projectile's intended target, the territory beneath its path, and current `atWar` state. Geometry and readiness remain separate: field entry establishes spatial eligibility, while an actual interception still requires the focused weapon mechanic's ordinary readiness/charge conditions.
 
 ### Observation Post
 
