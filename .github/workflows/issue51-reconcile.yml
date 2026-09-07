@@ -87,7 +87,7 @@ jobs:
 
           design = Path("docs/OPEN_FUFU_DESIGN.md").read_text()
           assert "independent third-party witness" in design
-          assert "one-shot Population" in design or "one-shot population" in design
+          assert "One-shot Population losses, grants, and transfers" in design
           PY
           git diff --check
 
