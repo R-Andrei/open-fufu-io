@@ -1,436 +1,68 @@
-# Repository Agent Instructions
+Applies to automated coding/documentation agents in this repository.
 
-These instructions apply to automated coding/documentation agents working in this repository.
+## Git/ownership
 
-## Git workflow and remote branch hygiene
+DEFAULT: short-lived topic branch -> PR -> merge unless user explicitly requests another workflow.
+Remote topic branches are temporary integration artifacts, not archives. Delete merged PR heads; delete abandoned/closed-unmerged branches once continuation is ruled out; delete origin staging/probe/diagnostic/other temporary branches in the same task as soon as unused. Local branch retention is optional. Do not retain completed remote branches for history; merged commits/PRs are history. Before finishing work that created/used remote branches, verify no stale task branch remains. MUST NOT delete `main`, an open-PR branch, or unclear-ownership/status branch without verifying staleness. GitHub automation may satisfy merged-head cleanup; agents remain responsible for uncovered cleanup.
 
-- Repository changes should ordinarily be made on a short-lived topic branch and merged through a pull request unless the user explicitly requests another workflow.
-- Remote topic branches are temporary integration artifacts, not archives.
-- After a pull request is merged, its remote head branch must be deleted.
-- If work is abandoned or a pull request is closed without merge, delete the associated remote branch once it is clear the work will not continue from that branch.
-- Temporary, staging, probe, or diagnostic branches pushed to `origin` must be deleted in the same task as soon as they are no longer needed.
-- Local branch retention is optional. Agents may keep or delete their own local branches as convenient; this policy concerns the shared remote repository.
-- Do not leave completed remote branches behind merely to preserve history. The merged commit/pull request is the history.
-- Before finishing a task that created or used remote branches, verify that no stale remote branch from that task remains.
-- Never delete `main`, a branch backing an open pull request, or a branch whose ownership/status is unclear without first verifying that it is stale.
+A claim MUST be unique. Generic `claimed`/`in progress`/`working on this` comments are insufficient. Before substantive issue work: inspect assignees+comments; another active owner forbids a competing claim/overlapping branch/change; stale/ambiguous claims remain active until verified. Create+post a unique claim ID before substantive work; SHOULD use `OF-ISSUE<issue>-<YYYYMMDD>-<unique-suffix>` or equally unambiguous ID. Assign the performing GitHub account. Active claim normally requires matching assignee+unique claim comment; if tooling genuinely cannot assign, comment MUST state that limitation+intended assignee. Claim comment MUST state claim ID, assignee, and that other agents/threads MUST NOT work the scope absent explicit human coordination/transfer.
 
-GitHub automation may delete merged pull-request branches automatically. Agents must still follow the policy above for non-PR temporary branches and for any cleanup case the automation does not cover.
+While claimed, the exact claim ID MUST appear verbatim in EVERY agent-created commit (including merge/reconciliation, diagnostic, documentation, cleanup, tiny/follow-up commits), EVERY agent-authored GitHub comment/review/reply for the work, EVERY human-chat reply, and the PR body; chat SHOULD put it first. PR body MUST also identify owning issue and preserve issue/claim/branch traceability. Missing audit token MUST be corrected before further substantive repository work. Claim IDs prove traceability only; they do not expand scope or authorize unrelated mutation. Without an active claim, inspection/read-only work is allowed; substantive repository mutation is forbidden unless a human explicitly directs a narrowly scoped non-issue operation.
 
-### Issue claims, claim-ID propagation, and branch ownership
+Every issue-attributable remote branch has exactly one active claim ID unless a human explicitly establishes coordinated shared scope. Branches MUST be attributable to issue+claim and SHOULD name both. Immediately after branch creation, issue coordination MUST record exact branch+purpose; if multiple exist, list every active branch. Before EVERY write to an existing remote topic branch, verify it is recorded under the exact current claim; matching issue number alone is insufficient. Missing/ambiguous/stale-looking/different ownership => foreign/read-only until explicitly resolved. MUST NOT push/force-push/move ref/rebase/merge into/delete/rename/repurpose/otherwise mutate a foreign branch, use maintainer rights/`maintainer_can_modify` to do so, or create overlapping replacement work to bypass ownership. Inactivity, failed CI, age, or apparent ease does not transfer ownership.
 
-When an agent/thread takes ownership of a GitHub issue, the claim must be uniquely identifiable. A generic comment such as `claimed`, `in progress`, or `working on this` is insufficient because another concurrent agent could reasonably interpret it as its own claim.
+Issue/PR ownership for mutation requires the same exact active claim ID in its coordination record; different/no matching ID => foreign even if related/same repo. Foreign work MAY be read/reviewed/compared/reported. Without the exception below, MUST NOT: substantially mutate a foreign issue (close/reopen/title/body/labels/assignee/milestone/state/transfer/etc.); substantially mutate a foreign PR (ready/close/reopen/retarget/merge/title/body/etc.); post coordination/implementation comments as a participant; modify/delete its branch; or merge own PR if `Closes`/`Fixes`/`Resolves`/equivalent would close/materially move a foreign issue. Before EVERY merge, inspect PR title/body+all known closing references; every issue the merge would close/materially move MUST carry the same active claim, else merge is forbidden absent the exception.
 
-- Create a unique claim/work-session ID and post it in the issue before substantive work begins. A recommended shape is `OF-ISSUE<issue>-<YYYYMMDD>-<unique-suffix>`; any equally unambiguous unique identifier is acceptable.
-- At claim time, also assign the GitHub issue to the GitHub account that owns/is performing the claimed work. An active issue claim normally requires **both** the matching assignee state and the unique claim comment; neither one alone is sufficient. If the available GitHub tooling genuinely cannot modify assignees, the claim comment must explicitly record that limitation and name the intended assignee instead of silently omitting assignment.
-- The issue claim comment must name the claim ID, identify the assigned GitHub account, and state that other agents/threads must not work the same scope unless the user explicitly coordinates parallel work or transfers ownership.
-- Before beginning substantive work, inspect **both** the issue assignee state and issue comments for an existing active claim ID. If either indicates another active owner, do not create a competing claim or overlapping branch until ownership is resolved.
-- If another active claim ID already owns the same issue/scope, do not create a competing branch or make overlapping changes. Resolve ownership first. If a claim appears stale or ambiguous, treat it as active until its status is verified rather than assuming it is abandoned.
+Foreign mutation ONLY IF both: severely required for the current operation (not merely convenient), and human explicitly approves that specific cross-ownership mutation. Approval MUST name resource+operation; generic `proceed`/`merge it`/`clean this up`/approval of current work is insufficient. Before operating, state current claim ID. Record approval+exact action in current issue coordination; when practical/non-disruptive, record on foreign issue/PR too. Perform only the approved operation; no ownership transfer/continuing access follows.
 
-#### Mandatory claim-ID propagation — no exceptions
+Ownership transfer is explicit only: human MUST approve; issue coordination MUST record old/new claim IDs, exact branch/PR scope, transfer state; update assignee where appropriate; receiver MUST NOT mutate until transfer is visible+unambiguous. Historical commits retain original claim IDs; post-transfer commits use receiver ID. On transfer, update claim state+assignee. On abandonment with issue open, clear abandoning assignee+mark scope available; closed issue MAY retain historical assignee. On merge/abandon/transfer/explicit scope split, update issue so ownership is clear; branch cleanup still applies. Coordination state MUST expose without inference: owning claim, responsible GitHub account, owned remote branches, mutation authority.
 
-Once an agent is acting under an active claim ID, that exact claim ID is the agent's mandatory audit token for the entire work session.
+## Game/AI
 
-- **Every commit created on any branch owned by the claim must contain the exact claim ID verbatim in the commit message. No exception.** This includes tiny fixes, merge/reconciliation commits created by the agent, diagnostics, documentation-only commits, cleanup commits, and follow-up corrections.
-- **Every GitHub comment or review message authored by the agent in the claimed work must contain the exact claim ID verbatim. No exception.** At minimum this includes every comment on the assigned issue, every comment/reply on its pull request, and every review-thread reply made as part of the claimed work.
-- **Every agent reply in the human chat while acting on the claim must contain the exact claim ID verbatim. No exception.** Prefer putting the ID on the first line so ownership is visible without inference.
-- Pull-request descriptions for claimed work must contain the exact claim ID and the owning issue number.
-- A missing claim ID is not a cosmetic defect. The agent must correct the missing audit token before continuing substantive repository work.
-- A claim ID proves identity/ownership traceability only. It does **not** expand the claim's scope or authorize mutations to unrelated issues, branches, or pull requests.
+Player-facing descriptions/tooltips MUST be concise and describe ordinary intended effect; omit rare interactions, resolver details, validation rules, implementation caveats. Developer-facing canonical mechanics MUST be explicit+complete, including edge cases, ordering, failure behavior, cross-system interactions. MUST NOT lengthen player copy to serve developer documentation.
 
-If no active claim ID exists, the agent may inspect/read repository state but must not perform substantive repository mutations until a valid claim is established, unless a human explicitly directs a narrowly scoped non-issue operation.
+Gameplay/mechanics, Origin, and Character-AI are strategically coupled. Any triggering change in any layer MUST explicitly inspect all three, bidirectionally, before completion. `reviewed-no-change` is valid; skipped review is not. Character-specific workarounds MUST NOT silently compensate for broken/incomplete mechanic/Origin abstractions; mechanically legal changes MUST NOT be assumed strategically neutral to Origin support/character reasoning.
 
-#### Branch ownership is exclusive
+Audit triggers include adding/removing/changing: core mechanics/formulas; balance values affecting strategic value/timing/risk/payoff/range/cost/throughput/damage/growth/capacity/cooldown/coverage/opportunity cost; structures/units/terrain/economy/combat/capture/strategic weapons/visibility-information/spawn/controller-visible mechanics; Origin traits/drawbacks or numerical/mechanical semantics; Official-Origin composition/roster; trait AI-support mappings; combination-support/support-suppression; named-Origin AI assertions/support; Official-AI allowed-Origin pools; CharacterProfile evaluator/planner capability; Doctrine/Goal generation/arbitration/persistence/Expression/Origin adaptation; character-specific trait/Origin overrides/hooks; new Official-AI preset/character; retirement/removal of any mechanic/trait/Origin/preset. Numeric-only changes still trigger audit: config edits are not automatic, but strategic thresholds/theme/preference may change.
 
-Every issue-attributable remote branch has exactly one active owning claim ID unless a human explicitly establishes a coordinated shared scope.
+Required inspection: Mechanics=authoritative rule/formula/value; legality/timing/scale/opportunity cost/interaction/public information; related mechanics/tests/docs. Origin=trait mechanics/costs/descriptions vs rule; `origin-trait-support.config.ts` themes/affordances/cautions/tags/hooks/combinations/suppressions; affected `origin-configurations.config.ts` composition; Official-Origin synergy/conflict/validation. Character=affected allowed-Origin pools; CharacterProfile valuation via Doctrine/Origin adaptation/plan ranking/persistence/Expression/bespoke hooks; tactic attractiveness/re-tuning/re-benchmarking even without config-shape change; character×Origin validation/fidelity. Reverse=character logic better generic Origin/mechanics? Origin mechanic general enough+correctly surfaced through `EffectiveRulesView`? mechanics change leaves stale higher-layer assumptions despite compile/tests?
 
-- Every remote branch created as a consequence of a claimed issue must be attributable to that issue and claim. Prefer branch names containing both the issue number and claim ID, for example `issue-31/of-issue31-20260905-7c4a9e-<purpose>`.
-- Immediately after creating such a remote branch, add or update an issue comment that records the exact branch name and purpose under the same claim ID. If one claim uses multiple branches, list every active branch so parallel agents can see the complete work surface.
-- Before **every write to an existing remote topic branch**, verify that the branch is recorded under the current active claim ID. A matching issue number in the branch name is not sufficient if the claim ID differs.
-- A branch whose ownership is missing, ambiguous, stale-looking, or associated with a different claim ID is **foreign and read-only** until ownership is explicitly resolved.
-- An agent must not push, force-push, move the ref of, rebase, merge into, delete, rename, repurpose, or otherwise mutate a foreign branch.
-- An agent must not use maintainer permissions or `maintainer_can_modify` as a reason to edit another claim's branch.
-- An agent must not create a replacement branch that overlaps another active claim merely to avoid the foreign-branch restriction.
-- Branch ownership does not transfer implicitly because the original agent is inactive, a CI run failed, the PR is old, or the branch appears easy to fix.
+Triggering work is incomplete until task/PR records: Mechanics=`updated|reviewed-no-change`+reason; Origins/traits=`updated|reviewed-no-change`+reason; Character AI=`updated|reviewed-no-change`+reason; affected character×Origin validation=`updated|rerun|not required`+reason. PR: include in description or review-visible summary. Direct branch: include in task/commit summary and carry into eventual PR. `not applicable` is forbidden merely because work originated in another layer.
 
-#### Foreign issues and pull requests are read-only by default
+Where practical, automated validation SHOULD verify: exactly one AI-support mapping per deployed trait; Official-Origin trait membership=gameplay roster; required combination/suppression IDs exist+compose deterministically; allowed-Origin IDs resolve to active configured Origins; character trait/Origin overrides reference valid content; every character×allowed-Origin pairing has accelerated validation coverage. Automation/CI supplements, never replaces, manual semantic review; it cannot prove numerical rebalance still matches strategy/theme.
 
-For mutation purposes, an issue or PR is owned by the current claim only when its active coordination record contains the **same exact claim ID**. An issue/PR with a different claim ID, or no matching claim ID, is foreign even if it is in the same repository or related to similar work.
+## Authority
 
-Without the exception below, an agent must not:
+One concern=one canonical owner. Prefer one long coherent single-purpose owner over overlapping fragments. Non-owners MAY cross-reference an owner when genuinely needed; MUST NOT restate its mechanics/exceptions/constants/migration caveats/other authoritative detail. Cross-reference=navigation, not synchronized summary authority.
 
-- close, reopen, edit the title/body, relabel, reassign, change milestone/state, transfer, or otherwise substantially move a foreign issue;
-- mark ready, close, reopen, retarget, merge, edit the body/title of, or otherwise substantially move a foreign pull request;
-- post coordination or implementation comments onto a foreign issue/PR as though participating in that work;
-- modify or delete a foreign issue's/PR's branch;
-- merge its own PR when that merge would automatically close or materially mutate a foreign issue through `Closes`, `Fixes`, `Resolves`, or equivalent GitHub closing syntax.
+For substantive work changing mechanics/rules/configuration/canonical docs, or code/comments summarizing another subsystem's semantics: before editing, read current-target-base `docs/README.md`, identify every relevant canonical owner, read each from that same base, record owner set, and resolve unclear ownership before adding another rule statement. Memory, earlier branch snapshots, issue prose, PR descriptions, secondary summaries are not authority.
 
-**Before merging any PR, the agent must inspect the PR title/body and all known closing references. Every issue that would be closed or materially moved by the merge must carry the same active claim ID. If even one does not, the merge is forbidden unless the human exception below is satisfied.**
+Change authoritative facts only in their owner. Non-owner docs/code comments MAY retain only locally owned interface/composition facts; otherwise name/link owner. MUST NOT copy another owner's resolver details/constants/formulas/exception lists/edge cases/blocker ledgers/completion matrices/mutable project status. Canonical mechanics/design docs MUST NOT use GitHub issue numbers as normative dependency/current-status records; GitHub issues own work/progress, canonical docs own durable rules. PR descriptions+issue comments are review/project-management surfaces, never canonical mechanics authority.
 
-Reading, reviewing, comparing, or reporting on foreign work is allowed. Mutation is not.
+Whenever target base advances via merge/rebase/update from `main`, before more implementation: list files changed old base->new base; if any relevant canonical owner changed, stop+reread it. Compute `topicChanged=oldBase..pre-reconciliation topic head`, `mainChanged=oldBase..new main`, `overlap=intersection(topicChanged,mainChanged)`. Every overlapping canonical/configuration owner requires explicit four-way semantic audit of old base, pre-reconciliation topic, new-main, reconciliation result. Verify every compatible topic semantic change survived and every new-main authoritative change was incorporated. Clean textual merge is not semantic-merge evidence.
 
-#### Narrow human-approved exception for foreign work
+Before implementation completion: search repository for every changed mechanic/trait/entity name, old terminology, old formula/value, obsolete status wording; inspect every relevant hit; update/delete stale summaries and replace duplicate authority with owner references in the same change. Reread canonical owners against resulting code/config, not task description. Recheck current `main`; if it advanced after validation, repeat owner/reconciliation audit before final SHA. Freeze candidate SHA only after audit; any later semantic change invalidates authority audit+final review.
 
-A foreign-issue/branch/PR mutation is permitted only when **both** conditions are true:
+PRs touching canonical concerns MUST record: canonical owners consulted; owners modified; cross-owner references reviewed; base reconciliation (old->current base+overlapping owners); stale-reference search findings/fixes; final current-main SHA. This supplements, never replaces, the Game/AI audit.
 
-1. the mutation is severely required for the current operation rather than merely convenient; and
-2. a human user explicitly approves that specific cross-ownership mutation.
+`scripts/checkDocumentationAuthority.ts`+Documentation Authority workflow enforce mechanically provable policy in permanent `--strict` mode: every registered canonical owner MUST exist and contain no mutable GitHub issue/PR work-state reference. MUST NOT add baseline allowlist/exemption/weaker ordinary-CI comparison merely to pass.
 
-The approval must identify the foreign issue/PR/branch and the operation being authorized. Generic instructions such as `proceed`, `merge it`, `clean this up`, or approval directed at the current claimed issue do **not** authorize mutation of a different claim's work.
+Subsystems beyond a few tightly related dedicated docs MUST be grouped under one obvious directory with `README.md` gateway explaining subsystem, naming broad/father design, mapping narrower concerns->canonical owners, linking relevant code/config. Detailed child docs SHOULD point back to gateway/father; code/config owners SHOULD point toward gateway. Gateway=navigation+ownership metadata, not detailed-rule copy. Official-AI work changing `design/official-ai/*`, Official-AI docs, AI preset pools, or character/Origin AI behavior MUST start with `docs/official-ai/README.md` and follow its task-specific reading trail; broad/father design=`docs/official-ai/OFFICIAL_AI_ARCHITECTURE.md`. MUST NOT leave mature subsystems as unstructured similarly named top-level piles merely to avoid link moves. When docs move, audit old-path references in same change. Compatibility pointer ONLY IF explicitly non-canonical and materially safer than immediately rewriting a large legacy owner; MUST NOT create permanent redirect forests.
 
-When such an exception is used:
+Before creating any documentation/design/configuration file: search repository for concept/subsystem/entity catalogue/configuration; identify existing owner; update it if same concern. New file ONLY IF purpose/authority/lifecycle/audience is genuinely distinct enough that adding to owner would mislead/be incoherent. New canonical file MUST state ownership boundary+neighboring canonical files it does not own. Length alone is insufficient split justification.
 
-- state the current claim ID before the operation;
-- record the approval and exact cross-ownership action in the current claimed issue's coordination trail;
-- when practical and non-disruptive, record the exception on the foreign issue/PR as well;
-- perform only the explicitly approved operation; the exception does not transfer ownership or grant continuing access.
+MUST NOT make two files independently canonical for same facts or duplicate exact tables/registries/config objects/formulas/rule text for convenience. Prefer cross-reference. Rationale MAY explain why config exists; exact config values remain in config source. Config MAY reference gameplay mechanics but MUST NOT duplicate mechanical arithmetic owned by gameplay/rules/effective-rules. High-level architecture owns architecture/boundaries, not duplicate detailed config catalogues. Content catalogue owns entries; architecture references it.
 
-#### Ownership transfer
+When rule/name/formula/mapping/design decision changes: update canonical owner; search repository for old form; update/delete stale summaries/examples/TODOs/contradictions in same change; preserve history in Git, not obsolete active files. MUST NOT resolve uncertainty by adding a second "new canonical" owner beside old; update existing owner or explicitly retire/supersede old and remove when safe.
 
-Ownership may move only through an explicit transfer, never through inference.
+Batches are workflow/review, not architecture. MUST NOT commit permanent temporary-range/batch files (e.g. `*_P51_N06.md`, `part-1`, `batch-3`) or shard config (`foo.p01-p10.config.ts`, etc.) solely for incremental editing. Append accepted batches to single canonical owner. If temporary fragments are unavoidable, consolidate+delete before topic branch/PR completion. Git history archives prior batch states; active tree represents current coherent system.
 
-- A human must explicitly approve the transfer or coordination change.
-- Update the issue coordination record with the old claim ID, new claim ID, exact branch/PR scope, and transfer state.
-- Update GitHub assignee state where appropriate.
-- The receiving agent must not mutate the branch until the transfer is visible and unambiguous.
-- Historical commits keep their original claim IDs; new commits after transfer use the receiving claim ID.
+Prefer one code-readable config source per domain unless concrete runtime/tooling constraint requires split. Unless architecture explicitly changes: `design/official-ai/origin-trait-support.config.ts` owns all exact trait-support mappings+additive combination support+support-suppression; `design/official-ai/origin-configurations.config.ts` owns all exact named Official-Origin AI mappings; `design/official-ai/character-configurations.config.ts` owns Baseline+all exact character AI mappings once authored. Internal grouping/constants are allowed. Separate files require real loading/ownership/generation/lifecycle boundary, not length or ten-at-a-time authoring.
 
-#### Pull-request and lifecycle traceability
+Authority types MUST remain distinct: gameplay/rules=actual mechanics/formulas/costs/legality/content rules; code-readable design config=exact AI mappings/IDs intended for implementation migration; architecture/contracts=reusable types/boundaries/pipelines/semantic rules; rationale=strategic intent/explanations/important exclusions without exact config duplication; roster/catalogue=entity list+content identity. If two files answer the same authoritative question, resolve ownership ambiguity instead of duplicating answer.
 
-- Pull requests must reference the issue and preserve the claim/branch traceability in their description.
-- When work is transferred, update both the claim comment/state and GitHub assignee so they identify the new owner. When work is abandoned while the issue remains open, clear the abandoning owner's assignee state and update the issue comment so the scope is visibly available again. A closed issue may retain its historical assignee.
-- When work is merged, abandoned, transferred, or split into explicitly coordinated scopes, update the issue so the ownership state is clear. Branch cleanup still follows the remote-branch hygiene rules above.
+Split only for clear structural benefit: runtime loading/deployment boundary; generated vs hand-authored; independently versioned/public API; distinct subsystem ownership+lifecycle; tooling limit; otherwise unrelated purposes in one file. Justified split MUST document reason in parent README/index, keep exactly one owner per fact, and provide obvious aggregation/import path where appropriate. Easier batch editing, length, or possible future growth are insufficient.
 
-The goal is that an agent inspecting any issue, PR, branch, commit, GitHub comment, or associated chat response can determine, without inference, **which claim owns the action, which GitHub account is responsible, which remote branches belong to that work, and whether mutation is authorized**.
+Before completing documentation-heavy topic branch/PR: inspect relevant directory for duplicate/temp files; search old terminology/superseded formulas/renamed entities/references to deleted files; verify each durable concern has clear owner and no two files claim same exact data; remove incorporated obsolete shards/abandoned planning docs; update links after rename/consolidation; verify TODOs remain genuinely open; prefer deletion to permanent deprecated duplicate when Git history preserves it. Updating canonical source while knowingly leaving contradictory active docs is incomplete.
 
-## Player-facing copy vs canonical mechanics
-
-- Keep player-facing descriptions/tooltips concise and focused on the ordinary intended effect; do not enumerate rare interactions, resolver details, validation rules, or implementation caveats.
-- Keep developer-facing canonical mechanics explicit and complete, including edge cases, ordering, failure behavior, and cross-system interactions.
-- Do not lengthen player-facing copy merely to make it serve as developer documentation.
-
-## Three-layer gameplay/Origin/character-AI synchronization invariant
-
-Open Fufu has three strategically coupled design/runtime layers that must remain synchronized:
-
-```text
-GAMEPLAY / MECHANICS LAYER
-  core rules, formulas, numerical balance, structures, units, terrain,
-  economy, combat, strategic weapons, visibility, etc.
-
-ORIGIN LAYER
-  Origin traits and drawbacks, Official Origin compositions,
-  trait AI support, combination/suppression support, named-Origin assertions
-
-CHARACTER AI LAYER
-  Official-AI presets, CharacterProfiles, Origin adaptation,
-  character-specific hooks, capability/fidelity expectations and tests
-```
-
-A change originating in **any one** of these layers requires an explicit impact inspection of **all three layers in both directions** before the change is complete.
-
-This is a mandatory review rule, not an assumption that every change must edit all three layers. `reviewed — no change required` is a valid outcome. Failing to perform the review is not.
-
-### Bidirectional rule
-
-Never reason only downstream.
-
-```text
-mechanic change
-  → inspect trait/Origin semantics and support
-  → inspect character valuation/adaptation
-
-Origin/trait change
-  → inspect whether underlying mechanics still support the intended rule cleanly
-  → inspect every affected character/preset/adaptation
-
-character-AI change
-  → inspect whether the requested behavior really belongs in character logic
-  → inspect whether it exposes a missing generic Origin-support concept
-  → inspect whether it reveals a mechanics/rules problem that should be fixed lower down
-```
-
-A character-specific workaround must not silently compensate for a broken or incomplete mechanic/Origin abstraction. Conversely, a mechanically legal change must not be assumed strategically neutral to Origin support or character reasoning.
-
-### Changes that trigger the audit
-
-Perform the three-layer inspection when adding, removing, or changing any of the following, including but not limited to:
-
-- core gameplay mechanics or formulas;
-- numerical balance values that can change strategic value, timing, risk, payoff, range, cost, throughput, damage, growth, capacity, cooldown, coverage, or opportunity cost;
-- structures, units, terrain behavior, economy sources, combat/capture rules, strategic weapons, visibility/information rules, spawn rules, or controller-visible mechanics;
-- Origin traits/drawbacks or their numerical/mechanical semantics;
-- Official Origin trait composition or roster entries;
-- Origin trait AI-support mappings;
-- Origin combination-support or support-suppression rules;
-- named-Origin AI assertions/support;
-- Official-AI allowed-Origin pools;
-- CharacterProfile evaluator/planner capability;
-- Doctrine, Goal generation, arbitration, persistence, Expression, or Origin-adaptation behavior;
-- character-specific trait/Origin overrides or hooks;
-- a new Official AI preset/character;
-- removal/retirement of any mechanic, trait, Origin, or preset.
-
-Purely numerical changes **still require the audit**. They do not automatically require AI configuration edits, but a number can cross a strategic threshold or materially change how much a character should value a mechanic. For example, changing cost, range, reload, growth, payout, or coverage may alter an Origin's strategic theme or make an existing character preference irrational even though all type-level mechanics remain unchanged.
-
-### Required cross-layer impact checklist
-
-For every triggering change, explicitly inspect and account for:
-
-1. **Gameplay/mechanics owner**
-   - Is the authoritative rule/formula/value correct?
-   - Did legality, timing, scale, opportunity cost, interaction, or public information change?
-   - Are related mechanics/tests/docs still accurate?
-
-2. **Origin/trait layer**
-   - Do affected trait mechanics/costs/descriptions still match the game rule?
-   - Do `origin-trait-support.config.ts` themes, affordances, cautions, tags, hooks, combinations, and suppressions still describe the effective strategy correctly?
-   - Do affected entries in `origin-configurations.config.ts` still compose correctly?
-   - Do any Official Origins gain/lose a meaningful synergy, conflict, or validation requirement?
-
-3. **Character AI layer**
-   - Which allowed-Origin pools include affected Origins?
-   - Do any CharacterProfiles value the changed mechanic through Doctrine, Origin adaptation, plan ranking, persistence, Expression, or bespoke hooks?
-   - Does the change alter the relative attractiveness of a tactic enough to require re-tuning or re-benchmarking even if no literal/config shape changes?
-   - Do character × affected-Origin validation/fidelity expectations still hold?
-
-4. **Reverse-direction architecture check**
-   - If the change started in character logic, should any of it instead become reusable Origin support or a mechanics-layer rule?
-   - If it started in an Origin/trait, is the game mechanic general enough and correctly surfaced through `EffectiveRulesView`?
-   - If it started in mechanics, are higher-layer assumptions now stale even when compilation/tests still pass?
-
-### Completion evidence
-
-A triggering change is incomplete until the task/PR records the result of the cross-layer audit.
-
-Use a compact record such as:
-
-```text
-Cross-layer impact audit
-- Mechanics: updated / reviewed-no-change — <short reason>
-- Origins/traits: updated / reviewed-no-change — <short reason>
-- Character AI: updated / reviewed-no-change — <short reason>
-- Affected character × Origin validation: updated / rerun / not required — <short reason>
-```
-
-For pull requests, include this in the PR description or review-visible change summary. For direct branch work without a PR yet, include it in the task/commit summary and ensure it is carried into the eventual PR.
-
-Do not use `not applicable` merely because the change was authored in another layer. The point of this invariant is that each neighboring layer must actually be inspected.
-
-### Automated validation supplements, but does not replace, semantic review
-
-Where practical, repository validation should mechanically verify referential synchronization, for example:
-
-- every deployed trait has exactly one AI-support mapping;
-- Official Origin trait membership matches the gameplay roster exactly;
-- required combination/suppression IDs exist and compose deterministically;
-- character allowed-Origin IDs resolve to active configured Origins;
-- character-specific trait/Origin overrides reference valid content;
-- every character × allowed-Origin pairing is represented in accelerated validation coverage.
-
-Automation cannot prove that a numerical rebalance still matches character strategy or theme. Passing CI never waives the manual three-layer semantic audit.
-
-## Canonical documentation and configuration ownership
-
-The repository must prefer **one canonical source of truth per concern**. Long but coherent single-purpose files are preferable to a collection of overlapping fragments.
-
-**One canonical owner per concern. Other documents should link to that owner only when they genuinely need to reference the concern; they must not restate its mechanics, exceptions, constants, migration caveats, or other authoritative detail.** A cross-reference is navigation, not a license to maintain a synchronized summary copy.
-
-### Canonical-authority synchronization protocol
-
-This protocol is mandatory for substantive work that changes mechanics, rules, configuration, canonical documentation, or any code/comment that summarizes another subsystem's semantics.
-
-#### Before substantive work
-
-1. Read [`docs/README.md`](./docs/README.md) from the **current target base** and identify every canonical owner relevant to the requested change.
-2. Read those owners from that same current base before editing. Do not rely on memory, an earlier branch snapshot, issue prose, a PR description, or a secondary summary.
-3. Record the owner set for the work session so later reconciliation can determine whether `main` changed any of them.
-4. If ownership is unclear, resolve the ownership boundary before introducing another statement of the rule.
-
-#### While implementing
-
-- Change an authoritative fact only in the file that owns that concern.
-- In non-owner documents/code comments, retain only the minimum interface/composition fact that the local concern itself owns and link/name the canonical owner for the rest.
-- Do not copy resolver details, constants, formulas, exception lists, edge cases, blocker ledgers, completion matrices, or mutable project status from another owner.
-- **Canonical mechanics/design documents must not use GitHub issue numbers as normative dependency or current-status records.** GitHub issues own work/progress state; canonical documents own the durable rule. Say `owned by STRATEGIC_SPAWN.md`, not `blocked by #32`.
-- PR descriptions and issue comments are review/project-management surfaces, never canonical mechanics authorities.
-
-#### Whenever the target base advances
-
-Before continuing implementation after merging/rebasing/updating from `main`:
-
-1. Compare the old base to the new base and list every changed file.
-2. If any relevant canonical owner changed, stop and reread that owner before further implementation.
-3. Compute the semantic overlap set:
-
-```text
-topicChanged = files changed oldBase -> pre-reconciliation topic head
-mainChanged  = files changed oldBase -> new main
-overlap      = intersection(topicChanged, mainChanged)
-```
-
-4. Every overlapping canonical/configuration owner requires an explicit four-way semantic audit: old base, pre-reconciliation topic version, new-main version, and reconciliation result.
-5. Verify that every compatible topic-branch semantic change survived and every new-main authoritative change was incorporated. A clean Git textual merge is not evidence that this semantic merge succeeded.
-
-#### Before declaring implementation complete
-
-1. Search the repository for each changed mechanic/trait/entity name, old terminology, old formula/value, and any obsolete status wording.
-2. Inspect every relevant hit. Update/delete stale summaries and replace duplicated authority with owner references in the same change.
-3. Reread the canonical owners against the resulting code/configuration, not merely against the original task description.
-4. Recheck current `main`. If `main` advanced after validation, repeat the owner/reconciliation audit before treating the SHA as final.
-5. Freeze the candidate SHA only after this audit. Any subsequent semantic change invalidates the previous authority audit and final-review status.
-
-#### Required completion evidence
-
-For PRs that touch canonical concerns, include a compact record such as:
-
-```text
-Canonical-authority audit
-- Canonical owners consulted: <paths>
-- Owners modified: <paths / none>
-- Cross-owner references reviewed: <paths or search terms>
-- Base reconciliation: <old base -> current base; overlapping owner files>
-- Stale-reference search: <performed; findings/fixes>
-- Final current-main recheck: <sha>
-```
-
-This record supplements the three-layer gameplay/Origin/Character-AI audit; neither replaces the other.
-
-#### Automated guard
-
-`scripts/checkDocumentationAuthority.ts` and the Documentation Authority workflow enforce the mechanically provable subset of this policy. The workflow runs the checker in permanent `--strict` mode: every registered canonical owner must exist and must contain no mutable GitHub issue/PR work-state references. Do not introduce a baseline allowlist, exemption, or weaker comparison mode into ordinary CI merely to make the guard pass.
-
-### Subsystem documentation gateways
-
-When a subsystem grows beyond a few tightly related documents, group its dedicated documents under one obvious directory and provide a `README.md` gateway that explains the subsystem, names the broad/father design document, maps each narrower concern to its canonical owner, and links to relevant code/configuration. Detailed child documents should point back to that gateway or father document, and code/configuration owners should point toward the documentation gateway.
-
-The gateway is navigation and ownership metadata, **not another copy of the detailed rules**.
-
-For Official AI specifically:
-
-```text
-docs/official-ai/README.md
-```
-
-is mandatory first reading for Official-AI work. Agents changing `design/official-ai/*`, an Official-AI document, an AI preset pool, or character/Origin AI behavior must start there and follow the task-specific reading trail before editing. The broad/father design is `docs/official-ai/OFFICIAL_AI_ARCHITECTURE.md`.
-
-Do not leave a mature subsystem as an unstructured pile of similarly named top-level files merely to avoid moving links. When documents move, audit references to the old paths in the same change. A compatibility pointer is acceptable only when it is explicitly non-canonical and materially safer than rewriting a large legacy owner immediately; do not create a forest of permanent redirect files.
-
-### Before creating any new documentation or design/configuration file
-
-1. Search the repository for the concept, subsystem, entity catalogue, or configuration being documented.
-2. Identify the existing canonical owner, if one exists.
-3. Update that owner instead of creating another file when the new material belongs to the same concern.
-4. Create a new file only when the material has a genuinely distinct purpose, authority, lifecycle, or audience that would make adding it to the existing owner misleading or incoherent.
-5. When creating a new canonical file, explicitly state its ownership boundary and identify the neighboring canonical files whose concerns it does **not** own.
-
-A file becoming long is **not by itself** sufficient justification to split it.
-
-### One concern, one authority
-
-- Do not make two files independently canonical for the same facts.
-- Do not duplicate exact tables, registries, configuration objects, formulas, or rule text into multiple files merely for convenience.
-- Prefer cross-references to copying authoritative content.
-- A rationale document may explain *why* a configuration exists, but exact configuration values must remain in the configuration source of truth.
-- A configuration file may reference gameplay mechanics, but it must not duplicate mechanical arithmetic when a gameplay/rules document or effective-rules layer already owns that arithmetic.
-- A high-level architecture document should describe architecture and boundaries; it should not become a second copy of detailed configuration catalogues.
-- A content catalogue should own its content entries; architecture documents should point to it rather than restating the catalogue.
-
-### Update, do not fork
-
-When a rule, name, formula, mapping, or design decision changes:
-
-1. update the canonical owner;
-2. search the repository for references to the old form;
-3. update or delete stale summaries, examples, TODOs, and contradictory wording in the same change;
-4. preserve historical discussion in Git history rather than leaving obsolete files in the active tree.
-
-Do not solve uncertainty by adding a second “new canonical” document while leaving the old one intact. Either update the existing owner or explicitly retire/supersede the old file and remove it when safe.
-
-### Batch work must not become repository structure
-
-Batches are a review/workflow device, not a documentation architecture.
-
-- Do not commit permanent files named by temporary authoring ranges such as `*_P51_N06.md`, `part-1`, `batch-3`, or equivalent merely because work was reviewed in chunks.
-- Do not shard a configuration catalogue into `foo.p01-p10.config.ts`, `foo.p11-p20.config.ts`, etc. solely to make incremental editing easier.
-- Append accepted batch results to the single canonical file for that concern.
-- If temporary fragments are unavoidable during active work, consolidate them and delete the fragments before the topic branch/PR is considered complete.
-- Git history is the archive for earlier batch states; the checked-in tree should represent the current coherent system.
-
-### Configuration-file policy
-
-Prefer one code-readable configuration source per configuration domain unless runtime or tooling constraints provide a concrete reason to split it.
-
-For the current Official-AI design this means, unless architecture is explicitly changed:
-
-```text
-design/official-ai/origin-trait-support.config.ts
-  all exact trait-support mappings, additive combination support, and support-suppression rules
-design/official-ai/origin-configurations.config.ts
-  all exact named Official-Origin AI mappings
-design/official-ai/character-configurations.config.ts
-  Baseline and all exact character AI mappings once authored
-```
-
-Internal grouping/constants inside one file are acceptable for readability. Separate files require a real loading, ownership, generation, or lifecycle boundary—not merely file length or ten-at-a-time authoring.
-
-### Documentation vs configuration
-
-Keep these layers distinct:
-
-- **Gameplay/rules documents** own actual mechanics, formulas, costs, legality, and content rules.
-- **Code-readable design configuration** owns exact AI mappings and IDs intended to migrate into implementation.
-- **Architecture/contracts** own reusable types, boundaries, pipelines, and semantic rules.
-- **Rationale documents** own strategic intent, explanations, and important exclusions without duplicating exact config objects.
-- **Roster/catalogue documents** own the relevant list of entities and their content identity.
-
-If two files appear to answer the same question, resolve the ownership ambiguity instead of documenting the same answer twice.
-
-### Legitimate reasons to split a file
-
-Splitting is acceptable when there is a clear structural benefit such as:
-
-- different runtime loading/deployment boundaries;
-- generated versus hand-authored sources;
-- independently versioned/public APIs;
-- clearly different subsystem ownership and lifecycle;
-- tooling limits that make one file impractical;
-- a file would otherwise contain multiple unrelated purposes.
-
-When a split is justified, document the reason in the parent README/index, establish exactly one canonical owner for each fact, and provide an obvious aggregation/import path where appropriate.
-
-“Easier to edit this batch,” “the file is getting long,” or “this section might grow later” are not sufficient reasons.
-
-### Stale-document audit is part of completion
-
-Before completing a documentation-heavy topic branch or PR:
-
-- inspect the relevant directory for duplicate or temporary files;
-- search for old terminology, superseded formulas, renamed entities, and references to deleted files;
-- verify every durable concern has a clear canonical owner;
-- verify no two files claim canonical authority over the same exact data;
-- remove obsolete batch shards and abandoned planning documents when their information has been incorporated;
-- update links after renames/consolidations;
-- verify TODOs still describe genuinely open work rather than already-closed decisions;
-- prefer deletion over leaving a permanent “deprecated” duplicate when Git history already preserves it.
-
-A change that updates the canonical source but knowingly leaves contradictory active documentation is incomplete.
-
-### Progress/status information
-
-Avoid copying mutable progress counters, completion matrices, or current-status tables into many documents. Keep such information only where it materially belongs, or derive it from the canonical configuration when practical. If a progress statement becomes stale, update or remove it rather than adding another newer statement elsewhere.
-
-### Default decision rule
-
-When deciding between:
-
-- adding another file that overlaps an existing concern; or
-- extending/cleaning the existing canonical owner,
-
-**prefer the existing canonical owner**.
-
-When deciding between:
-
-- preserving a redundant active document “for history”; or
-- deleting it after its useful content has been incorporated,
-
-**prefer deletion; Git history already preserves history**.
+Avoid duplicating mutable progress counters/completion matrices/current-status tables. Keep them only where materially owned or derive from canonical config when practical. Stale progress MUST be updated/removed, not superseded elsewhere. Default: extend/clean existing owner rather than add overlapping file; delete redundant active history rather than preserve it.
