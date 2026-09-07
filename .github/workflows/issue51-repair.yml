@@ -183,7 +183,7 @@ jobs:
         run: |
           set -euo pipefail
           cat AGENTS.md >/dev/null
-          if grep -R -n --exclude-dir=.git --exclude-dir=node_modules -E 'FOREST_INTERIOR_CONCEALMENT|owned Forest interiors|affectedFactionIds' .; then
+          if grep -R -n --exclude-dir=.git --exclude-dir=node_modules --exclude=issue51-repair.yml -E 'FOREST_INTERIOR_CONCEALMENT|owned Forest interiors|affectedFactionIds' .; then
             echo "stale issue-51 terminology remains" >&2
             exit 1
           fi
