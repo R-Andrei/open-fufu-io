@@ -1,0 +1,339 @@
+name: Issue 51 audit diff cleanup
+
+"on":
+  push:
+    branches:
+      - "issue-51/of-issue51-20260907-cccaaa-observation-contract"
+
+permissions:
+  contents: write
+  issues: read
+  pull-requests: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    env:
+      CLAIM_ID: OF-ISSUE51-20260907-cccaaa
+      TOPIC_BRANCH: issue-51/of-issue51-20260907-cccaaa-observation-contract
+      TARGET_MAIN_SHA: 6e23aa7425ea9b9e985e91c9c88b60360a4c7256
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: issue-51/of-issue51-20260907-cccaaa-observation-contract
+          fetch-depth: 0
+
+      - name: Fresh rules and ownership guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          test "${GITHUB_REF_NAME}" = "${TOPIC_BRANCH}"
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/51/comments" --paginate --jq '.[].body')"
+          grep -F "${CLAIM_ID}" <<<"${comments}" >/dev/null
+          grep -F 'Branch registration: `issue-51/of-issue51-20260907-cccaaa-observation-contract`' <<<"${comments}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.head.ref')" = "${TOPIC_BRANCH}"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = "${TARGET_MAIN_SHA}"
+
+      - name: Reconstruct narrow issue-51 diff from current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = "${TARGET_MAIN_SHA}"
+
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+
+          def read(path):
+              return Path(path).read_text()
+
+          def section(text, start, end):
+              i = text.index(start)
+              j = text.index(end, i)
+              return text[i:j]
+
+          current = {}
+          design = read("docs/OPEN_FUFU_DESIGN.md")
+          current["visibility"] = section(
+              design,
+              "### 5.1.1 Tactical visibility projection\n",
+              "## 5.2 Starter controller",
+          )
+          current["invariant15"] = next(
+              line for line in design.splitlines()
+              if line.startswith("15. Tactical operational visibility")
+          )
+
+          catalogue = read("docs/ORIGIN_TRAIT_CATALOGUE.md")
+          current["p45_section"] = section(
+              catalogue,
+              "### P45 — Forest concealment\n",
+              "### P46 — Tundra construction",
+          )
+          current["p49_section"] = section(
+              catalogue,
+              "### P49 — Counterintelligence Observation Posts\n",
+              "### P50 and P51 — reciprocal support fields",
+          )
+
+          coverage = read("docs/ORIGIN_VALIDATION_COVERAGE.md")
+          current["p45_validation"] = next(
+              line for line in coverage.splitlines()
+              if line.startswith("- **P45 — Hidden Leaf Village**")
+          )
+          current["p49_validation"] = next(
+              line for line in coverage.splitlines()
+              if line.startswith("- **P49 — Laughing Man**")
+          )
+          current["observation_validation"] = section(
+              coverage,
+              "## Observation / concealment\n",
+              "\n---\n",
+          )
+
+          terrain = read("docs/TERRAIN_AND_STRUCTURES.md")
+          current["observation_post"] = section(
+              terrain,
+              "### Observation Post\n",
+              "### Command Post",
+          )
+
+          Path("/tmp/issue51-sections.json").write_text(json.dumps(current))
+          PY
+
+          git checkout "${TARGET_MAIN_SHA}" -- \
+            design/official-ai/origin-configurations.config.ts \
+            docs/NAVAL_AND_STRATEGIC_WEAPONS.md \
+            docs/OPEN_FUFU_DESIGN.md \
+            docs/ORIGIN_TRAIT_CATALOGUE.md \
+            docs/ORIGIN_VALIDATION_COVERAGE.md \
+            docs/TERRAIN_AND_STRUCTURES.md \
+            tests/ControllerApiContract.test.ts \
+            tests/ControllerStructureFieldProjection.test.ts
+
+          python3 <<'PY'
+          from pathlib import Path
+          import json
+
+          data = json.loads(Path("/tmp/issue51-sections.json").read_text())
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_section(text, start, end, replacement):
+              i = text.index(start)
+              j = text.index(end, i)
+              return text[:i] + replacement + text[j:]
+
+          def replace_prefixed_line(text, prefix, replacement):
+              lines = text.splitlines()
+              matches = [i for i, line in enumerate(lines) if line.startswith(prefix)]
+              assert len(matches) == 1, (prefix, matches)
+              lines[matches[0]] = replacement
+              suffix = "\n" if text.endswith("\n") else ""
+              return "\n".join(lines) + suffix
+
+          # High-level visibility owner: preserve current-main content and insert only issue #51.
+          path = "docs/OPEN_FUFU_DESIGN.md"
+          text = read(path)
+          assert "### 5.1.1 Tactical visibility projection" not in text
+          text = text.replace(
+              "## 5.2 Starter controller",
+              data["visibility"] + "## 5.2 Starter controller",
+              1,
+          )
+          assert data["invariant15"] not in text
+          text = text.rstrip("\n") + "\n" + data["invariant15"] + "\n"
+          write(path, text)
+
+          # Origin catalogue: preserve main table formatting and replace only P45/P49 mechanics.
+          path = "docs/ORIGIN_TRAIT_CATALOGUE.md"
+          text = read(path)
+          text = replace_prefixed_line(
+              text,
+              "| P45 |",
+              "| P45 | **Hidden Leaf Village** | **Forest concealment:** every Forest cell owned by this faction conceals its non-public operational contents from enemy tactical observation; terrain/ownership remain public and hostile sources can be directly revealed | 6 |",
+          )
+          text = replace_prefixed_line(
+              text,
+              "| P49 |",
+              "| P49 | **Laughing Man** | **Counterintelligence Observation Posts:** owned active Observation Posts replace ordinary tactical observation with an enemy-intelligence blackout across the same effective Observation field; the Post and field extent remain public | 7 |",
+          )
+          text = replace_section(
+              text,
+              "### P45 — Forest concealment\n",
+              "### P46 — Tundra construction",
+              data["p45_section"],
+          )
+          text = replace_section(
+              text,
+              "### P49 — Counterintelligence Observation Posts\n",
+              "### P50 and P51 — reciprocal support fields",
+              data["p49_section"],
+          )
+          write(path, text)
+
+          # Validation owner: replace only P45/P49 obligations and observation integration section.
+          path = "docs/ORIGIN_VALIDATION_COVERAGE.md"
+          text = read(path)
+          text = replace_prefixed_line(text, "- **P45 — Hidden Leaf Village**", data["p45_validation"])
+          text = replace_prefixed_line(text, "- **P49 — Laughing Man**", data["p49_validation"])
+          text = replace_section(
+              text,
+              "## Observation / concealment\n",
+              "\n---\n",
+              data["observation_validation"],
+          )
+          write(path, text)
+
+          # Observation Post baseline owner: replace only the Observation Post subsection.
+          path = "docs/TERRAIN_AND_STRUCTURES.md"
+          text = read(path)
+          text = replace_section(
+              text,
+              "### Observation Post\n",
+              "### Command Post",
+              data["observation_post"],
+          )
+          write(path, text)
+
+          # Exact named-Origin AI config: preserve current-main formatting; rename only the two P45 validation foci.
+          path = "design/official-ai/origin-configurations.config.ts"
+          text = read(path)
+          assert text.count('"FOREST_INTERIOR_CONCEALMENT"') == 2
+          text = text.replace('"FOREST_INTERIOR_CONCEALMENT"', '"OWNED_FOREST_CONCEALMENT"')
+          write(path, text)
+
+          # Preserve current-main test formatting; alter only the union selector assertion.
+          path = "tests/ControllerStructureFieldProjection.test.ts"
+          text = read(path)
+          old = 'expect(source).toContain("readonly field: StructureFieldId;");'
+          assert text.count(old) == 2
+          text = text.replace(
+              old,
+              'expect(source).toContain("readonly field: ControllerStructureFieldId;");',
+              1,
+          )
+          write(path, text)
+          PY
+
+          # Purely unrelated formatting files must now be byte-identical to current main.
+          git diff --exit-code "${TARGET_MAIN_SHA}" -- docs/NAVAL_AND_STRATEGIC_WEAPONS.md
+          git diff --exit-code "${TARGET_MAIN_SHA}" -- tests/ControllerApiContract.test.ts
+
+          # The named-Origin config must differ only for the two renamed validation-focus strings.
+          test "$(git diff "${TARGET_MAIN_SHA}" -- design/official-ai/origin-configurations.config.ts | grep -c 'FOREST_INTERIOR_CONCEALMENT')" -eq 2
+          test "$(git diff "${TARGET_MAIN_SHA}" -- design/official-ai/origin-configurations.config.ts | grep -c 'OWNED_FOREST_CONCEALMENT')" -eq 2
+
+          git diff --check
+
+      - name: Verify issue-51 semantics and stale terminology
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          python3 <<'PY'
+          from pathlib import Path
+
+          design = Path("docs/OPEN_FUFU_DESIGN.md").read_text()
+          assert "### 5.1.1 Tactical visibility projection" in design
+          assert "15.0 seconds" in design
+          assert "independent third-party witness" in design
+          assert "One-shot Population losses, grants, and transfers" in design
+
+          catalogue = Path("docs/ORIGIN_TRAIT_CATALOGUE.md").read_text()
+          assert "P45OwnedForest(holder, cell)" in catalogue
+          assert "no** interior/front-boundary distinction" in catalogue
+          assert "ENEMY_BLACKOUT" in catalogue
+          assert "same authoritative effective `OBSERVATION` structure field" in catalogue
+
+          terrain = Path("docs/TERRAIN_AND_STRUCTURES.md").read_text()
+          assert "canonical `OBSERVATION` structure field" in terrain
+          assert "ordinary effect is `REVEAL`" in terrain
+
+          controller = Path("src/core/controller/ControllerApi.ts").read_text()
+          assert 'export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";' in controller
+          assert 'readonly kind: "STRUCTURE_FIELD_INSTANCE";' in controller
+          assert 'readonly eligibilityField: Extract<StructureFieldId, "SAM">;' in controller
+
+          visibility = Path("src/core/visibility/TacticalVisibility.ts").read_text()
+          assert "observingFactionIds" in visibility
+          assert "affectedFactionIds" not in visibility
+          PY
+
+          if grep -R -n --exclude-dir=.git --exclude-dir=node_modules --exclude=issue51-audit-cleanup.yml -E 'FOREST_INTERIOR_CONCEALMENT|owned Forest interiors|exposed Forest-front boundary|affectedFactionIds|whose owned state is actually targeted or affected receives|reveals only the minimum information|minimum directly relevant attacking state' .; then
+            echo "stale issue-51 terminology remains" >&2
+            exit 1
+          fi
+          git diff --check
+
+      - name: Remove temporary audit runner from candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          rm .github/workflows/issue51-audit-cleanup.yml
+          git add -A
+          git diff --check
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npm ci
+
+      - name: Run repository tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npm test
+
+      - name: Run strict documentation authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          npx tsx scripts/checkDocumentationAuthority.ts --strict
+
+      - name: Recheck ownership and commit audit cleanup
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          comments="$(gh api "repos/${GITHUB_REPOSITORY}/issues/51/comments" --paginate --jq '.[].body')"
+          grep -F "${CLAIM_ID}" <<<"${comments}" >/dev/null
+          grep -F 'Branch registration: `issue-51/of-issue51-20260907-cccaaa-observation-contract`' <<<"${comments}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.head.ref')" = "${TOPIC_BRANCH}"
+          gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = "${TARGET_MAIN_SHA}"
+          test ! -e .github/workflows/issue51-audit-cleanup.yml
+          git diff --check
+
+          cat AGENTS.md >/dev/null
+          git config user.name "R-Andrei"
+          git config user.email "30163089+R-Andrei@users.noreply.github.com"
+          git commit \
+            -m "${CLAIM_ID}: narrow final audit diff" \
+            -m "${CLAIM_ID}
+
+          Conclusion: restore current-main formatting/content outside issue #51 while preserving the reconciled requester-relative visibility, P45/P49, Observation-field, Controller API, and Official-AI semantics; full tests, stale-term checks, and strict authority validation pass on the candidate tree.
+          Recommendation: rerun the final canonical-owner and Game/Origin/Character-AI semantic audit against this narrowed head, recheck current main, and record the final audit in PR #74 before merge."
+          git push origin "HEAD:${TOPIC_BRANCH}"
