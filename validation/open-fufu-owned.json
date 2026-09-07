@@ -7,7 +7,9 @@
     ".github/workflows/rule-composition-validation.yml"
   ],
   "ownedTests": [
+    "tests/ControllerApiContract.test.ts",
     "tests/EchoRuleRegistry.test.ts",
+    "tests/OfficialAiConfiguration.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
     "tests/OriginRuleManifest.test.ts",
@@ -20,6 +22,26 @@
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
+    {
+      "path": "design/official-ai/character-configurations.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "design/official-ai/origin-configurations.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "design/official-ai/origin-trait-support.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "src/core/DetMath.ts",
+      "validators": ["tests/RuleRationalMaterialization.test.ts"]
+    },
+    {
+      "path": "src/core/controller/ControllerApi.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
+    },
     {
       "path": "src/core/rules/EchoRuleRegistry.ts",
       "validators": ["tests/EchoRuleRegistry.test.ts"]
@@ -63,6 +85,14 @@
     {
       "path": "src/core/rules/RuleNormalization.ts",
       "validators": ["tests/RuleNormalization.test.ts"]
+    },
+    {
+      "path": "tests/contracts/controller-api.typecheck.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
+    },
+    {
+      "path": "tests/types/ControllerApiTypes.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
     },
     {
       "path": "scripts/checkDocumentationAuthority.ts",

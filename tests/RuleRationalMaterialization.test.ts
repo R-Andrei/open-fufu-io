@@ -9,6 +9,12 @@ describe("deterministic rational materialization boundaries", () => {
     expect(pow2(-1075)).toBe(0);
   });
 
+  it("preserves the subnormal low-word/high-word transition", () => {
+    expect(pow2(-1043)).toBe(2 ** -1043);
+    expect(pow2(-1042)).toBe(2 ** -1042);
+    expect(pow2(-1042)).toBe(pow2(-1043) * 2);
+  });
+
   it("does not prematurely zero a representable exact rational", () => {
     const largeCoprimeNumerator = (1n << 100n) + 1n;
     const largeDenominator = 1n << 1123n;
