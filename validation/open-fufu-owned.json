@@ -7,6 +7,7 @@
     ".github/workflows/rule-composition-validation.yml"
   ],
   "ownedTests": [
+    "tests/ControllerStructureFieldProjection.test.ts",
     "tests/EchoRuleRegistry.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
@@ -17,9 +18,14 @@
     "tests/RuleNormalization.test.ts",
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
+    "tests/StructureFieldGeometry.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
+    {
+      "path": "src/core/controller/ControllerApi.ts",
+      "validators": ["tests/ControllerStructureFieldProjection.test.ts"]
+    },
     {
       "path": "src/core/rules/EchoRuleRegistry.ts",
       "validators": ["tests/EchoRuleRegistry.test.ts"]
@@ -63,6 +69,10 @@
     {
       "path": "src/core/rules/RuleNormalization.ts",
       "validators": ["tests/RuleNormalization.test.ts"]
+    },
+    {
+      "path": "src/core/rules/StructureFieldGeometry.ts",
+      "validators": ["tests/StructureFieldGeometry.test.ts"]
     },
     {
       "path": "scripts/checkDocumentationAuthority.ts",

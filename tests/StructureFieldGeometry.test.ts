@@ -5,17 +5,52 @@ import {
   structureRadialFieldFromAreaFactor,
   structureRadialFieldFromRangeFactor,
 } from "../src/core/rules/StructureFieldGeometry";
-import { ORIGIN_RULE_MANIFEST_BY_ID } from "../src/core/rules/OriginRuleManifest";
+import {
+  ORIGIN_RULE_MANIFEST_BY_ID,
+  originRuleProfileInput,
+} from "../src/core/rules/OriginRuleManifest";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
   serializeRuleContributions,
   validateRuleContributions,
   type RuleContribution,
 } from "../src/core/rules/RuleComposition";
-import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import {
+  materializeCompiledScalarScaleFactor,
+  type RuleDynamicState,
+} from "../src/core/rules/RuleMaterialization";
+
+const baseState: RuleDynamicState = {
+  ownedPersistentStructureCount: 0,
+  territorialContactCount: 0,
+  peakTotalPopulation: 0,
+};
+
+function profileWith(traitIds: readonly ("P09" | "P40" | "N10")[]) {
+  return compileRuleProfile(
+    RULE_AXIS_REGISTRY,
+    originRuleProfileInput(traitIds),
+  );
+}
 
 describe("STRUCTURE_RADIAL_FIELD_V1", () => {
-  it("projects P09 + N10 Fort area exactly without a radius rounding step", () => {
-    const profile = structureRadialFieldFromAreaFactor(30, 17n, 20n);
+  it("projects compiled P09 + N10 Fort area exactly without a radius rounding step", () => {
+    const compiled = profileWith(["P09", "N10"]);
+    const areaFactor = materializeCompiledScalarScaleFactor(
+      compiled,
+      RULE_AXIS_REGISTRY,
+      "STRUCTURE_FIELD_COVERAGE_AREA",
+      { kind: "STRUCTURE", structure: "FORT" },
+      baseState,
+    );
+    expect(areaFactor).toEqual({ numerator: 17n, denominator: 20n });
+
+    const profile = structureRadialFieldFromAreaFactor(
+      30,
+      areaFactor.numerator,
+      areaFactor.denominator,
+    );
     expect(serializeStructureRadialFieldProfile(profile)).toEqual({
       version: STRUCTURE_RADIAL_FIELD_VERSION,
       empty: false,
@@ -46,8 +81,22 @@ describe("STRUCTURE_RADIAL_FIELD_V1", () => {
     ]);
   });
 
-  it("keeps range scaling distinct from area scaling for P40 SAM geometry", () => {
-    const p40Sam = structureRadialFieldFromRangeFactor(70, 3n, 2n);
+  it("projects compiled P40 range distinctly from area scaling", () => {
+    const compiled = profileWith(["P40"]);
+    const rangeFactor = materializeCompiledScalarScaleFactor(
+      compiled,
+      RULE_AXIS_REGISTRY,
+      "STRUCTURE_INTERCEPTION_RANGE",
+      { kind: "STRUCTURE", structure: "SAM_LAUNCHER" },
+      baseState,
+    );
+    expect(rangeFactor).toEqual({ numerator: 3n, denominator: 2n });
+
+    const p40Sam = structureRadialFieldFromRangeFactor(
+      70,
+      rangeFactor.numerator,
+      rangeFactor.denominator,
+    );
     expect(serializeStructureRadialFieldProfile(p40Sam)).toEqual({
       version: STRUCTURE_RADIAL_FIELD_VERSION,
       empty: false,
@@ -67,17 +116,23 @@ describe("STRUCTURE_RADIAL_FIELD_V1", () => {
 
 describe("structure-field qualification conditions", () => {
   it("encodes the canonical P18/P24/N11 affiliations explicitly", () => {
-    expect(ORIGIN_RULE_MANIFEST_BY_ID.get("P18")?.contributions[0]?.conditions).toEqual([
+    expect(
+      ORIGIN_RULE_MANIFEST_BY_ID.get("P18")?.contributions[0]?.conditions,
+    ).toEqual([
       {
         kind: "SOURCE_INSIDE_FIELD",
         field: "FORT",
         affiliation: "SELF_OR_FIXED_TEAMMATE",
       },
     ]);
-    expect(ORIGIN_RULE_MANIFEST_BY_ID.get("P24")?.contributions[0]?.conditions).toEqual([
+    expect(
+      ORIGIN_RULE_MANIFEST_BY_ID.get("P24")?.contributions[0]?.conditions,
+    ).toEqual([
       { kind: "EVENT_INSIDE_FIELD", field: "FORT", affiliation: "SELF" },
     ]);
-    expect(ORIGIN_RULE_MANIFEST_BY_ID.get("N11")?.contributions[0]?.conditions).toEqual([
+    expect(
+      ORIGIN_RULE_MANIFEST_BY_ID.get("N11")?.contributions[0]?.conditions,
+    ).toEqual([
       { kind: "EVENT_INSIDE_FIELD", field: "SAM", affiliation: "SELF" },
     ]);
   });
@@ -103,7 +158,7 @@ describe("structure-field qualification conditions", () => {
     ).toContain("INVALID_CONDITION");
   });
 
-  it("binds the affiliation-bearing condition into rule-composition version 2 serialization", () => {
+  it("binds affiliation into rule-composition version 2 serialization", () => {
     const p24 = ORIGIN_RULE_MANIFEST_BY_ID.get("P24")?.contributions ?? [];
     const serialized = JSON.parse(serializeRuleContributions(p24));
     expect(serialized.version).toBe("2");
