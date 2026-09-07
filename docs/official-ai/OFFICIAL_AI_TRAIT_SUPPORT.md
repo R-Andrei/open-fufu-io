@@ -296,7 +296,7 @@ Successful armor Population attacks neutralize cells and apply Fallout. Firepowe
 
 ## P45 — Hidden Leaf Village
 
-Owned Forest interiors deny enemy tactical observation while necessary boundary/manifested information remains visible. Forest becomes concealed operational space rather than simply combat terrain.
+Every owned Forest cell is concealed operational space for opponents regardless of frontage, adjacency, width, or map edge. Official AI must reason from the same lawful projected information as a player controller: it may exploit its own concealed Forest state strategically, but it receives no hidden-state bypass into an opponent's concealment and must treat source-specific hostile manifestation reveals as temporary observations rather than a reveal of nearby contents.
 
 **Strategic philosophy:** use Forest as protected staging space that denies the opponent information.
 

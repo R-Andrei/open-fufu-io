@@ -93,11 +93,11 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P42 | **The Price of Empire** | Warships cost `0 FFY`; each purchase permanently consumes `2,000 Available Population`; those Warships have `-33% attack range` | 9 |
 | P43 | **The Devil of the Rhine** | **Heavy Artillery:** all Tanks transform into Heavy Artillery: `10s` build time, `1.5×` purchase cost, `0.5×` movement, `1.5×` weapon range, `1,000` anti-armor damage / `12s`, `1,000` Population damage / `12s`, Train raiding disabled; same Tank terrain barriers; projectiles may cross terrain the unit cannot traverse | 8 |
 | P44 | **Nobel Prize** | **Radioactive Munitions:** successful Tank/Heavy-Artillery Population attacks neutralize enemy population-bearing cells and apply Fallout; Tank affects up to `10` cells in Manhattan radius 2, Heavy Artillery up to `50` cells in Manhattan radius 5 | 9 |
-| P45 | **Hidden Leaf Village** | **Forest concealment:** enemy tactical observation cannot penetrate the interior of Forest cells owned by this faction; exposed Forest-front boundary cells remain observable and hostile manifestations reveal only the minimum directly relevant attacking state | 6 |
+| P45 | **Hidden Leaf Village**                  | **Forest concealment:** every Forest cell owned by this faction conceals its non-public operational contents from enemy tactical observation; terrain/ownership remain public and hostile sources can be directly revealed                                                                                                    |    6 |
 | P46 | **Northern Lands** | May construct persistent structures on owned **Tundra**; Tundra otherwise retains its ordinary terrain identity | 4 |
 | P47 | **This Is Poison** | Whenever an enemy successfully captures one of this faction's **Marsh** cells, the capturing faction loses `+1 Population` after ordinary capture resolution | 4 |
 | P48 | **Aqua's Blessing** | Owned **Shallow Water** is population-bearing for this faction and contributes `+1 Population Capacity/cell`; all other Shallow-Water properties remain unchanged | 4 |
-| P49 | **Laughing Man** | **Counterintelligence Observation Posts:** owned Observation Posts no longer provide tactical observation; instead their ordinary completed-level radius becomes an enemy-intelligence blackout area that conceals this faction's units, structures, and manifested operational state inside it | 7 |
+| P49 | **Laughing Man**                         | **Counterintelligence Observation Posts:** owned active Observation Posts replace ordinary tactical observation with an enemy-intelligence blackout across the same effective Observation field; the Post and field extent remain public                                                                                      |    7 |
 | P50 | **Iserlohn Fortress** | **Fort general support:** Forts also project offensive pressure equal to their normal defensive-pressure magnitude across their existing Fort coverage area | 5 |
 | P51 | **One Flag Beneath the Stars** | **Command general support:** Command Posts also project defensive pressure equal to their normal offensive-pressure magnitude across their existing Command Post coverage area | 5 |
 | P52 | **Humanity Has Declined** | **Underpopulation economy:** gain additional passive FFY at `max(0, Population Capacity - Total Population) / 250` FFY per second | 6 |
@@ -454,7 +454,19 @@ P43 + P44 is explicitly legal and yields radioactive Heavy Artillery.
 
 ### P45 — Forest concealment
 
-P45 applies tactical concealment to Forest owned by the holder without hiding terrain type or political ownership. Enemy tactical observation cannot reveal the holder's units, persistent structures, or manifested operational state in the Forest interior. Exposed Forest-front boundary cells remain normally observable. A direct hostile manifestation from concealment reveals only the minimum information mechanically necessary to identify/respond to that manifestation, not unrelated nearby contents.
+P45's terrain predicate is exactly:
+
+```text
+P45OwnedForest(holder, cell)
+= cell.terrain == FOREST
+  AND cell.ownerId == holder
+```
+
+Every matching cell is a concealment region. There is **no** interior/front-boundary distinction, adjacency test, map-edge exception, minimum width, ownership-hole exception, or contact-line exception. A one-cell owned Forest, a one-cell-wide strip, a Forest cell touching enemy territory on every side, and an owned Forest cell on the map edge all qualify identically.
+
+Forest terrain identity and political ownership remain public. For a viewer other than the P45 holder, the cell suppresses remote observation of otherwise non-public operational contents not owned by that viewer, including third-party operational state. A viewer always knows its own state. P45 does not grant the holder extra observation of hostile state inside its Forest; it merely does not conceal state from its own holder, so ordinary visibility rules still decide what the holder can observe.
+
+P45 contributes one boolean concealment predicate to the game-wide requester-relative visibility projection. It does not create concealment strength. Direct hostile manifestations, their full-source reveal, source-specific lifetime, and precedence over concealment are owned by `OPEN_FUFU_DESIGN.md`; P45 reveals no collateral contents when one concealed source manifests.
 
 ### P46 — Tundra construction
 
@@ -470,9 +482,11 @@ For the P48 holder, owned Shallow Water is treated as population-bearing and con
 
 ### P49 — Counterintelligence Observation Posts
 
-P49 removes the holder's ordinary observation function from owned active Observation Posts and uses each Post's ordinary completed-level radius as an enemy-intelligence blackout field. The Post and existence/extent of the field remain public; the contents are concealed. Direct hostile manifestations reveal only the minimum information necessary for response. Overlap extends the union of blackout coverage rather than increasing concealment strength.
+For each owned active Observation Post with completed-level mechanics, P49 **replaces** the Post's ordinary `REVEAL` observation effect with `ENEMY_BLACKOUT`. It does not retain the ordinary reveal benefit. The blackout uses the exact same authoritative effective `OBSERVATION` structure field that the ordinary Post would use at its currently active completed level; P49 defines no second radius or raster formula. Fresh incomplete construction produces no field, and an in-progress upgrade continues using the previous active completed level until the higher level activates.
 
-Observation Post baseline radii and ordinary observation semantics remain owned by `TERRAIN_AND_STRUCTURES.md`.
+The physical Observation Post and the existence/extent of its blackout field are explicitly public. For a viewer affected by an enemy P49 blackout, the field suppresses remote observation of all otherwise non-public operational state inside it except that viewer's own state; this includes otherwise observable third-party state. The P49 holder likewise gains no observation from the transformed Post. Multiple P49 fields form a boolean union and never stack into stronger concealment.
+
+P49 contributes one boolean blackout predicate to the game-wide requester-relative visibility projection. Explicit-public state and an active direct reveal outrank the blackout; remote observation does not. The full-source hostile-manifestation reveal, its source-specific lifetime, and collateral non-reveal rule are owned by `OPEN_FUFU_DESIGN.md`. Observation Post baseline levels, field geometry, and ordinary observation behavior remain owned by `TERRAIN_AND_STRUCTURES.md`.
 
 ### P50 and P51 — reciprocal support fields
 

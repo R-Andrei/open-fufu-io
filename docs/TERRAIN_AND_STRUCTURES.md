@@ -548,9 +548,11 @@ An active SAM Launcher considers an otherwise eligible strategic projectile for 
 
 ### Observation Post
 
-Reveals legally revealable operational state inside its completed-level radius, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.
+An active Observation Post projects the canonical `OBSERVATION` structure field using its currently active completed-level effective observation radius and `STRUCTURE_RADIAL_FIELD_V1`. Its ordinary effect is `REVEAL`: inside that field, the owning faction gains remote observation of tactical operational state that is otherwise legally revealable under the requester-relative visibility projection in `OPEN_FUFU_DESIGN.md`, including hostile mobile units, persistent structures, and manifested operations needed for tactical decisions.
 
-It never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts do not stack.
+Observation is not a hidden-state bypass. An applicable concealment/blackout predicate remains higher-precedence than remote observation, and the Post never reveals controller memory, unmanifested plans, hidden private state, or information outside the surfaced visibility model. Observation coverage is boolean; overlapping Posts form a union and do not stack reveal strength.
+
+Origin transformations may replace the Observation field's ordinary effect, but they consume this same effective `OBSERVATION` field rather than defining a second radius or raster footprint. Exact Origin transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ### Command Post
 
