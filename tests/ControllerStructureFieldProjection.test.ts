@@ -43,7 +43,7 @@ describe("controller structure-field projection", () => {
     expect(source).toContain("readonly structureId: StructureId;");
     expect(source).toContain("readonly field: StructureFieldId;");
     expect(source).toContain(
-      'readonly eligibilityField: Extract<StructureFieldId, "SAM">;',
+      'readonly eligibilityField: Extract<StructureFieldId, "SAM_LAUNCHER">;',
     );
     expect(source).toContain(
       "numeric interceptionRange is ergonomic only",
