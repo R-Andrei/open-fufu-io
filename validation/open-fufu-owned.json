@@ -91,6 +91,10 @@
       "validators": ["tests/ControllerApiContract.test.ts"]
     },
     {
+      "path": "tests/types/ControllerApiTypes.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
+    },
+    {
       "path": "scripts/checkDocumentationAuthority.ts",
       "validators": [".github/workflows/documentation-authority.yml"]
     },
