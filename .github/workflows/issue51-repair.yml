@@ -194,13 +194,25 @@ jobs:
           node-version: 24
           cache: npm
 
-      - name: Install and validate
+      - name: Install dependencies
         shell: bash
         run: |
           set -euo pipefail
           cat AGENTS.md >/dev/null
           npm ci
+
+      - name: Run repository tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
           npm test
+
+      - name: Run strict documentation authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
           npx tsx scripts/checkDocumentationAuthority.ts --strict
 
       - name: Recheck ownership, commit repair, and remove runner
