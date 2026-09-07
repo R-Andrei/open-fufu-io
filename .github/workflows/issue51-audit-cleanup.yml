@@ -16,7 +16,7 @@ jobs:
     env:
       CLAIM_ID: OF-ISSUE51-20260907-cccaaa
       TOPIC_BRANCH: issue-51/of-issue51-20260907-cccaaa-observation-contract
-      TARGET_MAIN_SHA: 6e23aa7425ea9b9e985e91c9c88b60360a4c7256
+      TARGET_MAIN_SHA: 79d93f77e8e80faa2beb82e35993acb19e5d3987
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +38,7 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
           test "$(gh api "repos/${GITHUB_REPOSITORY}/branches/main" --jq '.commit.sha')" = "${TARGET_MAIN_SHA}"
 
-      - name: Reconstruct narrow issue-51 diff from current main
+      - name: Merge latest main and reconstruct narrow issue-51 diff
         shell: bash
         run: |
           set -euo pipefail
@@ -107,6 +107,11 @@ jobs:
           Path("/tmp/issue51-sections.json").write_text(json.dumps(current))
           PY
 
+          git config user.name "R-Andrei"
+          git config user.email "30163089+R-Andrei@users.noreply.github.com"
+          git merge --no-commit --no-ff "${TARGET_MAIN_SHA}"
+
+          # Start mixed/noisy files from the exact latest-main versions, then reapply only issue #51 semantics.
           git checkout "${TARGET_MAIN_SHA}" -- \
             design/official-ai/origin-configurations.config.ts \
             docs/NAVAL_AND_STRATEGIC_WEAPONS.md \
@@ -142,7 +147,7 @@ jobs:
               suffix = "\n" if text.endswith("\n") else ""
               return "\n".join(lines) + suffix
 
-          # High-level visibility owner: preserve current-main content and insert only issue #51.
+          # High-level visibility owner: preserve latest-main diplomacy/accounting changes and insert only issue #51.
           path = "docs/OPEN_FUFU_DESIGN.md"
           text = read(path)
           assert "### 5.1.1 Tactical visibility projection" not in text
@@ -155,7 +160,7 @@ jobs:
           text = text.rstrip("\n") + "\n" + data["invariant15"] + "\n"
           write(path, text)
 
-          # Origin catalogue: preserve main table formatting and replace only P45/P49 mechanics.
+          # Origin catalogue: preserve latest-main table/content formatting and replace only P45/P49 mechanics.
           path = "docs/ORIGIN_TRAIT_CATALOGUE.md"
           text = read(path)
           text = replace_prefixed_line(
@@ -195,7 +200,7 @@ jobs:
           )
           write(path, text)
 
-          # Observation Post baseline owner: replace only the Observation Post subsection.
+          # Terrain/structure owner: retain latest-main field affiliation/geometry and replace only Observation Post subsection.
           path = "docs/TERRAIN_AND_STRUCTURES.md"
           text = read(path)
           text = replace_section(
@@ -206,14 +211,14 @@ jobs:
           )
           write(path, text)
 
-          # Exact named-Origin AI config: preserve current-main formatting; rename only the two P45 validation foci.
+          # Exact named-Origin AI config: preserve latest-main formatting; rename only the two P45 validation foci.
           path = "design/official-ai/origin-configurations.config.ts"
           text = read(path)
           assert text.count('"FOREST_INTERIOR_CONCEALMENT"') == 2
           text = text.replace('"FOREST_INTERIOR_CONCEALMENT"', '"OWNED_FOREST_CONCEALMENT"')
           write(path, text)
 
-          # Preserve current-main test formatting; alter only the union selector assertion.
+          # Preserve latest-main selector tests; alter only the union STRUCTURE_FIELD field vocabulary.
           path = "tests/ControllerStructureFieldProjection.test.ts"
           text = read(path)
           old = 'expect(source).toContain("readonly field: StructureFieldId;");'
@@ -226,7 +231,7 @@ jobs:
           write(path, text)
           PY
 
-          # Purely unrelated formatting files must now be byte-identical to current main.
+          # Purely unrelated/moved-baseline files must be byte-identical to latest main.
           git diff --exit-code "${TARGET_MAIN_SHA}" -- docs/NAVAL_AND_STRATEGIC_WEAPONS.md
           git diff --exit-code "${TARGET_MAIN_SHA}" -- tests/ControllerApiContract.test.ts
 
@@ -236,7 +241,7 @@ jobs:
 
           git diff --check
 
-      - name: Verify issue-51 semantics and stale terminology
+      - name: Verify four-way semantic preservation and stale terminology
         shell: bash
         run: |
           set -euo pipefail
@@ -249,6 +254,7 @@ jobs:
           assert "15.0 seconds" in design
           assert "independent third-party witness" in design
           assert "One-shot Population losses, grants, and transfers" in design
+          assert "V1 has no neutral or third diplomatic relation" in design
 
           catalogue = Path("docs/ORIGIN_TRAIT_CATALOGUE.md").read_text()
           assert "P45OwnedForest(holder, cell)" in catalogue
@@ -259,11 +265,23 @@ jobs:
           terrain = Path("docs/TERRAIN_AND_STRUCTURES.md").read_text()
           assert "canonical `OBSERVATION` structure field" in terrain
           assert "ordinary effect is `REVEAL`" in terrain
+          assert "SELF_OR_FIXED_TEAMMATE" in terrain
+          assert "SAM Launcher" in terrain
+
+          rules = Path("src/core/rules/RuleComposition.ts").read_text()
+          assert '"SAM_LAUNCHER"' in rules
+          assert '"SAM",' not in rules
 
           controller = Path("src/core/controller/ControllerApi.ts").read_text()
           assert 'export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";' in controller
           assert 'readonly kind: "STRUCTURE_FIELD_INSTANCE";' in controller
-          assert 'readonly eligibilityField: Extract<StructureFieldId, "SAM">;' in controller
+          assert 'readonly eligibilityField: Extract<StructureFieldId, "SAM_LAUNCHER">;' in controller
+
+          projection_test = Path("tests/ControllerStructureFieldProjection.test.ts").read_text()
+          assert '"SAM_LAUNCHER"' in projection_test
+          assert 'CONTROLLER_FIELD_IDS).not.toContain("SAM" as never)' in projection_test
+          assert 'expect(source).toContain("readonly field: ControllerStructureFieldId;");' in projection_test
+          assert 'expect(source).toContain("readonly field: StructureFieldId;");' in projection_test
 
           visibility = Path("src/core/visibility/TacticalVisibility.ts").read_text()
           assert "observingFactionIds" in visibility
@@ -311,7 +329,7 @@ jobs:
           cat AGENTS.md >/dev/null
           npx tsx scripts/checkDocumentationAuthority.ts --strict
 
-      - name: Recheck ownership and commit audit cleanup
+      - name: Recheck ownership and commit reconciliation cleanup
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -328,12 +346,10 @@ jobs:
           git diff --check
 
           cat AGENTS.md >/dev/null
-          git config user.name "R-Andrei"
-          git config user.email "30163089+R-Andrei@users.noreply.github.com"
           git commit \
-            -m "${CLAIM_ID}: narrow final audit diff" \
+            -m "${CLAIM_ID}: reconcile latest main and narrow final audit diff" \
             -m "${CLAIM_ID}
 
-          Conclusion: restore current-main formatting/content outside issue #51 while preserving the reconciled requester-relative visibility, P45/P49, Observation-field, Controller API, and Official-AI semantics; full tests, stale-term checks, and strict authority validation pass on the candidate tree.
-          Recommendation: rerun the final canonical-owner and Game/Origin/Character-AI semantic audit against this narrowed head, recheck current main, and record the final audit in PR #74 before merge."
+          Conclusion: merge current main ${TARGET_MAIN_SHA}, preserve its SAM_LAUNCHER/affiliation and diplomacy contracts alongside issue #51 requester-relative visibility/P45/P49/OBSERVATION semantics, and remove unrelated formatting churn; full tests, stale-term checks, and strict authority validation pass.
+          Recommendation: complete the final canonical-owner and Game/Origin/Character-AI audit against this reconciled candidate, recheck current main, record the final audit in PR #74, and do not merge until explicitly requested."
           git push origin "HEAD:${TOPIC_BRANCH}"
