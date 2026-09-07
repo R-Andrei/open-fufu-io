@@ -125,6 +125,12 @@ export interface PopulationView {
   readonly capacity: number;
   readonly growthPerSecond: number;
   readonly utilization: number;
+  /**
+   * Self-only exact half-Population settlement residual. `1` means one half of a
+   * Population settlement cost has accrued and the next qualifying P36 settlement
+   * closes a whole-Population debit; `0` means no half-cost is currently accrued.
+   */
+  readonly neutralSettlementHalfResidual: 0 | 1;
 }
 
 export interface OriginView {
@@ -427,8 +433,14 @@ export interface GrowthCalculation {
   readonly capacity: number;
   readonly population: number;
   readonly utilization: number;
+  /** Effective utilization-profile multiplier after faction rule replacements such as P02. */
+  readonly utilizationMultiplier: number;
   readonly growthPerSecond: number;
 }
+
+export type CapturePopulationDebitPool =
+  | "WINNING_OFFENSIVE_COMMITMENTS"
+  | "AVAILABLE";
 
 export interface CaptureCalculation {
   readonly sourceCellId: CellId;
@@ -442,6 +454,13 @@ export interface CaptureCalculation {
   readonly requiredProgress: number;
   readonly progressPerSecond: number;
   readonly estimatedSecondsToCapture?: number;
+  /**
+   * Additional capturing-faction Population requested by explicit post-capture
+   * mechanics after ordinary capture casualties, such as P47 Marsh attrition.
+   * The realized loss may be smaller when the listed debit pools are exhausted.
+   */
+  readonly postCaptureAttackerPopulationLoss: number;
+  readonly postCaptureAttackerPopulationDebitOrder: readonly CapturePopulationDebitPool[];
 }
 
 export interface SettlementCalculation {
@@ -452,6 +471,7 @@ export interface SettlementCalculation {
   readonly requiredProgress: number;
   readonly progressPerSecond: number;
   readonly estimatedSecondsToSettle?: number;
+  /** Nominal effective cost per successful qualifying cell; P36 therefore reports 0.5. */
   readonly populationCost: number;
 }
 
@@ -532,6 +552,15 @@ export interface WeaponLaunchQuote extends ActionQuote {
   readonly weapon: StrategicWeaponType;
   readonly targetCellId: CellId;
   readonly chargeConsumed: boolean;
+}
+
+export interface RelinquishQuote extends ActionQuote {
+  readonly selectedCellCount: number;
+  readonly populationBearingCellCount: number;
+  /** Non-positive Capacity change if the quoted relinquishment commits. */
+  readonly capacityDelta: number;
+  /** True when the self faction's effective rules add Fallout after relinquishment. */
+  readonly appliesFallout: boolean;
 }
 
 export interface TerrainMechanicsSpec {
@@ -809,6 +838,8 @@ export interface MechanicsApi {
     targetCellId: CellId,
     targetFactionId?: FactionId,
   ): WeaponLaunchQuote;
+  /** Self-faction quote for the exact selected cells on the current immutable snapshot. */
+  relinquishQuote(cells: CellSelector): RelinquishQuote;
 }
 
 export interface RulesView {
@@ -847,6 +878,7 @@ export type DecisionFailureCode =
   | "TARGET_DESTROYED"
   | "COMMITMENT_LIMIT"
   | "OWNERSHIP_CAP"
+  | "PERSISTENT_STRUCTURE_PRESENT"
   | "CONFLICTING_PROPOSAL"
   | "INVALID_DIRECTIVE"
   | "INVALID_COMMAND"

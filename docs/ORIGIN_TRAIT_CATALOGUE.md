@@ -140,10 +140,42 @@ The trait tables above are normative. This section resolves trait-specific edge 
 - P16 ignores only the ordinary Fallout acquisition penalty; it does not change the underlying terrain.
 - N05 makes Fallout uncapturable for the holder.
 - P35 applies Fallout only to cells the holder deliberately relinquishes; ordinary enemy capture does not trigger it. The created Fallout remains until the next successful capture.
-- P44 applies only after a successful Population attack, never anti-armor combat or Train interception. Eligible cells are enemy-owned, population-bearing, and not structure-occupied; candidates are ordered by Manhattan distance and then stable cell ID. A Tank affects at most 10 eligible cells inside Manhattan radius 2; P43 Heavy Artillery affects at most 50 inside radius 5. The search never expands outside the authored footprint merely to fill the cap.
+- P44 applies only after a successful Population attack, never anti-armor combat or Train interception. Eligible cells are enemy-owned, population-bearing, and not structure-occupied; candidates are ordered by Manhattan distance and then stable cell ID. A Tank affects at most 10 eligible cells inside Manhattan radius 2; P43 Heavy Artillery affects at most 50 inside Manhattan radius 5. The search never expands outside the authored footprint merely to fill the cap.
 - N18 is a structural post-multiplier on final capture/settlement progress for non-Fallout targets only. It does not modify pressure, casualties, settlement Population cost, terrain identity, movement, or structure legality. P16 + N18 therefore remains a legal inversion in which P16 removes the Fallout penalty while N18 continues to halve non-Fallout acquisition.
 
 Ordinary Fallout and terrain behavior are owned by `TERRAIN_AND_STRUCTURES.md`.
+
+### P02 — The Era of Humans growth profile
+
+P02 replaces only the ordinary Population-utilization multiplier `U(u)` while leaving the ordinary base-growth equation and every explicit growth multiplier unchanged. Let `Uordinary(x)` be the ordinary piecewise-linear utilization profile owned by `OPEN_FUFU_DESIGN.md`. The P02 profile is the exact horizontal remapping:
+
+```text
+if u < 0.30:
+    UP02(u) = Uordinary(u × 4/3)
+
+if 0.30 <= u <= 0.70:
+    UP02(u) = 1.0
+
+if u > 0.70:
+    UP02(u) = Uordinary(0.60 + (u - 0.70) × 4/3)
+```
+
+For `u >= 1`, positive growth remains zero under the ordinary rule. The exact P02 anchors are therefore:
+
+| Utilization | `UP02(u)` |
+| ---: | ---: |
+| 0% | **20%** |
+| 7.5% | **45%** |
+| 15% | **70%** |
+| 22.5% | **88%** |
+| 30% | **100%** |
+| 70% | **100%** |
+| 77.5% | **85%** |
+| 85% | **60%** |
+| 92.5% | **35%** |
+| 100% | **0%** |
+
+The `4/3` remap is an exact rational rule. `u` is evaluated as the exact rational `TotalPopulation / PopulationCapacity`; the 30%/70% breakpoints are exact `3/10` and `7/10`, every horizontal remap remains rational, and interpolation against the ordinary profile remains exact until the owning growth domain performs the canonical finite-number materialization defined by `RULE_COMPOSITION.md`. Deterministic evaluation must not round utilization or an intermediate remapped utilization to a display percentage before interpolation. City, Plains, N01, Echo, and any other explicit Population-Growth multipliers remain in their ordinary independent multiplier stage. The authoritative effective multiplier is the same value surfaced through controller mechanics and consumed by Official AI.
 
 ### P17 — structure-upgrade compounding
 
@@ -343,7 +375,7 @@ Interaction consequences are exact:
 
 ### P35 — scorched-earth Fallout
 
-Only deliberate relinquishment by the P35 holder creates the trait's Fallout. It creates no nuclear casualty event. Ordinary Fallout acquisition behavior remains owned by the terrain registry.
+P35 consumes only a **successful ordinary deliberate-relinquishment result** from the holder and then applies Fallout to every cell in that successful relinquishment. Generic relinquishment legality, structure occupancy, ownership transition, and failure behavior are owned by `OPEN_FUFU_DESIGN.md` and `TERRAIN_AND_STRUCTURES.md`. Enemy capture, P44 neutralization, and any other ownership change that is not the holder's deliberate relinquishment do not trigger P35; the trait itself creates no nuclear casualty event.
 
 ### N17 — conquest spoils destroyed
 
@@ -353,7 +385,7 @@ Because no successful `STRUCTURE_TRANSFERRED` result exists, P05 does not fire a
 
 ### P36 — half-cost neutral settlement
 
-P36 changes only neutral-settlement Population cost to `0.5 Population` per qualifying cell and uses faction-level deterministic residual accounting. Residual debt survives ending/recreating expansion operations. P36 does not change acquisition speed and composes independently with N18.
+P36 changes only the nominal neutral-settlement Population cost of a qualifying pre-acquisition population-bearing cell from `1` to exactly `0.5 Population`. The target qualification is evaluated immediately before ownership transfer, so P48 does not make neutral Shallow Water pay this cost on the acquisition that first makes it owned/population-bearing. P36 does not change acquisition speed and composes independently with N18. The faction-persistent residual ledger, same-tick ordering, debit eligibility/projection, insufficient-source behavior, serialization/replay contract, and controller projection are owned by `OPEN_FUFU_DESIGN.md`.
 
 ### N13 — landing casualties
 
@@ -474,7 +506,7 @@ P46 permits ordinary persistent-structure construction on owned Tundra without c
 
 ### P47 — Marsh attrition
 
-After an enemy successfully captures one Marsh cell owned by the P47 holder, remove one additional Population from the capturing faction. The extra casualty does not require an automatic defender and does not alter the ownership transfer itself.
+P47 triggers only after a genuine hostile successful capture of a Marsh cell owned by the P47 holder. It requests exactly one additional capturing-faction Population casualty after ordinary capture casualties; an automatic defender is not required and P47 does not alter ownership transfer. Game-wide request aggregation, debit-source ordering, deterministic projection, and insufficient-source handling are owned by `OPEN_FUFU_DESIGN.md`. P38 changes only the defender's ordinary survival and does not suppress P47. N18 may delay the capture but does not change the eventual trigger once capture succeeds. P35 relinquishment and P44 neutralization are not hostile successful captures and therefore never trigger P47.
 
 ### P48 — population-bearing Shallow Water
 

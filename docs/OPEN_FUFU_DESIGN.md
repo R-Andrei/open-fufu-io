@@ -350,7 +350,7 @@ ActualGrowthPerSecond
 
 Newly grown Population enters Available Population.
 
-Origin-specific growth-profile transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+Origin-specific growth-profile transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`. Utilization evaluation follows the exact-rational materialization convention in `RULE_COMPOSITION.md`: `TotalPopulation / PopulationCapacity`, breakpoint comparisons, horizontal remaps, and piecewise interpolation remain exact rational arithmetic until the owning growth domain materializes the final finite gameplay number. The effective utilization multiplier used by the authoritative simulation is also the multiplier surfaced by controller mechanics; controllers and Official AI must not reconstruct a separate approximation.
 
 ---
 
@@ -381,11 +381,50 @@ Finite committed Population is distributed deterministically across engaged lane
 
 Land pressure affects only cells actionable through current territorial adjacency. Remote coast becomes actionable through explicit amphibious mechanics.
 
+### Canonical operation-selector key
+
+Where an authoritative land-operation resolver needs a representation-independent ordering key for the public `CellSelector` shape, V1 uses one canonical structural normalization and serialization. This key exists only for deterministic ordering, hashing, and replay; it is not a gameplay priority rule and does not attempt arbitrary set-equivalence simplification.
+
+Normalize recursively before serialization:
+
+- `CELLS`: sort stable `CellId` values ascending and remove duplicates.
+- `UNION` / `INTERSECTION`: recursively normalize every child, flatten nested children of the same kind, sort children by canonical serialized form, and remove byte-identical duplicate children.
+- `DIFFERENCE`: recursively normalize both operands while preserving left/right order.
+- scalar selector variants (`OWNER`, `SEGMENT`, `TERRAIN`, `FALLOUT`, `POPULATION_BEARING`, `CONQUERABLE`, `COAST`, `SHORELINE`, `CIRCLE`, `STRUCTURE_FIELD`, `STRUCTURE_FIELD_INSTANCE`) preserve their selector kind and values; fields serialize in the fixed public-contract order for that variant. `STRUCTURE_FIELD` serializes `field`, `referenceFactionId`, then `affiliation`; `STRUCTURE_FIELD_INSTANCE` serializes its public fields in their declared contract order.
+- stable IDs and finite numeric values use their canonical deterministic scalar encoding; strings use the canonical UTF-8/string encoding.
+
+The serialized form is the selector-kind tag followed by its normalized fields/children in that order. Source spellings covered by the normalization above therefore produce the same key. Distinct normalized syntax trees may still happen to select the same runtime cell set; V1 does not solve general selector-algebra equivalence for this ordering key.
+
+When two operations have byte-identical canonical target and source selector keys, the stable controller-authored directive key is the final projection-only tie-break. It must never affect faction-wide pressure, ownership, Total/Available/aggregate committed Population, residual state, or casualty totals; changing only that key may change which otherwise selector-equivalent operation object reflects a local decrement, but not any faction-level mechanical result. Operation ID, creation time, controller command ordering, and object-registration order are never tie-breakers.
+
 ## 8.1 Neutral expansion
 
 Neutral territory has no automatic Population defender.
 
 A successfully acquired neutral population-bearing cell costs **1 Population** from the expansion commitment under the baseline ruleset. This is settlement/occupation cost, not combat against a phantom defender.
+
+Whether settlement Population cost applies is snapshotted from the target cell's effective **pre-acquisition** population-bearing state. An ownership-dependent transformation that makes the cell population-bearing only after it becomes owned therefore does not retroactively add settlement cost to that same acquisition.
+
+When an explicit rule makes the effective settlement cost fractional, V1 keeps all public Population quantities whole and stores only the minimum deterministic faction-level residual needed by that rule. The current half-cost contract uses exactly:
+
+```text
+neutralSettlementHalfResidual = 0 | 1
+```
+
+where `1` represents one accrued half-Population of settlement cost. The residual is faction state, not operation state. It is serialized/replayed directly and survives ending, splitting, recreating, or renaming neutral-expansion operations.
+
+For an effective `0.5 Population` settlement cost, every successful qualifying settlement advances the faction ledger exactly once:
+
+```text
+residual 0 -> 1 : debit 0 whole Population
+residual 1 -> 0 : debit 1 whole Population
+```
+
+If several qualifying neutral cells would settle for one faction in the same simulation tick, their settlement facts are processed in stable ascending target `cellId`. Operation ID, controller command ordering, object-registration order, and operation partitioning are not tie-breakers for the faction ledger.
+
+A whole debit produced by that sequence is first charged against the faction's **aggregate surviving neutral-expansion committed Population**, after earlier settlement debits in the same batch. Whether the pair-closing acquisition succeeds depends only on whether that aggregate contains at least one whole Population; it never depends on which operation object happened to own the pair-closing lane. Settlement ownership change, residual transition, and the aggregate debit are one authoritative transaction. If the aggregate contains less than one Population, that ownership transition does not commit and the residual does not advance; completed acquisition progress remains saturated at its required threshold and may resolve on a later legal tick.
+
+After an aggregate debit succeeds, the one-unit reduction is projected back onto concrete neutral-expansion commitments deterministically. The pair-closing lane is considered first; remaining currently resolved neutral-expansion lanes follow in stable `(targetCellId, sourceCellId)` order. The first lane whose backing commitment still has surviving committed Population absorbs the decrement. If aggregate committed Population remains but no currently resolved lane can absorb it, remaining neutral-expansion commitments are ordered by the canonical operation-selector key above: target selector first, source selector second, with the stable directive key used only to break a byte-identical selector-key tie. The first commitment in that order with surviving committed Population absorbs the decrement. Operation ID, creation time, controller command order, and object-registration order are never tie-breakers. This projection may identify a different concrete operation after a legal split/recreation, but it must not change the faction's ownership result, Total/Available/aggregate committed Population, residual state, or aggregate same-tick neutral-expansion pressure. The resolver never substitutes Available Population, a hostile-attack commitment, a counter-response, or a Transport payload for this settlement debit.
 
 Acquisition pacing is owned by [`COMBAT_TUNING.md`](./COMBAT_TUNING.md); terrain modifiers are owned by `TERRAIN_AND_STRUCTURES.md`.
 
@@ -450,6 +489,20 @@ If the hostile-owned cell had no automatic Population defender, ordinary hostile
 
 In multi-faction combat, finite same-faction pressure is aggregated before resolution. A cell changes owner at most once per tick; deterministic simultaneous-resolution rules choose the successful claimant. Unsuccessful third-party claimants do not lose Population merely because they contested the same cell.
 
+## 10.1 Explicit post-capture Population consequences
+
+An explicit mechanic may add a capturing-faction Population consequence after a successful territorial capture. Such a consequence resolves **after ordinary capture casualties** and does not retroactively change the successful claimant or ownership transfer.
+
+For the current one-extra-Population Marsh consequence, every qualifying capture requests exactly one additional capturing-faction casualty even when the target had no automatic defender. Within the capture-resolution batch, all qualifying requests are aggregated **per capturing faction before payment**. Let `R` be that request count, and let `W` be the aggregate surviving committed Population, after ordinary capture casualties, across the distinct winning offensive commitments that produced at least one of those qualifying captures. The winning-commitment source class pays `min(R, W)` first. Only the remaining `R - winningLoss` may then be debited from that faction's Available Population.
+
+The already-determined `winningLoss` is then projected onto the distinct qualifying winning commitments without changing that faction-level amount. Order those commitments by the lexicographically earliest qualifying capture fact they produced, using ascending `(targetCellId, sourceCellId)`; if a true tie remains, use the canonical operation-selector key above only as a projection tie-break. Starting with `remainingWinningLoss = winningLoss`, each commitment in that order pays `min(remainingWinningLoss, survivingCommittedPopulation)` and reduces `remainingWinningLoss` by the amount paid. Continue until `remainingWinningLoss = 0`. Because `winningLoss <= W`, this projection must always exhaust the full already-computed winning loss. Operation ID, creation time, controller command order, and object-registration order never decide the faction-wide loss. Splitting or recreating a legally equivalent attack therefore cannot reduce or increase the capturing faction's total P47 casualty; only the aggregate surviving Population of qualifying winning commitments and Available Population matter.
+
+The resolver stops there. It never drains offensive commitments that produced no qualifying P47 capture, counter-response commitments, or Population aboard Transports. If the qualifying winning commitments plus Available Population cannot supply the full requested total, the unsatisfied remainder is discarded rather than becoming debt.
+
+The extra consequence is capture-triggered. Deliberate relinquishment or a separate mechanic that neutralizes territory without a hostile successful capture does not generate it. A rule that changes capture speed/timing without changing the eventual successful hostile capture does not suppress it.
+
+The same requested amount and debit order must be surfaced through controller mechanics and consumed by Official AI forecasting; neither layer may invent a different casualty source. In the current public controller contract, the debit-pool label `WINNING_OFFENSIVE_COMMITMENTS` denotes this aggregate qualifying-winning-commitment source class.
+
 ---
 
 # 11. Retreat and territorial abandonment
@@ -457,6 +510,14 @@ In multi-faction combat, finite same-faction pressure is aggregated before resol
 Ending/reducing an offensive or counter-response commitment returns surviving Population to Available immediately on a successful controller decision.
 
 Deliberately relinquishing owned territory is a separate political/spatial action. It must not be represented indirectly through withdrawal side effects.
+
+A relinquishment command resolves its selected cells from one immutable pre-command snapshot. Every selected cell must currently belong to the issuing faction and must be legally relinquishable. **Any selected cell containing a persistent structure makes the whole relinquishment command illegal.** This applies equally to completed, damaged, fresh-under-construction, and upgrading structures. V1 does not silently demolish a structure and does not create ownerless persistent structures as a side effect of abandonment.
+
+A successful relinquishment atomically changes every selected cell from the issuer to neutral ownership and then recomputes ordinary derived Capacity, terrain shares, Contacts, and other ownership-derived state. It creates no hostile capture result, no ordinary capture casualty, no nuclear casualty, and no structure-capture consequence. Creating disconnected surviving territory is legal; V1 has no generic connectivity requirement for relinquishment.
+
+Mobile units and operation commitments are faction-owned state rather than ownership-bound cell contents. Relinquishing the ground beneath them does not by itself destroy or casualty that state; normal unit pathing and next-tick operation-lane legality resolve against the resulting map. Likewise, a Capacity decrease from relinquishment never directly kills Population. Total Population may temporarily exceed the new Capacity under the ordinary rule in §7.2.
+
+Existing terrain overlays on a successfully relinquished cell persist unless an explicit rule transforms them. Origin-specific post-relinquishment effects such as adding Fallout are owned by `ORIGIN_TRAIT_CATALOGUE.md` and execute only after ordinary relinquishment succeeds.
 
 ---
 

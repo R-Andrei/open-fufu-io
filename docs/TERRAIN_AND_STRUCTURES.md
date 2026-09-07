@@ -257,6 +257,8 @@ All authoritative consumers query the same effective field profile. Current requ
 
 Controller/Official-AI mechanics projection must expose the same authoritative physical-structure field as a queryable selector/helper. Numeric compatibility fields such as a displayed coverage radius or interception range are derived ergonomic information only; they must never become a second raster-membership authority, especially for area-scaled fields where an exact radius may be irrational.
 
+Every physical persistent structure blocks deliberate relinquishment of its containing cell for as long as that structure exists, regardless of completed level, health, activity, or construction/upgrade state. This registry owns the structure-occupancy predicate only; the atomic relinquishment transaction, ownership result, and failure behavior are owned by `OPEN_FUFU_DESIGN.md`. Relinquishment never uses structure destruction or ownerless-structure state as an implicit workaround.
+
 ## 2.2 Canonical structure-acquisition admission
 
 Every path that would make a persistent structure belong to a faction passes through one authoritative **structure-acquisition admission** contract. The acquisition path is explicit because construction-only restrictions are not ownership restrictions.
