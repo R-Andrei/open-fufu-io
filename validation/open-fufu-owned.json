@@ -7,8 +7,10 @@
     ".github/workflows/rule-composition-validation.yml"
   ],
   "ownedTests": [
+    "tests/ControllerApiContract.test.ts",
     "tests/ControllerStructureFieldProjection.test.ts",
     "tests/EchoRuleRegistry.test.ts",
+    "tests/OfficialAiConfiguration.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
     "tests/OriginRuleManifest.test.ts",
@@ -23,8 +25,27 @@
   ],
   "ownedSources": [
     {
+      "path": "design/official-ai/character-configurations.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "design/official-ai/origin-configurations.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "design/official-ai/origin-trait-support.config.ts",
+      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+    },
+    {
+      "path": "src/core/DetMath.ts",
+      "validators": ["tests/RuleRationalMaterialization.test.ts"]
+    },
+    {
       "path": "src/core/controller/ControllerApi.ts",
-      "validators": ["tests/ControllerStructureFieldProjection.test.ts"]
+      "validators": [
+        "tests/ControllerApiContract.test.ts",
+        "tests/ControllerStructureFieldProjection.test.ts"
+      ]
     },
     {
       "path": "src/core/rules/EchoRuleRegistry.ts",
@@ -73,6 +94,14 @@
     {
       "path": "src/core/rules/StructureFieldGeometry.ts",
       "validators": ["tests/StructureFieldGeometry.test.ts"]
+    },
+    {
+      "path": "tests/contracts/controller-api.typecheck.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
+    },
+    {
+      "path": "tests/types/ControllerApiTypes.ts",
+      "validators": ["tests/ControllerApiContract.test.ts"]
     },
     {
       "path": "scripts/checkDocumentationAuthority.ts",

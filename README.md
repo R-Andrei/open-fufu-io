@@ -6,6 +6,7 @@ Start here for repository authority:
 
 - [`AGENTS.md`](./AGENTS.md) — repository workflow and canonical-authority policy;
 - [`docs/README.md`](./docs/README.md) — canonical owner map;
+- [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md) — repository validation/test ownership and executable-code adoption;
 - [`docs/OPEN_FUFU_DESIGN.md`](./docs/OPEN_FUFU_DESIGN.md) — high-level target game and cross-system invariants;
 - [`docs/OPENFRONT_INTEGRATION_PLAN.md`](./docs/OPENFRONT_INTEGRATION_PLAN.md) — OpenFront → Open Fufu migration/runtime architecture.
 
@@ -48,17 +49,18 @@ npm run start:server-dev
 
 The currently runnable application still contains inherited OpenFront behavior. Running it is useful for migration, regression, rendering, and tooling work; it is not evidence that unimplemented Open Fufu target mechanics already exist.
 
-## Common checks
+## Validation
 
 ```bash
-npm run build-prod
-npm run lint
 npm test
-npm run test:server
-npm run format
+npm run test:coverage
 ```
 
-Use the checks relevant to the files and subsystem being changed, together with the repository-specific requirements in `AGENTS.md` and the owning canonical contract.
+`npm test` and plain/default Vitest run only the explicitly registered Open Fufu-owned test surface. New or deliberately adopted Open Fufu executable/configuration work must ship with appropriate focused validation and be registered in [`validation/open-fufu-owned.json`](./validation/open-fufu-owned.json).
+
+Repository-wide inherited build/typecheck, lint, server/browser/integration, replay, performance, and similar suites are not blanket Open Fufu merge gates during the current redesign phase. They remain available as targeted migration/development utilities when deliberately needed; inherited server tests are explicitly historical under `npm run legacy:test:server` and are not normal acceptance evidence.
+
+See [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md) for the canonical validation boundary.
 
 ## Repository layout
 
