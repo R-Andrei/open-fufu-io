@@ -10,6 +10,7 @@
     "tests/ControllerApiContract.test.ts",
     "tests/ControllerStructureFieldProjection.test.ts",
     "tests/EchoRuleRegistry.test.ts",
+    "tests/FactionRelations.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
@@ -39,6 +40,10 @@
     {
       "path": "src/core/DetMath.ts",
       "validators": ["tests/RuleRationalMaterialization.test.ts"]
+    },
+    {
+      "path": "src/core/FactionRelations.ts",
+      "validators": ["tests/FactionRelations.test.ts"]
     },
     {
       "path": "src/core/controller/ControllerApi.ts",
@@ -93,6 +98,10 @@
     },
     {
       "path": "src/core/rules/StructureFieldGeometry.ts",
+      "validators": ["tests/StructureFieldGeometry.test.ts"]
+    },
+    {
+      "path": "src/core/rules/StructureFieldQualification.ts",
       "validators": ["tests/StructureFieldGeometry.test.ts"]
     },
     {

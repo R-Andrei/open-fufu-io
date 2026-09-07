@@ -1061,7 +1061,7 @@ define("N11", "DECLARATIVE", {
   contributions: [
     hardZero("N11", "FFY_EVENT_YIELD", scope.ffy("ALL"), {
       kind: "EVENT_INSIDE_FIELD",
-      field: "SAM",
+      field: "SAM_LAUNCHER",
       affiliation: "SELF",
     }),
   ],

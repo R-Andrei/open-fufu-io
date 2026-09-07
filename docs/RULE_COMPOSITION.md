@@ -21,7 +21,7 @@ The focused owner defines **what a rule means**. This document defines **how ind
 
 This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
 
-The executable realization lives under `src/core/rules/`. Current V1 game content is bound by rule-composition schema/algebra `RULE_COMPOSITION_VERSION = "2"`. Version 2 adds mandatory structure-field affiliation to the closed condition vocabulary; it does not change the V1 axis inventory or ordinary numeric algebra. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
+The executable realization lives under `src/core/rules/`. Current V1 game content is bound by rule-composition schema/algebra `RULE_COMPOSITION_VERSION = "3"`. Version 3 canonicalizes the structure-field identifier `SAM_LAUNCHER`; version 2 introduced mandatory structure-field affiliation. Neither compatibility delta changes the V1 axis inventory or ordinary numeric algebra. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
 
 ---
 
@@ -95,6 +95,8 @@ weapon.projectileSpeed
 
 The implementation may expose ergonomic enums/types rather than these literal strings. Canonical serialization must nevertheless produce one stable, versioned identity for the same family+scope pair.
 
+An effective rule profile is **faction-local by default**. A rule-bearing contribution from an Origin, Echo, ruleset transform, or other faction-effective source modifies the holder's effective profile only. It does not propagate its modifier to allied factions unless the specific rule explicitly declares a cross-faction effect. Game-wide ally/enemy identity itself is owned only by `OPEN_FUFU_DESIGN.md`.
+
 A typed **eligibility condition** is separate from axis identity when the same quantity is modified only in a particular context, for example:
 
 - source cell is Highland;
@@ -112,7 +114,7 @@ Structure-field conditions are exact-shape predicates rather than an implicit no
 
 ```text
 FORT
-SAM
+SAM_LAUNCHER
 COMMAND_POST
 ```
 
@@ -123,7 +125,7 @@ SELF
 SELF_OR_FIXED_TEAMMATE
 ```
 
-The field condition therefore serializes field identity **and** affiliation. `SELF` means structures owned by the rule holder/reference faction only. `SELF_OR_FIXED_TEAMMATE` additionally admits fixed-team structures; temporary diplomacy or current hostility state does not widen it. Exact spatial realization remains owned by `TERRAIN_AND_STRUCTURES.md`.
+The field condition therefore serializes field identity **and** affiliation. `SELF` means structures owned by the rule holder/reference faction only. `SELF_OR_FIXED_TEAMMATE` additionally admits a fixed teammate as defined by `OPEN_FUFU_DESIGN.md` §12. Exact spatial realization remains owned by `TERRAIN_AND_STRUCTURES.md`.
 
 A rule contribution may also identify a named **component/provenance tag** when another rule must suppress that exact component without suppressing unrelated contributors. Current examples include P03 suppressing hostile Fort-derived defensive pressure and P16 suppressing the ordinary Fallout acquisition-resistance component.
 
@@ -305,19 +307,29 @@ A match must bind the effective-rule schema/algebra version directly or through 
 
 ### 7.1 Rule-composition schema version 2 compatibility delta
 
-`RULE_COMPOSITION_VERSION = "2"` changes the serialized/typed condition schema for structure fields. A field condition that previously had only:
+`RULE_COMPOSITION_VERSION = "2"` changed the serialized/typed condition schema for structure fields. A field condition that previously had only:
 
 ```text
 kind + field
 ```
 
-now requires:
+requires under version 2 and later:
 
 ```text
 kind + field + affiliation
 ```
 
-This is intentionally a compatibility change because affiliation changes condition identity, serialized bytes, and rule applicability. Legacy affiliation-less field conditions are invalid under version 2 rather than receiving an implicit default. Version 2 does not otherwise reorder stages or change the ordinary V1 arithmetic above.
+This is intentionally a compatibility change because affiliation changes condition identity, serialized bytes, and rule applicability. Legacy affiliation-less field conditions are invalid rather than receiving an implicit default. Version 2 did not otherwise reorder stages or change the ordinary V1 arithmetic above.
+
+### 7.2 Rule-composition schema version 3 compatibility delta
+
+`RULE_COMPOSITION_VERSION = "3"` canonicalizes the machine-readable SAM Launcher structure-field identifier:
+
+```text
+SAM_LAUNCHER
+```
+
+The version-2 field ID `SAM` is invalid under version 3 rather than being retained as an alias or silently normalized. This changes typed/serialized field identity and the controller field-selector vocabulary, but it does not change the underlying structure, field geometry, stage order, or ordinary numeric algebra.
 
 ---
 
@@ -337,7 +349,7 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Population utilization curve | AXIS | `population.growth.utilizationProfile`; baseline piecewise curve; P02 replaces profile. |
 | Explicit Population Growth multiplier | AXIS | `population.growth.explicitMultiplier`; consumes terrain-share, City, Origin/Echo contributions through declared subcomponents/slots. |
 | Current Total/Available/committed Population | STATE | Authoritative dynamic resource; P11/P52 etc. consume state. |
-| Peak Total Population | STATE | Monotonic authoritative state consumed by P11's symbolic SAM ownership-cap provider. |
+| Peak Total Population | STATE | Monotonic authoritative state consumed by P11's symbolic SAM Launcher ownership-cap provider. |
 | Neutral settlement Population cost | AXIS | `population.neutralSettlementCost`; baseline 1/cell; P36 transforms with residual accounting. |
 | Automatic defender count per threatened cell | PARAMETER / INVARIANT | Binary 0/1; current traits alter effectiveness/survival, not generic quantity. |
 | Successful defended-capture baseline casualties | PARAMETER + CUSTOM lifecycle | Baseline defender -1/attacker -1; P38/P47 alter specific post-capture consequences rather than one generic damage scalar. |
@@ -402,12 +414,12 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Port/Factory repair radius | AXIS | `structure.repair.radius[type,service]`; supports post-Echo contextual specialization/final override by target unit where explicitly authored. |
 | Port/Factory repair rate | AXIS | `structure.repair.rate[type,service]`; supports post-Echo contextual specialization by target unit. |
 | Factory simultaneous repair capacity | PARAMETER / baseline | P34 does not change simultaneous repair capacity. |
-| Silo/SAM charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
-| Silo/SAM recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
-| SAM interception range | AXIS | `structure.interception.range[SAM]`; P40 + Echo; N11 consumes this same effective field after projection. |
+| Silo/SAM Launcher charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
+| Silo/SAM Launcher recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
+| SAM Launcher interception range | AXIS | `structure.interception.range[SAM_LAUNCHER]`; P40 + Echo; N11 consumes this same effective field after projection. |
 | Observation radius | AXIS | `structure.observation.radius`; under P49 the same effective radius specializes blackout field. |
 | Observation effect (`REVEAL`/`BLACKOUT`) | STRUCTURAL AXIS | P49 changes profile; numeric radius remains separately composable. |
-| SAM ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains owned by the focused SAM/strategic-weapons mechanic. |
+| SAM Launcher ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains owned by the focused SAM Launcher/strategic-weapons mechanic. |
 | Silo weapon-access set | CAPABILITY AXIS | Level/profile + weapon restrictions such as P25. |
 | Current ownership acquisition path | STATE | Exact owner-epoch provenance `PURCHASE_BUILD`, `GRANT`, or `CAPTURE_TRANSFER`; P34 consumes `CAPTURE_TRANSFER`. |
 
@@ -548,7 +560,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P08 | BASE REPLACEMENT | `ffy.externalWartimeTradeMultiplier`: `0.50 -> 1.00`. |
 | P09 | MULTI-AXIS | Fort coverage area `+10%`; Fort effective defensive pressure `+9%`; Fort build/upgrade price `-8%` on applicable Fort transaction hooks. |
 | P10 | NUMERIC AXIS | `weapon.projectileSpeed[...] +100%`; exact projectile class/stage scope remains strategic-weapons-owned. |
-| P11 | DYNAMIC CAP + TERMINAL COST | SAM build **and upgrade** FFY cost `HARD_ZERO`; symbolic dynamic `structure.ownershipCap[SAM] = floor(peakTotalPopulation / 25,000)` provider composes with N07 through `MIN`. |
+| P11 | DYNAMIC CAP + TERMINAL COST | SAM Launcher build **and upgrade** FFY cost `HARD_ZERO`; symbolic dynamic `structure.ownershipCap[SAM_LAUNCHER] = floor(peakTotalPopulation / 25,000)` provider composes with N07 through `MIN`. |
 | P12 | NUMERIC AXIS | `unit.movementSpeed[TRANSPORT] +25%`. |
 | P13 | CONDITIONAL PRESSURE | Mountain target defensive-pressure contribution `+33%`; combat aggregation retains terrain/source provenance. |
 | P14 | CONDITIONAL FFY | Desert-located positive FFY event `+33%` ordinary yield contribution. |
@@ -564,7 +576,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P24 | CONDITIONAL FFY | event inside a `SELF` Fort field `+20%`; exact field realization remains structure-owned. |
 | P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection remains strategic-weapons-owned. |
 | P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
-| P27 | CAPABILITY | SAM may attack ships; exact targeting/damage/cadence/charge arbitration remains focused SAM/strategic-weapons behavior. |
+| P27 | CAPABILITY | SAM Launcher may attack ships; exact targeting/damage/cadence/charge arbitration remains focused SAM Launcher/strategic-weapons behavior. |
 | P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order remains amphibious-lifecycle behavior. |
 | P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; mobile launcher charge/readiness lifecycle remains strategic-weapons-owned. |
 | P30 | MIXED | Warship movement `+50%`; piracy event `3×`; hard prohibit Warship naval gunfire against ships while preserving Trade capture. |
@@ -577,7 +589,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing can emit the authored Fort-grant boundary while amphibious execution and generic structure admission remain with their focused owners. |
 | P38 | CUSTOM capture consequence | automatic defender survives successful capture and remains/returns Available. |
 | P39 | STRUCTURAL SPAWN PROFILE | mode-independent two-origin/split-footprint profile; exact Strategic/Random/Fixed resolution is owned by `STRATEGIC_SPAWN.md`. |
-| P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`; the same effective range feeds N11 field geometry. |
+| P40 | MIXED PROFILE | SAM Launcher range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`; the same effective range feeds N11 field geometry. |
 | P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; fresh construction targets L5 directly and completes after the canonical City build duration without hidden intermediate levels. |
 | P42 | MIXED | Warship FFY purchase cost `HARD_ZERO`; purchase Population cost `2,000`; attack range Origin `-33%`. |
 | P43 | STRUCTURAL CHASSIS PROFILE | Tank -> Heavy Artillery; establishes cost/build/speed/range/health/attack/capability profile before Tank-scoped Echo specialization. |
@@ -590,7 +602,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P50 | STRUCTURAL FIELD PROJECTION | Fort also projects offense equal to **effective** Fort defensive magnitude; cross-type Fort/Command overlap uses domain complement reducer. |
 | P51 | STRUCTURAL FIELD PROJECTION | Command Post also projects defense equal to **effective** Command offensive magnitude; cross-type reducer as above. |
 | P52 | CUSTOM passive source | All/general FFY source `max(0, Capacity-TotalPopulation)/250`. |
-| P53 | CUSTOM passive source | All/general FFY source `2,000/s × ready persistent Silo charges`; excludes P29/SAM charges. |
+| P53 | CUSTOM passive source | All/general FFY source `2,000/s × ready persistent Silo charges`; excludes P29/SAM Launcher charges. |
 | P54 | STRUCTURAL SPAWN PROFILE | footprint shape compact -> canonical star profile; exact resolver realization is owned by `STRATEGIC_SPAWN.md`; quota/Starting Population unchanged. |
 
 ---
@@ -609,7 +621,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | N08 | HARD ZERO | effective Fort defensive-pressure magnitude exactly zero; coverage remains; P09/Echo cannot resurrect; P50 mirrors effective zero. |
 | N09 | HARD BUILD PROHIBITION | cannot build Factories; terrain permission/free price cannot bypass; acquired Factory may still function. |
 | N10 | NUMERIC AXIS | Fort coverage **area** Origin `-25%`; same Origin slot as P09 area modifier. |
-| N11 | TERMINAL HARD ZERO | qualifying FFY event inside a `SELF` SAM field yields exactly zero after ordinary percentages; that field is the current effective interception range including P40/Echo. |
+| N11 | TERMINAL HARD ZERO | qualifying FFY event inside a `SELF` SAM Launcher field yields exactly zero after ordinary percentages; that field is the current effective interception range including P40/Echo. |
 | N12 | HARD BUILD PROHIBITION | cannot build Warships; P42 Population funding/free FFY cannot bypass. |
 | N13 | LANDING SURVIVAL/CUSTOM BOUNDARY | `50%` carried Population dies at landing; exact lifecycle point/rounding remains amphibious-lifecycle-owned. |
 | N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; canonical snapshot definition remains `FFY_ECONOMY.md`-owned. |
@@ -654,8 +666,8 @@ Echo modifiers are ordinary signed percentage specializations unless their Echo 
 | Observation radius | Observation Post | 1 | `structure.observation.radius` — also blackout radius under P49 |
 | Coverage area | Command Post | 1 | `structure.field.coverageArea[COMMAND_POST]` |
 | Offensive-pressure magnitude | Command Post | 1 | `structure.field.pressureMagnitude[COMMAND_POST,OFFENSE]` |
-| Interception range | SAM | 1 | `structure.interception.range[SAM]` |
-| Recharge/cooldown time | SAM | 1 | `structure.charge.rechargeTime[SAM]` |
+| Interception range | SAM Launcher | 1 | `structure.interception.range[SAM_LAUNCHER]` |
+| Recharge/cooldown time | SAM Launcher | 1 | `structure.charge.rechargeTime[SAM_LAUNCHER]` |
 | Recharge/cooldown time | Silo | 1 | `structure.charge.rechargeTime[MISSILE_SILO]` |
 | Mobile-unit FFY purchase cost | Warship/Tank | 2 | `unit.transaction.purchaseCost[unit]` |
 | Mobile-unit movement speed | Warship/Tank | 2 | `unit.movementSpeed[unit]` |
@@ -757,11 +769,11 @@ Canonical examples:
 - N09 + P46: Tundra terrain may become structure-eligible, but Factory construction remains forbidden by N09.
 - N12 + P42: a Population-funded/zero-FFY Warship is still unbuildable.
 - N06 + P17: a cheaper ordinary FFY upgrade remains a forbidden FFY upgrade transaction.
-- P11 + N07: P11's dynamic SAM entitlement and N07's one-per-type cap both target `STRUCTURE_OWNERSHIP_CAP`; `MIN` produces the most restrictive currently applicable hard cap.
+- P11 + N07: P11's dynamic SAM Launcher entitlement and N07's one-per-type cap both target `STRUCTURE_OWNERSHIP_CAP`; `MIN` produces the most restrictive currently applicable hard cap.
 
 ## 12.6 N11 hard-zero FFY
 
-Eligible ordinary yield percentages normalize first. N11 then hard-zeroes a qualifying event whose event cell lies inside the union of `SELF` SAM fields. Those fields use the same current effective interception range as SAM interception itself, including P40 and later SAM-range Echo specialization. Charge readiness does not change field geometry. No later ordinary positive yield specialization resurrects the result.
+Eligible ordinary yield percentages normalize first. N11 then hard-zeroes a qualifying event whose event cell lies inside the union of `SELF` SAM Launcher fields. Those fields use the same current effective interception range as SAM Launcher interception itself, including P40 and later SAM-range Echo specialization. Charge readiness does not change field geometry. No later ordinary positive yield specialization resurrects the result.
 
 ## 12.7 P37 + N15 Transport embark cost
 
@@ -848,14 +860,14 @@ The following use explicit structural/Origin/Echo/contextual ordering unless a f
 
 - P43 Tank -> Heavy Artillery, then Tank-scoped cost/speed/range/damage/health Echoes;
 - P49 Observation -> blackout, then Observation-radius Echo;
-- P40 effective SAM range/recharge profile, then SAM range/recharge Echoes;
+- P40 effective SAM Launcher range/recharge profile, then SAM Launcher range/recharge Echoes;
 - P25 Hydrogen cost/blast-area Origin profile, then matching weapon Echo specialization;
 - P31 consumes the already-effective Port repair field in `CONTEXTUAL_SCALAR`, after ordinary Port/Echo specialization;
 - P34 Factory repair rate likewise runs contextually after ordinary Factory/Echo repair-rate specialization, while P34's 8-cell Factory repair radius is a conditional final override.
 
 ## 13.4 Hard-zero purchase/upgrade cost versus percentage cost modifiers
 
-P11 SAM build/upgrade FFY cost and P42 Warship FFY purchase cost are true zero-cost Origin rules. Ordinary Echo/ruleset percentage cost modifiers must not turn zero back into a positive value.
+P11 SAM Launcher build/upgrade FFY cost and P42 Warship FFY purchase cost are true zero-cost Origin rules. Ordinary Echo/ruleset percentage cost modifiers must not turn zero back into a positive value.
 
 P21/P26 are different: they are transaction-consumption rules that still require ordinary affordability before spending zero. They must not be encoded as the same `HARD_ZERO` price operator.
 
@@ -868,8 +880,8 @@ The composition registry must not invent or duplicate focused subsystem realizat
 Stable boundaries relevant to the current V1 profile include:
 
 - Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
-- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, and persistent Silo/SAM structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
-- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, and persistent Silo/SAM Launcher structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
+- `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM Launcher weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
 - `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
 - `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.
 - Focused visibility/territory owners retain concealment, manifestation, abandonment, and other lifecycle realization where this inventory exposes only a profile/custom boundary.
@@ -922,7 +934,7 @@ Custom-domain declarations name the genuine lifecycle/resolver boundary instead 
 
 Singleton stages are validated against **scope and typed-condition-conjunction overlap**, not merely axis/stage identity. Two singleton transforms whose conjunctions are provably mutually exclusive may coexist; transforms that may apply simultaneously remain a validation error.
 
-Runtime scope/condition payloads use exact discriminated-union shapes. Unknown extra fields are rejected rather than being semantically ignored while still changing serialized bytes. Field conditions require registered `field` and `affiliation` values; affiliation omission is invalid rather than defaulted. Set-valued capability/component operands are sorted and deduplicated canonically.
+Runtime scope/condition payloads use exact discriminated-union shapes. Unknown extra fields are rejected rather than being semantically ignored while still changing serialized bytes. Field conditions require registered `field` and `affiliation` values; affiliation omission and legacy version-2 `SAM` field IDs are invalid rather than defaulted or aliased. Set-valued capability/component operands are sorted and deduplicated canonically.
 
 Controllers should consume materialized typed effective mechanics/quotes and authoritative field selectors such as the existing `MechanicsApi`/`CellSelector` contracts. They should not reconstruct raw precedence or structure-field rasterization from Pxx/Nxx/Echo lists.
 
@@ -950,7 +962,7 @@ Before a rule-bearing catalogue/ruleset version is deployable, static validation
 14. every Pxx/Nxx direct effect maps to one or more valid axes/constraints/dynamic providers or is explicitly registered under the exact custom lifecycle domain it requires;
 15. representative golden combinations produce the authoritative results in §12;
 16. source provenance is valid for the semantic stage it authors, while provenance and execution stage remain independent concepts;
-17. malformed runtime scope/condition payloads, affiliation-less/unknown-affiliation structure-field conditions, wildcard equality predicates, and noncanonical unknown fields are rejected;
+17. malformed runtime scope/condition payloads, affiliation-less/unknown-affiliation structure-field conditions, legacy `SAM` field IDs, wildcard equality predicates, and noncanonical unknown fields are rejected;
 18. set-valued operands have one canonical sorted/deduplicated identity;
 19. focused subsystem ownership boundaries are surfaced explicitly rather than silently guessed by the normalizer or duplicated as secondary mechanics.
 
@@ -962,7 +974,7 @@ Property tests additionally permute raw static/dynamic/custom input streams and 
 
 # 17. Implementation and conformance boundary
 
-The V1 composition foundation under schema version 2 defines and requires:
+The V1 composition foundation under schema version 3 defines and requires:
 
 1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
 2. code-readable axis/slot/operator/unit/reducer types and registry;

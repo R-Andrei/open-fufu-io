@@ -85,7 +85,7 @@ type DecisionContext = Parameters<OpenFufuController<FixtureMemory>["decide"]>[0
 const p27AntiShipAttack: SamAntiShipAttackSpec = {
   targetUnitTypes: ["TRANSPORT_SHIP", "WARSHIP"],
   damage: 250,
-  eligibilityField: "SAM",
+  eligibilityField: "SAM_LAUNCHER",
   lineOfSightRequired: false,
   chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT",
   sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST",

@@ -1,6 +1,6 @@
 import { pow2 as deterministicPow2 } from "../DetMath";
 
-export const RULE_COMPOSITION_VERSION = "2" as const;
+export const RULE_COMPOSITION_VERSION = "3" as const;
 export const BASIS_POINTS_SCALE = 10_000;
 
 export const TERRAIN_SCOPE_IDS = [
@@ -65,7 +65,11 @@ export const STRUCTURE_ACQUISITION_PATHS = [
 export type StructureAcquisitionPath =
   (typeof STRUCTURE_ACQUISITION_PATHS)[number];
 
-export const STRUCTURE_FIELD_IDS = ["FORT", "SAM", "COMMAND_POST"] as const;
+export const STRUCTURE_FIELD_IDS = [
+  "FORT",
+  "SAM_LAUNCHER",
+  "COMMAND_POST",
+] as const;
 export type StructureFieldId = (typeof STRUCTURE_FIELD_IDS)[number];
 export const STRUCTURE_FIELD_AFFILIATIONS = [
   "SELF",
@@ -206,7 +210,7 @@ export type RuleCondition =
     }
   | {
       readonly kind: "SOURCE_INSIDE_FIELD";
-      readonly field: Exclude<StructureFieldId, "SAM">;
+      readonly field: Exclude<StructureFieldId, "SAM_LAUNCHER">;
       readonly affiliation: StructureFieldAffiliation;
     }
   | {

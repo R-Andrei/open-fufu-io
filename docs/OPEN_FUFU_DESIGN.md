@@ -423,7 +423,7 @@ Deliberately relinquishing owned territory is a separate political/spatial actio
 
 # 12. Teams, diplomacy, and hostility state
 
-Fixed-team modes use explicit immutable team membership for the match. Team members are allies rather than opponents for victory/reward accounting where the relevant subsystem says so.
+Fixed-team modes use explicit immutable team membership for the match.
 
 Open Fufu V1 has no declaration-of-war, treaty, negotiated-peace, relation-score, war-score, or mutable-diplomacy subsystem. `atWar` is instead a **symmetric deterministic state of recent controller-directed hostility** used by mechanics that need a stable notion of active war.
 
@@ -436,6 +436,8 @@ HostilitySide(faction)
 = fixed team identity, when the faction belongs to a fixed team
 = faction identity, otherwise
 ```
+
+For any two distinct active factions, the game-wide diplomatic relation is derived only from those immutable sides: members of the same `HostilitySide` are **allies**, and members of different `HostilitySide`s are **enemies**. V1 has no neutral or third diplomatic relation, and this ally/enemy relation does not change during the match. It is independent of `atWar`.
 
 An unteamed Minor Faction is therefore its own hostility side. Members of the same hostility side can never be `atWar` with one another.
 

@@ -546,7 +546,7 @@ export type SamAntiShipTargetType = "TRANSPORT_SHIP" | "WARSHIP";
 export interface SamAntiShipAttackSpec {
   readonly targetUnitTypes: readonly SamAntiShipTargetType[];
   readonly damage: number;
-  readonly eligibilityField: Extract<StructureFieldId, "SAM">;
+  readonly eligibilityField: Extract<StructureFieldId, "SAM_LAUNCHER">;
   readonly lineOfSightRequired: false;
   readonly chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT";
   readonly sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST";
