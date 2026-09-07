@@ -96,6 +96,10 @@
       "validators": ["tests/StructureFieldGeometry.test.ts"]
     },
     {
+      "path": "src/core/rules/StructureFieldQualification.ts",
+      "validators": ["tests/StructureFieldGeometry.test.ts"]
+    },
+    {
       "path": "tests/contracts/controller-api.typecheck.ts",
       "validators": ["tests/ControllerApiContract.test.ts"]
     },
