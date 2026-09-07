@@ -289,6 +289,19 @@ Available Population is the pool eligible for new commitments and automatic defe
 
 Public Population quantities are non-negative whole integers. Deterministic fixed-point/residual state may exist internally for fractional recurring mechanics; such residuals must not be escapable through operation churn.
 
+### 7.3.1 One-shot Population losses, grants, and transfers
+
+A focused mechanic may remove, grant, or transfer Population at one authoritative lifecycle transition. Unless that mechanic explicitly defines a different rule, V1 uses these accounting invariants:
+
+- the resolved one-shot amount is a non-negative whole integer before authoritative mutation; no implicit fractional residual is carried into later unrelated events;
+- removing Population from a named committed bucket removes the same amount from Total Population in that atomic transition;
+- a direct grant or transfer receipt enters Available Population unless the focused mechanic explicitly names another destination;
+- Population Capacity is **not** a universal receipt cap: a direct grant or transfer may raise Total Population above Capacity unless the focused mechanic explicitly defines a Capacity clamp;
+- an over-Capacity faction remains legal and simply receives zero ordinary positive Population growth until ordinary growth eligibility returns;
+- a transfer freezes its authoritative amount before either side is mutated, then applies the source debit and recipient credit exactly once as one deterministic consequence; it must not duplicate Population or silently discard transfer overflow.
+
+The focused mechanic owns its trigger, source bucket, amount/rounding, recipient, and whether the result is a loss, grant, or conserved transfer. This section owns only the common Population-accounting behavior once those inputs are known.
+
 ## 7.4 Initial Population
 
 Ordinary V1 Initial Territory is **1,000 population-bearing cells**. Starting Population is **50% of final modified Initial Territory** before explicit Starting-Population modifiers, giving an ordinary unmodified start of `500 / 1,000`.

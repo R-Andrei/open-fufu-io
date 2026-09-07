@@ -5,6 +5,7 @@
 // - docs/CONTROLLER_MEMORY.md — persistent controller-memory contract.
 // - docs/STRATEGIC_SPAWN.md — Strategic Spawn mechanics and resolver semantics.
 // - docs/TERRAIN_AND_STRUCTURES.md — structure admission/grant/capture semantics.
+// - docs/NAVAL_AND_STRATEGIC_WEAPONS.md — naval, Transport, and strategic-weapon mechanics.
 //
 // This file deliberately does not expose inherited mutable Game/Player/Unit/
 // Execution internals. Runtime adapters must project legal immutable observations
@@ -306,6 +307,15 @@ export type CellSelector =
       readonly referenceFactionId: FactionId;
       readonly affiliation: StructureFieldAffiliation;
     }
+  | {
+      /**
+       * Authoritative effective field of one lawfully observable physical structure.
+       * Runtime owns field geometry; inactive or field-mismatched structures resolve empty.
+       */
+      readonly kind: "STRUCTURE_FIELD_INSTANCE";
+      readonly structureId: StructureId;
+      readonly field: StructureFieldId;
+    }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
   | {
       readonly kind: "INTERSECTION";
@@ -541,6 +551,27 @@ export interface TerrainMechanicsSpec {
 
 export type ObservationStructureEffect = "NONE" | "REVEAL" | "ENEMY_BLACKOUT";
 
+export type SamAntiShipTargetType = "TRANSPORT_SHIP" | "WARSHIP";
+
+/**
+ * Effective autonomous SAM-vs-ship profile. Presence means the structure can
+ * attack ships. Exact spatial eligibility uses eligibilityField through a
+ * STRUCTURE_FIELD_INSTANCE selector; numeric interceptionRange is ergonomic only.
+ * chargeCapacity/rechargeTicks remain the shared effective SAM charge state.
+ */
+export interface SamAntiShipAttackSpec {
+  readonly targetUnitTypes: readonly SamAntiShipTargetType[];
+  readonly damage: number;
+  readonly eligibilityField: Extract<StructureFieldId, "SAM">;
+  readonly lineOfSightRequired: false;
+  readonly chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT";
+  readonly sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST";
+  readonly firingCadence: "ONE_PASS_PER_TICK_SPEND_EACH_READY_CHARGE_AT_MOST_ONCE";
+  readonly batteryOrder: "ASCENDING_STABLE_STRUCTURE_ID";
+  readonly targetOrder: "TRANSPORT_THEN_DISTANCE_THEN_STABLE_UNIT_ID";
+  readonly requiresAtWar: false;
+}
+
 export interface StructureMechanicsSpec {
   readonly type: StructureType;
   readonly level: StructureLevel;
@@ -558,12 +589,15 @@ export interface StructureMechanicsSpec {
   readonly tankConstructionSpeedMultiplier?: number;
   readonly chargeCapacity?: number;
   readonly rechargeTicks?: number;
-  /** Ergonomic effective range; use STRUCTURE_FIELD for authoritative SAM cells. */
+  /** Ergonomic effective range; use structure-field selectors for authoritative SAM cells. */
   readonly interceptionRange?: number;
   /** Ergonomic only; use STRUCTURE_FIELD/OBSERVATION for authoritative cells. */
   readonly observationRadius?: number;
   readonly observationEffect?: ObservationStructureEffect;
+  /** Compatibility capability flag; prefer antiShipAttack for effective behavior. */
   readonly canAttackShips?: boolean;
+  /** Present for an effective autonomous SAM anti-ship capability such as P27. */
+  readonly antiShipAttack?: SamAntiShipAttackSpec;
   readonly weaponAccess?: readonly StrategicWeaponType[];
 }
 
@@ -603,11 +637,38 @@ export type TransportEmbarkSourceRule =
   | "OWNED_COAST_OR_SHORE"
   | "OWNED_ACTIVE_PORT";
 
+export type TransportLandingPopulationRounding = "FLOOR";
+
+export interface TransportLandingCalculation {
+  readonly carriedPopulation: number;
+  readonly survivalFraction: number;
+  readonly survivingPopulation: number;
+  readonly casualtyPopulation: number;
+  readonly createsAmphibiousCommitment: boolean;
+}
+
+export interface TransportDestructionPopulationTransferSpec {
+  readonly trigger: "HOSTILE_CREDITED_DESTRUCTION";
+  readonly amount: "CARRIED_POPULATION_AT_DESTRUCTION";
+  readonly recipient: "CREDITED_DESTROYER";
+  readonly destination: "AVAILABLE_POPULATION";
+  readonly capacityHandling: "ALLOW_OVER_CAPACITY";
+  readonly sameSideCreditQualifies: false;
+  readonly uncreditedDestructionQualifies: false;
+}
+
+/** Effective Transport-destruction consequences from the prospective destroyer's rules. */
+export interface TransportDestructionMechanicsSpec {
+  readonly carriedPopulationLoss: "REMOVE_ALL_FROM_PREVIOUS_OWNER";
+  readonly creditedPopulationTransfer?: TransportDestructionPopulationTransferSpec;
+}
+
 export interface TransportMechanicsSpec {
   readonly unit: UnitMechanicsSpec;
   readonly activeOwnershipCap: number;
   readonly embarkSourceRule: TransportEmbarkSourceRule;
   readonly landingPopulationSurvivalFraction: number;
+  readonly landingPopulationRounding: TransportLandingPopulationRounding;
   readonly returnPopulationSurvivalFraction: number;
   /** Conditional post-landing grant contract; admission can still skip the grant. */
   readonly successfulLandingGrant?: {
@@ -696,13 +757,23 @@ export interface MechanicsApi {
    */
   structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
-  unitTypeSpec(
-    type: MobileUnitType,
-    factionId?: FactionId,
-  ): UnitMechanicsSpec;
+  unitTypeSpec(type: MobileUnitType, factionId?: FactionId): UnitMechanicsSpec;
   /** Hidden and unknown unit IDs are indistinguishable and return undefined. */
   unitSpec(unitId: UnitId): UnitMechanicsSpec | undefined;
   transportSpec(factionId?: FactionId): TransportMechanicsSpec;
+  /** Exact whole-Population landing result for the current effective Transport rules. */
+  transportLanding(
+    carriedPopulation: number,
+    factionId?: FactionId,
+  ): TransportLandingCalculation;
+  /**
+   * Effective destruction consequences for a faction that would receive canonical
+   * Transport-destruction credit. This projects rules such as P28 without exposing
+   * Origin-specific branching to controllers.
+   */
+  transportDestructionSpec(
+    destroyerFactionId?: FactionId,
+  ): TransportDestructionMechanicsSpec;
 
   weaponSpec(
     type: StrategicWeaponType,
@@ -714,9 +785,7 @@ export interface MechanicsApi {
     cellId: CellId,
     factionId?: FactionId,
   ): StructureBuildQuote;
-  structureUpgradeQuote(
-    structureId: StructureId,
-  ): StructureUpgradeQuote;
+  structureUpgradeQuote(structureId: StructureId): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
     producerId: StructureId,
