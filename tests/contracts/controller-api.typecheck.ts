@@ -74,30 +74,6 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
       ? context.factions.atWar(context.me.id, otherFaction.id)
       : false;
 
-    const samSpec = context.mechanics.structureTypeSpec(
-      "SAM_LAUNCHER",
-      1,
-      context.me.id,
-    );
-    const antiShipDamage = samSpec.antiShipAttack?.damage ?? 0;
-    const activeSam = context.structures
-      .list(context.me.id)
-      .find(
-        (structure) => structure.type === "SAM_LAUNCHER" && structure.active,
-      );
-    const antiShipCoveredCells =
-      activeSam && samSpec.antiShipAttack
-        ? context.cells.count({
-            kind: "STRUCTURE_FIELD_INSTANCE",
-            structureId: activeSam.id,
-            field: samSpec.antiShipAttack.eligibilityField,
-          })
-        : 0;
-    const landing = context.mechanics.transportLanding(5, context.me.id);
-    const destruction = context.mechanics.transportDestructionSpec(context.me.id);
-    const transferDestination =
-      destruction.creditedPopulationTransfer?.destination ?? "NONE";
-
     return {
       memory: {
         ...context.memory,
@@ -109,29 +85,10 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
           kind: "TEAM_SIGNAL",
           key: "fixture:signal",
           channel: "contract-fixture",
-          payload: {
-            atWar,
-            tick: context.game.tick,
-            antiShipDamage,
-            antiShipCoveredCells,
-            landingSurvivors: landing.survivingPopulation,
-            transferDestination,
-          },
+          payload: { atWar, tick: context.game.tick },
         },
       ],
-      debug: [
-        { kind: "METRIC", name: "fixture.atWar", value: atWar },
-        {
-          kind: "METRIC",
-          name: "fixture.antiShipCoveredCells",
-          value: antiShipCoveredCells,
-        },
-        {
-          kind: "METRIC",
-          name: "fixture.landingSurvivors",
-          value: landing.survivingPopulation,
-        },
-      ],
+      debug: [{ kind: "METRIC", name: "fixture.atWar", value: atWar }],
     };
   },
 };
