@@ -12,6 +12,7 @@ import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
   materializeCompiledCapRule,
   materializeCompiledScalarRule,
+  materializeCompiledScalarScaleFactor,
   type RuleDynamicState,
 } from "../src/core/rules/RuleMaterialization";
 
@@ -94,6 +95,32 @@ describe("compiled static + dynamic materialization", () => {
         { ...baseState, territorialContactCount: 3 },
       ),
     ).toBeCloseTo(1.2);
+  });
+
+  it("constructs exact percentage scales before number addition can round", () => {
+    const boundary: RuleContribution = {
+      axis: "STRUCTURE_FIELD_COVERAGE_AREA",
+      scope: { kind: "STRUCTURE", structure: "FORT" },
+      stage: "ORIGIN_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ORIGIN",
+      sourceId: "origin:test-safe-integer-scale-boundary",
+      valueUnit: "BASIS_POINTS",
+      value: Number.MAX_SAFE_INTEGER,
+    };
+    const profile = profileWith([], [boundary]);
+    expect(
+      materializeCompiledScalarScaleFactor(
+        profile,
+        RULE_AXIS_REGISTRY,
+        "STRUCTURE_FIELD_COVERAGE_AREA",
+        { kind: "STRUCTURE", structure: "FORT" },
+        baseState,
+      ),
+    ).toEqual({
+      numerator: 9_007_199_254_750_991n,
+      denominator: 10_000n,
+    });
   });
 
   it("materializes large exact P17 rationals without numerator/denominator overflow", () => {

@@ -65,7 +65,7 @@ At accepted launch commit, the authoritative simulation binds the effective moti
 ## 1.3 Atom and Hydrogen blast geometry
 
 | Weapon | Fully affected inner radius | Irregular outer radius |
-| --- | ---: |
+| --- | ---: | ---: |
 | Atom Bomb | **12** | **30** |
 | Hydrogen Bomb | **80** | **100** |
 

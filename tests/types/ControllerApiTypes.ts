@@ -6,10 +6,13 @@ import type {
   HostilityMechanicsSpec,
   PersistentDirective,
   PurchasableUnitType,
+  SamAntiShipAttackSpec,
   StructureAcquisitionPath,
   StructureBuildQuote,
   StructureMechanicsSpec,
   StructureView,
+  TransportDestructionMechanicsSpec,
+  TransportLandingCalculation,
   TransportMechanicsSpec,
   UnitAttackSpec,
 } from "../../src/core/controller/ControllerApi";
@@ -50,6 +53,72 @@ const conqueredFactorySpec: StructureMechanicsSpec = {
   tankConstructionSpeedMultiplier: 1.5,
 };
 void conqueredFactorySpec;
+
+const p27AntiShipAttack: SamAntiShipAttackSpec = {
+  targetUnitTypes: ["TRANSPORT_SHIP", "WARSHIP"],
+  damage: 250,
+  rangeRule: "CURRENT_CELL_INSIDE_EFFECTIVE_SAM_RANGE",
+  lineOfSightRequired: false,
+  chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT",
+  sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST",
+  firingCadence: "ONE_PASS_PER_TICK_SPEND_EACH_READY_CHARGE_AT_MOST_ONCE",
+  batteryOrder: "ASCENDING_STABLE_STRUCTURE_ID",
+  targetOrder: "TRANSPORT_THEN_DISTANCE_THEN_STABLE_UNIT_ID",
+  requiresAtWar: false,
+};
+void p27AntiShipAttack;
+
+const p27SamSpec: StructureMechanicsSpec = {
+  type: "SAM_LAUNCHER",
+  level: 3,
+  chargeCapacity: 3,
+  rechargeTicks: 600,
+  interceptionRange: 80,
+  canAttackShips: true,
+  antiShipAttack: p27AntiShipAttack,
+};
+void p27SamSpec;
+
+const p28DestructionSpec: TransportDestructionMechanicsSpec = {
+  carriedPopulationLoss: "REMOVE_ALL_FROM_PREVIOUS_OWNER",
+  creditedPopulationTransfer: {
+    trigger: "HOSTILE_CREDITED_DESTRUCTION",
+    amount: "CARRIED_POPULATION_AT_DESTRUCTION",
+    recipient: "CREDITED_DESTROYER",
+    destination: "AVAILABLE_POPULATION",
+    capacityHandling: "ALLOW_OVER_CAPACITY",
+    sameSideCreditQualifies: false,
+    uncreditedDestructionQualifies: false,
+  },
+};
+void p28DestructionSpec;
+
+const n13LandingPolicy: Pick<
+  TransportMechanicsSpec,
+  "landingPopulationSurvivalFraction" | "landingPopulationRounding"
+> = {
+  landingPopulationSurvivalFraction: 0.5,
+  landingPopulationRounding: "FLOOR",
+};
+void n13LandingPolicy;
+
+const n13OddLanding: TransportLandingCalculation = {
+  carriedPopulation: 5,
+  survivalFraction: 0.5,
+  survivingPopulation: 2,
+  casualtyPopulation: 3,
+  createsAmphibiousCommitment: true,
+};
+void n13OddLanding;
+
+const n13ZeroSurvivorLanding: TransportLandingCalculation = {
+  carriedPopulation: 1,
+  survivalFraction: 0.5,
+  survivingPopulation: 0,
+  casualtyPopulation: 1,
+  createsAmphibiousCommitment: false,
+};
+void n13ZeroSurvivorLanding;
 
 const cappedStructureQuote: StructureBuildQuote = {
   legal: false,

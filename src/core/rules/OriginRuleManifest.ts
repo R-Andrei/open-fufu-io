@@ -601,7 +601,11 @@ define("P18", "DECLARATIVE", {
       "GLOBAL_OFFENSIVE_PRESSURE",
       scope.global,
       10_000,
-      { kind: "SOURCE_INSIDE_FIELD", field: "FORT" },
+      {
+        kind: "SOURCE_INSIDE_FIELD",
+        field: "FORT",
+        affiliation: "SELF_OR_FIXED_TEAMMATE",
+      },
     ),
   ],
 });
@@ -647,6 +651,7 @@ define("P24", "DECLARATIVE", {
     pct("P24", "FFY_EVENT_YIELD", scope.ffy("ALL"), 2000, {
       kind: "EVENT_INSIDE_FIELD",
       field: "FORT",
+      affiliation: "SELF",
     }),
   ],
 });
@@ -1057,6 +1062,7 @@ define("N11", "DECLARATIVE", {
     hardZero("N11", "FFY_EVENT_YIELD", scope.ffy("ALL"), {
       kind: "EVENT_INSIDE_FIELD",
       field: "SAM",
+      affiliation: "SELF",
     }),
   ],
 });
