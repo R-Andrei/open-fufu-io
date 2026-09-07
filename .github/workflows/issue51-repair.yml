@@ -150,6 +150,21 @@ jobs:
           p.write_text(text.replace(end, addition))
           PY
 
+      - name: Repair controller structure-field projection test
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path("tests/ControllerStructureFieldProjection.test.ts")
+          text = p.read_text()
+          old = 'expect(source).toContain("readonly field: StructureFieldId;");'
+          new = 'expect(source).toContain("readonly field: ControllerStructureFieldId;");'
+          assert text.count(old) == 1, text.count(old)
+          p.write_text(text.replace(old, new))
+          PY
+
       - name: Repair named-Origin AI validation vocabulary
         shell: bash
         run: |
@@ -189,6 +204,14 @@ jobs:
           fi
           git diff --check
 
+      - name: Remove temporary runner from validation tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat AGENTS.md >/dev/null
+          rm .github/workflows/issue51-repair.yml
+          git diff --check
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
@@ -215,7 +238,7 @@ jobs:
           cat AGENTS.md >/dev/null
           npx tsx scripts/checkDocumentationAuthority.ts --strict
 
-      - name: Recheck ownership, commit repair, and remove runner
+      - name: Recheck ownership and commit repair
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -227,8 +250,7 @@ jobs:
           grep -F 'Branch registration: `issue-51/of-issue51-20260907-cccaaa-observation-contract`' <<<"${comments}" >/dev/null
           test "$(gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.head.ref')" = "${TOPIC_BRANCH}"
           gh api "repos/${GITHUB_REPOSITORY}/pulls/74" --jq '.body' | grep -F "${CLAIM_ID}" >/dev/null
-
-          rm .github/workflows/issue51-repair.yml
+          test ! -e .github/workflows/issue51-repair.yml
           git diff --check
           git add \
             docs/OPEN_FUFU_DESIGN.md \
@@ -236,6 +258,7 @@ jobs:
             src/core/visibility/TacticalVisibility.ts \
             tests/TacticalVisibility.test.ts \
             tests/ObservationFieldVocabulary.test.ts \
+            tests/ControllerStructureFieldProjection.test.ts \
             design/official-ai/origin-configurations.config.ts \
             docs/official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md \
             .github/workflows/issue51-repair.yml
@@ -247,6 +270,6 @@ jobs:
             -m "${CLAIM_ID}: repair tactical visibility observation contracts" \
             -m "${CLAIM_ID}
 
-          Conclusion: align direct reveal with lawful manifestation observers, make baseline Observation semantics explicit, and remove stale Forest-interior AI vocabulary.
-          Recommendation: run normal PR CI and final authority/current-main audits before merging PR #74."
+          Conclusion: align direct reveal with lawful manifestation observers, make baseline Observation semantics explicit, synchronize the controller-only Observation field tests, remove stale Forest-interior AI vocabulary, and validate the intended final tree without the temporary runner.
+          Recommendation: run normal PR CI and final authority/current-main/Game-Origin-Character-AI audits before merging PR #74."
           git push origin "HEAD:${TOPIC_BRANCH}"
