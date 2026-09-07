@@ -223,6 +223,37 @@ A quote does not reserve the slot. With no Warship yet, multiple individual buil
 
 P42's Population-funded Warship purchase does not bypass P23. Destruction/cancellation of the owned or under-construction Warship releases the slot at the authoritative lifecycle transition. Baseline construction/reservation mechanics are owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
+### P27 — SAM anti-ship capability
+
+P27 adds the `ATTACK_SHIPS` capability to the holder's active SAM Launchers. It does not create a second launcher type, manual controller attack action, ammunition pool, range axis, or recharge axis.
+
+The complete automatic anti-ship target classes, physical eligibility, damage/effect, firing cadence, deterministic target ordering, and arbitration against ordinary strategic-projectile interception are owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+
+P27 consumes the holder's one effective SAM profile. Therefore:
+
+- P11 may change how many SAMs the holder may acquire and their FFY transaction cost, but creates no P27-specific firing exception;
+- P40's range, charge-capacity, and recharge transformations apply equally to ordinary strategic interception and P27 anti-ship fire;
+- P32 Transports remain health-bearing and consume the ordinary P27 anti-ship damage model rather than being treated as baseline fragile Transports;
+- Trade Ships do not become P27 targets merely because Warships can ordinarily pursue/capture them.
+
+### P28 — Transport Population theft
+
+P28 consumes the canonical immutable Transport-destruction result from `NAVAL_AND_STRATEGIC_WEAPONS.md`. It triggers exactly once when all of the following are true:
+
+```text
+creditedDestroyerFactionId = P28 holder
+previousOwnerFactionId is on an opposing hostility side
+carriedPopulationAtDestruction > 0
+```
+
+The stolen amount is exactly the destruction result's frozen `carriedPopulationAtDestruction`. Ordinary Transport destruction removes that aboard amount from the previous owner; P28 simultaneously grants the same whole amount to the P28 holder as Available Population under the game-wide one-shot transfer rules in `OPEN_FUFU_DESIGN.md`.
+
+P28 is a conserved transfer, not a growth event or Capacity-limited reward. It therefore does **not** clamp the received Population to current Capacity. The holder may temporarily exceed Capacity and then follows ordinary over-Capacity growth behavior.
+
+A successful landing, successful return, abort completion, ordinary cleanup, uncredited destruction, or same-hostility-side destruction never triggers P28. A lethal P27 SAM hit or faction-owned strategic blast may trigger it when that effect owns the canonical hostile destruction credit.
+
+P28 and N13 are terminal-path ordered rather than cumulative on one payload: destruction before the landing transition may transfer the current aboard payload through P28 and N13 never fires; once a Transport performs the landing transition, N13 resolves there and the Transport terminates as landed rather than later generating a P28 destruction result.
+
 ### P29 — Warships as strategic-weapon launchers
 
 P29 makes each owned Warship a legal strategic-weapon launcher from its current cell and supplies:
@@ -316,6 +347,21 @@ Because no successful `STRUCTURE_TRANSFERRED` result exists, P05 does not fire a
 
 P36 changes only neutral-settlement Population cost to `0.5 Population` per qualifying cell and uses faction-level deterministic residual accounting. Residual debt survives ending/recreating expansion operations. P36 does not change acquisition speed and composes independently with N18.
 
+### N13 — landing casualties
+
+N13 replaces the ordinary Transport landing-survival fraction with exactly `1/2`. At the authoritative landing transition owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`, let `P` be the frozen whole carried Population immediately before landing-casualty resolution:
+
+```text
+survivors  = floor(P / 2)
+casualties = P - survivors
+```
+
+Thus odd payloads round against the N13 holder: `1 → 0`, `3 → 1`, `5 → 2` survivors. The casualties are removed from Total Population at that landing transition. No fractional residual is stored or carried into another Transport/landing.
+
+N13 fires exactly once only on the actual landing path, before survivors become the local amphibious commitment and before any acquisition resolution. It does not fire on embarkation, at-sea destruction, abort, or successful return.
+
+If `survivors = 0`, that Transport creates no local amphibious commitment, cannot establish ownership from the landing, and therefore cannot trigger a successful-landing effect such as P37.
+
 ### P37 and N15 — Transport embarkation cost and landing Fort
 
 Transport-cost traits are additive on the dedicated embarkation-cost hook. P37 contributes `+250 FFY`; N15 contributes `+500 FFY`; selecting both therefore contributes `+750 FFY` relative to the ordinary Transport baseline.
@@ -323,6 +369,8 @@ Transport-cost traits are additive on the dedicated embarkation-cost hook. P37 c
 The P37 Fort request occurs only after the amphibious operation has successfully established ownership of the landing cell **and after any captured structure on that cell has completed canonical structure-capture resolution**. Destruction/abort before ownership establishment grants nothing.
 
 P37 then attempts exactly one L1 Fort grant on the exact landing cell; it never searches nearby. If the final cell is occupied by a surviving/transferred structure, is not legally structure-placeable for the holder, or the holder cannot admit another Fort because of N07/another hard ownership rule, the Fort grant is skipped. The successful landing/cell capture is not rolled back. A successful P37 grant materializes as an immediately active completed L1 Fort.
+
+N13, when present, resolves before the local amphibious commitment exists. P37 therefore consumes only a later successful-landing result produced by N13 survivors; a zero-survivor N13 landing can never request the Fort.
 
 ### P38 — automatic-defender survival
 
@@ -339,6 +387,8 @@ The exact influence geometry, Random/Fixed origin rules, foreign spacing, footpr
 ### P40 — giant single-charge SAM shield
 
 P40 transforms the holder's SAM profile to `+50%` ordinary range, exactly one charge at every level, and `2×` ordinary recharge cooldown. Upgrades may still alter ordinary range but never add charges under P40. Targeting remains automatic; the trait creates no bespoke controller interception action.
+
+When combined with P27, that same effective one-charge P40 profile is shared by strategic-projectile interception and anti-ship fire; P27 does not restore additional charges or an independent recharge timer.
 
 ### P41 — direct-L5 City purchases
 
@@ -518,6 +568,10 @@ Examples of awkward but legal combinations include:
 
 Examples of strong but legal compositions include:
 
+- P27 + P40;
+- P27 + P32;
+- P27 + P28;
+- P28 + N13;
 - P29 + P22;
 - P29 + P42;
 - P30 + P42;
