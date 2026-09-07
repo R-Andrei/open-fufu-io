@@ -509,6 +509,66 @@ Any radius-oriented `StrategicWeaponMechanicsSpec` compatibility fields such as 
 
 Likewise, controller-facing charge summaries may remain aggregate projections while simulation/replay state retains canonical per-slot identity. No Origin-specific parallel strategic-weapon API is introduced by this contract.
 
+## 1.7 SAM charge arbitration and P27 anti-ship fire
+
+SAM Launcher construction, completed-level charge capacity, effective range, and recharge duration are owned by `TERRAIN_AND_STRUCTURES.md`; Origin transformations such as P40 are owned by `ORIGIN_TRAIT_CATALOGUE.md`. This section owns how automatic strategic-projectile interception and an effective anti-ship SAM capability share that one resolved SAM state.
+
+An active SAM with the effective `ATTACK_SHIPS` capability gains exactly this V1 anti-ship target set:
+
+```text
+hostile Transport Ship
+hostile Warship
+```
+
+Trade Ships are not P27 targets. Neither SAM missiles nor strategic projectiles become ships for this capability. A target on the same hostility side as the SAM owner is never eligible. Current `atWar` state is not required for autonomous anti-ship fire, and the fire does not create or refresh `atWar`.
+
+### 1.7.1 Shared charge priority
+
+There is no P27-specific ammunition pool or cooldown. Every successful anti-ship shot consumes exactly one currently READY ordinary SAM charge and begins that charge's ordinary **effective** recharge lifecycle. P40 therefore applies to anti-ship fire through the same transformed one-charge, enlarged-range, doubled-recharge profile that strategic interception consumes.
+
+Each simulation tick uses two ordered automatic SAM phases:
+
+```text
+1. ordinary strategic-projectile interception
+2. P27 anti-ship fire from charges still READY after phase 1
+```
+
+The ordinary strategic-projectile resolver runs to completion for that tick before any anti-ship target may consume a charge. P27 therefore cannot divert a charge that the same SAM has already consumed/reserved for an eligible strategic-projectile interception in that tick. If no READY charge remains, that SAM performs no anti-ship fire.
+
+During phase 2, process eligible SAMs in ascending stable structure ID. One SAM performs one anti-ship firing pass and may spend each of its remaining READY charges at most once in that pass. There is no extra per-target or per-SAM firing timer beyond charge readiness.
+
+### 1.7.2 Physical eligibility and deterministic target choice
+
+P27 does not reuse predictive strategic-projectile preshot logic and does not define a second radial raster. A ship is eligible only when its **current physical cell** belongs to that physical SAM's current authoritative effective `SAM` structure field under `STRUCTURE_RADIAL_FIELD_V1`, as owned by `TERRAIN_AND_STRUCTURES.md`. P27 therefore consumes exactly the same effective SAM field profile as ordinary strategic-projectile interception, including completed level and effective range transformations such as P40 or applicable Echo specialization. A numeric controller-facing `interceptionRange`, when present, is ergonomic derived information only and must not be independently rasterized to decide P27 eligibility.
+
+There is no terrain line-of-sight/raycast rule, trajectory prediction, pursuit, target leading, or controller-assigned target.
+
+For each charge the SAM is about to spend, choose from the currently active eligible ships in this exact order:
+
+```text
+1. Transport Ship before Warship
+2. ascending squared distance dx² + dy²
+3. ascending stable unit ID
+```
+
+The squared-distance value in this ordering is only a deterministic target-ranking key after canonical field membership has already established eligibility; it is not a second range-membership test.
+
+Apply the shot before selecting the next target. A ship destroyed by an earlier charge/SAM is therefore absent from later selections in the same tick. Processing stable SAM IDs plus the target ordering above makes mixed-battery results independent of collection/iteration order.
+
+### 1.7.3 Anti-ship effect
+
+One P27 anti-ship shot applies exactly:
+
+```text
+250 fixed naval HP damage
+```
+
+The authoritative effect is immediate when the shot commits. A client may animate a beam/projectile for presentation, but presentation travel must not decide whether the already committed hit succeeds.
+
+An ordinary fragile Transport with no persistent health pool is destroyed by one successful P27 hit. A health-bearing Transport such as P32 consumes the same fixed damage through its health pool rather than receiving a bespoke instant-destroy exception. Warships likewise take the fixed HP damage normally.
+
+If the hit is the authoritative effect that transitions a Transport from active to destroyed, the SAM owner's faction is the credited destroyer for the canonical Transport-destruction result in Section 5.4.
+
 ---
 
 # 2. MIRV
@@ -713,9 +773,33 @@ When the accepted target is owned by an opposing hostility side, the resulting T
 
 Reaching a legal hostile/neutral landing coast does **not** award the target cell.
 
-The Transport makes that local coast operationally actionable and its carried Population enters the ordinary local hostile/neutral territorial engagement under canonical capture, casualty, terrain, and defense rules.
+When an active Transport physically reaches its legal landing target and proceeds down the landing path, the authoritative landing transition is:
 
-The Transport itself never bypasses political ownership resolution merely by arriving.
+```text
+freeze current carried Population
+    ↓
+apply effective landing-survival/casualty transform
+    ↓
+remove landing casualties from Total Population
+    ↓
+move surviving Population out of the Transport bucket
+    ↓
+terminate the Transport as LANDED (not destroyed)
+    ↓
+create one local amphibious territorial commitment from the survivors
+    ↓
+ordinary hostile/neutral acquisition resolution
+```
+
+The effective landing-survival transform is resolved before any local land commitment exists and before the first acquisition/capture resolution at that coast. Its exact Origin-specific value/rounding, when transformed, is owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+
+Landing casualty resolution is a one-shot whole-Population event under `OPEN_FUFU_DESIGN.md`; it does not create a hidden residual ledger. If zero Population survives the landing transition, no local amphibious commitment is created and that Transport cannot establish ownership or produce a successful-landing consequence.
+
+The surviving local commitment then uses ordinary capture, casualty, terrain, defense, and structure-capture rules. The Transport itself never bypasses political ownership resolution merely by arriving.
+
+For one Transport operation, **successful amphibious landing** becomes true exactly when that operation's local amphibious commitment first successfully establishes ownership of the authored landing cell. If the cell contains an enemy persistent structure, canonical structure-capture resolution completes before post-success landing consequences run.
+
+After both ownership establishment and any structure-capture resolution are fixed, the simulation emits one immutable `AMPHIBIOUS_LANDING_ESTABLISHED` consequence/fact for that Transport operation. Origin effects such as P37 consume that post-success lifecycle point. Failure/destruction/abort before ownership establishment emits no such fact.
 
 ## 5.3 Retreat / abort
 
@@ -733,6 +817,51 @@ Destruction before successful return loses the carried Population under ordinary
 Ending the final controller-directed hostile Transport operation contributes to war-state cooldown only through the canonical game-wide `atWar` lifecycle; this document does not own that timer.
 
 Origin-specific Transport transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+
+## 5.4 Transport destruction and deterministic kill attribution
+
+A Transport has several terminal lifecycle paths, but only a physical hostile/unattributed destruction is a **Transport destruction**. Successful landing, successful return, controller abort completion, ordinary ownership/lifecycle cleanup, or another non-destruction terminal path must not be reclassified as a destruction merely to trigger a destruction consumer.
+
+Exactly once, when an active Transport transitions to destroyed, freeze one immutable authoritative result containing at minimum:
+
+```text
+transportId
+previousOwnerFactionId
+destructionTick
+carriedPopulationAtDestruction
+creditedDestroyerFactionId?   // absent when uncredited
+causeClass
+```
+
+Canonical V1 `causeClass` families are:
+
+```text
+NAVAL_GUNFIRE
+SAM_ANTI_SHIP
+STRATEGIC_BLAST
+OTHER_HOSTILE_EFFECT
+UNATTRIBUTED
+```
+
+`carriedPopulationAtDestruction` is the whole carried amount immediately before the destruction transition removes the Transport/payload. Ordinary Transport destruction removes that entire aboard amount from the previous owner's Total Population exactly once.
+
+### 5.4.1 Destruction credit
+
+A direct faction-owned effect that is the authoritative effect which transitions the active Transport to destroyed supplies its owning faction as `creditedDestroyerFactionId`. This includes lethal Warship gunfire, lethal P27 anti-ship SAM damage, and a faction-owned strategic blast whose resolved footprint performs the destruction, including collateral destruction.
+
+The first canonical resolved effect that performs the active → destroyed transition owns the destruction result. Later same-tick effects observe an already destroyed Transport and cannot replace its credit or create a second result. There is no damage-share, most-damage, last-observed-attacker, or random attribution rule.
+
+Environmental/unowned destruction and administrative/lifecycle removal have no credited destroyer. A same-hostility-side credited effect may exist as destruction metadata, but Origin consumers that require hostile destruction must independently reject same-side credit.
+
+Replay/save state must reproduce the exact destruction transition, payload snapshot, cause class, and credited destroyer rather than inferring them later from event presentation or aggregate statistics.
+
+## 5.5 Controller/mechanics projection boundary
+
+Transport landing, autonomous SAM interception, and P27 anti-ship fire remain simulation-owned. This contract introduces no manual controller command for choosing SAM targets or firing individual SAM charges.
+
+The public/effective mechanics projection must expose enough deterministic state for player controllers and Official AI to reason about the same mechanics without reconstructing hidden rules. Existing aggregate charge observation may remain aggregate; when P27 is effective, exact anti-ship spatial eligibility must be queryable through the same authoritative `SAM` structure-field projection owned by `TERRAIN_AND_STRUCTURES.md`, while any numeric `interceptionRange` remains ergonomic only. The same mechanics projection must also expose the anti-ship target classes, fixed damage, shared charge/recharge state, and strategic-projectile-first charge priority. The effective Transport landing-survival rule must likewise be surfaced through the ordinary effective-rule/mechanics projection rather than an Origin-specific parallel API. When a rule such as P28 consumes credited Transport destruction, that same projection must expose its effective trigger, frozen amount source, recipient/destination, same-side/uncredited exclusions, and Capacity handling through ordinary Transport-destruction mechanics rather than a trait-specific parallel API.
+
+`UnitView`/structure observations may expose resulting carried Population, health, and aggregate charge state, while authoritative simulation/replay state retains whatever finer internal identity is required. Controller-facing fields are projections of these mechanics, never separately authoritative definitions.
 
 ---
 
@@ -767,4 +896,18 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - `BLAST_V1_MIRV_CHILD_SEED_STABILITY`: canonical child indices receive stable seeds independent of separation/interception timing;
 - mobile-launcher initial readiness, stable `slotId` creation, lowest-READY consumption, dynamic-capacity append/recharge, and preservation of existing slot identities/deadlines;
 - transactional multi-launch validation preventing two sibling commands from consuming one ready charge and binding each successful launch's exact slot transition plus strategic-launch identity atomically;
-- replay/save reproduction of launch-bound motion profiles, accepted-launch counters/IDs, blast profile/seeds/footprints, exact charge slots, and mobile charge deadlines.
+- replay/save reproduction of launch-bound motion profiles, accepted-launch counters/IDs, blast profile/seeds/footprints, exact charge slots, and mobile charge deadlines;
+- `N13_LANDING_STAGE_ORDER`: transformed landing casualties resolve before local amphibious commitment creation and before any first acquisition resolution;
+- `N13_ODD_AND_ZERO_SURVIVORS`: odd carried-Population payloads use the Origin owner's exact whole-number rounding and a zero-survivor result creates no local commitment/success consequence;
+- `N13_P37_POST_SUCCESS_ORDER`: landing casualty → ordinary acquisition → structure-capture resolution → post-success landing consequence/Fort grant order is reproduced exactly;
+- `P27_TARGET_CLASSES`: only eligible hostile Transports/Warships enter anti-ship selection; Trade Ships and same-side ships never do;
+- `P27_CANONICAL_SAM_FIELD`: anti-ship physical eligibility consumes the same exact `STRUCTURE_RADIAL_FIELD_V1` SAM field as ordinary strategic-projectile interception; a rounded or independently rasterized numeric `interceptionRange` cannot alter membership;
+- `P27_PROJECTILE_PRIORITY`: ordinary strategic-projectile interception consumes/reserves charges before any same-tick anti-ship shot;
+- `P27_DETERMINISTIC_SHIP_ORDER`: stable SAM order plus Transport-before-Warship/distance/unit-ID ordering produces identical results independent of container iteration;
+- `P27_SHARED_CHARGE_STATE`: anti-ship shots consume ordinary effective SAM charges/recharge, including P40's one-charge/doubled-recharge profile;
+- `P27_P32_DAMAGE_MODEL`: ordinary fragile Transport destruction and P32's health-bearing 500-HP Transport consume the same fixed 250-damage anti-ship shot semantics;
+- `TRANSPORT_DESTROYED_EXACTLY_ONCE`: each active → destroyed transition freezes exactly one payload/cause/credit result and non-destruction terminal paths freeze none;
+- `P28_CREDITED_TRANSFER`: a qualifying hostile credited destruction transfers the frozen carried payload exactly once through the Population accounting owner, while uncredited/same-side destruction does not;
+- `P28_STRATEGIC_AND_P27_CREDIT`: lethal P27 fire and faction-owned strategic-blast destruction supply deterministic credit consumable by P28;
+- `P28_N13_TERMINAL_EXCLUSIVITY`: destruction before landing consumes the current aboard payload through destruction/P28 and never N13; a completed landing transition consumes N13 first and is not later reclassified as Transport destruction;
+- controller/effective-mechanics projections expose the same canonical P27 SAM field/profile, N13 landing result, and P28 destruction-transfer profile consumed by authoritative simulation without adding manual SAM targeting or Origin-specific parallel APIs.

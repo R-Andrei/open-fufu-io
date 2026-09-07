@@ -27,4 +27,20 @@ describe("controller structure-field projection", () => {
       "controllers must not approximate this with CIRCLE",
     );
   });
+
+  it("surfaces authoritative per-structure field selection for P27", () => {
+    const source = readFileSync(
+      "src/core/controller/ControllerApi.ts",
+      "utf8",
+    );
+    expect(source).toContain('readonly kind: "STRUCTURE_FIELD_INSTANCE";');
+    expect(source).toContain("readonly structureId: StructureId;");
+    expect(source).toContain("readonly field: StructureFieldId;");
+    expect(source).toContain(
+      'readonly eligibilityField: Extract<StructureFieldId, "SAM">;',
+    );
+    expect(source).toContain(
+      "numeric interceptionRange is ergonomic only",
+    );
+  });
 });
