@@ -11,6 +11,7 @@
     "tests/ControllerStructureFieldProjection.test.ts",
     "tests/EchoRuleRegistry.test.ts",
     "tests/FactionRelations.test.ts",
+    "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
@@ -22,6 +23,7 @@
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
     "tests/StructureFieldGeometry.test.ts",
+    "tests/TacticalVisibility.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
@@ -103,6 +105,10 @@
     {
       "path": "src/core/rules/StructureFieldQualification.ts",
       "validators": ["tests/StructureFieldGeometry.test.ts"]
+    },
+    {
+      "path": "src/core/visibility/TacticalVisibility.ts",
+      "validators": ["tests/TacticalVisibility.test.ts"]
     },
     {
       "path": "tests/contracts/controller-api.typecheck.ts",
