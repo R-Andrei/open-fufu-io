@@ -232,9 +232,32 @@ describe("structure-field qualification", () => {
     );
   });
 
-  it("makes SAM Launcher interception depend only on the pre-resolved enemy relation", () => {
-    expect(samLauncherInterceptionQualifiesProjectile(false)).toBe(false);
-    expect(samLauncherInterceptionQualifiesProjectile(true)).toBe(true);
+  it("derives SAM Launcher interception from immutable faction/team identity", () => {
+    const launcherOwner = {
+      factionId: "faction-a",
+      fixedTeamId: "team-a",
+    } as const;
+    const teammateProjectile = {
+      factionId: "faction-b",
+      fixedTeamId: "team-a",
+    } as const;
+    const enemyProjectile = {
+      factionId: "faction-c",
+      fixedTeamId: "team-b",
+    } as const;
+
+    expect(
+      samLauncherInterceptionQualifiesProjectile(launcherOwner, launcherOwner),
+    ).toBe(false);
+    expect(
+      samLauncherInterceptionQualifiesProjectile(
+        launcherOwner,
+        teammateProjectile,
+      ),
+    ).toBe(false);
+    expect(
+      samLauncherInterceptionQualifiesProjectile(launcherOwner, enemyProjectile),
+    ).toBe(true);
   });
 
   it("encodes the canonical P18/P24/N11 affiliations explicitly", () => {
