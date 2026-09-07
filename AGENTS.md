@@ -16,7 +16,7 @@ These instructions apply to automated coding/documentation agents working in thi
 
 GitHub automation may delete merged pull-request branches automatically. Agents must still follow the policy above for non-PR temporary branches and for any cleanup case the automation does not cover.
 
-### Issue claims and branch coordination
+### Issue claims, claim-ID propagation, and branch ownership
 
 When an agent/thread takes ownership of a GitHub issue, the claim must be uniquely identifiable. A generic comment such as `claimed`, `in progress`, or `working on this` is insufficient because another concurrent agent could reasonably interpret it as its own claim.
 
@@ -25,13 +25,82 @@ When an agent/thread takes ownership of a GitHub issue, the claim must be unique
 - The issue claim comment must name the claim ID, identify the assigned GitHub account, and state that other agents/threads must not work the same scope unless the user explicitly coordinates parallel work or transfers ownership.
 - Before beginning substantive work, inspect **both** the issue assignee state and issue comments for an existing active claim ID. If either indicates another active owner, do not create a competing claim or overlapping branch until ownership is resolved.
 - If another active claim ID already owns the same issue/scope, do not create a competing branch or make overlapping changes. Resolve ownership first. If a claim appears stale or ambiguous, treat it as active until its status is verified rather than assuming it is abandoned.
+
+#### Mandatory claim-ID propagation — no exceptions
+
+Once an agent is acting under an active claim ID, that exact claim ID is the agent's mandatory audit token for the entire work session.
+
+- **Every commit created on any branch owned by the claim must contain the exact claim ID verbatim in the commit message. No exception.** This includes tiny fixes, merge/reconciliation commits created by the agent, diagnostics, documentation-only commits, cleanup commits, and follow-up corrections.
+- **Every GitHub comment or review message authored by the agent in the claimed work must contain the exact claim ID verbatim. No exception.** At minimum this includes every comment on the assigned issue, every comment/reply on its pull request, and every review-thread reply made as part of the claimed work.
+- **Every agent reply in the human chat while acting on the claim must contain the exact claim ID verbatim. No exception.** Prefer putting the ID on the first line so ownership is visible without inference.
+- Pull-request descriptions for claimed work must contain the exact claim ID and the owning issue number.
+- A missing claim ID is not a cosmetic defect. The agent must correct the missing audit token before continuing substantive repository work.
+- A claim ID proves identity/ownership traceability only. It does **not** expand the claim's scope or authorize mutations to unrelated issues, branches, or pull requests.
+
+If no active claim ID exists, the agent may inspect/read repository state but must not perform substantive repository mutations until a valid claim is established, unless a human explicitly directs a narrowly scoped non-issue operation.
+
+#### Branch ownership is exclusive
+
+Every issue-attributable remote branch has exactly one active owning claim ID unless a human explicitly establishes a coordinated shared scope.
+
 - Every remote branch created as a consequence of a claimed issue must be attributable to that issue and claim. Prefer branch names containing both the issue number and claim ID, for example `issue-31/of-issue31-20260905-7c4a9e-<purpose>`.
 - Immediately after creating such a remote branch, add or update an issue comment that records the exact branch name and purpose under the same claim ID. If one claim uses multiple branches, list every active branch so parallel agents can see the complete work surface.
-- Pull requests must reference the issue and preserve the claim/branch traceability in their description when practical.
+- Before **every write to an existing remote topic branch**, verify that the branch is recorded under the current active claim ID. A matching issue number in the branch name is not sufficient if the claim ID differs.
+- A branch whose ownership is missing, ambiguous, stale-looking, or associated with a different claim ID is **foreign and read-only** until ownership is explicitly resolved.
+- An agent must not push, force-push, move the ref of, rebase, merge into, delete, rename, repurpose, or otherwise mutate a foreign branch.
+- An agent must not use maintainer permissions or `maintainer_can_modify` as a reason to edit another claim's branch.
+- An agent must not create a replacement branch that overlaps another active claim merely to avoid the foreign-branch restriction.
+- Branch ownership does not transfer implicitly because the original agent is inactive, a CI run failed, the PR is old, or the branch appears easy to fix.
+
+#### Foreign issues and pull requests are read-only by default
+
+For mutation purposes, an issue or PR is owned by the current claim only when its active coordination record contains the **same exact claim ID**. An issue/PR with a different claim ID, or no matching claim ID, is foreign even if it is in the same repository or related to similar work.
+
+Without the exception below, an agent must not:
+
+- close, reopen, edit the title/body, relabel, reassign, change milestone/state, transfer, or otherwise substantially move a foreign issue;
+- mark ready, close, reopen, retarget, merge, edit the body/title of, or otherwise substantially move a foreign pull request;
+- post coordination or implementation comments onto a foreign issue/PR as though participating in that work;
+- modify or delete a foreign issue's/PR's branch;
+- merge its own PR when that merge would automatically close or materially mutate a foreign issue through `Closes`, `Fixes`, `Resolves`, or equivalent GitHub closing syntax.
+
+**Before merging any PR, the agent must inspect the PR title/body and all known closing references. Every issue that would be closed or materially moved by the merge must carry the same active claim ID. If even one does not, the merge is forbidden unless the human exception below is satisfied.**
+
+Reading, reviewing, comparing, or reporting on foreign work is allowed. Mutation is not.
+
+#### Narrow human-approved exception for foreign work
+
+A foreign-issue/branch/PR mutation is permitted only when **both** conditions are true:
+
+1. the mutation is severely required for the current operation rather than merely convenient; and
+2. a human user explicitly approves that specific cross-ownership mutation.
+
+The approval must identify the foreign issue/PR/branch and the operation being authorized. Generic instructions such as `proceed`, `merge it`, `clean this up`, or approval directed at the current claimed issue do **not** authorize mutation of a different claim's work.
+
+When such an exception is used:
+
+- state the current claim ID before the operation;
+- record the approval and exact cross-ownership action in the current claimed issue's coordination trail;
+- when practical and non-disruptive, record the exception on the foreign issue/PR as well;
+- perform only the explicitly approved operation; the exception does not transfer ownership or grant continuing access.
+
+#### Ownership transfer
+
+Ownership may move only through an explicit transfer, never through inference.
+
+- A human must explicitly approve the transfer or coordination change.
+- Update the issue coordination record with the old claim ID, new claim ID, exact branch/PR scope, and transfer state.
+- Update GitHub assignee state where appropriate.
+- The receiving agent must not mutate the branch until the transfer is visible and unambiguous.
+- Historical commits keep their original claim IDs; new commits after transfer use the receiving claim ID.
+
+#### Pull-request and lifecycle traceability
+
+- Pull requests must reference the issue and preserve the claim/branch traceability in their description.
 - When work is transferred, update both the claim comment/state and GitHub assignee so they identify the new owner. When work is abandoned while the issue remains open, clear the abandoning owner's assignee state and update the issue comment so the scope is visibly available again. A closed issue may retain its historical assignee.
 - When work is merged, abandoned, transferred, or split into explicitly coordinated scopes, update the issue so the ownership state is clear. Branch cleanup still follows the remote-branch hygiene rules above.
 
-The goal is that an agent inspecting the issue can determine, without inference, **who/what work session owns it, which GitHub account is responsible, which remote branches belong to that work, and whether overlapping work is safe**.
+The goal is that an agent inspecting any issue, PR, branch, commit, GitHub comment, or associated chat response can determine, without inference, **which claim owns the action, which GitHub account is responsible, which remote branches belong to that work, and whether mutation is authorized**.
 
 ## Player-facing copy vs canonical mechanics
 
@@ -358,10 +427,3 @@ When deciding between:
 - extending/cleaning the existing canonical owner,
 
 **prefer the existing canonical owner**.
-
-When deciding between:
-
-- preserving a redundant active document “for history”; or
-- deleting it after its useful content has been incorporated,
-
-**prefer deletion; Git history already preserves history**.
