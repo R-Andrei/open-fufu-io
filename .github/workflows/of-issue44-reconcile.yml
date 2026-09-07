@@ -31,7 +31,7 @@ jobs:
                   ('eligibilityField: "SAM",', 'eligibilityField: "SAM_LAUNCHER",'),
               ],
               "tests/ControllerStructureFieldProjection.test.ts": [
-                  ('Extract<StructureFieldId, \\"SAM\\">;', 'Extract<StructureFieldId, \\"SAM_LAUNCHER\\">;'),
+                  ('Extract<StructureFieldId, "SAM">;', 'Extract<StructureFieldId, "SAM_LAUNCHER">;'),
               ],
               "docs/NAVAL_AND_STRATEGIC_WEAPONS.md": [
                   ('effective `SAM` structure field', 'effective `SAM_LAUNCHER` structure field'),
