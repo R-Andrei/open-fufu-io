@@ -1,4 +1,4 @@
-Before EVERY repository investigation/action/commit: freshly read ALL current `AGENTS.md`; prior reads/memory do not count. Verify the specific action conforms; otherwise MUST NOT proceed.
+Before repository work, freshly read all current `AGENTS.md`. Re-read before commit/merge or if rules, claim, scope, or relevant state changes. Batch related read-only steps.
 
 Applies to automated coding/documentation agents in this repository.
 
@@ -43,9 +43,11 @@ For substantive work changing mechanics/rules/configuration/canonical docs, or c
 
 Change authoritative facts only in their owner. Non-owner docs/code comments MAY retain only locally owned interface/composition facts; otherwise name/link owner. MUST NOT copy another owner's resolver details/constants/formulas/exception lists/edge cases/blocker ledgers/completion matrices/mutable project status. Canonical mechanics/design docs MUST NOT use GitHub issue numbers as normative dependency/current-status records; GitHub issues own work/progress, canonical docs own durable rules. PR descriptions+issue comments are review/project-management surfaces, never canonical mechanics authority.
 
-Whenever target base advances via merge/rebase/update from `main`, before more implementation: list files changed old base->new base; if any relevant canonical owner changed, stop+reread it. Compute `topicChanged=oldBase..pre-reconciliation topic head`, `mainChanged=oldBase..new main`, `overlap=intersection(topicChanged,mainChanged)`. Every overlapping canonical/configuration owner requires explicit four-way semantic audit of old base, pre-reconciliation topic, new-main, reconciliation result. Verify every compatible topic semantic change survived and every new-main authoritative change was incorporated. Clean textual merge is not semantic-merge evidence.
+When `main` advances, compare changed paths first. Reconcile only material overlap with topic files, canonical/config owners, coupled Game/AI config, interfaces, or tests; otherwise record `reviewed-no-relevant-overlap`. For material overlap, four-way audit old base/topic/new main/result; preserve compatible topic + new-main semantics.
 
-Before implementation completion: search repository for every changed mechanic/trait/entity name, old terminology, old formula/value, obsolete status wording; inspect every relevant hit; update/delete stale summaries and replace duplicate authority with owner references in the same change. Reread canonical owners against resulting code/config, not task description. Recheck current `main`; if it advanced after validation, repeat owner/reconciliation audit before final SHA. Freeze candidate SHA only after audit; any later semantic change invalidates authority audit+final review.
+Before completion: search changed mechanic/trait/entity names and old terms/formulas/status; inspect hits; fix stale/duplicate authority. Re-read owners against code. Recheck `main`; reconcile only material new overlap. Freeze SHA after audit; semantic changes invalidate it.
+
+Reuse valid current evidence; repeat review/validation only after relevant content/base changes, failure, incompleteness, or a distinct required check. After required review/search/CI pass: recheck `main` → coordination metadata → merge → cleanup. No new diagnostics/workflows/helpers unless a gate fails or material overlap appears. Stop once the next decision is supported; extra certainty alone is insufficient.
 
 PRs touching canonical concerns MUST record: canonical owners consulted; owners modified; cross-owner references reviewed; base reconciliation (old->current base+overlapping owners); stale-reference search findings/fixes; final current-main SHA. This supplements, never replaces, the Game/AI audit.
 
