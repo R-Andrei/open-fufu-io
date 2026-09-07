@@ -35,11 +35,11 @@ They do not escalate based on prior launches.
 
 ## 1.2 Projectile speeds
 
-| Projectile                    |           Speed |
-| ----------------------------- | --------------: |
-| Atom Bomb                     | **100 cells/s** |
-| Hydrogen Bomb                 | **100 cells/s** |
-| MIRV carrier                  | **150 cells/s** |
+| Projectile | Speed |
+| --- | ---: |
+| Atom Bomb | **100 cells/s** |
+| Hydrogen Bomb | **100 cells/s** |
+| MIRV carrier | **150 cells/s** |
 | MIRV warhead after separation | **220 cells/s** |
 
 ### 1.2.1 Canonical projectile taxonomy and motion snapshots
@@ -64,10 +64,10 @@ At accepted launch commit, the authoritative simulation binds the effective moti
 
 ## 1.3 Atom and Hydrogen blast geometry
 
-| Weapon        | Fully affected inner radius | Irregular outer radius |
-| ------------- | --------------------------: | ---------------------: |
-| Atom Bomb     |                      **12** |                 **30** |
-| Hydrogen Bomb |                      **80** |                **100** |
+| Weapon | Fully affected inner radius | Irregular outer radius |
+| --- | ---: | ---: |
+| Atom Bomb | **12** | **30** |
+| Hydrogen Bomb | **80** | **100** |
 
 The inner zone is fully affected. The annulus between inner and outer radius uses the versioned deterministic irregular footprint profile below.
 
@@ -356,30 +356,30 @@ targetCellId          = 12345
 profileVersion        = STRATEGIC_BLAST_V1
 ```
 
-| Root call                                                                               | Expected uint32 | Hex          |
-| --------------------------------------------------------------------------------------- | --------------: | ------------ |
-| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "HYDROGEN_BOMB", 12345)` |    `3895629164` | `0xE832956C` |
-| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 1, "HYDROGEN_BOMB", 12345)` |    `2879337487` | `0xAB9F340F` |
-| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "MIRV", 12345)`          |    `1024784900` | `0x3D14FA04` |
+| Root call | Expected uint32 | Hex |
+| --- | ---: | --- |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "HYDROGEN_BOMB", 12345)` | `3895629164` | `0xE832956C` |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 1, "HYDROGEN_BOMB", 12345)` | `2879337487` | `0xAB9F340F` |
+| `blastHash32("strategic-blast-root", "seed-0001", "SILO-A", 0, "MIRV", 12345)` | `1024784900` | `0x3D14FA04` |
 
 The first two rows intentionally prove that two accepted launches with otherwise identical launcher/weapon/target inputs receive different stable roots through their distinct accepted-launch ordinals.
 
 For Hydrogen root seed `3895629164` (`0xE832956C`), representative knot samples are normative:
 
-| Knot | Expected `u[i]` | Hex          |
-| ---: | --------------: | ------------ |
-|  `0` |    `3659862710` | `0xDA2512B6` |
-|  `1` |    `3676640329` | `0xDB251449` |
-|  `7` |    `3710195567` | `0xDD25176F` |
-| `15` |    `4028001839` | `0xF0166E2F` |
+| Knot | Expected `u[i]` | Hex |
+| ---: | ---: | --- |
+| `0` | `3659862710` | `0xDA2512B6` |
+| `1` | `3676640329` | `0xDB251449` |
+| `7` | `3710195567` | `0xDD25176F` |
+| `15` | `4028001839` | `0xF0166E2F` |
 
 For MIRV root seed `1024784900` (`0x3D14FA04`), child-seed derivation is normative:
 
-| `childIndex` | Expected child seed | Hex          |
-| -----------: | ------------------: | ------------ |
-|          `0` |        `3314979209` | `0xC5969189` |
-|          `1` |        `3298201590` | `0xC4968FF6` |
-|        `249` |        `3481733626` | `0xCF8709FA` |
+| `childIndex` | Expected child seed | Hex |
+| ---: | ---: | --- |
+| `0` | `3314979209` | `0xC5969189` |
+| `1` | `3298201590` | `0xC4968FF6` |
+| `249` | `3481733626` | `0xCF8709FA` |
 
 For the authored P25 Hydrogen area multiplier `3/2`, baseline Hydrogen radii `80/100` bind the exact effective profile as:
 
@@ -393,18 +393,18 @@ This is exactly equivalent to squared thresholds `9,600` and `15,000`; the reduc
 
 Using that P25 profile, Hydrogen root seed `0xE832956C`, center `(0,0)`, and non-Impassable candidate cells, these classifications are normative:
 
-| Relative cell `(dx,dy)` | Class        |
-| ----------------------- | ------------ |
-| `(0,0)`                 | `CORE`       |
-| `(90,0)`                | `CORE`       |
-| `(69,69)`               | `CORE`       |
-| `(70,70)`               | `FRINGE`     |
-| `(99,0)`                | `FRINGE`     |
-| `(100,50)`              | `FRINGE`     |
-| `(110,0)`               | `FRINGE`     |
-| `(109,54)`              | `UNAFFECTED` |
-| `(120,0)`               | `UNAFFECTED` |
-| `(123,0)`               | `UNAFFECTED` |
+| Relative cell `(dx,dy)` | Class |
+| --- | --- |
+| `(0,0)` | `CORE` |
+| `(90,0)` | `CORE` |
+| `(69,69)` | `CORE` |
+| `(70,70)` | `FRINGE` |
+| `(99,0)` | `FRINGE` |
+| `(100,50)` | `FRINGE` |
+| `(110,0)` | `FRINGE` |
+| `(109,54)` | `UNAFFECTED` |
+| `(120,0)` | `UNAFFECTED` |
+| `(123,0)` | `UNAFFECTED` |
 
 `(100,50)` lies exactly on one fixed direction-knot ray and therefore also exercises the half-open sector convention. Enabling Water Nukes must preserve every classification in this table; only the effect applied to `CORE` changes.
 
@@ -634,26 +634,26 @@ WarshipCost = min(1,000,000 FFY, 250,000 FFY × (activeWarships + 1))
 ```
 
 | Active Warships before purchase | Next Warship cost |
-| ------------------------------: | ----------------: |
-|                               0 |      **250k FFY** |
-|                               1 |      **500k FFY** |
-|                               2 |      **750k FFY** |
-|                              3+ |     **1.00m FFY** |
+| ---: | ---: |
+| 0 | **250k FFY** |
+| 1 | **500k FFY** |
+| 2 | **750k FFY** |
+| 3+ | **1.00m FFY** |
 
 Destroyed Warships stop counting toward the active-count curve.
 
-| Property                           | Rule               |
-| ---------------------------------- | ------------------ |
-| Produced by                        | active owned Port  |
-| Construction time                  | **5 seconds**      |
-| Hard ownership cap                 | none               |
-| Base max health                    | **1,000 HP**       |
-| Base movement speed                | **10 cells/s**     |
-| Base naval-gun range               | **130 cells**      |
-| Base shell damage                  | **250 HP fixed**   |
-| Base shell cooldown                | **2 seconds**      |
-| Autonomous operating leash         | **100 cells**      |
-| Trade Ship capture distance        | **5 cells**        |
+| Property | Rule |
+| --- | --- |
+| Produced by | active owned Port |
+| Construction time | **5 seconds** |
+| Hard ownership cap | none |
+| Base max health | **1,000 HP** |
+| Base movement speed | **10 cells/s** |
+| Base naval-gun range | **130 cells** |
+| Base shell damage | **250 HP fixed** |
+| Base shell cooldown | **2 seconds** |
+| Autonomous operating leash | **100 cells** |
+| Trade Ship capture distance | **5 cells** |
 | Automatic repair-retreat threshold | **50% max health** |
 
 Baseline shell damage is deterministic.
@@ -721,11 +721,11 @@ One rank step requires:
 100 Naval XP
 ```
 
-| Event                                   | Naval XP |
-| --------------------------------------- | -------: |
-| Destroy hostile Warship                 |  **100** |
-| Destroy hostile Transport               |   **10** |
-| Successfully capture hostile Trade Ship |    **4** |
+| Event | Naval XP |
+| --- | ---: |
+| Destroy hostile Warship | **100** |
+| Destroy hostile Transport | **10** |
+| Successfully capture hostile Trade Ship | **4** |
 
 XP above a threshold carries toward the next rank until the current rank cap is reached.
 
@@ -751,15 +751,15 @@ Mobile launcher charge state and the launcher-local `acceptedLaunchCount` from S
 
 Transport Ships carry explicitly committed Population and are amphibious-operation vehicles, not territorial owners.
 
-| Property                      | Baseline rule                                   |
-| ----------------------------- | ----------------------------------------------- |
-| Active cap per faction        | **3**                                           |
-| Embarkation FFY cost          | **0 FFY** before explicit modifiers             |
-| Movement speed                | **10 cells/s**                                  |
-| Ordinary embark source        | legal owned coast/shore embarkation point       |
-| Baseline health               | fragile / no persistent health pool             |
+| Property | Baseline rule |
+| --- | --- |
+| Active cap per faction | **3** |
+| Embarkation FFY cost | **0 FFY** before explicit modifiers |
+| Movement speed | **10 cells/s** |
+| Ordinary embark source | legal owned coast/shore embarkation point |
+| Baseline health | fragile / no persistent health pool |
 | Baseline Warship interception | one successful hostile shell destroys Transport |
-| Carried Population            | controller-selected committed Population        |
+| Carried Population | controller-selected committed Population |
 
 The three-Transport cap prevents fragmentation of one invasion into very large numbers of tiny boats solely to saturate autonomous targeting.
 

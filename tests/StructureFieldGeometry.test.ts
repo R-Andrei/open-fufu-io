@@ -1,5 +1,16 @@
 import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
 import {
+  STRUCTURE_RADIAL_FIELD_VERSION,
+  serializeStructureRadialFieldProfile,
+  structureRadialFieldContainsOffset,
+  structureRadialFieldFromAreaFactor,
+  structureRadialFieldFromRangeFactor,
+} from "../src/core/rules/StructureFieldGeometry";
+import {
+  fortDefensivePressureQualifiesDefender,
+  samLauncherInterceptionQualifiesProjectile,
+} from "../src/core/rules/StructureFieldQualification";
+import {
   ORIGIN_RULE_MANIFEST_BY_ID,
   originRuleProfileInput,
 } from "../src/core/rules/OriginRuleManifest";
@@ -14,17 +25,6 @@ import {
   materializeCompiledScalarScaleFactor,
   type RuleDynamicState,
 } from "../src/core/rules/RuleMaterialization";
-import {
-  STRUCTURE_RADIAL_FIELD_VERSION,
-  serializeStructureRadialFieldProfile,
-  structureRadialFieldContainsOffset,
-  structureRadialFieldFromAreaFactor,
-  structureRadialFieldFromRangeFactor,
-} from "../src/core/rules/StructureFieldGeometry";
-import {
-  fortDefensivePressureQualifiesDefender,
-  samLauncherInterceptionQualifiesProjectile,
-} from "../src/core/rules/StructureFieldQualification";
 
 const baseState: RuleDynamicState = {
   ownedPersistentStructureCount: 0,
@@ -224,12 +224,12 @@ describe("STRUCTURE_RADIAL_FIELD_V1", () => {
 
 describe("structure-field qualification", () => {
   it("keeps baseline Fort defensive pressure owner-only", () => {
-    expect(
-      fortDefensivePressureQualifiesDefender("faction-a", "faction-a"),
-    ).toBe(true);
-    expect(
-      fortDefensivePressureQualifiesDefender("faction-a", "faction-b"),
-    ).toBe(false);
+    expect(fortDefensivePressureQualifiesDefender("faction-a", "faction-a")).toBe(
+      true,
+    );
+    expect(fortDefensivePressureQualifiesDefender("faction-a", "faction-b")).toBe(
+      false,
+    );
   });
 
   it("derives SAM Launcher interception from immutable faction/team identity", () => {
@@ -256,10 +256,7 @@ describe("structure-field qualification", () => {
       ),
     ).toBe(false);
     expect(
-      samLauncherInterceptionQualifiesProjectile(
-        launcherOwner,
-        enemyProjectile,
-      ),
+      samLauncherInterceptionQualifiesProjectile(launcherOwner, enemyProjectile),
     ).toBe(true);
   });
 
@@ -299,7 +296,9 @@ describe("structure-field qualification", () => {
       sourceId: "legacy-field-condition",
       valueUnit: "BASIS_POINTS",
       value: 100,
-      conditions: [{ kind: "EVENT_INSIDE_FIELD", field: "FORT" } as never],
+      conditions: [
+        { kind: "EVENT_INSIDE_FIELD", field: "FORT" } as never,
+      ],
     };
     expect(
       validateRuleContributions([legacy], RULE_AXIS_REGISTRY).map(

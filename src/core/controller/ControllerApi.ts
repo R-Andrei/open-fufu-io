@@ -757,7 +757,10 @@ export interface MechanicsApi {
    */
   structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
-  unitTypeSpec(type: MobileUnitType, factionId?: FactionId): UnitMechanicsSpec;
+  unitTypeSpec(
+    type: MobileUnitType,
+    factionId?: FactionId,
+  ): UnitMechanicsSpec;
   /** Hidden and unknown unit IDs are indistinguishable and return undefined. */
   unitSpec(unitId: UnitId): UnitMechanicsSpec | undefined;
   transportSpec(factionId?: FactionId): TransportMechanicsSpec;
@@ -785,7 +788,9 @@ export interface MechanicsApi {
     cellId: CellId,
     factionId?: FactionId,
   ): StructureBuildQuote;
-  structureUpgradeQuote(structureId: StructureId): StructureUpgradeQuote;
+  structureUpgradeQuote(
+    structureId: StructureId,
+  ): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
     producerId: StructureId,

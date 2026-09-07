@@ -1,4 +1,3 @@
-import type { RuleAxisId } from "./RuleAxisRegistry";
 import {
   GLOBAL_RULE_SCOPE,
   evaluateDynamicRuleProvider,
@@ -12,6 +11,7 @@ import {
   type RuleScope,
   type RuleStateDependency,
 } from "./RuleComposition";
+import type { RuleAxisId } from "./RuleAxisRegistry";
 
 export { evaluateDynamicRuleProvider } from "./RuleComposition";
 export type {
@@ -281,7 +281,15 @@ const limit = (
   target: RuleScope,
   value: number,
 ): RuleContribution =>
-  contribution(id, axis, target, "ORIGIN_CAP", "CAP_LIMIT", "COUNT", value);
+  contribution(
+    id,
+    axis,
+    target,
+    "ORIGIN_CAP",
+    "CAP_LIMIT",
+    "COUNT",
+    value,
+  );
 
 const addCap = (
   id: OriginTraitId,
@@ -289,7 +297,15 @@ const addCap = (
   target: RuleScope,
   value: number,
 ): RuleContribution =>
-  contribution(id, axis, target, "ORIGIN_CAP", "ADD_CAP", "COUNT", value);
+  contribution(
+    id,
+    axis,
+    target,
+    "ORIGIN_CAP",
+    "ADD_CAP",
+    "COUNT",
+    value,
+  );
 
 const suppress = (
   id: OriginTraitId,
@@ -380,9 +396,7 @@ function define(
     classification === "DECLARATIVE" &&
     (dynamicProviders.length > 0 || customDomains.length > 0)
   ) {
-    throw new Error(
-      `${id} is DECLARATIVE but declares dynamic/custom behavior`,
-    );
+    throw new Error(`${id} is DECLARATIVE but declares dynamic/custom behavior`);
   }
   if (classification === "DYNAMIC" && dynamicProviders.length === 0) {
     throw new Error(`${id} is DYNAMIC but declares no dynamic provider`);
@@ -474,8 +488,18 @@ define("P08", "DECLARATIVE", {
 });
 define("P09", "DECLARATIVE", {
   contributions: [
-    pct("P09", "STRUCTURE_FIELD_COVERAGE_AREA", scope.structure("FORT"), 1000),
-    pct("P09", "STRUCTURE_PRESSURE_MAGNITUDE", scope.structure("FORT"), 900),
+    pct(
+      "P09",
+      "STRUCTURE_FIELD_COVERAGE_AREA",
+      scope.structure("FORT"),
+      1000,
+    ),
+    pct(
+      "P09",
+      "STRUCTURE_PRESSURE_MAGNITUDE",
+      scope.structure("FORT"),
+      900,
+    ),
     pct("P09", "STRUCTURE_BUILD_COST", scope.structure("FORT"), -800),
     pct("P09", "STRUCTURE_UPGRADE_COST", scope.structure("FORT"), -800),
   ],
@@ -491,7 +515,11 @@ define("P10", "DECLARATIVE", {
 define("P11", "DYNAMIC", {
   contributions: [
     hardZero("P11", "STRUCTURE_BUILD_COST", scope.structure("SAM_LAUNCHER")),
-    hardZero("P11", "STRUCTURE_UPGRADE_COST", scope.structure("SAM_LAUNCHER")),
+    hardZero(
+      "P11",
+      "STRUCTURE_UPGRADE_COST",
+      scope.structure("SAM_LAUNCHER"),
+    ),
   ],
   dynamicProviders: [
     dynamic(
@@ -515,7 +543,12 @@ define("P12", "DECLARATIVE", {
 });
 define("P13", "DECLARATIVE", {
   contributions: [
-    pct("P13", "TERRAIN_DEFENSIVE_PRESSURE", scope.terrain("MOUNTAIN"), 3300),
+    pct(
+      "P13",
+      "TERRAIN_DEFENSIVE_PRESSURE",
+      scope.terrain("MOUNTAIN"),
+      3300,
+    ),
   ],
 });
 define("P14", "DECLARATIVE", {
@@ -528,7 +561,12 @@ define("P14", "DECLARATIVE", {
 });
 define("P15", "DECLARATIVE", {
   contributions: [
-    pct("P15", "TERRAIN_OFFENSIVE_PRESSURE", scope.terrain("HIGHLAND"), 3300),
+    pct(
+      "P15",
+      "TERRAIN_OFFENSIVE_PRESSURE",
+      scope.terrain("HIGHLAND"),
+      3300,
+    ),
   ],
 });
 define("P16", "DECLARATIVE", {
@@ -558,11 +596,17 @@ define("P17", "DYNAMIC", {
 });
 define("P18", "DECLARATIVE", {
   contributions: [
-    pct("P18", "GLOBAL_OFFENSIVE_PRESSURE", scope.global, 10_000, {
-      kind: "SOURCE_INSIDE_FIELD",
-      field: "FORT",
-      affiliation: "SELF_OR_FIXED_TEAMMATE",
-    }),
+    pct(
+      "P18",
+      "GLOBAL_OFFENSIVE_PRESSURE",
+      scope.global,
+      10_000,
+      {
+        kind: "SOURCE_INSIDE_FIELD",
+        field: "FORT",
+        affiliation: "SELF_OR_FIXED_TEAMMATE",
+      },
+    ),
   ],
 });
 define("P19", "DYNAMIC", {
@@ -626,7 +670,12 @@ define("P25", "DECLARATIVE", {
       "PROHIBIT",
     ),
     pct("P25", "WEAPON_BLAST_AREA", scope.weapon("HYDROGEN_BOMB"), 5000),
-    pct("P25", "WEAPON_PURCHASE_FFY_COST", scope.weapon("HYDROGEN_BOMB"), 5000),
+    pct(
+      "P25",
+      "WEAPON_PURCHASE_FFY_COST",
+      scope.weapon("HYDROGEN_BOMB"),
+      5000,
+    ),
   ],
 });
 custom(
@@ -792,9 +841,7 @@ custom(
   "Custom automatic-defender survival hook; capture/Population lifecycle remains ORIGIN_TRAIT_CATALOGUE/OPEN_FUFU_DESIGN-owned.",
 );
 define("P39", "DECLARATIVE", {
-  contributions: [
-    structural("P39", "SPAWN_PROFILE", scope.global, "SPLIT_TWO"),
-  ],
+  contributions: [structural("P39", "SPAWN_PROFILE", scope.global, "SPLIT_TWO")],
 });
 define("P40", "DECLARATIVE", {
   contributions: [
@@ -920,17 +967,32 @@ define("P54", "DECLARATIVE", {
 
 define("N01", "DECLARATIVE", {
   contributions: [
-    pct("N01", "CITY_GROWTH_CONTRIBUTION", scope.structure("CITY"), -2000),
+    pct(
+      "N01",
+      "CITY_GROWTH_CONTRIBUTION",
+      scope.structure("CITY"),
+      -2000,
+    ),
   ],
 });
 define("N02", "DECLARATIVE", {
   contributions: [
-    pct("N02", "TERRAIN_OFFENSIVE_PRESSURE", scope.terrain("PLAINS"), -2500),
+    pct(
+      "N02",
+      "TERRAIN_OFFENSIVE_PRESSURE",
+      scope.terrain("PLAINS"),
+      -2500,
+    ),
   ],
 });
 define("N03", "DECLARATIVE", {
   contributions: [
-    pct("N03", "TERRAIN_DEFENSIVE_PRESSURE", scope.terrain("DESERT"), -3300),
+    pct(
+      "N03",
+      "TERRAIN_DEFENSIVE_PRESSURE",
+      scope.terrain("DESERT"),
+      -3300,
+    ),
   ],
 });
 define("N04", "DECLARATIVE", {
@@ -968,7 +1030,11 @@ define("N07", "DECLARATIVE", {
 });
 define("N08", "DECLARATIVE", {
   contributions: [
-    hardZero("N08", "STRUCTURE_PRESSURE_MAGNITUDE", scope.structure("FORT")),
+    hardZero(
+      "N08",
+      "STRUCTURE_PRESSURE_MAGNITUDE",
+      scope.structure("FORT"),
+    ),
   ],
 });
 define("N09", "DECLARATIVE", {
@@ -983,7 +1049,12 @@ define("N09", "DECLARATIVE", {
 });
 define("N10", "DECLARATIVE", {
   contributions: [
-    pct("N10", "STRUCTURE_FIELD_COVERAGE_AREA", scope.structure("FORT"), -2500),
+    pct(
+      "N10",
+      "STRUCTURE_FIELD_COVERAGE_AREA",
+      scope.structure("FORT"),
+      -2500,
+    ),
   ],
 });
 define("N11", "DECLARATIVE", {

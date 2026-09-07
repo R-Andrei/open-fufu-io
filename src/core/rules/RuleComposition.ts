@@ -275,7 +275,10 @@ export type DynamicRuleFormula =
       readonly unitsPerStep: number;
     };
 
-export type DynamicRuleOperandKind = "RATIONAL" | "BASIS_POINTS" | "INTEGER";
+export type DynamicRuleOperandKind =
+  | "RATIONAL"
+  | "BASIS_POINTS"
+  | "INTEGER";
 
 export interface DynamicRuleProvider {
   readonly id: string;
@@ -314,7 +317,12 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "UNIT_PROFILE",
     "SCENARIO",
   ],
-  BASE_REPLACEMENT: ["BASE_RULESET", "RULESET_TRANSFORM", "ORIGIN", "SCENARIO"],
+  BASE_REPLACEMENT: [
+    "BASE_RULESET",
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "SCENARIO",
+  ],
   ORIGIN_FLAT: ["ORIGIN"],
   ORIGIN_PERCENT: ["ORIGIN"],
   ORIGIN_SCALAR: ["ORIGIN"],
@@ -376,7 +384,12 @@ export const RULE_STAGE_ALLOWED_SOURCE_KINDS = {
     "SCENARIO",
     "SITUATIONAL",
   ],
-  FINAL_OVERRIDE: ["RULESET_TRANSFORM", "ORIGIN", "SCENARIO", "SITUATIONAL"],
+  FINAL_OVERRIDE: [
+    "RULESET_TRANSFORM",
+    "ORIGIN",
+    "SCENARIO",
+    "SITUATIONAL",
+  ],
   TERMINAL: ["RULESET_TRANSFORM", "ORIGIN", "SCENARIO", "SITUATIONAL"],
 } as const satisfies Readonly<Record<RuleStageId, readonly RuleSourceKind[]>>;
 
@@ -457,9 +470,7 @@ const UNIT_SCOPE_ID_SET = new Set<string>(UNIT_SCOPE_IDS);
 const CONCRETE_UNIT_ID_SET = new Set<string>(CONCRETE_UNIT_IDS);
 const WEAPON_SCOPE_ID_SET = new Set<string>(WEAPON_SCOPE_IDS);
 const FFY_FAMILY_SCOPE_ID_SET = new Set<string>(FFY_FAMILY_SCOPE_IDS);
-const STRUCTURE_ACQUISITION_PATH_SET = new Set<string>(
-  STRUCTURE_ACQUISITION_PATHS,
-);
+const STRUCTURE_ACQUISITION_PATH_SET = new Set<string>(STRUCTURE_ACQUISITION_PATHS);
 const STRUCTURE_FIELD_ID_SET = new Set<string>(STRUCTURE_FIELD_IDS);
 const STRUCTURE_FIELD_AFFILIATION_SET = new Set<string>(
   STRUCTURE_FIELD_AFFILIATIONS,
@@ -480,11 +491,7 @@ const CONTRIBUTION_REQUIRED_KEYS = [
   "sourceId",
   "valueUnit",
 ] as const;
-const CONTRIBUTION_OPTIONAL_KEYS = [
-  "value",
-  "conditions",
-  "component",
-] as const;
+const CONTRIBUTION_OPTIONAL_KEYS = ["value", "conditions", "component"] as const;
 
 export function compareRuleStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
@@ -620,13 +627,9 @@ export function isValidRuleCondition(
   }
 }
 
-export function isValidRuleContributionShape(
-  raw: unknown,
-): raw is RuleContribution {
+export function isValidRuleContributionShape(raw: unknown): raw is RuleContribution {
   if (!isRecord(raw)) return false;
-  if (
-    !hasExactKeys(raw, CONTRIBUTION_REQUIRED_KEYS, CONTRIBUTION_OPTIONAL_KEYS)
-  ) {
+  if (!hasExactKeys(raw, CONTRIBUTION_REQUIRED_KEYS, CONTRIBUTION_OPTIONAL_KEYS)) {
     return false;
   }
   return (
@@ -663,9 +666,7 @@ export function canonicalizeRuleConditions(
   );
 }
 
-export function canonicalizeStringSet(
-  values: readonly string[],
-): readonly string[] {
+export function canonicalizeStringSet(values: readonly string[]): readonly string[] {
   return Object.freeze([...new Set(values)].sort(compareRuleStrings));
 }
 
@@ -1060,9 +1061,7 @@ export function validateRuleContributions(
       issues.push({
         code: "INVALID_CONTRIBUTION_SHAPE",
         axis: context.axis,
-        ...(context.sourceId === undefined
-          ? {}
-          : { sourceId: context.sourceId }),
+        ...(context.sourceId === undefined ? {} : { sourceId: context.sourceId }),
         message:
           "Rule contribution must use the exact closed RuleContribution shape and registered runtime vocabulary",
       });
@@ -1246,8 +1245,7 @@ export function reducedRational(
   numeratorInput: bigint,
   denominatorInput: bigint,
 ): { readonly numerator: bigint; readonly denominator: bigint } {
-  if (denominatorInput === 0n)
-    throw new Error("Rational denominator cannot be zero");
+  if (denominatorInput === 0n) throw new Error("Rational denominator cannot be zero");
   let numerator = numeratorInput;
   let denominator = denominatorInput;
   if (denominator < 0n) {
@@ -1281,9 +1279,7 @@ export function evaluateDynamicRuleProvider(
   dependencyValue: number,
 ): DynamicRuleResolvedValue {
   if (!Number.isSafeInteger(dependencyValue) || dependencyValue < 0) {
-    throw new Error(
-      `${provider.dependency} must be a non-negative safe integer`,
-    );
+    throw new Error(`${provider.dependency} must be a non-negative safe integer`);
   }
   switch (provider.formula.kind) {
     case "RATIONAL_POWER": {
@@ -1294,9 +1290,7 @@ export function evaluateDynamicRuleProvider(
         !Number.isSafeInteger(denominator) ||
         denominator <= 0
       ) {
-        throw new Error(
-          "RATIONAL_POWER requires safe integer numerator/denominator",
-        );
+        throw new Error("RATIONAL_POWER requires safe integer numerator/denominator");
       }
       const reduced = reducedRational(
         powBigInt(BigInt(numerator), dependencyValue),
@@ -1314,9 +1308,7 @@ export function evaluateDynamicRuleProvider(
       }
       const value = dependencyValue * provider.formula.bpPerUnit;
       if (!Number.isSafeInteger(value)) {
-        throw new Error(
-          "Dynamic basis-point result exceeds safe-integer range",
-        );
+        throw new Error("Dynamic basis-point result exceeds safe-integer range");
       }
       return { kind: "BASIS_POINTS", value };
     }
@@ -1325,9 +1317,7 @@ export function evaluateDynamicRuleProvider(
         !Number.isSafeInteger(provider.formula.unitsPerStep) ||
         provider.formula.unitsPerStep <= 0
       ) {
-        throw new Error(
-          "FLOOR_COUNT_PER_UNITS requires a positive safe integer step",
-        );
+        throw new Error("FLOOR_COUNT_PER_UNITS requires a positive safe integer step");
       }
       return {
         kind: "INTEGER",
@@ -1346,7 +1336,10 @@ function numericValue(contribution: RuleContribution): number {
   return contribution.value;
 }
 
-function assertKind(definition: RuleAxisDefinition, kind: RuleAxisKind): void {
+function assertKind(
+  definition: RuleAxisDefinition,
+  kind: RuleAxisKind,
+): void {
   if (definition.kind !== kind) {
     throw new Error(`${definition.id} is ${definition.kind}; expected ${kind}`);
   }
@@ -1383,10 +1376,9 @@ function exactSafeIntegerSum(group: readonly RuleContribution[]): number {
   return result;
 }
 
-function exactBasisPointProduct(group: readonly RuleContribution[]): {
-  readonly numerator: bigint;
-  readonly denominator: bigint;
-} {
+function exactBasisPointProduct(
+  group: readonly RuleContribution[],
+): { readonly numerator: bigint; readonly denominator: bigint } {
   let numerator = 1n;
   let denominator = 1n;
   for (const entry of group) {
@@ -1412,10 +1404,9 @@ export function rationalToFiniteNumber(
   }
   if (numeratorInput === 0n) return 0;
 
-  const negative = numeratorInput < 0n !== denominatorInput < 0n;
+  const negative = (numeratorInput < 0n) !== (denominatorInput < 0n);
   const numerator = numeratorInput < 0n ? -numeratorInput : numeratorInput;
-  const denominator =
-    denominatorInput < 0n ? -denominatorInput : denominatorInput;
+  const denominator = denominatorInput < 0n ? -denominatorInput : denominatorInput;
   const numeratorBits = numerator.toString(2).length;
   const denominatorBits = denominator.toString(2).length;
   const numeratorShift = Math.max(0, numeratorBits - 53);
@@ -1433,7 +1424,10 @@ export function rationalToFiniteNumber(
 }
 
 function applyBasisPointDelta(value: number, deltaBasisPoints: number): number {
-  return (value * (BASIS_POINTS_SCALE + deltaBasisPoints)) / BASIS_POINTS_SCALE;
+  return (
+    (value * (BASIS_POINTS_SCALE + deltaBasisPoints)) /
+    BASIS_POINTS_SCALE
+  );
 }
 
 /** Scope and condition eligibility must be resolved before materialization. */
@@ -1464,10 +1458,7 @@ export function reduceScalarRule(
           throw new Error(`PRODUCT cannot apply ${operator}`);
         }
         const product = exactBasisPointProduct(group);
-        current *= rationalToFiniteNumber(
-          product.numerator,
-          product.denominator,
-        );
+        current *= rationalToFiniteNumber(product.numerator, product.denominator);
         break;
       }
       case "SINGLETON": {
@@ -1493,9 +1484,7 @@ export function reduceScalarRule(
         current = Math.max(current, ...group.map(numericValue));
         break;
       default:
-        throw new Error(
-          `${stage.reducer} is invalid for scalar ${definition.id}`,
-        );
+        throw new Error(`${stage.reducer} is invalid for scalar ${definition.id}`);
     }
   }
   return current;

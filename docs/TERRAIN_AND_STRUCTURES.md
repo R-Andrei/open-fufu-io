@@ -58,33 +58,33 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 
 ## 1.2 Canonical base-terrain table
 
-| Terrain           | Ownable | Population-bearing |  Capacity | Land traversal | Naval traversal | Structures | Spawn eligible | Capture / settlement speed | Source offense | Target defense | Faction-wide effect                          |
-| ----------------- | ------: | -----------------: | --------: | -------------: | --------------: | ---------: | -------------: | -------------------------: | -------------: | -------------: | -------------------------------------------- |
-| **Plains**        |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                   **110%** |         `100%` |         `100%` | **Population Growth `+6% × Plains share`**   |
-| **Highland**      |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                   **100%** |      **`+8%`** |         `100%` | —                                            |
-| **Mountain**      |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                    **80%** |         `100%` |     **`+15%`** | —                                            |
-| **Desert**        |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                    **90%** |         `100%` |         `100%` | **All FFY event yield `+6% × Desert share`** |
-| **Forest**        |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                    **90%** |      **`-5%`** |     **`+10%`** | —                                            |
-| **Tundra**        |     Yes |             **No** |   **`0`** |            Yes |              No |     **No** |         **No** |                    **80%** |         `100%` |      **`+5%`** | —                                            |
-| **Marsh**         |     Yes |                Yes | `+1/cell` |            Yes |              No |        Yes |            Yes |                    **70%** |     **`-10%`** |     **`-10%`** | —                                            |
-| **Shallow Water** | **Yes** |             **No** |   **`0`** |        **Yes** |         **Yes** |     **No** |         **No** |                    **70%** |     **`-15%`** |     **`-15%`** | —                                            |
-| **Deep Water**    |      No |                 No |       `0` |             No |         **Yes** |         No |             No |                          — |              — |              — | —                                            |
-| **Impassable**    |      No |                 No |       `0` |             No |              No |         No |             No |                          — |              — |              — | —                                            |
+| Terrain | Ownable | Population-bearing | Capacity | Land traversal | Naval traversal | Structures | Spawn eligible | Capture / settlement speed | Source offense | Target defense | Faction-wide effect |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| **Plains** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **110%** | `100%` | `100%` | **Population Growth `+6% × Plains share`** |
+| **Highland** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **100%** | **`+8%`** | `100%` | — |
+| **Mountain** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **80%** | `100%` | **`+15%`** | — |
+| **Desert** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **90%** | `100%` | `100%` | **All FFY event yield `+6% × Desert share`** |
+| **Forest** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **90%** | **`-5%`** | **`+10%`** | — |
+| **Tundra** | Yes | **No** | **`0`** | Yes | No | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
+| **Marsh** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
+| **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
+| **Deep Water** | No | No | `0` | No | **Yes** | No | No | — | — | — | — |
+| **Impassable** | No | No | `0` | No | No | No | No | — | — | — | — |
 
 ## 1.3 Terrain identities
 
-| Terrain           | Mechanical identity                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------ |
-| **Plains**        | Fertile/common land: fast acquisition plus a small Population-Growth benefit.                          |
-| **Highland**      | Offensive terrain.                                                                                     |
-| **Mountain**      | Defensive and slow to acquire.                                                                         |
-| **Desert**        | Economic terrain with slower acquisition.                                                              |
-| **Forest**        | Defender-favored attritional terrain.                                                                  |
-| **Tundra**        | Conquerable, 0 Capacity, unbuildable land.                                                             |
-| **Marsh**         | Very slow acquisition with poor attack and defense performance.                                        |
+| Terrain | Mechanical identity |
+| --- | --- |
+| **Plains** | Fertile/common land: fast acquisition plus a small Population-Growth benefit. |
+| **Highland** | Offensive terrain. |
+| **Mountain** | Defensive and slow to acquire. |
+| **Desert** | Economic terrain with slower acquisition. |
+| **Forest** | Defender-favored attritional terrain. |
+| **Tundra** | Conquerable, 0 Capacity, unbuildable land. |
+| **Marsh** | Very slow acquisition with poor attack and defense performance. |
 | **Shallow Water** | Conquerable crossing terrain for ordinary land operations and naval units; 0 Capacity and unbuildable. |
-| **Deep Water**    | Naval-only unconquerable water.                                                                        |
-| **Impassable**    | Hard map topology.                                                                                     |
+| **Deep Water** | Naval-only unconquerable water. |
+| **Impassable** | Hard map topology. |
 
 ## 1.4 Conquerable non-population-bearing terrain
 
@@ -96,30 +96,30 @@ A hostile automatically defended Tundra/Shallow-Water cell still produces ordina
 
 ## 1.5 Tundra
 
-| Property                                | Rule       |
-| --------------------------------------- | ---------- |
-| Conquerable                             | Yes        |
-| Population Capacity                     | **0/cell** |
-| Population Growth penalty for ownership | None       |
-| Structure construction                  | Forbidden  |
-| Initial Territory / exact spawn         | Forbidden  |
-| Capture / settlement speed              | **80%**    |
-| Source offense                          | 100%       |
-| Target defense                          | **+5%**    |
+| Property | Rule |
+| --- | --- |
+| Conquerable | Yes |
+| Population Capacity | **0/cell** |
+| Population Growth penalty for ownership | None |
+| Structure construction | Forbidden |
+| Initial Territory / exact spawn | Forbidden |
+| Capture / settlement speed | **80%** |
+| Source offense | 100% |
+| Target defense | **+5%** |
 
 ## 1.6 Shallow Water / Deep Water
 
-| Property                          | Shallow Water | Deep Water |
-| --------------------------------- | ------------: | ---------: |
-| Ownable                           |       **Yes** |         No |
-| Capacity                          |           `0` |        `0` |
-| Ordinary land operation traversal |       **Yes** |         No |
-| Naval traversal                   |       **Yes** |        Yes |
-| Structures                        |            No |         No |
-| Initial Territory / exact spawn   |            No |         No |
-| Capture / settlement speed        |       **70%** |          — |
-| Source offense                    |      **-15%** |          — |
-| Target defense                    |      **-15%** |          — |
+| Property | Shallow Water | Deep Water |
+| --- | ---: | ---: |
+| Ownable | **Yes** | No |
+| Capacity | `0` | `0` |
+| Ordinary land operation traversal | **Yes** | No |
+| Naval traversal | **Yes** | Yes |
+| Structures | No | No |
+| Initial Territory / exact spawn | No | No |
+| Capture / settlement speed | **70%** | — |
+| Source offense | **-15%** | — |
+| Target defense | **-15%** | — |
 
 Heavy land units use their own traversal table and do not inherit ordinary Population-operation traversal permissions.
 
@@ -410,33 +410,33 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 
 ## 2.5 Costs and times
 
-| Structure            | Time per build/upgrade |    L1 |    L2 |    L3 |    L4 |    L5 | L1→L5 total |
-| -------------------- | ---------------------: | ----: | ----: | ----: | ----: | ----: | ----------: |
-| **City**             |                 **5s** |  100k |  200k |  400k |  600k |  800k |   **2.10m** |
-| **Fort**             |                 **5s** |   50k |  100k |  150k |  200k |  250k |    **750k** |
-| **Port**             |                 **5s** |  100k |  200k |  400k |  600k |  800k |   **2.10m** |
-| **Factory**          |                **10s** |  150k |  300k |  600k |  900k | 1.20m |   **3.15m** |
-| **Missile Silo**     |                **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m |  **15.00m** |
-| **SAM Launcher**     |                **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m |  **15.00m** |
-| **Observation Post** |                 **5s** |   50k |  100k |  200k |  300k |  400k |   **1.05m** |
-| **Command Post**     |                **10s** |  100k |  200k |  400k |  600k |  800k |   **2.10m** |
+| Structure | Time per build/upgrade | L1 | L2 | L3 | L4 | L5 | L1→L5 total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| **City** | **5s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
+| **Fort** | **5s** | 50k | 100k | 150k | 200k | 250k | **750k** |
+| **Port** | **5s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
+| **Factory** | **10s** | 150k | 300k | 600k | 900k | 1.20m | **3.15m** |
+| **Missile Silo** | **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m | **15.00m** |
+| **SAM Launcher** | **15s** | 1.00m | 2.00m | 3.00m | 4.00m | 5.00m | **15.00m** |
+| **Observation Post** | **5s** | 50k | 100k | 200k | 300k | 400k | **1.05m** |
+| **Command Post** | **10s** | 100k | 200k | 400k | 600k | 800k | **2.10m** |
 
 ## 2.6 Level effects
 
-| Effect                                            |      L1 |      L2 |      L3 |       L4 |        L5 |
-| ------------------------------------------------- | ------: | ------: | ------: | -------: | --------: |
-| **City — faction Population Growth contribution** |     +1% |     +2% |     +3% |      +4% |   **+5%** |
-| **Fort — defensive pressure**                     |    +10% |    +15% |    +20% |     +25% |  **+30%** |
-| **Fort — coverage radius**                        |      30 |      35 |      40 |       45 |    **50** |
-| **Port — passive naval repair radius**            |      20 |      25 |      30 |       35 |    **40** |
-| **Port — passive naval repair rate**              |   1.00× |   1.25× |   1.50× |    1.75× | **2.00×** |
-| **Factory — simultaneous Tank repair capacity**   |       1 |       2 |       3 |        4 |     **5** |
-| **Missile Silo — simultaneous charges**           |       1 |       2 |       3 |        4 |     **5** |
-| **SAM Launcher — simultaneous charges**           |       1 |       2 |       3 |        4 |     **5** |
-| **SAM Launcher — interception range**             |      70 |      80 |      90 |      100 |   **105** |
-| **Observation Post — observation radius**         |      40 |      55 |      70 |       85 |   **100** |
-| **Command Post — source offensive pressure**      | **+3%** | **+6%** | **+9%** | **+12%** |  **+15%** |
-| **Command Post — coverage radius**                |  **30** |  **35** |  **40** |   **45** |    **50** |
+| Effect | L1 | L2 | L3 | L4 | L5 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **City — faction Population Growth contribution** | +1% | +2% | +3% | +4% | **+5%** |
+| **Fort — defensive pressure** | +10% | +15% | +20% | +25% | **+30%** |
+| **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
+| **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
+| **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
+| **Factory — simultaneous Tank repair capacity** | 1 | 2 | 3 | 4 | **5** |
+| **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
+| **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
+| **SAM Launcher — interception range** | 70 | 80 | 90 | 100 | **105** |
+| **Observation Post — observation radius** | 40 | 55 | 70 | 85 | **100** |
+| **Command Post — source offensive pressure** | **+3%** | **+6%** | **+9%** | **+12%** | **+15%** |
+| **Command Post — coverage radius** | **30** | **35** | **40** | **45** | **50** |
 
 ## 2.7 Structure-specific rules
 
@@ -480,11 +480,11 @@ Factory consumers must request an **effective Factory profile** rather than infe
 
 ### Missile Silo
 
-| Completed level | Weapon access                    |
-| --------------: | -------------------------------- |
-|           L1–L2 | Atom Bomb                        |
-|           L3–L4 | Atom Bomb + Hydrogen Bomb        |
-|              L5 | Atom Bomb + Hydrogen Bomb + MIRV |
+| Completed level | Weapon access |
+| ---: | --- |
+| L1–L2 | Atom Bomb |
+| L3–L4 | Atom Bomb + Hydrogen Bomb |
+| L5 | Atom Bomb + Hydrogen Bomb + MIRV |
 
 Charge capacity equals completed level. Baseline recharge cooldown is **9s / 90 simulation ticks per charge**.
 
@@ -572,20 +572,20 @@ Origin transformations of the Tank chassis are defined only in `ORIGIN_TRAIT_CAT
 
 ## 3.1 Production and persistence
 
-| Property                           | Baseline Tank rule   |
-| ---------------------------------- | -------------------- |
-| Produced by                        | active owned Factory |
-| Factory level required             | L1+                  |
-| Build time                         | **5s**               |
-| Concurrent Tank builds per Factory | **1**                |
-| Purchase resource                  | FFY                  |
-| Max owned Tanks                    | No hard cap          |
-| Captures territory                 | No                   |
-| Carries Population                 | No                   |
-| Generic structure damage           | No                   |
-| Max health                         | **1,000**            |
-| Automatic repair-retreat threshold | **50% health**       |
-| Repair structure                   | Factory              |
+| Property | Baseline Tank rule |
+| --- | --- |
+| Produced by | active owned Factory |
+| Factory level required | L1+ |
+| Build time | **5s** |
+| Concurrent Tank builds per Factory | **1** |
+| Purchase resource | FFY |
+| Max owned Tanks | No hard cap |
+| Captures territory | No |
+| Carries Population | No |
+| Generic structure damage | No |
+| Max health | **1,000** |
+| Automatic repair-retreat threshold | **50% health** |
+| Repair structure | Factory |
 
 Tank-chassis construction-speed modifiers multiply construction **work rate**. They do not subtract the same percentage directly from duration. For a baseline build represented by `baseBuildTicks`, an isolated speed multiplier `S > 0` completes after:
 
@@ -602,11 +602,11 @@ TankCost = min(1,000,000 FFY, 250,000 FFY × (activeTankChassis + 1))
 ```
 
 | Active Tank chassis before purchase | Next baseline Tank cost |
-| ----------------------------------: | ----------------------: |
-|                                   0 |                **250k** |
-|                                   1 |                **500k** |
-|                                   2 |                **750k** |
-|                                  3+ |               **1.00m** |
+| ---: | ---: |
+| 0 | **250k** |
+| 1 | **500k** |
+| 2 | **750k** |
+| 3+ | **1.00m** |
 
 Origin-transformed Tank chassis count against the same active-chassis curve unless the Origin catalogue explicitly changes that rule.
 
@@ -614,18 +614,18 @@ Origin-transformed Tank chassis count against the same active-chassis curve unle
 
 Baseline Plains movement speed is **5 cells/s**.
 
-| Terrain           |   Traversal | Speed multiplier | Derived Tank speed |
-| ----------------- | ----------: | ---------------: | -----------------: |
-| **Plains**        |         Yes |             100% |   **5.00 cells/s** |
-| **Highland**      |         Yes |              80% |   **4.00 cells/s** |
-| **Mountain**      | **Blocked** |                — |                  — |
-| **Desert**        |         Yes |              90% |   **4.50 cells/s** |
-| **Forest**        |         Yes |              65% |   **3.25 cells/s** |
-| **Tundra**        |         Yes |              75% |   **3.75 cells/s** |
-| **Marsh**         |         Yes |              50% |   **2.50 cells/s** |
-| **Shallow Water** | **Blocked** |                — |                  — |
-| **Deep Water**    |     Blocked |                — |                  — |
-| **Impassable**    |     Blocked |                — |                  — |
+| Terrain | Traversal | Speed multiplier | Derived Tank speed |
+| --- | ---: | ---: | ---: |
+| **Plains** | Yes | 100% | **5.00 cells/s** |
+| **Highland** | Yes | 80% | **4.00 cells/s** |
+| **Mountain** | **Blocked** | — | — |
+| **Desert** | Yes | 90% | **4.50 cells/s** |
+| **Forest** | Yes | 65% | **3.25 cells/s** |
+| **Tundra** | Yes | 75% | **3.75 cells/s** |
+| **Marsh** | Yes | 50% | **2.50 cells/s** |
+| **Shallow Water** | **Blocked** | — | — |
+| **Deep Water** | Blocked | — | — |
+| **Impassable** | Blocked | — | — |
 
 Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
@@ -639,11 +639,11 @@ Within ordinary operation the Tank wanders/searches for legal targets around its
 
 ## 3.4 Combat and raiding
 
-| Attack mode                 |  Range |               Damage / result |              Cooldown |
-| --------------------------- | -----: | ----------------------------: | --------------------: |
-| **vs hostile Tank chassis** | **30** |                    **250 HP** |                **1s** |
-| **vs hostile Train**        | **30** |   Train intercepted/destroyed | **1s weapon cadence** |
-| **vs hostile Population**   | **30** | **250 Population casualties** |                **3s** |
+| Attack mode | Range | Damage / result | Cooldown |
+| --- | ---: | ---: | ---: |
+| **vs hostile Tank chassis** | **30** | **250 HP** | **1s** |
+| **vs hostile Train** | **30** | Train intercepted/destroyed | **1s weapon cadence** |
+| **vs hostile Population** | **30** | **250 Population casualties** | **3s** |
 
 Autonomous anti-armor combat and Train interception do **not** require, create, or refresh `atWar`. Autonomous Population attacks are legal only while the Tank owner's hostility side is currently `atWar` with the target faction's side under the canonical game-wide rule in `OPEN_FUFU_DESIGN.md`; they cease when that relation expires. Tank-derived Origin chassis inherit this gate unless an explicit Origin rule changes it.
 

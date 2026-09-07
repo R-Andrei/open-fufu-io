@@ -51,17 +51,17 @@ A dedicated interaction is required when one trait changes a value, state, geome
 
 The current Origin catalogue resolves onto these recurring gameplay validation domains:
 
-| Domain                                               | Origin conformance concern                                                                                                                                                     |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Spawn / pre-match initialization**                 | spawn profiles, exact origins, generated starting footprints, initial ownership/Population, start-state grants, deterministic resolver/replay                                  |
-| **Population state/accounting**                      | Capacity/Total/Available/committed Population, growth, peak-state entitlements, settlement accounting, casualties/transfers, Population-derived passive effects                |
-| **Land combat / capture resolution**                 | offensive/defensive pressure, counter-response, acquisition progress, automatic defense, capture casualties, post-capture consequences, structure-capture consequence dispatch |
-| **Terrain / territorial mutation**                   | faction-effective terrain classification, acquisition rules, Fallout overlays, abandonment/neutralization, construction permissions                                            |
-| **Persistent structures / transactions / lifecycle** | purchase/upgrade/grant/capture admission, hard caps/prohibitions, provenance, active level/state, effective fields, charge-bearing structures, destruction/transfer            |
-| **FFY economy / physical logistics**                 | FFY source/event families, modifier ordering, spatial yields/hard zero, passive sources, Train/Trade lifecycle, piracy, explicit costs/losses/snapshots                        |
-| **Naval / amphibious lifecycle**                     | Warship/Transport admission and profiles, movement, rank/caps, repair, embarkation, landing/abort/destruction, carried Population                                              |
-| **Strategic weapons / interception**                 | launcher legality, weapon access/cost, launch transactionality, projectile motion/classification, blast realization, SAM interception/anti-ship behavior                       |
-| **Observation / concealment**                        | lawful observation/reveal/blackout/concealment geometry, hostile-manifestation exceptions, controller/AI-visible projection                                                    |
+| Domain | Origin conformance concern |
+| --- | --- |
+| **Spawn / pre-match initialization** | spawn profiles, exact origins, generated starting footprints, initial ownership/Population, start-state grants, deterministic resolver/replay |
+| **Population state/accounting** | Capacity/Total/Available/committed Population, growth, peak-state entitlements, settlement accounting, casualties/transfers, Population-derived passive effects |
+| **Land combat / capture resolution** | offensive/defensive pressure, counter-response, acquisition progress, automatic defense, capture casualties, post-capture consequences, structure-capture consequence dispatch |
+| **Terrain / territorial mutation** | faction-effective terrain classification, acquisition rules, Fallout overlays, abandonment/neutralization, construction permissions |
+| **Persistent structures / transactions / lifecycle** | purchase/upgrade/grant/capture admission, hard caps/prohibitions, provenance, active level/state, effective fields, charge-bearing structures, destruction/transfer |
+| **FFY economy / physical logistics** | FFY source/event families, modifier ordering, spatial yields/hard zero, passive sources, Train/Trade lifecycle, piracy, explicit costs/losses/snapshots |
+| **Naval / amphibious lifecycle** | Warship/Transport admission and profiles, movement, rank/caps, repair, embarkation, landing/abort/destruction, carried Population |
+| **Strategic weapons / interception** | launcher legality, weapon access/cost, launch transactionality, projectile motion/classification, blast realization, SAM interception/anti-ship behavior |
+| **Observation / concealment** | lawful observation/reveal/blackout/concealment geometry, hostile-manifestation exceptions, controller/AI-visible projection |
 
 ## 2.1 Admission / legality is a stage, not a tenth domain
 

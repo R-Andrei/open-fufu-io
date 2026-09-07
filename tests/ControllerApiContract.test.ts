@@ -13,9 +13,9 @@ function compilerOptions(): ts.CompilerOptions {
   const configPath = path.resolve("tsconfig.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
 
-  expect(configFile.error ? formatDiagnostics([configFile.error]) : "").toBe(
-    "",
-  );
+  expect(
+    configFile.error ? formatDiagnostics([configFile.error]) : "",
+  ).toBe("");
 
   const parsed = ts.parseJsonConfigFileContent(
     configFile.config,

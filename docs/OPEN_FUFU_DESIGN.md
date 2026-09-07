@@ -325,19 +325,19 @@ u = TotalPopulation / PopulationCapacity
 
 The ordinary utilization multiplier `U(u)` uses piecewise-linear interpolation through these anchors:
 
-| Utilization |   `U(u)` |
-| ----------: | -------: |
-|          0% |  **20%** |
-|         10% |  **45%** |
-|         20% |  **70%** |
-|         30% |  **88%** |
-|         40% | **100%** |
-|         50% | **100%** |
-|         60% | **100%** |
-|         70% |  **85%** |
-|         80% |  **60%** |
-|         90% |  **35%** |
-|        100% |   **0%** |
+| Utilization | `U(u)` |
+| ---: | ---: |
+| 0% | **20%** |
+| 10% | **45%** |
+| 20% | **70%** |
+| 30% | **88%** |
+| 40% | **100%** |
+| 50% | **100%** |
+| 60% | **100%** |
+| 70% | **85%** |
+| 80% | **60%** |
+| 90% | **35%** |
+| 100% | **0%** |
 
 For `u >= 1`, ordinary positive growth is zero. If Capacity is zero, ordinary growth is zero.
 
