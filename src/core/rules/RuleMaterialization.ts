@@ -30,6 +30,11 @@ export interface RuleDynamicState {
 /** Static normalized records and evaluated dynamic providers share this shape. */
 export type ResolvedRuleTerm = NormalizedRuleRecord;
 
+export interface ExactRuleScaleFactor {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
 export type RuleConditionPredicate = (conditions: RuleConditions) => boolean;
 
 function dependencyValue(
@@ -281,6 +286,26 @@ function exactProduct(terms: readonly ResolvedRuleTerm[]): {
   return { numerator, denominator };
 }
 
+function multiplyExactScale(
+  left: ExactRuleScaleFactor,
+  right: ExactRuleScaleFactor,
+): ExactRuleScaleFactor {
+  return reducedRational(
+    left.numerator * right.numerator,
+    left.denominator * right.denominator,
+  );
+}
+
+function basisPointDeltaScale(deltaBasisPoints: number): ExactRuleScaleFactor {
+  if (!Number.isSafeInteger(deltaBasisPoints)) {
+    throw new Error("Scale-factor basis-point delta must be a safe integer");
+  }
+  return reducedRational(
+    BigInt(BASIS_POINTS_SCALE) + BigInt(deltaBasisPoints),
+    BigInt(BASIS_POINTS_SCALE),
+  );
+}
+
 function singletonNumber(terms: readonly ResolvedRuleTerm[]): number {
   if (terms.length !== 1) {
     throw new Error(`SINGLETON stage received ${terms.length} applicable terms`);
@@ -377,6 +402,48 @@ export function materializeScalarRuleTerms(
   return current;
 }
 
+/**
+ * Materialize only the exact multiplicative scale contributed by percentage and
+ * product stages. Geometry and other exact projection boundaries use this helper
+ * instead of round-tripping an already-materialized floating scalar.
+ */
+export function materializeScalarScaleFactorTerms(
+  definition: RuleAxisDefinition,
+  terms: readonly ResolvedRuleTerm[],
+): ExactRuleScaleFactor {
+  if (definition.kind !== "SCALAR") {
+    throw new Error(`${definition.id} is ${definition.kind}; expected SCALAR`);
+  }
+  assertTerms(definition, terms);
+  let current: ExactRuleScaleFactor = { numerator: 1n, denominator: 1n };
+
+  for (const stage of definition.stages) {
+    const group = terms.filter((term) => term.stage === stage.id);
+    if (group.length === 0) continue;
+    if (stage.reducer === "SUM") {
+      if (
+        stage.id !== "ORIGIN_PERCENT" &&
+        stage.id !== "ECHO_PERCENT" &&
+        stage.id !== "CONTEXTUAL_PERCENT"
+      ) {
+        throw new Error(
+          `${definition.id}/${stage.id} is an additive scalar stage, not a scale factor`,
+        );
+      }
+      current = multiplyExactScale(current, basisPointDeltaScale(exactSum(group)));
+      continue;
+    }
+    if (stage.reducer === "PRODUCT") {
+      current = multiplyExactScale(current, exactProduct(group));
+      continue;
+    }
+    throw new Error(
+      `${definition.id}/${stage.id} cannot be represented as a pure scale factor`,
+    );
+  }
+  return Object.freeze(current);
+}
+
 /** Materialize already condition-eligible cap terms in axis stage order. */
 export function materializeCapRuleTerms(
   baseCap: number,
@@ -415,6 +482,23 @@ export function materializeCompiledScalarRule(
     conditionApplies,
   );
   return materializeScalarRuleTerms(baseValue, definition, terms);
+}
+
+export function materializeCompiledScalarScaleFactor(
+  profile: CompiledRuleProfile,
+  registry: RuleAxisRegistry,
+  axis: string,
+  scope: RuleScope,
+  state: RuleDynamicState,
+  conditionApplies?: RuleConditionPredicate,
+): ExactRuleScaleFactor {
+  const definition = registry[axis];
+  if (definition === undefined) throw new Error(`Unknown axis ${axis}`);
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(profile, registry, axis, scope, state),
+    conditionApplies,
+  );
+  return materializeScalarScaleFactorTerms(definition, terms);
 }
 
 export function materializeCompiledCapRule(

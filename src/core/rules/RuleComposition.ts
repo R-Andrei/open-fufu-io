@@ -1,6 +1,6 @@
 import { pow2 as deterministicPow2 } from "../DetMath";
 
-export const RULE_COMPOSITION_VERSION = "1" as const;
+export const RULE_COMPOSITION_VERSION = "2" as const;
 export const BASIS_POINTS_SCALE = 10_000;
 
 export const TERRAIN_SCOPE_IDS = [
@@ -64,6 +64,15 @@ export const STRUCTURE_ACQUISITION_PATHS = [
 ] as const;
 export type StructureAcquisitionPath =
   (typeof STRUCTURE_ACQUISITION_PATHS)[number];
+
+export const STRUCTURE_FIELD_IDS = ["FORT", "SAM", "COMMAND_POST"] as const;
+export type StructureFieldId = (typeof STRUCTURE_FIELD_IDS)[number];
+export const STRUCTURE_FIELD_AFFILIATIONS = [
+  "SELF",
+  "SELF_OR_FIXED_TEAMMATE",
+] as const;
+export type StructureFieldAffiliation =
+  (typeof STRUCTURE_FIELD_AFFILIATIONS)[number];
 
 export const RULE_SOURCE_KINDS = [
   "BASE_RULESET",
@@ -192,11 +201,13 @@ export type RuleCondition =
   | { readonly kind: "PROJECTILE_IS_WARHEAD" }
   | {
       readonly kind: "EVENT_INSIDE_FIELD";
-      readonly field: "FORT" | "SAM" | "COMMAND_POST";
+      readonly field: StructureFieldId;
+      readonly affiliation: StructureFieldAffiliation;
     }
   | {
       readonly kind: "SOURCE_INSIDE_FIELD";
-      readonly field: "FORT" | "COMMAND_POST";
+      readonly field: Exclude<StructureFieldId, "SAM">;
+      readonly affiliation: StructureFieldAffiliation;
     }
   | {
       readonly kind: "STRUCTURE_ACQUISITION_PATH_IS";
@@ -456,6 +467,10 @@ const CONCRETE_UNIT_ID_SET = new Set<string>(CONCRETE_UNIT_IDS);
 const WEAPON_SCOPE_ID_SET = new Set<string>(WEAPON_SCOPE_IDS);
 const FFY_FAMILY_SCOPE_ID_SET = new Set<string>(FFY_FAMILY_SCOPE_IDS);
 const STRUCTURE_ACQUISITION_PATH_SET = new Set<string>(STRUCTURE_ACQUISITION_PATHS);
+const STRUCTURE_FIELD_ID_SET = new Set<string>(STRUCTURE_FIELD_IDS);
+const STRUCTURE_FIELD_AFFILIATION_SET = new Set<string>(
+  STRUCTURE_FIELD_AFFILIATIONS,
+);
 const RULE_SOURCE_KIND_SET = new Set<string>(RULE_SOURCE_KINDS);
 const RULE_STAGE_ID_SET = new Set<string>(RULE_STAGE_IDS);
 const RULE_OPERATOR_SET = new Set<string>(RULE_OPERATORS);
@@ -584,15 +599,18 @@ export function isValidRuleCondition(
       );
     case "EVENT_INSIDE_FIELD":
       return (
-        hasExactKeys(condition, ["kind", "field"]) &&
-        (condition.field === "FORT" ||
-          condition.field === "SAM" ||
-          condition.field === "COMMAND_POST")
+        hasExactKeys(condition, ["kind", "field", "affiliation"]) &&
+        typeof condition.field === "string" &&
+        STRUCTURE_FIELD_ID_SET.has(condition.field) &&
+        typeof condition.affiliation === "string" &&
+        STRUCTURE_FIELD_AFFILIATION_SET.has(condition.affiliation)
       );
     case "SOURCE_INSIDE_FIELD":
       return (
-        hasExactKeys(condition, ["kind", "field"]) &&
-        (condition.field === "FORT" || condition.field === "COMMAND_POST")
+        hasExactKeys(condition, ["kind", "field", "affiliation"]) &&
+        (condition.field === "FORT" || condition.field === "COMMAND_POST") &&
+        typeof condition.affiliation === "string" &&
+        STRUCTURE_FIELD_AFFILIATION_SET.has(condition.affiliation)
       );
     case "STRUCTURE_ACQUISITION_PATH_IS":
       return (

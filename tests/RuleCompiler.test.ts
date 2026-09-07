@@ -45,8 +45,18 @@ describe("rule profile compiler", () => {
     ).toBe(false);
     expect(
       ruleConditionsMayOverlap(
-        { kind: "EVENT_INSIDE_FIELD", field: "FORT" },
-        { kind: "EVENT_INSIDE_FIELD", field: "SAM" },
+        { kind: "EVENT_INSIDE_FIELD", field: "FORT", affiliation: "SELF" },
+        { kind: "EVENT_INSIDE_FIELD", field: "SAM", affiliation: "SELF" },
+      ),
+    ).toBe(true);
+    expect(
+      ruleConditionsMayOverlap(
+        { kind: "EVENT_INSIDE_FIELD", field: "FORT", affiliation: "SELF" },
+        {
+          kind: "EVENT_INSIDE_FIELD",
+          field: "FORT",
+          affiliation: "SELF_OR_FIXED_TEAMMATE",
+        },
       ),
     ).toBe(true);
   });

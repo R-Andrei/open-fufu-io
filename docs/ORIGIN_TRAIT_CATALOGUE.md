@@ -72,7 +72,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P21 | **Fun Things Are Fun** | First purchase of each structure consumes `0 FFY`, after ordinary affordability/legality succeeds | 7 |
 | P22 | **Limit Break** | `+2 maximum Warship rank` | 6 |
 | P23 | **Space Battleship Yamato** | Warships `+20% range, +20% damage, +20% speed`, but may own only one | 8 |
-| P24 | **A King's Price** | FFY events located inside Fort areas yield `+20% FFY` | 7 |
+| P24 | **A King's Price** | FFY events located inside your Fort areas yield `+20% FFY` | 7 |
 | P25 | **EXPLOSION!** | Cannot use Atom Bomb or MIRV; Hydrogen Bomb blast area `+50%`, FFY cost `+50%` | 10 |
 | P26 | **Serious Punch** | May use MIRV at most once; ordinary affordability/legality required, successful MIRV consumes `0 FFY` | 8 |
 | P27 | **Only My Railgun** | SAM Launchers may attack ships | 9 |
@@ -120,7 +120,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | N08 | **It's Just Decoration** | Forts provide no defensive-pressure bonus | -4 |
 | N09 | **Medieval Isekai** | Cannot build Factories | -6 |
 | N10 | **Domain Contraction** | `25% reduced Fort coverage area` | -4 |
-| N11 | **Absolute Territory** | FFY events located inside SAM Launcher area yield `0` | -7 |
+| N11 | **Absolute Territory** | FFY events located inside your SAM Launcher area yield `0` | -7 |
 | N12 | **Panzer Vor!** | Cannot build Warships | -6 |
 | N13 | **Beach Episode Gone Wrong** | `50%` of Transport Population dies when landing | -7 |
 | N14 | **To Them Words Are Merely a Means to Deceive** | When one of your Trade Ships is first captured by a hostile faction, lose FFY equal to that voyage's snapshotted ordinary owner-side success value | -4 |
@@ -155,7 +155,11 @@ upgradeCostMultiplier = 0.99^S
 
 ### P18 — Fort-supported offense
 
-P18 checks the attacking **source cell**. A lane qualifies when that source lies in at least one self/fixed-teammate Fort area. Multiple qualifying Forts do not multiply P18.
+P18 checks the attacking **source cell**. A lane qualifies when that source lies in at least one self/fixed-teammate Fort area. Multiple qualifying Forts do not multiply P18. The check uses each qualifying Fort's current effective coverage field, including P09/N10/Fort-area Echo composition; exact field geometry and the `SELF_OR_FIXED_TEAMMATE` affiliation predicate are owned by `TERRAIN_AND_STRUCTURES.md`.
+
+### P24 — Fort-area economics
+
+P24 checks the FFY event's canonical event cell. The `+20%` applies when that cell lies in the union of the holder's **own** active effective Fort fields. A fixed teammate's Fort does not qualify P24. Multiple owned Forts covering the same event do not multiply the P24 contribution. P09, N10, and applicable Fort-area Echo specialization alter the same effective Fort field that P24 consumes; P24 owns no separate economic radius.
 
 ### P19 — current-contact offense
 
@@ -182,6 +186,10 @@ The blast modifier is an area multiplier, not a radius multiplier. `NAVAL_AND_ST
 Each full 25,000 of **peak Total Population reached during the match** permanently unlocks one P11 SAM ownership/build slot. Starting Population contributes to the initial peak; later Population loss does not revoke unlocked slots. P11 makes both SAM construction and SAM upgrade FFY cost exactly zero; ordinary non-FFY legality still applies.
 
 The unlocked count is a hard SAM ownership-admission constraint. It therefore constrains every path that would make another SAM belong to the holder, not only a paid build. Existing/under-construction SAMs and committed ownership reservations consume slots under the generic structure-admission contract. When P11 and N07 both apply, an acquisition must satisfy both hard ownership constraints; canonical normalization/composition of multiple cap-valued rule sources is owned by `RULE_COMPOSITION.md`.
+
+### N11 — SAM-area economic exclusion
+
+N11 checks the FFY event's canonical event cell against the union of the holder's **own** active SAM fields. Teammate or otherwise friendly SAMs do not qualify. The field is the SAM's current effective interception field, including completed level, P40, and any applicable SAM-range Echo specialization; N11 owns no separate economic radius. Charge readiness does not change this geometry, so a qualifying active SAM continues to exclude FFY events while its charges are recharging. Once the event qualifies, N11's terminal hard zero resolves after ordinary yield percentages as defined by `RULE_COMPOSITION.md`.
 
 ### N07 — one-per-type structure ownership
 
@@ -338,7 +346,7 @@ The exact influence geometry, Random/Fixed origin rules, foreign spacing, footpr
 
 ### P40 — giant single-charge SAM shield
 
-P40 transforms the holder's SAM profile to `+50%` ordinary range, exactly one charge at every level, and `2×` ordinary recharge cooldown. Upgrades may still alter ordinary range but never add charges under P40. Targeting remains automatic; the trait creates no bespoke controller interception action.
+P40 transforms the holder's SAM profile to `+50%` ordinary range, exactly one charge at every level, and `2×` ordinary recharge cooldown. Upgrades may still alter ordinary range but never add charges under P40. Targeting remains automatic; the trait creates no bespoke controller interception action. Because N11 consumes the ordinary effective SAM interception field rather than a separate radius, P40 expands N11's economic-exclusion field by the same effective range transformation.
 
 ### P41 — direct-L5 City purchases
 

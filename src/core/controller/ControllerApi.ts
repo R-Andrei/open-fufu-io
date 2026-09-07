@@ -10,6 +10,18 @@
 // Execution internals. Runtime adapters must project legal immutable observations
 // into these types and validate returned decisions transactionally.
 
+import type {
+  StructureFieldAffiliation,
+  StructureFieldId,
+} from "../rules/RuleComposition";
+
+export {
+  STRUCTURE_FIELD_AFFILIATIONS,
+  STRUCTURE_FIELD_IDS,
+  type StructureFieldAffiliation,
+  type StructureFieldId,
+} from "../rules/RuleComposition";
+
 export type Tick = number;
 export type CellId = number;
 export type SegmentId = number;
@@ -278,6 +290,16 @@ export type CellSelector =
       readonly center: CellId;
       readonly radius: number;
     }
+  | {
+      /**
+       * Authoritative union of active effective structure fields. Runtime owns
+       * field geometry; controllers must not approximate this with CIRCLE.
+       */
+      readonly kind: "STRUCTURE_FIELD";
+      readonly field: StructureFieldId;
+      readonly referenceFactionId: FactionId;
+      readonly affiliation: StructureFieldAffiliation;
+    }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
   | {
       readonly kind: "INTERSECTION";
@@ -509,6 +531,7 @@ export interface StructureMechanicsSpec {
   readonly populationGrowthAdditiveMultiplier?: number;
   readonly offensivePressureMultiplier?: number;
   readonly defensivePressureMultiplier?: number;
+  /** Ergonomic equivalent radius only; use STRUCTURE_FIELD for authoritative cells. */
   readonly coverageRadius?: number;
   readonly repairRadius?: number;
   readonly repairRateHpPerSecond?: number;
@@ -519,6 +542,7 @@ export interface StructureMechanicsSpec {
   readonly tankConstructionSpeedMultiplier?: number;
   readonly chargeCapacity?: number;
   readonly rechargeTicks?: number;
+  /** Ergonomic effective range; use STRUCTURE_FIELD for authoritative SAM cells. */
   readonly interceptionRange?: number;
   readonly observationRadius?: number;
   readonly observationEffect?: ObservationStructureEffect;

@@ -185,6 +185,78 @@ completed structure:
 
 A rule such as P41 may change the fresh construction target without creating hidden intermediate levels. Its direct-L5 City therefore has no completed level during its five-second build, then atomically completes at L5.
 
+### 2.1.1 Canonical radial structure fields
+
+Every circular persistent-structure field uses one authoritative V1 raster-membership contract:
+
+```text
+profileVersion = STRUCTURE_RADIAL_FIELD_V1
+```
+
+The field is centered on the structure cell. For a candidate cell with integer cell-center offset `(dx, dy)`:
+
+```text
+d2 = dx² + dy²
+```
+
+Membership uses exact integer/rational arithmetic and an **inclusive** outer boundary. Implementations must not use trigonometry, an intermediate floating-point radius, or consumer-specific rounding.
+
+For a field whose generic modifier axis is semantic **area**—currently Fort and Command-Post coverage—let the baseline completed-level radius be `R` and the already-composed positive effective area factor be the reduced rational `p/q`. The exact field is:
+
+```text
+d2 × q <= R² × p
+```
+
+Thus area modifiers scale squared radial geometry. They do not apply the same percentage directly to radius and do not force the final lattice footprint to contain an exact proportional cell count.
+
+For a field whose generic modifier axis is semantic **range/radius**—including SAM interception range, Observation radius, and ordinary repair radii—let its already-composed positive effective range factor be `p/q`. The exact field is:
+
+```text
+d2 × q² <= R² × p²
+```
+
+An explicitly zero effective field is **empty**, including at the structure's center cell. A negative effective area/range is invalid effective-rule state and must not be rasterized. Map edges merely clip the set because nonexistent cells are not candidates. Terrain, ownership boundaries, water, Fallout, and Impassable cells do not geometrically block or deform a structure field unless the focused mechanic explicitly says otherwise.
+
+The authoritative effective profile is the reduced squared threshold plus `STRUCTURE_RADIAL_FIELD_V1`, not a rounded radius and not a precomputed bitmap. A cache or spatial index may materialize covered cells for performance, but it is derived data and must reproduce the same exact membership set.
+
+#### 2.1.1.1 Activity, upgrades, capture, and replay
+
+A fresh incomplete structure projects no active field. During an upgrade, the previous completed level remains active and therefore continues to project that level's current effective field. At upgrade completion the new completed-level profile becomes active atomically.
+
+Successful `CAPTURE_TRANSFER` preserves the physical structure and location, but field-affecting Origin/Echo/ruleset modifiers are owner-effective rules. On the transfer tick, subsequent field queries therefore use the new owner's effective profile while preserving the structure's completed-level/construction state under the ordinary capture contract. No old-owner hidden radius persists.
+
+Charge readiness is not field geometry. In particular, an active SAM whose charges are all RECHARGING still projects its current effective interception/economic area; readiness only determines whether the SAM can consume a charge when an eligible projectile enters it.
+
+Historical reconstruction binds the structure identity/location, owner transitions, completed-level/activity state, effective rule profile/version, and `STRUCTURE_RADIAL_FIELD_V1`. Replay must reproduce field membership from those inputs; a serialized covered-cell bitmap is not required.
+
+#### 2.1.1.2 Affiliation predicates
+
+A mechanic that consumes a structure field must state which structure owners qualify. The closed current predicates used by Origin/effective-rule conditions are:
+
+```text
+SELF
+SELF_OR_FIXED_TEAMMATE
+```
+
+`SELF` means the physical structure is owned by the mechanic/effect holder. `SELF_OR_FIXED_TEAMMATE` means `SELF` or a faction on the holder's immutable fixed team for that match. V1 does not infer field qualification from mutable diplomacy, historical ownership, proximity, or an unspecified notion of “friendly.”
+
+Baseline subsystem effects may define another explicit subject/owner relation when their own mechanic requires it—for example, defensive pressure is resolved relative to the defended side—but no consumer may silently reinterpret an Origin condition's affiliation.
+
+For boolean conditions such as “inside a qualifying Fort/SAM area,” same-type overlap is union/existence: one or more qualifying fields makes the condition true once. Overlap does not multiply P18/P24 and cannot make N11 “more zero.” Numeric pressure/support consumers separately retain the strongest-applicable same-type reducer and the canonical Fort/Command cross-type composition rule.
+
+#### 2.1.1.3 Canonical consumers and controller projection
+
+All authoritative consumers query the same effective field profile. Current required consequences include:
+
+- P09/N10/Echo Fort coverage first compose on the semantic Fort **area** axis, then this owner projects the resulting exact area factor through `STRUCTURE_RADIAL_FIELD_V1`;
+- P18 consumes self/fixed-teammate Fort membership;
+- P24 consumes self-owned Fort membership;
+- N11 consumes self-owned SAM membership;
+- N11 uses the SAM's **current effective interception range geometry**, including P40 and ordinary SAM-range Echo specialization; it has no separate economic radius;
+- P40 changes N11 geometry only because it changes that canonical effective SAM range; charge READY/RECHARGING state does not change membership.
+
+Controller/Official-AI mechanics projection must expose the same authoritative physical-structure field as a queryable selector/helper. Numeric compatibility fields such as a displayed coverage radius or interception range are derived ergonomic information only; they must never become a second raster-membership authority, especially for area-scaled fields where an exact radius may be irrational.
+
 ## 2.2 Canonical structure-acquisition admission
 
 Every path that would make a persistent structure belong to a faction passes through one authoritative **structure-acquisition admission** contract. The acquisition path is explicit because construction-only restrictions are not ownership restrictions.

@@ -21,7 +21,7 @@ The focused owner defines **what a rule means**. This document defines **how ind
 
 This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
 
-The executable V1 realization lives under `src/core/rules/` and is bound by `RULE_COMPOSITION_VERSION = "1"`. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
+The executable realization lives under `src/core/rules/`. Current V1 game content is bound by rule-composition schema/algebra `RULE_COMPOSITION_VERSION = "2"`. Version 2 adds mandatory structure-field affiliation to the closed condition vocabulary; it does not change the V1 axis inventory or ordinary numeric algebra. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
 
 ---
 
@@ -107,6 +107,23 @@ A typed **eligibility condition** is separate from axis identity when the same q
 One contribution may carry multiple conditions. They form a logical **AND** conjunction. Conditions are canonicalized as a set-like conjunction for stable serialization, and mutually exclusive conjunctions may prove that two singleton declarations cannot apply simultaneously.
 
 Conditions must come from a closed creator-authored/engine-authored vocabulary. Player content does not supply arbitrary formulas, callbacks, or executable predicates. Equality conditions use concrete IDs; wildcard values such as `ALL` belong to axis scopes, not predicates such as `TARGET_UNIT_IS`.
+
+Structure-field conditions are exact-shape predicates rather than an implicit notion of “near a friendly structure.” Current field IDs are:
+
+```text
+FORT
+SAM
+COMMAND_POST
+```
+
+and every `EVENT_INSIDE_FIELD` / `SOURCE_INSIDE_FIELD` condition carries one explicit affiliation:
+
+```text
+SELF
+SELF_OR_FIXED_TEAMMATE
+```
+
+The field condition therefore serializes field identity **and** affiliation. `SELF` means structures owned by the rule holder/reference faction only. `SELF_OR_FIXED_TEAMMATE` additionally admits fixed-team structures; temporary diplomacy or current hostility state does not widen it. Exact spatial realization remains owned by `TERRAIN_AND_STRUCTURES.md`.
 
 A rule contribution may also identify a named **component/provenance tag** when another rule must suppress that exact component without suppressing unrelated contributors. Current examples include P03 suppressing hostile Fort-derived defensive pressure and P16 suppressing the ordinary Fallout acquisition-resistance component.
 
@@ -269,7 +286,7 @@ Dynamic rules are compiled as **symbolic typed providers**, not converted premat
 - P17: exact rational multiplier `(99/100)^S`, retained as a reduced numerator/denominator rather than rounded to basis points;
 - P19: integer basis-point contribution `500 × TerritorialContactCount`.
 
-Exact rational products remain exact through normalization/provider evaluation. Conversion to a floating materialized gameplay quantity occurs only at an explicit owning-domain boundary and must reject non-finite conversion. Do not round after every modifier. Rounding/clamping/geometry rasterization belongs to the owning domain boundary and should happen at the explicitly defined finalization point.
+Exact rational products remain exact through normalization/provider evaluation. Conversion to a floating materialized gameplay quantity occurs only at an explicit owning-domain boundary and must reject non-finite conversion. When the focused owner needs an exact multiplicative scale for geometry or another exact projection, the materializer may instead return the reduced rational scale directly; it must not require a float round-trip. Do not round after every modifier. Rounding/clamping/geometry rasterization belongs to the owning domain boundary and should happen at the explicitly defined finalization point.
 
 Canonical serialization contains the complete rule profile:
 
@@ -285,6 +302,22 @@ Within those sections, records are sorted by stable semantic keys such as axis f
 That sort exists for byte-stable serialization/hash/debugging. It is not semantic conflict resolution.
 
 A match must bind the effective-rule schema/algebra version directly or through an unambiguous bound ruleset/catalogue version so historical matches cannot silently acquire new composition semantics.
+
+### 7.1 Rule-composition schema version 2 compatibility delta
+
+`RULE_COMPOSITION_VERSION = "2"` changes the serialized/typed condition schema for structure fields. A field condition that previously had only:
+
+```text
+kind + field
+```
+
+now requires:
+
+```text
+kind + field + affiliation
+```
+
+This is intentionally a compatibility change because affiliation changes condition identity, serialized bytes, and rule applicability. Legacy affiliation-less field conditions are invalid under version 2 rather than receiving an implicit default. Version 2 does not otherwise reorder stages or change the ordinary V1 arithmetic above.
 
 ---
 
@@ -362,16 +395,16 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Structure ownership cap | AXIS / hard constraint | `structure.ownershipCap[type]`; N07 static and P11 dynamic providers supply effective limits, while canonical acquisition admission and atomic slot reservation are owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Structure type build permission | AXIS / hard constraint | e.g. N09 Factory prohibition; separate from terrain eligibility and price. |
 | City Growth contribution magnitude | AXIS | `structure.effect.cityGrowth[level]`; N01 Origin then Echo specialization. |
-| Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area remain area until geometry projection owned by `TERRAIN_AND_STRUCTURES.md`. |
+| Fort/Command coverage | AXIS in semantic **area** | `structure.field.coverageArea[type]`; baseline may be radius table, but generic modifiers authored as area remain area until exact geometry projection owned by `TERRAIN_AND_STRUCTURES.md`. |
 | Fort defensive / Command offensive magnitude | AXIS | `structure.field.pressureMagnitude[type,direction]`. |
-| Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type field; not a generic percentage stack. |
+| Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type effect magnitude; boolean inside-field qualification uses the focused owner's union semantics. |
 | Fort+Command cross-type pressure handling | DOMAIN REDUCER | Complement formula when both distinct field types affect same direction. |
 | Port/Factory repair radius | AXIS | `structure.repair.radius[type,service]`; supports post-Echo contextual specialization/final override by target unit where explicitly authored. |
 | Port/Factory repair rate | AXIS | `structure.repair.rate[type,service]`; supports post-Echo contextual specialization by target unit. |
 | Factory simultaneous repair capacity | PARAMETER / baseline | P34 does not change simultaneous repair capacity. |
 | Silo/SAM charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
 | Silo/SAM recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
-| SAM interception range | AXIS | `structure.interception.range[SAM]`; P40 + Echo. |
+| SAM interception range | AXIS | `structure.interception.range[SAM]`; P40 + Echo; N11 consumes this same effective field after projection. |
 | Observation radius | AXIS | `structure.observation.radius`; under P49 the same effective radius specializes blackout field. |
 | Observation effect (`REVEAL`/`BLACKOUT`) | STRUCTURAL AXIS | P49 changes profile; numeric radius remains separately composable. |
 | SAM ship-attack capability | CAPABILITY AXIS | P27 permits; exact weapon behavior remains owned by the focused SAM/strategic-weapons mechanic. |
@@ -522,13 +555,13 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P15 | CONDITIONAL PRESSURE | Highland-source offensive pressure `+33%`. |
 | P16 | COMPONENT SUPPRESSION | suppress ordinary Fallout acquisition-resistance multiplier; does not bypass N05 legality. |
 | P17 | SYMBOLIC DYNAMIC MULTIPLIER | `structure.transaction.upgradeCost`: exact rational `(99/100)^S`, `S=current owned structures`; compiled symbolically and materialized without basis-point rounding. |
-| P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in qualifying self/team Fort area; one qualification regardless of overlapping Fort count. |
+| P18 | CONDITIONAL PRESSURE | `+100%` offense when attacking source lies in a `SELF_OR_FIXED_TEAMMATE` Fort field; one qualification regardless of overlapping Fort count. |
 | P19 | SYMBOLIC DYNAMIC CONDITIONAL PRESSURE | `+500 bp` offense per distinct active other faction with current Territorial Contact; includes Goons and fixed teammate under current literal rule. |
 | P20 | CUSTOM start grant | starting-structure grant boundary; exact Spawn placement/order is owned by `STRATEGIC_SPAWN.md`, while generic grant admission/materialization and persistent-Silo level/charge/readiness lifecycle are owned by `TERRAIN_AND_STRUCTURES.md`; strategic launch transactionality remains owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`. |
 | P21 | CUSTOM transaction override | first successful purchase per structure type passes ordinary legality + affordability, then consumes `0 FFY`; grant/capture not purchase. |
 | P22 | FLAT AXIS | `unit.maximumRank[WARSHIP] +2`. |
 | P23 | MIXED | Warship range/damage/speed Origin `+20%` each; hard ownership cap `1`; canonical Warship build admission/reservation enforces the cap transactionally. |
-| P24 | CONDITIONAL FFY | event inside qualifying Fort area `+20%`; Fort affiliation/field realization remains structure-owned. |
+| P24 | CONDITIONAL FFY | event inside a `SELF` Fort field `+20%`; exact field realization remains structure-owned. |
 | P25 | MIXED | hard prohibit Atom/MIRV; Hydrogen FFY cost `+50%`; Hydrogen blast **area** `+50%`; geometry projection remains strategic-weapons-owned. |
 | P26 | CUSTOM entitlement/transaction | at most one successful MIRV; ordinary affordability/legality remains; successful use consumes `0 FFY`; hard prohibitions still win. |
 | P27 | CAPABILITY | SAM may attack ships; exact targeting/damage/cadence/charge arbitration remains focused SAM/strategic-weapons behavior. |
@@ -544,7 +577,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing can emit the authored Fort-grant boundary while amphibious execution and generic structure admission remain with their focused owners. |
 | P38 | CUSTOM capture consequence | automatic defender survives successful capture and remains/returns Available. |
 | P39 | STRUCTURAL SPAWN PROFILE | mode-independent two-origin/split-footprint profile; exact Strategic/Random/Fixed resolution is owned by `STRATEGIC_SPAWN.md`. |
-| P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`. |
+| P40 | MIXED PROFILE | SAM range Origin `+50%`; charge capacity final/replacement `1`; recharge `2×`; the same effective range feeds N11 field geometry. |
 | P41 | STRUCTURAL TRANSACTION | City purchase becomes one direct-L5 purchase at 95% cumulative ordinary cost; fresh construction targets L5 directly and completes after the canonical City build duration without hidden intermediate levels. |
 | P42 | MIXED | Warship FFY purchase cost `HARD_ZERO`; purchase Population cost `2,000`; attack range Origin `-33%`. |
 | P43 | STRUCTURAL CHASSIS PROFILE | Tank -> Heavy Artillery; establishes cost/build/speed/range/health/attack/capability profile before Tank-scoped Echo specialization. |
@@ -576,7 +609,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | N08 | HARD ZERO | effective Fort defensive-pressure magnitude exactly zero; coverage remains; P09/Echo cannot resurrect; P50 mirrors effective zero. |
 | N09 | HARD BUILD PROHIBITION | cannot build Factories; terrain permission/free price cannot bypass; acquired Factory may still function. |
 | N10 | NUMERIC AXIS | Fort coverage **area** Origin `-25%`; same Origin slot as P09 area modifier. |
-| N11 | TERMINAL HARD ZERO | qualifying FFY event inside applicable SAM area yields exactly zero after ordinary percentages; event identity/side effects remain. |
+| N11 | TERMINAL HARD ZERO | qualifying FFY event inside a `SELF` SAM field yields exactly zero after ordinary percentages; that field is the current effective interception range including P40/Echo. |
 | N12 | HARD BUILD PROHIBITION | cannot build Warships; P42 Population funding/free FFY cannot bypass. |
 | N13 | LANDING SURVIVAL/CUSTOM BOUNDARY | `50%` carried Population dies at landing; exact lifecycle point/rounding remains amphibious-lifecycle-owned. |
 | N14 | CUSTOM Trade capture loss | first hostile capture: original owner `-Vowner` once; canonical snapshot definition remains `FFY_ECONOMY.md`-owned. |
@@ -643,7 +676,7 @@ The 12,927 derived Echo identities remain generated from these concrete keys and
 - Fort-pressure Echoes specialize the effective Fort magnitude; P50 mirrors that effective magnitude.
 - Command-pressure Echoes specialize the effective Command magnitude; P51 mirrors that effective magnitude.
 - P31's Warship-only Port repair scalar runs after ordinary Port repair Echo specialization.
-- P34's Factory repair rate runs after ordinary Factory repair Echo specialization; its authored 8-cell repair radius is a conditional `FINAL_OVERRIDE` for qualifying Tank/Heavy-Artillery repair.
+- P34's Factory repair rate runs after ordinary Factory/Echo repair-rate specialization; its authored 8-cell repair radius is a conditional `FINAL_OVERRIDE` for qualifying Tank/Heavy-Artillery repair.
 - A stat may become inert because a hard Origin rule removes the relevant capability. Inert is legal; it is not a hidden compatibility veto.
 - A hard zero/prohibition remains terminal across ordinary Echo specialization. Examples include N08 Fort defensive pressure and N12 Warship build permission.
 - Counter-response-effectiveness Echoes are legal with P04 but inert while P04's terminal `FINAL_OVERRIDE(1.0)` applies.
@@ -663,9 +696,10 @@ Both are Origin-layer additive percentages on the same semantic **Fort coverage 
 
 effectiveFortCoverageArea
 = ordinaryFortCoverageArea × 0.85
+= ordinaryFortCoverageArea × 17/20
 ```
 
-This contract stops at effective area. Deterministic area -> radius/raster realization is owned by `TERRAIN_AND_STRUCTURES.md`.
+The exact scale `17/20` remains available to the focused geometry boundary rather than requiring a floating-point `0.85` round-trip. Deterministic area -> squared-radius/raster realization is owned by `TERRAIN_AND_STRUCTURES.md`.
 
 ## 12.2 P23 + P42 — Warship ordinary attack range
 
@@ -727,7 +761,7 @@ Canonical examples:
 
 ## 12.6 N11 hard-zero FFY
 
-Eligible ordinary yield percentages normalize first. N11 then hard-zeroes the qualifying event's FFY result. No later ordinary positive yield specialization resurrects it.
+Eligible ordinary yield percentages normalize first. N11 then hard-zeroes a qualifying event whose event cell lies inside the union of `SELF` SAM fields. Those fields use the same current effective interception range as SAM interception itself, including P40 and later SAM-range Echo specialization. Charge readiness does not change field geometry. No later ordinary positive yield specialization resurrects the result.
 
 ## 12.7 P37 + N15 Transport embark cost
 
@@ -742,7 +776,7 @@ baseline 0 FFY
 
 ## 12.8 P50/P51 are a domain reducer, not the generic percent algebra
 
-Same-type field overlap continues to use the structure owner's strongest-applicable rule.
+Same-type field overlap continues to use the structure owner's strongest-applicable rule for effect magnitude.
 
 Where distinct Fort and Command-Post field types both contribute to the same pressure direction, use the Origin catalogue's explicit complement reducer:
 
@@ -750,7 +784,7 @@ Where distinct Fort and Command-Post field types both contribute to the same pre
 combinedBonus = 1 - (1-A) × (1-B)
 ```
 
-This is a named land-combat/structure-field aggregation rule. It must not be generalized into the default same-axis percentage behavior.
+This is a named land-combat/structure-field aggregation rule. It must not be generalized into the default same-axis percentage behavior. Boolean `inside field` qualification remains a geometric union handled by the focused structure-field owner.
 
 ## 12.9 P34 captured-Factory profile
 
@@ -834,7 +868,7 @@ The composition registry must not invent or duplicate focused subsystem realizat
 Stable boundaries relevant to the current V1 profile include:
 
 - Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
-- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, field geometry/affiliation, generic structure grant realization, and persistent Silo/SAM structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes and hard-cap/permission composition.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, and persistent Silo/SAM structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
 - `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
 - `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
 - `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.
@@ -882,13 +916,15 @@ At runtime, an evaluated dynamic provider is converted into the same normalized 
 
 Scope selection then combines matching static normalized rules and resolved dynamic terms in the axis's declared stage order. Wildcard authored scopes participate normally. Condition-bearing terms must be resolved against authoritative domain context before materialization; the generic materializer rejects unresolved conditions rather than guessing applicability.
 
+For axes whose focused projection requires an exact multiplicative scale rather than a floating scalar, the materializer may reduce eligible percentage/product stages directly to one exact rational factor. This is the canonical bridge used by structure-field area/range geometry; it preserves Origin/Echo stage ordering while avoiding square-root or radius-rounding reconstruction.
+
 Custom-domain declarations name the genuine lifecycle/resolver boundary instead of allowing an unimplemented axis effect to disappear behind a generic `CUSTOM` label.
 
 Singleton stages are validated against **scope and typed-condition-conjunction overlap**, not merely axis/stage identity. Two singleton transforms whose conjunctions are provably mutually exclusive may coexist; transforms that may apply simultaneously remain a validation error.
 
-Runtime scope/condition payloads use exact discriminated-union shapes. Unknown extra fields are rejected rather than being semantically ignored while still changing serialized bytes. Set-valued capability/component operands are sorted and deduplicated canonically.
+Runtime scope/condition payloads use exact discriminated-union shapes. Unknown extra fields are rejected rather than being semantically ignored while still changing serialized bytes. Field conditions require registered `field` and `affiliation` values; affiliation omission is invalid rather than defaulted. Set-valued capability/component operands are sorted and deduplicated canonically.
 
-Controllers should consume materialized typed effective mechanics/quotes such as the existing `MechanicsApi` contracts. They should not reconstruct raw precedence from Pxx/Nxx/Echo lists.
+Controllers should consume materialized typed effective mechanics/quotes and authoritative field selectors such as the existing `MechanicsApi`/`CellSelector` contracts. They should not reconstruct raw precedence or structure-field rasterization from Pxx/Nxx/Echo lists.
 
 The generic `EffectiveModifierSheet` may remain useful for introspection/less common surfaced values, but first-class mechanics should prefer typed effective specs and action quotes.
 
@@ -914,7 +950,7 @@ Before a rule-bearing catalogue/ruleset version is deployable, static validation
 14. every Pxx/Nxx direct effect maps to one or more valid axes/constraints/dynamic providers or is explicitly registered under the exact custom lifecycle domain it requires;
 15. representative golden combinations produce the authoritative results in §12;
 16. source provenance is valid for the semantic stage it authors, while provenance and execution stage remain independent concepts;
-17. malformed runtime scope/condition payloads, wildcard equality predicates, and noncanonical unknown fields are rejected;
+17. malformed runtime scope/condition payloads, affiliation-less/unknown-affiliation structure-field conditions, wildcard equality predicates, and noncanonical unknown fields are rejected;
 18. set-valued operands have one canonical sorted/deduplicated identity;
 19. focused subsystem ownership boundaries are surfaced explicitly rather than silently guessed by the normalizer or duplicated as secondary mechanics.
 
@@ -926,15 +962,15 @@ Property tests additionally permute raw static/dynamic/custom input streams and 
 
 # 17. Implementation and conformance boundary
 
-The V1 composition foundation defines and requires:
+The V1 composition foundation under schema version 2 defines and requires:
 
 1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
 2. code-readable axis/slot/operator/unit/reducer types and registry;
 3. explicit Origin manifests and the complete 93-key Echo -> axis mapping;
-4. conjunction-capable exact-shape conditions and canonical acquisition-path provenance;
+4. conjunction-capable exact-shape conditions, explicit structure-field affiliation, and canonical acquisition-path provenance;
 5. complete compiled profiles containing normalized static rules, symbolic dynamic providers, and exact custom-domain declarations;
 6. exact rational dynamic evaluation where basis points cannot faithfully represent the formula;
-7. runtime materialization that combines normalized static terms and authoritative-state-resolved dynamic terms through the same axis stage reducers;
+7. runtime materialization that combines normalized static terms and authoritative-state-resolved dynamic terms through the same axis stage reducers, including exact rational scale-factor projection where the focused owner requires it;
 8. canonical normalization/serialization and full profile validation;
 9. exhaustive builder-legal **complete Origin-profile** compilation validation;
 10. permutation/property and authoritative golden-case coverage;
