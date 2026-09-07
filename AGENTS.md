@@ -427,3 +427,10 @@ When deciding between:
 - extending/cleaning the existing canonical owner,
 
 **prefer the existing canonical owner**.
+
+When deciding between:
+
+- preserving a redundant active document “for history”; or
+- deleting it after its useful content has been incorporated,
+
+**prefer deletion; Git history already preserves history**.
