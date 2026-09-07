@@ -1,5 +1,6 @@
 import type {
   BuildUnitCommand,
+  CellSelector,
   ControllerCommand,
   ControllerEvent,
   FactionsApi,
@@ -57,7 +58,7 @@ void conqueredFactorySpec;
 const p27AntiShipAttack: SamAntiShipAttackSpec = {
   targetUnitTypes: ["TRANSPORT_SHIP", "WARSHIP"],
   damage: 250,
-  rangeRule: "CURRENT_CELL_INSIDE_EFFECTIVE_SAM_RANGE",
+  eligibilityField: "SAM",
   lineOfSightRequired: false,
   chargeConsumption: "ONE_READY_SAM_CHARGE_PER_SHOT",
   sharedChargePriority: "STRATEGIC_PROJECTILES_FIRST",
@@ -67,6 +68,13 @@ const p27AntiShipAttack: SamAntiShipAttackSpec = {
   requiresAtWar: false,
 };
 void p27AntiShipAttack;
+
+const p27SamField: CellSelector = {
+  kind: "STRUCTURE_FIELD_INSTANCE",
+  structureId: "sam-p27",
+  field: p27AntiShipAttack.eligibilityField,
+};
+void p27SamField;
 
 const p27SamSpec: StructureMechanicsSpec = {
   type: "SAM_LAUNCHER",
