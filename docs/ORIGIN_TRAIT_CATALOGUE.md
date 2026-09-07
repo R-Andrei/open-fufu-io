@@ -254,7 +254,7 @@ previousOwnerFactionId is on an opposing hostility side
 carriedPopulationAtDestruction > 0
 ```
 
-The stolen amount is exactly the destruction result's frozen `carriedPopulationAtDestruction`. Ordinary Transport destruction removes that aboard amount from the previous owner; P28 simultaneously grants the same whole amount to the P28 holder as Available Population under the game-wide one-shot transfer rules in `OPEN_FUFU_DESIGN.md`.
+The stolen amount is exactly the destruction result's frozen `carriedPopulationAtDestruction`. Ordinary Transport destruction removes that aboard amount from the previous owner, and that ordinary removal is the transfer's **single source debit**. P28 adds the matching whole-amount credit to the P28 holder as Available Population under the game-wide one-shot transfer rules in `OPEN_FUFU_DESIGN.md`; it never debits the previous owner a second time.
 
 P28 is a conserved transfer, not a growth event or Capacity-limited reward. It therefore does **not** clamp the received Population to current Capacity. The holder may temporarily exceed Capacity and then follows ordinary over-Capacity growth behavior.
 
