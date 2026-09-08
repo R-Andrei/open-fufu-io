@@ -5,9 +5,11 @@ import {
   type MapArtifactFile,
   type MapArtifactPackage,
 } from "../src/simulation/MapArtifact";
+import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   SEGMENT_GENERATOR_VERSION,
   compileSegments,
+  createSegmentRuntimeIndex,
   encodeCompiledSegments,
   materializeSegmentArtifact,
 } from "../src/simulation/Segments";
@@ -492,6 +494,28 @@ describe("Segment review regression coverage", () => {
     expect(typeof publicShape.segmentIdOf).toBe("function");
     expect(compiled.segmentIdOf(0)).toBe(0);
     expect(() => compiled.segmentIdOf(25)).toThrow(/CellId/i);
+  });
+
+  it("rejects a Segment runtime index compiled from a different base-terrain raster with matching geometry", () => {
+    const width = 2;
+    const height = 1;
+    const segments = createSegmentRuntimeIndex(
+      compileSegments({
+        width,
+        height,
+        terrain: ["PLAINS", "FOREST"],
+      }),
+    );
+
+    expect(() =>
+      createSimulationMap({
+        source: "SYNTHETIC",
+        width,
+        height,
+        terrain: ["PLAINS", "PLAINS"],
+        segments,
+      }),
+    ).toThrow(/Segment runtime index terrain must match map base terrain/i);
   });
 
   it("round-trips deterministic compiler output through the Segment binary materializer", () => {
