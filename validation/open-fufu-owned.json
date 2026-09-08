@@ -32,6 +32,7 @@
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
+    "tests/SpawnInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
