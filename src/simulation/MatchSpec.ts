@@ -31,9 +31,38 @@ export interface MatchFactionSpec {
   readonly fixedTeamId?: string;
 }
 
+export type SpawnMode = "STRATEGIC" | "RANDOM" | "FIXED";
+export type SpawnOriginSource =
+  | "STRATEGIC_SUBMISSION"
+  | "RANDOM_RESOLUTION"
+  | "FIXED_CONFIGURATION";
+
+export interface ResolvedSpawnOrigin {
+  readonly originSlot: number;
+  readonly resolvedExactOrigin: number;
+  readonly source: SpawnOriginSource;
+  readonly resolutionReason?: string;
+}
+
+export interface ResolvedSpawnFactionInput {
+  readonly factionId: string;
+  readonly origins: readonly ResolvedSpawnOrigin[];
+}
+
+export interface SpawnInitializationInput {
+  readonly spawnMode: SpawnMode;
+  readonly spawnResolverVersion: "1";
+  readonly factions: readonly ResolvedSpawnFactionInput[];
+}
+
 export interface MatchSpec {
   readonly seed: string;
   readonly map: MatchMapSpec;
   readonly factions: readonly MatchFactionSpec[];
   readonly initialStructureGrants?: readonly StructureGrantRequest[];
+  /**
+   * Mode-independent pre-resolved Spawn handoff. Origin selection/repair remains
+   * owned by the mode-specific provider; MatchRuntime only materializes start state.
+   */
+  readonly spawnInitialization?: SpawnInitializationInput;
 }
