@@ -38,6 +38,30 @@ function artifact(
   return Object.freeze({ moduleSource, entrypoints });
 }
 
+function healthyHost(
+  pool: ControllerProcessWorkerPool,
+  log = "healthy",
+): ProductionControllerHost {
+  return new ProductionControllerHost(pool, {
+    alpha: artifact(`
+      export function decide() {
+        return { commands: [], log: ${JSON.stringify(log)} };
+      }
+    `),
+  });
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  attempts = 100,
+): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("condition did not become true");
+}
+
 async function withPool(
   run: (pool: ControllerProcessWorkerPool) => Promise<void>,
 ): Promise<void> {
@@ -186,11 +210,7 @@ describe("production controller sandbox process", () => {
         fault: { code: "RUNTIME_ERROR" },
       });
 
-      const healthy = new ProductionControllerHost(pool, {
-        alpha: artifact(`
-          export function decide() { return { commands: [], log: "healthy" }; }
-        `),
-      });
+      const healthy = healthyHost(pool);
       expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
         output: { commands: [], log: "healthy" },
@@ -276,5 +296,91 @@ describe("production controller sandbox process", () => {
         output: { origins: [13], memory: { spawn: "ORIGINS" } },
       });
     });
+  });
+
+  it("uses the canonical four-worker deployment baseline when no override is supplied", async () => {
+    const pool = new ControllerProcessWorkerPool();
+    try {
+      expect(pool.workerProcessIds()).toHaveLength(4);
+    } finally {
+      await pool.close();
+    }
+  });
+
+  it("normalizes worker death, replaces the failed process, and resumes service", async () => {
+    await withPool(async (pool) => {
+      const originalPid = pool.workerProcessIds()[0];
+      if (originalPid === undefined) throw new Error("expected worker pid");
+
+      const stuck = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            while (true) {}
+          }
+        `),
+      });
+      const pending = stuck.invoke("alpha", ordinaryObservation());
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      process.kill(originalPid, "SIGKILL");
+
+      expect(await pending).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+      await waitFor(() => pool.workerProcessIds()[0] !== originalPid);
+
+      expect(await healthyHost(pool, "replacement").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "replacement" },
+      });
+    });
+  });
+
+  it("recycles an aged worker only after the worker becomes idle", async () => {
+    let nowMs = 0;
+    const pool = new ControllerProcessWorkerPool({
+      size: 1,
+      maxWorkerAgeMs: 100,
+      nowMs: () => nowMs,
+    });
+    try {
+      const originalPid = pool.workerProcessIds()[0];
+      if (originalPid === undefined) throw new Error("expected worker pid");
+      const host = healthyHost(pool, "aged");
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "aged" },
+      });
+      expect(pool.workerProcessIds()[0]).toBe(originalPid);
+
+      nowMs = 100;
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "aged" },
+      });
+      await waitFor(() => pool.workerProcessIds()[0] !== originalPid);
+    } finally {
+      await pool.close();
+    }
+  });
+
+  it("recycles an idle worker after reported RSS exceeds the configured ceiling", async () => {
+    const pool = new ControllerProcessWorkerPool({
+      size: 1,
+      maxWorkerRssBytes: 1,
+    });
+    try {
+      const originalPid = pool.workerProcessIds()[0];
+      if (originalPid === undefined) throw new Error("expected worker pid");
+
+      expect(await healthyHost(pool, "rss").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "rss" },
+      });
+      await waitFor(() => pool.workerProcessIds()[0] !== originalPid);
+    } finally {
+      await pool.close();
+    }
   });
 });
