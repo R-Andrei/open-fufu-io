@@ -97,6 +97,33 @@ describe("compiled static + dynamic materialization", () => {
     ).toBeCloseTo(1.2);
   });
 
+  it("resolves eligible conditioned terms before scalar reduction", () => {
+    const profile = profileWith(["N18"]);
+    expect(
+      materializeCompiledScalarRule(
+        1,
+        profile,
+        RULE_AXIS_REGISTRY,
+        "ACQUISITION_PROGRESS",
+        { kind: "GLOBAL" },
+        baseState,
+        (conditions) =>
+          conditions.some((condition) => condition.kind === "TARGET_LACKS_FALLOUT"),
+      ),
+    ).toBeCloseTo(0.5);
+    expect(
+      materializeCompiledScalarRule(
+        1,
+        profile,
+        RULE_AXIS_REGISTRY,
+        "ACQUISITION_PROGRESS",
+        { kind: "GLOBAL" },
+        baseState,
+        () => false,
+      ),
+    ).toBe(1);
+  });
+
   it("constructs exact percentage scales before number addition can round", () => {
     const boundary: RuleContribution = {
       axis: "STRUCTURE_FIELD_COVERAGE_AREA",

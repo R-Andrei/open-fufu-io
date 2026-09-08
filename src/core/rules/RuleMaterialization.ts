@@ -216,18 +216,23 @@ export function conditionEligibleRuleTerms(
   terms: readonly ResolvedRuleTerm[],
   conditionApplies?: RuleConditionPredicate,
 ): readonly ResolvedRuleTerm[] {
-  return Object.freeze(
-    terms.filter((term) => {
-      const conditions = term.conditions;
-      if (conditions === undefined || conditions.length === 0) return true;
-      if (conditionApplies === undefined) {
-        throw new Error(
-          `Rule term ${term.axis}/${term.stage} has unresolved conditions`,
-        );
-      }
-      return conditionApplies(conditions);
-    }),
-  );
+  const eligible: ResolvedRuleTerm[] = [];
+  for (const term of terms) {
+    const conditions = term.conditions;
+    if (conditions === undefined || conditions.length === 0) {
+      eligible.push(term);
+      continue;
+    }
+    if (conditionApplies === undefined) {
+      throw new Error(
+        `Rule term ${term.axis}/${term.stage} has unresolved conditions`,
+      );
+    }
+    if (!conditionApplies(conditions)) continue;
+    const { conditions: _resolvedConditions, ...resolved } = term;
+    eligible.push(Object.freeze(resolved));
+  }
+  return Object.freeze(eligible);
 }
 
 function assertTerms(

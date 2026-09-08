@@ -92,7 +92,7 @@ Tundra and Shallow Water are conquerable but contribute `0` Population Capacity.
 
 The baseline settlement Population cost applies only to population-bearing neutral cells. Neutral Tundra/Shallow Water therefore cost `0 Population` to acquire while still requiring ordinary acquisition progress/time.
 
-A hostile automatically defended Tundra/Shallow-Water cell still produces ordinary successful-capture casualties but transfers `0` Capacity.
+A hostile capture of Tundra/Shallow Water transfers `0` Capacity. Game-wide hostile-capture Population consequences are owned by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
 ## 1.5 Tundra
 
@@ -126,6 +126,10 @@ Heavy land units use their own traversal table and do not inherit ordinary Popul
 ## 1.7 Fallout overlay
 
 Fallout is an overlay on legal conquerable terrain, not a replacement base terrain.
+
+A Fallout-bearing cell is always politically neutral. Fallout and faction ownership cannot coexist in authoritative state. When Fallout is applied to an owned cell, that same authoritative transition neutralizes the cell's ownership.
+
+A successful legal acquisition of a Fallout-bearing cell clears Fallout as part of the acquisition transaction. The new owner then owns the underlying base terrain normally, subject to that faction's effective terrain rules.
 
 ```text
 ordinary Fallout capture / settlement speed × 0.50

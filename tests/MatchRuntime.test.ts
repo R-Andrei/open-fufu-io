@@ -5,7 +5,9 @@ import {
   type LawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createInitialMatchState } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -54,6 +56,32 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     ]);
     expect(state.factions[0]?.rules).toBe(alphaRules);
     expect(state.factions[1]?.rules).toBe(betaRules);
+  });
+
+  it("applies pending accepted inputs for validation without advancing simulation time", () => {
+    const rules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "prospective-input-state",
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+
+    const preview = new TickEngine().applyAcceptedInputs(state, [
+      {
+        tick: 1,
+        sequence: 0,
+        action: { type: "GRANT_POPULATION", factionId: "alpha", amount: 3 },
+      },
+    ]);
+
+    expect(preview.tick).toBe(0);
+    expect(preview.factions[0]?.population.available).toBe(3);
+    expect(state.tick).toBe(0);
+    expect(state.factions[0]?.population.available).toBe(0);
   });
 
   it("accepts a deterministic foundation action and applies it on the next tick", () => {

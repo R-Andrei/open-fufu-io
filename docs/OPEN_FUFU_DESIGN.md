@@ -455,6 +455,10 @@ A merely adjacent inactive border consumes no defender. Available Population mus
 
 When Available Population is insufficient, scarce defense slots are apportioned across active incoming fronts and then assigned using the controller's strategy-neutral defensive-priority policy. Equal-priority fallback behavior must remain deterministic.
 
+For this automatic-defense apportionment only, a V1 **active incoming front** is one maximal 4-neighbor-connected component of the threatened owned target cells in the frozen tick geometry. It is a resolver partition, not the strategic `Front` object rejected in §6.4. Operation identity, controller directive identity, attacker registration order, and the number of attacking operation objects do not split or merge these components.
+
+Let `S = min(AvailablePopulation, threatenedOwnedCells)`, let `n_i` be the threatened-cell count of front `i`, and let `N = sum(n_i)`. Front `i` first receives `floor(S × n_i / N)` automatic-defense slots. Any remaining slots are assigned by largest fractional remainder; equal remainders are ordered by the lowest stable `cellId` in the front. Within each front's resulting quota, cells are chosen by defensive-priority weight descending and then stable `cellId` ascending. The sum of all front quotas is exactly `S`, so this stage cannot duplicate Available Population. Legal splitting or recreation of equivalent incoming operations does not change the apportionment.
+
 Terrain, structures, Origins, Echoes, and other explicit modifiers may alter the effectiveness of the one defender; they do not silently create additional defenders.
 
 ## 9.2 Active counter-response
@@ -479,13 +483,15 @@ Exact capture-progress arithmetic is owned by `COMBAT_TUNING.md`.
 
 Ordinary hostile land casualties are capture-coupled rather than continuous ambient attrition.
 
-For each successfully captured **automatically defended population-bearing hostile cell** under the baseline rule:
+For every successfully captured hostile cell under the baseline rule:
 
-- the previous owner loses the one Population defending that cell;
-- the winning offensive commitment loses one Population;
-- Capacity transfers with population-bearing-cell ownership.
+- the winning offensive commitment loses **1 Population**, regardless of terrain, Population Capacity, population-bearing status, or whether the cell had an automatic defender;
+- if the cell had one automatic Population defender, the previous owner also loses that defender unless an explicit rule preserves it;
+- Capacity changes only according to the captured cell's effective population-bearing ownership state.
 
-If the hostile-owned cell had no automatic Population defender, ordinary hostile cell capture causes no baseline capture casualty for either side. Other explicit mechanics may still cause Population loss independently.
+The mandatory winning-offense debit and the hostile ownership transfer are one authoritative transaction. If the winning commitment cannot supply that 1 Population after earlier same-tick losses, the ownership transfer does not commit; completed capture progress remains saturated at its required threshold and may resolve on a later legal tick.
+
+A hostile cell without an automatic defender therefore still costs the attacker 1 Population to capture; it causes no baseline defender casualty because no automatic defender existed. Other explicit mechanics may add Population consequences independently.
 
 In multi-faction combat, finite same-faction pressure is aggregated before resolution. A cell changes owner at most once per tick; deterministic simultaneous-resolution rules choose the successful claimant. Unsuccessful third-party claimants do not lose Population merely because they contested the same cell.
 

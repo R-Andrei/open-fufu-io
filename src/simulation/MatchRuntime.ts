@@ -5,6 +5,10 @@ import {
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
+  materializeDirectiveChanges,
+  tryApplyPersistentDirectiveChanges,
+} from "./LandOperations";
+import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
   type MatchFactionState,
@@ -31,6 +35,20 @@ const POPULATION_BUCKETS = new Set<PopulationBucket>([
   "TRANSPORT",
 ]);
 
+const SYNTHETIC_TERRAINS = new Set([
+  "TEST",
+  "PLAINS",
+  "HIGHLAND",
+  "MOUNTAIN",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+  "SHALLOW_WATER",
+  "DEEP_WATER",
+  "IMPASSABLE",
+]);
+
 function validateMatchSpec(spec: MatchSpec): void {
   if (!Number.isInteger(spec.map.width) || spec.map.width <= 0) {
     throw new Error("synthetic map width must be a positive integer");
@@ -38,8 +56,34 @@ function validateMatchSpec(spec: MatchSpec): void {
   if (!Number.isInteger(spec.map.height) || spec.map.height <= 0) {
     throw new Error("synthetic map height must be a positive integer");
   }
-  if (spec.map.terrain.length !== spec.map.width * spec.map.height) {
+  const cellCount = spec.map.width * spec.map.height;
+  if (!Number.isSafeInteger(cellCount) || cellCount <= 0) {
+    throw new Error("synthetic map cell count must be a positive safe integer");
+  }
+  if (spec.map.terrain.length !== cellCount) {
     throw new Error("synthetic map terrain length must equal width * height");
+  }
+  for (const terrain of spec.map.terrain) {
+    if (!SYNTHETIC_TERRAINS.has(terrain)) {
+      throw new Error(`unknown synthetic terrain: ${terrain}`);
+    }
+  }
+  if (
+    spec.map.initialOwners !== undefined &&
+    spec.map.initialOwners.length !== cellCount
+  ) {
+    throw new Error("synthetic map initialOwners length must equal width * height");
+  }
+  if (
+    spec.map.initialFallout !== undefined &&
+    spec.map.initialFallout.length !== cellCount
+  ) {
+    throw new Error("synthetic map initialFallout length must equal width * height");
+  }
+  if (
+    spec.map.initialFallout?.some((value) => typeof value !== "boolean") === true
+  ) {
+    throw new Error("synthetic map initialFallout values must be boolean");
   }
   if (spec.factions.length < 2) {
     throw new Error("MatchRuntime requires at least two factions");
@@ -54,8 +98,26 @@ function validateMatchSpec(spec: MatchSpec): void {
       throw new Error(`duplicate faction id: ${faction.id}`);
     }
     ids.add(faction.id);
+    if (
+      faction.fixedTeamId !== undefined &&
+      faction.fixedTeamId.length === 0
+    ) {
+      throw new Error(`faction ${faction.id} fixedTeamId must not be empty`);
+    }
     if (typeof faction.rules.canonicalSerialization !== "string") {
       throw new Error(`faction ${faction.id} must provide a compiled rule profile`);
+    }
+  }
+  for (const ownerId of spec.map.initialOwners ?? []) {
+    if (ownerId !== null && !ids.has(ownerId)) {
+      throw new Error(`unknown initial owner faction: ${ownerId}`);
+    }
+  }
+  for (let index = 0; index < cellCount; index += 1) {
+    const ownerId = spec.map.initialOwners?.[index] ?? null;
+    const hasFallout = spec.map.initialFallout?.[index] ?? false;
+    if (hasFallout && ownerId !== null) {
+      throw new Error("Fallout cells must be neutral; owned Fallout initial state is invalid");
     }
   }
 }
@@ -122,16 +184,38 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       );
       break;
     }
+    case "APPLY_PERSISTENT_DIRECTIVES": {
+      const applied = tryApplyPersistentDirectiveChanges(
+        state,
+        action.factionId,
+        action.changes,
+      );
+      if (!applied.ok) {
+        throw new Error(
+          `invalid persistent directives: ${applied.failure.code}${
+            applied.failure.key === undefined ? "" : `/${applied.failure.key}`
+          }`,
+        );
+      }
+      break;
+    }
   }
 }
 
 function freezeAcceptedInput(
   input: AcceptedSimulationInput,
 ): AcceptedSimulationInput {
+  const action =
+    input.action.type === "APPLY_PERSISTENT_DIRECTIVES"
+      ? Object.freeze({
+          ...input.action,
+          changes: materializeDirectiveChanges(input.action.changes),
+        })
+      : Object.freeze({ ...input.action });
   return Object.freeze({
     tick: input.tick,
     sequence: input.sequence,
-    action: Object.freeze({ ...input.action }),
+    action,
   });
 }
 
@@ -157,7 +241,7 @@ export class MatchRuntime {
 
   private validationState(): MatchState {
     if (this.pendingInputs.length === 0) return this.state;
-    return this.engine.advance(this.state, this.pendingInputs);
+    return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
