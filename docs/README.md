@@ -8,6 +8,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | --- | --- |
 | High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
 | Repository validation scope, test ownership, and executable-code adoption | [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md) |
+| Issue-work specification/readiness gates, implementation-GREEN lifecycle, adversarial certification, and requirement-level completion evidence | [`ISSUE_WORK_PROTOCOL.md`](./ISSUE_WORK_PROTOCOL.md) |
 | Game-wide effective-rule composition, rule-axis taxonomy, modifier algebra, normalization, and static composition validation | [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md) |
 | OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
 | Exact production map-artifact package/manifest schemas, canonical serialization/content identity, terrain-code encoding, and artifact validation | [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts) |
