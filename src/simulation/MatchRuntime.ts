@@ -2,6 +2,7 @@ import type { DecisionReceipt } from "../core/controller/ControllerApi";
 import {
   evaluateControllerRound,
   type ControllerHost,
+  type ControllerRoundEvaluation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
@@ -68,6 +69,14 @@ export interface MatchRuntimeDependencies {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as Promise<T>).then === "function"
+  );
 }
 
 function validateArtifactMapSpec(map: ArtifactMapSpec): void {
@@ -300,8 +309,11 @@ export class MatchRuntime {
   private nextSequence = 0;
   private nextControllerDecisionNumber = 0;
   private lastControllerRoundTick = -1;
+  private controllerRoundInFlightTick: number | undefined;
   private readonly controllerReceipts = new Map<string, DecisionReceipt>();
   private controllerFaultCounts = new Map<string, number>();
+  private controllerConsecutiveFaultCounts = new Map<string, number>();
+  private controllerFaultedFactionIds = new Set<string>();
 
   constructor(
     readonly spec: MatchSpec,
@@ -336,19 +348,9 @@ export class MatchRuntime {
     return accepted;
   }
 
-  runControllerRound(host: ControllerHost): readonly ControllerRoundReceipt[] {
-    if (this.lastControllerRoundTick === this.state.tick) {
-      throw new Error("controller round already executed for this simulation tick");
-    }
-
-    const evaluated = evaluateControllerRound(
-      this.state,
-      host,
-      this.nextControllerDecisionNumber,
-      this.controllerReceipts,
-      this.controllerFaultCounts,
-    );
-
+  private commitControllerRound(
+    evaluated: ControllerRoundEvaluation,
+  ): readonly ControllerRoundReceipt[] {
     for (const action of evaluated.actions) {
       this.acceptAction(action);
     }
@@ -356,12 +358,57 @@ export class MatchRuntime {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
+    this.controllerConsecutiveFaultCounts = new Map(
+      evaluated.consecutiveFaultCounts,
+    );
+    this.controllerFaultedFactionIds = new Set(evaluated.faultedFactionIds);
     this.lastControllerRoundTick = this.state.tick;
     this.nextControllerDecisionNumber += 1;
     return evaluated.receipts;
   }
 
+  runControllerRound(
+    host: ControllerHost,
+  ): readonly ControllerRoundReceipt[] | Promise<readonly ControllerRoundReceipt[]> {
+    if (this.controllerRoundInFlightTick !== undefined) {
+      throw new Error("controller round is in progress for this simulation tick");
+    }
+    if (this.lastControllerRoundTick === this.state.tick) {
+      throw new Error("controller round already executed for this simulation tick");
+    }
+
+    const roundTick = this.state.tick;
+    const evaluated = evaluateControllerRound(
+      this.state,
+      host,
+      this.nextControllerDecisionNumber,
+      this.controllerReceipts,
+      this.controllerFaultCounts,
+      this.controllerConsecutiveFaultCounts,
+      this.controllerFaultedFactionIds,
+    );
+
+    if (!isPromiseLike(evaluated)) {
+      return this.commitControllerRound(evaluated);
+    }
+
+    this.controllerRoundInFlightTick = roundTick;
+    return Promise.resolve(evaluated)
+      .then((resolved) => {
+        if (this.state.tick !== roundTick) {
+          throw new Error("simulation tick changed during controller round");
+        }
+        return this.commitControllerRound(resolved);
+      })
+      .finally(() => {
+        this.controllerRoundInFlightTick = undefined;
+      });
+  }
+
   tick(): MatchState {
+    if (this.controllerRoundInFlightTick !== undefined) {
+      throw new Error("controller round is in progress for this simulation tick");
+    }
     const nextTick = this.state.tick + 1;
     const executing = this.pendingInputs.filter((input) => input.tick === nextTick);
     this.pendingInputs = this.pendingInputs.filter((input) => input.tick !== nextTick);
