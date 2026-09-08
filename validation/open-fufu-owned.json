@@ -9,6 +9,7 @@
   "ownedTests": [
     "tests/ControllerApiContract.test.ts",
     "tests/ControllerRuntime.test.ts",
+    "tests/ControllerSandbox.test.ts",
     "tests/ControllerStructureFieldProjection.test.ts",
     "tests/ControllerWorkerHost.test.ts",
     "tests/EchoRuleRegistry.test.ts",
