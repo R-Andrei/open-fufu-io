@@ -10,8 +10,10 @@ import {
   SEGMENT_GENERATOR_VERSION,
   SEGMENT_TARGET_CELL_COUNT,
   compileSegments,
+  createSegmentRuntimeIndex,
   encodeCompiledSegments,
 } from "../src/simulation/Segments";
+import { createSimulationMap } from "../src/simulation/SimulationMap";
 
 const WIDTH = 2_400;
 const HEIGHT = 2_000;
@@ -36,6 +38,14 @@ function canonicalJson(value: unknown): string {
       .join(",")}}`;
   }
   throw new Error(`unsupported canonical test value: ${typeof value}`);
+}
+
+function filledTerrain(
+  width: number,
+  height: number,
+  terrain: TerrainType,
+): TerrainType[] {
+  return Array.from({ length: width * height }, () => terrain);
 }
 
 describe("production-scale Segment compiler validation", () => {
@@ -146,4 +156,73 @@ describe("production-scale Segment compiler validation", () => {
     },
     60_000,
   );
+});
+
+describe("Segment geography and substrate coherence regressions", () => {
+  it("keeps coastline raster noise with ordinary land instead of absorbing it into water", () => {
+    const width = 5;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    for (let y = 1; y <= 3; y += 1) {
+      for (let x = 1; x <= 3; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    const forestCell = 10;
+    terrain[forestCell] = "FOREST";
+
+    const compiled = compileSegments({ width, height, terrain });
+    const landId = compiled.segmentIdOf(12);
+
+    expect(compiled.segmentIdOf(forestCell)).toBe(landId);
+    expect(compiled.segmentIdOf(forestCell)).not.toBe(compiled.segmentIdOf(0));
+    expect(compiled.metadata[landId]?.terrainCounts).toMatchObject({
+      PLAINS: 9,
+      FOREST: 1,
+    });
+  });
+
+  it("preserves a tiny coherent mixed-terrain island instead of merging its land into water", () => {
+    const width = 5;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    terrain[12] = "PLAINS";
+    terrain[13] = "FOREST";
+
+    const compiled = compileSegments({ width, height, terrain });
+    const islandId = compiled.segmentIdOf(12);
+
+    expect(compiled.segmentIdOf(13)).toBe(islandId);
+    expect(islandId).not.toBe(compiled.segmentIdOf(0));
+    expect(compiled.metadata[islandId]?.terrainCounts).toEqual({
+      PLAINS: 1,
+      FOREST: 1,
+    });
+  });
+
+  it("rejects Segment indexes compiled for a different raster shape or cell count", () => {
+    const oneCellIndex = createSegmentRuntimeIndex(
+      compileSegments({ width: 1, height: 1, terrain: ["PLAINS"] }),
+    );
+    expect(() =>
+      createSimulationMap({
+        source: "SYNTHETIC",
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        segments: oneCellIndex,
+      }),
+    ).toThrow(/Segment.*(raster|width|height|cell)|raster.*Segment/i);
+
+    const twoByOneIndex = createSegmentRuntimeIndex(
+      compileSegments({ width: 2, height: 1, terrain: ["PLAINS", "PLAINS"] }),
+    );
+    expect(() =>
+      createSimulationMap({
+        source: "SYNTHETIC",
+        width: 1,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS"],
+        segments: twoByOneIndex,
+      }),
+    ).toThrow(/Segment.*(raster|width|height|cell)|raster.*Segment/i);
+  });
 });
