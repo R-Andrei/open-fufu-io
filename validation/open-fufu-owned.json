@@ -119,13 +119,23 @@
     {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/LandOperations.ts",
+      "validators": [
+        "tests/LandOperations.test.ts",
+        "tests/LandRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
     },
     {
       "path": "src/simulation/MatchRuntime.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -134,6 +144,7 @@
     {
       "path": "src/simulation/MatchSpec.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
@@ -141,6 +152,7 @@
     {
       "path": "src/simulation/MatchState.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -149,6 +161,7 @@
     {
       "path": "src/simulation/MicroSimulationHarness.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
@@ -164,6 +177,7 @@
     {
       "path": "src/simulation/TickEngine.ts",
       "validators": [
+        "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"

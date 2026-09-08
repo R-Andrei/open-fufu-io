@@ -4,6 +4,10 @@ import type {
   DecisionReceipt,
   FactionStatus,
 } from "../core/controller/ControllerApi";
+import {
+  materializeDirectiveChanges,
+  tryApplyPersistentDirectiveChanges,
+} from "./LandOperations";
 import type { MatchState } from "./MatchState";
 import type { SimulationAction } from "./TickEngine";
 
@@ -120,12 +124,33 @@ function evaluateProposal(
     return Object.freeze({ actions: Object.freeze([]) });
   }
 
-  if (
-    (decision.directives?.set?.length ?? 0) > 0 ||
-    (decision.directives?.end?.length ?? 0) > 0
-  ) {
-    const key = decision.directives?.set?.[0]?.key ?? decision.directives?.end?.[0];
-    return invalid("INVALID_DIRECTIVE", key);
+  const actions: SimulationAction[] = [];
+  const directiveSet = decision.directives?.set ?? [];
+  const directiveEnd = decision.directives?.end ?? [];
+  if (directiveSet.length > 0 || directiveEnd.length > 0) {
+    let changes;
+    try {
+      changes = materializeDirectiveChanges({
+        ...(directiveSet.length === 0 ? {} : { set: directiveSet }),
+        ...(directiveEnd.length === 0 ? {} : { end: directiveEnd }),
+      });
+    } catch {
+      return invalid(
+        "INVALID_DIRECTIVE",
+        directiveSet[0]?.key ?? directiveEnd[0],
+      );
+    }
+    const applied = tryApplyPersistentDirectiveChanges(state, factionId, changes);
+    if (!applied.ok) {
+      return Object.freeze({ actions: Object.freeze([]), failure: applied.failure });
+    }
+    actions.push(
+      Object.freeze({
+        type: "APPLY_PERSISTENT_DIRECTIVES" as const,
+        factionId,
+        changes,
+      }),
+    );
   }
 
   const commands = decision.commands ?? [];
@@ -147,23 +172,20 @@ function evaluateProposal(
     capitulateKey = command.key;
   }
 
-  if (capitulateKey === undefined) {
-    return Object.freeze({ actions: Object.freeze([]) });
-  }
-
-  const faction = state.factions.find((candidate) => candidate.id === factionId);
-  if (faction === undefined || faction.status !== "ACTIVE") {
-    return invalid("INVALID_TARGET", capitulateKey);
-  }
-
-  return Object.freeze({
-    actions: Object.freeze([
+  if (capitulateKey !== undefined) {
+    const faction = state.factions.find((candidate) => candidate.id === factionId);
+    if (faction === undefined || faction.status !== "ACTIVE") {
+      return invalid("INVALID_TARGET", capitulateKey);
+    }
+    actions.push(
       Object.freeze({
         type: "CAPITULATE_FACTION" as const,
         factionId,
       }),
-    ]),
-  });
+    );
+  }
+
+  return Object.freeze({ actions: Object.freeze(actions) });
 }
 
 export function evaluateControllerRound(

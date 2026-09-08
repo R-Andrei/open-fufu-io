@@ -4,6 +4,7 @@ export interface SyntheticMapSpec {
   readonly width: number;
   readonly height: number;
   readonly terrain: readonly string[];
+  readonly initialOwners?: readonly (string | null)[];
 }
 
 export interface MatchFactionSpec {

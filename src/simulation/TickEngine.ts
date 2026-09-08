@@ -1,3 +1,8 @@
+import type { DirectiveChanges } from "../core/controller/ControllerApi";
+import {
+  resolveLandTick,
+  tryApplyPersistentDirectiveChanges,
+} from "./LandOperations";
 import {
   createAdvancedMatchState,
   createProspectiveMatchState,
@@ -53,13 +58,20 @@ export interface TransferPopulationAction {
   readonly amount: number;
 }
 
+export interface ApplyPersistentDirectivesAction {
+  readonly type: "APPLY_PERSISTENT_DIRECTIVES";
+  readonly factionId: string;
+  readonly changes: DirectiveChanges;
+}
+
 export type SimulationAction =
   | SetTestMarkerAction
   | CapitulateFactionAction
   | GrantPopulationAction
   | RepartitionPopulationAction
   | RemovePopulationAction
-  | TransferPopulationAction;
+  | TransferPopulationAction
+  | ApplyPersistentDirectivesAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -92,7 +104,7 @@ export class TickEngine {
       (left, right) => left.sequence - right.sequence,
     );
     const seenSequences = new Set<number>();
-    let factions: readonly MatchFactionState[] = state.factions;
+    let working = state;
 
     for (const input of orderedInputs) {
       if (input.tick !== nextTick) {
@@ -105,87 +117,118 @@ export class TickEngine {
       }
       seenSequences.add(input.sequence);
 
-      switch (input.action.type) {
+      const action = input.action;
+      switch (action.type) {
         case "SET_TEST_MARKER":
-          factions = factions.map((faction) =>
-            faction.id === input.action.factionId
-              ? { ...faction, testMarker: input.action.value }
-              : faction,
-          );
+          working = createProspectiveMatchState(working, {
+            factions: working.factions.map((faction) =>
+              faction.id === action.factionId
+                ? { ...faction, testMarker: action.value }
+                : faction,
+            ),
+          });
           break;
         case "CAPITULATE_FACTION":
-          factions = factions.map((faction) =>
-            faction.id === input.action.factionId
-              ? { ...faction, status: "CAPITULATED" }
-              : faction,
-          );
+          working = createProspectiveMatchState(working, {
+            factions: working.factions.map((faction) =>
+              faction.id === action.factionId
+                ? { ...faction, status: "CAPITULATED" }
+                : faction,
+            ),
+          });
           break;
         case "GRANT_POPULATION":
-          factions = updateFactionPopulation(
-            factions,
-            input.action.factionId,
-            (population) => grantPopulation(population, input.action.amount),
-          );
+          working = createProspectiveMatchState(working, {
+            factions: updateFactionPopulation(
+              working.factions,
+              action.factionId,
+              (population) => grantPopulation(population, action.amount),
+            ),
+          });
           break;
         case "REPARTITION_POPULATION":
-          factions = updateFactionPopulation(
-            factions,
-            input.action.factionId,
-            (population) =>
-              repartitionPopulation(
-                population,
-                input.action.from,
-                input.action.to,
-                input.action.amount,
-              ),
-          );
+          working = createProspectiveMatchState(working, {
+            factions: updateFactionPopulation(
+              working.factions,
+              action.factionId,
+              (population) =>
+                repartitionPopulation(
+                  population,
+                  action.from,
+                  action.to,
+                  action.amount,
+                ),
+            ),
+          });
           break;
         case "REMOVE_POPULATION":
-          factions = updateFactionPopulation(
-            factions,
-            input.action.factionId,
-            (population) =>
-              removePopulation(
-                population,
-                input.action.from,
-                input.action.amount,
-              ),
-          );
+          working = createProspectiveMatchState(working, {
+            factions: updateFactionPopulation(
+              working.factions,
+              action.factionId,
+              (population) =>
+                removePopulation(
+                  population,
+                  action.from,
+                  action.amount,
+                ),
+            ),
+          });
           break;
         case "TRANSFER_POPULATION": {
-          const source = factions.find(
-            (faction) => faction.id === input.action.sourceFactionId,
+          const source = working.factions.find(
+            (faction) => faction.id === action.sourceFactionId,
           );
-          const recipient = factions.find(
-            (faction) => faction.id === input.action.recipientFactionId,
+          const recipient = working.factions.find(
+            (faction) => faction.id === action.recipientFactionId,
           );
           if (source === undefined) {
-            throw new Error(`unknown faction: ${input.action.sourceFactionId}`);
+            throw new Error(`unknown faction: ${action.sourceFactionId}`);
           }
           if (recipient === undefined) {
-            throw new Error(`unknown faction: ${input.action.recipientFactionId}`);
+            throw new Error(`unknown faction: ${action.recipientFactionId}`);
           }
           const transferred = transferPopulation(
             source.population,
             recipient.population,
-            input.action.sourceBucket,
-            input.action.amount,
+            action.sourceBucket,
+            action.amount,
           );
-          factions = factions.map((faction) => {
-            if (faction.id === source.id) {
-              return { ...faction, population: transferred.source };
-            }
-            if (faction.id === recipient.id) {
-              return { ...faction, population: transferred.recipient };
-            }
-            return faction;
+          working = createProspectiveMatchState(working, {
+            factions: working.factions.map((faction) => {
+              if (faction.id === source.id) {
+                return { ...faction, population: transferred.source };
+              }
+              if (faction.id === recipient.id) {
+                return { ...faction, population: transferred.recipient };
+              }
+              return faction;
+            }),
+          });
+          break;
+        }
+        case "APPLY_PERSISTENT_DIRECTIVES": {
+          const applied = tryApplyPersistentDirectiveChanges(
+            working,
+            action.factionId,
+            action.changes,
+          );
+          if (!applied.ok) {
+            throw new Error(
+              `accepted directive action became invalid: ${applied.failure.code}`,
+            );
+          }
+          working = createProspectiveMatchState(working, {
+            factions: applied.factions,
+            operations: applied.operations,
+            defensePriorities: applied.defensePriorities,
           });
           break;
         }
       }
     }
 
-    return createProspectiveMatchState(state, factions);
+    return working;
   }
 
   advance(
@@ -193,6 +236,14 @@ export class TickEngine {
     inputs: readonly AcceptedSimulationInput[],
   ): MatchState {
     const prospective = this.applyAcceptedInputs(state, inputs);
-    return createAdvancedMatchState(state, prospective.factions);
+    const land = resolveLandTick(prospective);
+    return createAdvancedMatchState(prospective, {
+      factions: land.factions,
+      ownership: land.ownership,
+      operations: land.operations,
+      defensePriorities: land.defensePriorities,
+      captureProgress: land.captureProgress,
+      counterResponseResiduals: land.counterResponseResiduals,
+    });
   }
 }
