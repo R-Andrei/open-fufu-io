@@ -1,8 +1,10 @@
+import type { FactionStatus } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import type { MatchSpec, SyntheticMapSpec } from "./MatchSpec";
 
 export interface MatchFactionState {
   readonly id: string;
+  readonly status: FactionStatus;
   readonly rules: CompiledRuleProfile;
   readonly testMarker: number;
 }
@@ -29,6 +31,7 @@ function freezeFactions(
     factions.map((faction) =>
       Object.freeze({
         id: faction.id,
+        status: faction.status,
         rules: faction.rules,
         testMarker: faction.testMarker,
       }),
@@ -50,6 +53,7 @@ export function createInitialMatchState(spec: MatchSpec): MatchState {
     factions: freezeFactions(
       spec.factions.map((faction) => ({
         id: faction.id,
+        status: "ACTIVE",
         rules: faction.rules,
         testMarker: 0,
       })),
@@ -74,6 +78,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     .sort((left, right) => compareIds(left.id, right.id))
     .map((faction) => ({
       id: faction.id,
+      status: faction.status,
       testMarker: faction.testMarker,
       rules: {
         version: faction.rules.version,

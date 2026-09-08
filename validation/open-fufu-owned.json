@@ -113,6 +113,13 @@
       "validators": ["tests/TacticalVisibility.test.ts"]
     },
     {
+      "path": "src/simulation/ControllerRuntime.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/MatchRuntime.ts",
       "validators": [
         "tests/MatchRuntime.test.ts",

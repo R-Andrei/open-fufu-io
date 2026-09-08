@@ -1,3 +1,9 @@
+import type { DecisionReceipt } from "../core/controller/ControllerApi";
+import {
+  evaluateControllerRound,
+  type ControllerHost,
+  type ControllerRoundReceipt,
+} from "./ControllerRuntime";
 import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
@@ -40,13 +46,22 @@ function validateMatchSpec(spec: MatchSpec): void {
 }
 
 function validateAction(state: MatchState, action: SimulationAction): void {
+  const faction = state.factions.find(
+    (candidate) => candidate.id === action.factionId,
+  );
+  if (faction === undefined) {
+    throw new Error(`unknown faction: ${action.factionId}`);
+  }
+
   switch (action.type) {
     case "SET_TEST_MARKER":
-      if (!state.factions.some((faction) => faction.id === action.factionId)) {
-        throw new Error(`unknown faction: ${action.factionId}`);
-      }
       if (!Number.isFinite(action.value) || !Number.isInteger(action.value)) {
         throw new Error("test marker value must be a finite integer");
+      }
+      break;
+    case "CAPITULATE_FACTION":
+      if (faction.status !== "ACTIVE") {
+        throw new Error(`faction is not active: ${action.factionId}`);
       }
       break;
   }
@@ -68,6 +83,10 @@ export class MatchRuntime {
   private pendingInputs: AcceptedSimulationInput[] = [];
   private readonly acceptedInputLog: AcceptedSimulationInput[] = [];
   private nextSequence = 0;
+  private nextControllerDecisionNumber = 0;
+  private lastControllerRoundTick = -1;
+  private readonly controllerReceipts = new Map<string, DecisionReceipt>();
+  private controllerFaultCounts = new Map<string, number>();
 
   constructor(readonly spec: MatchSpec) {
     validateMatchSpec(spec);
@@ -89,6 +108,31 @@ export class MatchRuntime {
     this.pendingInputs.push(accepted);
     this.acceptedInputLog.push(accepted);
     return accepted;
+  }
+
+  runControllerRound(host: ControllerHost): readonly ControllerRoundReceipt[] {
+    if (this.lastControllerRoundTick === this.state.tick) {
+      throw new Error("controller round already executed for this simulation tick");
+    }
+
+    const evaluated = evaluateControllerRound(
+      this.state,
+      host,
+      this.nextControllerDecisionNumber,
+      this.controllerReceipts,
+      this.controllerFaultCounts,
+    );
+
+    for (const action of evaluated.actions) {
+      this.acceptAction(action);
+    }
+    for (const entry of evaluated.receipts) {
+      this.controllerReceipts.set(entry.factionId, entry.receipt);
+    }
+    this.controllerFaultCounts = new Map(evaluated.faultCounts);
+    this.lastControllerRoundTick = this.state.tick;
+    this.nextControllerDecisionNumber += 1;
+    return evaluated.receipts;
   }
 
   tick(): MatchState {
