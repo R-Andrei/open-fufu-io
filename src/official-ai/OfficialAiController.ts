@@ -1,7 +1,15 @@
 import { OFFICIAL_AI_BASELINE_CHARACTER_PROFILE } from "../../design/official-ai/character-configurations.config";
-import type { ControllerDecision } from "../core/controller/ControllerApi";
+import type {
+  ControllerDecision,
+  SpawnInfluenceContext,
+  SpawnInfluenceDecision,
+  SpawnOriginContext,
+  SpawnOriginDecision,
+  SpawnReconsiderContext,
+} from "../core/controller/ControllerApi";
 import type {
   ControllerHost,
+  ControllerHostInvocationResult,
   LawfulControllerObservation,
   LawfulLandCellObservation,
 } from "../simulation/ControllerRuntime";
@@ -77,6 +85,21 @@ function decideBaseline(
   };
 }
 
+function successfulInvocation<T>(
+  output?: T,
+): ControllerHostInvocationResult<T> {
+  return output === undefined
+    ? Object.freeze({ ok: true as const })
+    : Object.freeze({ ok: true as const, output });
+}
+
+function runtimeFailure<T>(): ControllerHostInvocationResult<T> {
+  return Object.freeze({
+    ok: false as const,
+    fault: Object.freeze({ code: "RUNTIME_ERROR" as const }),
+  });
+}
+
 export class OfficialAiControllerHost implements ControllerHost {
   private readonly registrations: ReadonlyMap<string, BaselineProfile>;
 
@@ -97,9 +120,35 @@ export class OfficialAiControllerHost implements ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
-  ): ControllerDecision | void {
+  ): ControllerHostInvocationResult<ControllerDecision> {
     const profile = this.registrations.get(factionId);
-    if (profile === undefined) return;
-    return decideBaseline(profile, observation);
+    if (profile === undefined) return successfulInvocation();
+
+    try {
+      return successfulInvocation(decideBaseline(profile, observation));
+    } catch {
+      return runtimeFailure();
+    }
+  }
+
+  chooseInfluence(
+    _factionId: string,
+    _context: SpawnInfluenceContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
+    return successfulInvocation();
+  }
+
+  reconsiderInfluence(
+    _factionId: string,
+    _context: SpawnReconsiderContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
+    return successfulInvocation();
+  }
+
+  chooseOrigins(
+    _factionId: string,
+    _context: SpawnOriginContext,
+  ): ControllerHostInvocationResult<SpawnOriginDecision> {
+    return successfulInvocation();
   }
 }
