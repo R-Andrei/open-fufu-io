@@ -33,6 +33,15 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(state.factions.map((faction) => faction.id)).toEqual(["alpha", "beta"]);
     expect(state.factions[0]?.rules).toBe(alphaRules);
     expect(state.factions[1]?.rules).toBe(betaRules);
+    expect(state.factions[0]?.population).toEqual({
+      total: 0,
+      available: 0,
+      committedOffensive: 0,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 0,
+      neutralSettlementHalfResidual: 0,
+    });
   });
 
   it("accepts a deterministic foundation action and applies it on the next tick", () => {
@@ -63,6 +72,130 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
     expect(runtime.snapshot().tick).toBe(1);
     expect(runtime.snapshot().factions[1]?.testMarker).toBe(17);
+  });
+
+  it("validates Population accounting against already-pending same-tick inputs", () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 5,
+    });
+    runtime.acceptAction({
+      type: "REPARTITION_POPULATION",
+      factionId: "alpha",
+      from: "AVAILABLE",
+      to: "OFFENSIVE",
+      amount: 4,
+    });
+
+    expect(() =>
+      runtime.acceptAction({
+        type: "REMOVE_POPULATION",
+        factionId: "alpha",
+        from: "AVAILABLE",
+        amount: 2,
+      }),
+    ).toThrow(/insufficient available Population/i);
+    expect(runtime.acceptedInputs()).toHaveLength(2);
+
+    runtime.tick();
+
+    expect(runtime.snapshot().factions[0]?.population).toEqual({
+      total: 5,
+      available: 1,
+      committedOffensive: 4,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 5,
+      neutralSettlementHalfResidual: 0,
+    });
+  });
+
+  it("regenerates equivalent Population state from representative accepted accounting inputs", () => {
+    const rules = emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed: "population-replay-proof",
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+    const original = new MatchRuntime(spec);
+
+    original.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 5,
+    });
+    original.acceptAction({
+      type: "REPARTITION_POPULATION",
+      factionId: "alpha",
+      from: "AVAILABLE",
+      to: "OFFENSIVE",
+      amount: 4,
+    });
+    original.tick();
+
+    original.acceptAction({
+      type: "TRANSFER_POPULATION",
+      sourceFactionId: "alpha",
+      recipientFactionId: "beta",
+      sourceBucket: "OFFENSIVE",
+      amount: 3,
+    });
+    original.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "beta",
+      amount: 2,
+    });
+    original.tick();
+
+    original.acceptAction({
+      type: "REMOVE_POPULATION",
+      factionId: "beta",
+      from: "AVAILABLE",
+      amount: 1,
+    });
+    original.tick();
+
+    expect(original.snapshot().factions[0]?.population).toEqual({
+      total: 2,
+      available: 1,
+      committedOffensive: 1,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 5,
+      neutralSettlementHalfResidual: 0,
+    });
+    expect(original.snapshot().factions[1]?.population).toEqual({
+      total: 4,
+      available: 4,
+      committedOffensive: 0,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 5,
+      neutralSettlementHalfResidual: 0,
+    });
+
+    const regenerated = MatchRuntime.regenerate(
+      spec,
+      original.acceptedInputs(),
+      original.snapshot().tick,
+    );
+
+    expect(regenerated.snapshot()).toEqual(original.snapshot());
+    expect(regenerated.stateFingerprint()).toBe(original.stateFingerprint());
+    expect(regenerated.acceptedInputs()).toEqual(original.acceptedInputs());
   });
 
   it("regenerates an equivalent fresh runtime from MatchSpec plus accepted inputs", () => {
@@ -125,5 +258,21 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         value: Number.NaN,
       }),
     ).toThrow(/finite integer/i);
+    expect(() =>
+      runtime.acceptAction({
+        type: "GRANT_POPULATION",
+        factionId: "alpha",
+        amount: -1,
+      }),
+    ).toThrow(/non-negative safe integer/i);
+    expect(() =>
+      runtime.acceptAction({
+        type: "TRANSFER_POPULATION",
+        sourceFactionId: "alpha",
+        recipientFactionId: "alpha",
+        sourceBucket: "AVAILABLE",
+        amount: 0,
+      }),
+    ).toThrow(/distinct factions/i);
   });
 });
