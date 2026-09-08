@@ -1,4 +1,4 @@
-name: "OF-ISSUE103-20260908-18570D Temporary lockfile generator"
+name: "OF-ISSUE103-20260908-18570D Temporary lockfile cleanup"
 
 on:
   push:
@@ -11,54 +11,37 @@ permissions:
   contents: write
 
 jobs:
-  generate-lockfile:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - name: Generate exact isolated-vm lock state
+      - name: Remove temporary workflow and ownership registration
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           git config user.name "R-Andrei"
           git config user.email "30163089+R-Andrei@users.noreply.github.com"
 
-          log=/tmp/issue103-lockfile.log
-          {
-            echo "node=$(node --version)"
-            echo "npm=$(npm --version)"
-            npm install --package-lock-only --ignore-scripts --save-exact isolated-vm@6.2.0
-          } >"${log}" 2>&1
-          status=$?
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
 
-          if [ "${status}" -ne 0 ]; then
-            {
-              echo "OF-ISSUE103-20260908-18570D"
-              echo "npm package-lock generation failed with status ${status}."
-              cat "${log}"
-            } > .github/issue103-lockfile-error.txt
-            git add .github/issue103-lockfile-error.txt
-            git commit \
-              -m "OF-ISSUE103-20260908-18570D Record lockfile generator failure" \
-              -m "Finding: npm failed while generating the exact isolated-vm 6.2.0 lock state; the diagnostic file captures the command output." \
-              -m "Conclusion: do not guess or hand-edit package-lock.json." \
-              -m "Recommended next action: inspect the captured npm error and correct only the mechanical packaging path."
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-            exit "${status}"
-          fi
+          manifest_path = Path("validation/open-fufu-owned.json")
+          manifest = json.loads(manifest_path.read_text())
+          workflow = ".github/workflows/issue103-lockfile.yml"
+          if workflow not in manifest["ownedWorkflows"]:
+              raise SystemExit(f"expected owned workflow registration missing: {workflow}")
+          manifest["ownedWorkflows"].remove(workflow)
+          manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
 
-          rm -f .github/issue103-lockfile-error.txt
-          git add package.json package-lock.json
-          if ! git diff --cached --quiet; then
-            git commit \
-              -m "OF-ISSUE103-20260908-18570D Pin isolated-vm 6.2.0 lockfile" \
-              -m "Finding: npm 11 on Node 24 generated a reproducible exact isolated-vm 6.2.0 dependency and lock state." \
-              -m "Conclusion: the native dependency can now be consumed by the dedicated controller-runtime build path." \
-              -m "Recommended next action: remove the temporary lockfile workflow, then implement the isolated worker GREEN against the proven sandbox RED."
-            git push origin "HEAD:${GITHUB_REF_NAME}"
-          fi
+          git rm .github/workflows/issue103-lockfile.yml
+          git add validation/open-fufu-owned.json
+          git commit \
+            -m "OF-ISSUE103-20260908-18570D Remove temporary lockfile helper" \
+            -m "Finding: the exact isolated-vm 6.2.0 package and lock state is committed, so the temporary workflow and its ownership registration are no longer needed." \
+            -m "Conclusion: remove both temporary artifacts atomically; no durable workflow is added by issue #103." \
+            -m "Recommended next action: implement the isolated process worker GREEN against the already-proven ControllerSandbox RED contract."
+          git push origin "HEAD:${GITHUB_REF_NAME}"
