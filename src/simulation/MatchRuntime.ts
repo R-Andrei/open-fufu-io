@@ -113,6 +113,13 @@ function validateMatchSpec(spec: MatchSpec): void {
       throw new Error(`unknown initial owner faction: ${ownerId}`);
     }
   }
+  for (let index = 0; index < cellCount; index += 1) {
+    const ownerId = spec.map.initialOwners?.[index] ?? null;
+    const hasFallout = spec.map.initialFallout?.[index] ?? false;
+    if (hasFallout && ownerId !== null) {
+      throw new Error("Fallout cells must be neutral; owned Fallout initial state is invalid");
+    }
+  }
 }
 
 function faction(state: MatchState, factionId: string): MatchFactionState {

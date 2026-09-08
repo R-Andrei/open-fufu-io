@@ -242,11 +242,21 @@ export function materializeSpatialPolicy(policy: SpatialPolicy | undefined): Spa
     assertFiniteScalar(policy.defaultWeight, "policy default weight");
     if (policy.defaultWeight < 0) throw new Error("policy weights must be non-negative");
   }
-  const rules = (policy.rules ?? []).map((rule) => {
-    assertFiniteScalar(rule.weight, "policy rule weight");
-    if (rule.weight < 0) throw new Error("policy weights must be non-negative");
-    return Object.freeze({ selector: materializeCellSelector(rule.selector), weight: rule.weight });
-  });
+  const rules = (policy.rules ?? [])
+    .map((rule) => {
+      assertFiniteScalar(rule.weight, "policy rule weight");
+      if (rule.weight < 0) throw new Error("policy weights must be non-negative");
+      return Object.freeze({ selector: materializeCellSelector(rule.selector), weight: rule.weight });
+    })
+    .sort((left, right) => {
+      const leftSelector = canonicalCellSelectorKey(left.selector);
+      const rightSelector = canonicalCellSelectorKey(right.selector);
+      return leftSelector < rightSelector
+        ? -1
+        : leftSelector > rightSelector
+          ? 1
+          : left.weight - right.weight;
+    });
   return Object.freeze({
     ...(policy.defaultWeight === undefined ? {} : { defaultWeight: policy.defaultWeight }),
     ...(rules.length === 0 ? {} : { rules: Object.freeze(rules) }),
@@ -860,18 +870,25 @@ function selectorCellSet(
   }
 }
 
-function policyWeight(
+function policyWeight<F extends LandFactionStateLike>(
   policy: SpatialPolicy | undefined,
   cellId: CellId,
-  map: SyntheticMapSpec,
-  ownership: readonly (string | null)[],
-  fallout: readonly boolean[],
+  state: LandTickStateLike<F>,
 ): number {
-  let weight = policy?.defaultWeight ?? 1;
-  for (const rule of policy?.rules ?? []) {
-    if (selectorCellSet(rule.selector, map, ownership, fallout).has(cellId)) weight = rule.weight;
-  }
-  return weight;
+  const matchingWeights = (policy?.rules ?? [])
+    .filter((rule) =>
+      selectorCellSetWithEffectivePopulation(
+        rule.selector,
+        state.map,
+        state.ownership,
+        state.fallout,
+        state.factions,
+      ).has(cellId),
+    )
+    .map((rule) => rule.weight);
+  return matchingWeights.length === 0
+    ? policy?.defaultWeight ?? 1
+    : Math.max(...matchingWeights);
 }
 
 function territorialContactCount<F extends LandFactionStateLike>(
@@ -981,6 +998,69 @@ function effectivePermission(
   return allowed;
 }
 
+function selectorCellSetWithEffectivePopulation<F extends LandFactionStateLike>(
+  selector: CellSelector,
+  map: SyntheticMapSpec,
+  ownership: readonly (string | null)[],
+  fallout: readonly boolean[],
+  factions: readonly F[],
+): Set<CellId> {
+  const all = () => new Set(Array.from({ length: map.width * map.height }, (_, index) => index));
+  switch (selector.kind) {
+    case "POPULATION_BEARING":
+      return new Set(
+        map.terrain.flatMap((terrain, index) => {
+          const terrainId = runtimeTerrain(terrain);
+          const base = landTerrainBaseSpec(terrainId).populationBearing;
+          const ownerId = ownership[index];
+          if (ownerId === null || terrainId === "TEST") {
+            return base === selector.value ? [index] : [];
+          }
+          const owner = factionById(factions, ownerId);
+          if (owner === undefined) return base === selector.value ? [index] : [];
+          const effective = effectivePermission(
+            owner,
+            "TERRAIN_POPULATION_BEARING_PERMISSION",
+            { kind: "TERRAIN", terrain: terrainId },
+            base,
+            {
+              targetTerrain: terrainId,
+              targetHasFallout: fallout[index] ?? false,
+            },
+          );
+          return effective === selector.value ? [index] : [];
+        }),
+      );
+    case "UNION": {
+      const result = new Set<number>();
+      for (const child of selector.selectors) {
+        for (const cell of selectorCellSetWithEffectivePopulation(child, map, ownership, fallout, factions)) {
+          result.add(cell);
+        }
+      }
+      return result;
+    }
+    case "INTERSECTION": {
+      if (selector.selectors.length === 0) return all();
+      const [first, ...rest] = selector.selectors;
+      const result = selectorCellSetWithEffectivePopulation(first!, map, ownership, fallout, factions);
+      for (const child of rest) {
+        const childSet = selectorCellSetWithEffectivePopulation(child, map, ownership, fallout, factions);
+        for (const cell of [...result]) if (!childSet.has(cell)) result.delete(cell);
+      }
+      return result;
+    }
+    case "DIFFERENCE": {
+      const result = selectorCellSetWithEffectivePopulation(selector.left, map, ownership, fallout, factions);
+      const removed = selectorCellSetWithEffectivePopulation(selector.right, map, ownership, fallout, factions);
+      for (const cell of removed) result.delete(cell);
+      return result;
+    }
+    default:
+      return selectorCellSet(selector, map, ownership, fallout);
+  }
+}
+
 function componentSuppressed(
   faction: LandFactionStateLike,
   axis: string,
@@ -1085,8 +1165,20 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
   for (const group of groups) {
     const owner = factionById(state.factions, group.ownerId);
     if (owner === undefined || owner.status !== "ACTIVE") continue;
-    const sourceCells = [...selectorCellSet(group.source, state.map, state.ownership, state.fallout)].sort((a, b) => a - b);
-    const targetCells = selectorCellSet(group.target, state.map, state.ownership, state.fallout);
+    const sourceCells = [...selectorCellSetWithEffectivePopulation(
+      group.source,
+      state.map,
+      state.ownership,
+      state.fallout,
+      state.factions,
+    )].sort((a, b) => a - b);
+    const targetCells = selectorCellSetWithEffectivePopulation(
+      group.target,
+      state.map,
+      state.ownership,
+      state.fallout,
+      state.factions,
+    );
     for (const sourceCellId of sourceCells) {
       if (state.ownership[sourceCellId] !== group.ownerId) continue;
       const sourceTerrain = landTerrainBaseSpec(runtimeTerrain(state.map.terrain[sourceCellId]!));
@@ -1103,13 +1195,7 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
           group,
           sourceCellId,
           targetCellId,
-          engagementWeight: policyWeight(
-            group.engagementPriority,
-            targetCellId,
-            state.map,
-            state.ownership,
-            state.fallout,
-          ),
+          engagementWeight: policyWeight(group.engagementPriority, targetCellId, state),
         });
       }
     }
@@ -1169,10 +1255,7 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
     let remaining = group.committedPopulation - lanes.length;
     if (remaining > 0) {
       const weights = lanes.map((lane) =>
-        Math.max(
-          0,
-          policyWeight(group.pressureWeight, lane.targetCellId, state.map, state.ownership, state.fallout),
-        ),
+        Math.max(0, policyWeight(group.pressureWeight, lane.targetCellId, state)),
       );
       const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
       const normalized = totalWeight > 0 ? weights : weights.map(() => 1);
@@ -1217,8 +1300,7 @@ function defensePriorityWeight<F extends LandFactionStateLike>(
   return state.defensePriorities
     .filter((entry) => entry.ownerId === ownerId)
     .reduce(
-      (sum, entry) =>
-        sum + policyWeight(entry.priority, cellId, state.map, state.ownership, state.fallout),
+      (sum, entry) => sum + policyWeight(entry.priority, cellId, state),
       0,
     );
 }
@@ -1810,6 +1892,13 @@ export function resolveLandTick<F extends LandFactionStateLike>(
           }),
         );
       }
+    } else if (previousOwnerId !== null) {
+      const attackerDebit = decrementOperations(operations, winner.lane.operationIds, 1);
+      if (attackerDebit.removed !== 1) continue;
+      operations = attackerDebit.operations;
+      factions = updateFactionPopulation(factions, capturingFaction.id, (population) =>
+        removePopulation(population, "OFFENSIVE", 1),
+      );
     }
 
     ownership[targetCellId] = capturingFaction.id;
@@ -1823,13 +1912,6 @@ export function resolveLandTick<F extends LandFactionStateLike>(
       if (!defenderSurvives && previousOwner !== undefined && previousOwner.population.available > 0) {
         factions = updateFactionPopulation(factions, previousOwnerId, (population) =>
           removePopulation(population, "AVAILABLE", 1),
-        );
-      }
-      const attackerDebit = decrementOperations(operations, winner.lane.operationIds, 1);
-      if (attackerDebit.removed > 0) {
-        operations = attackerDebit.operations;
-        factions = updateFactionPopulation(factions, capturingFaction.id, (population) =>
-          removePopulation(population, "OFFENSIVE", attackerDebit.removed),
         );
       }
     }
