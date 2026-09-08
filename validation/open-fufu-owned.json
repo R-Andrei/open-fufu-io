@@ -207,6 +207,13 @@
       ]
     },
     {
+      "path": "src/simulation/Navigation.ts",
+      "validators": [
+        "tests/Navigation.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/Population.ts",
       "validators": [
         "tests/Population.test.ts",
