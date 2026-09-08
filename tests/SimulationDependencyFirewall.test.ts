@@ -1,6 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const FORBIDDEN_LEGACY_IMPORT_TOKENS = [
   "GameImpl",
@@ -27,7 +26,7 @@ function typescriptFiles(root: string): string[] {
 
 describe("simulation dependency firewall", () => {
   it("does not import broad inherited OpenFront runtime/domain objects", () => {
-    const simulationRoot = fileURLToPath(new URL("../src/simulation", import.meta.url));
+    const simulationRoot = join(process.cwd(), "src", "simulation");
     const violations: string[] = [];
 
     for (const path of typescriptFiles(simulationRoot)) {
