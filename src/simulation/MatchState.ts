@@ -36,6 +36,12 @@ function freezeFactions(
   );
 }
 
+function compareIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 export function createInitialMatchState(spec: MatchSpec): MatchState {
   return Object.freeze({
     seed: spec.seed,
@@ -65,7 +71,7 @@ export function createAdvancedMatchState(
 
 export function canonicalMatchStateSerialization(state: MatchState): string {
   const factions = [...state.factions]
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => compareIds(left.id, right.id))
     .map((faction) => ({
       id: faction.id,
       testMarker: faction.testMarker,
