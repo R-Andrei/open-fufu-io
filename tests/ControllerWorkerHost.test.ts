@@ -218,6 +218,41 @@ describe("production controller worker host", () => {
     }
   });
 
+  it("enforces the aggregate spatial-policy rule ceiling", async () => {
+    const rules = Array.from(
+      { length: PRODUCTION_CONTROLLER_LIMITS.policyRulesPerDecision + 1 },
+      (_, index) => ({
+        selector: {
+          kind: "OWNER" as const,
+          factionId: index % 2 === 0 ? "alpha" : "beta",
+        },
+        weight: index + 1,
+      }),
+    );
+    const output: ControllerDecision = {
+      directives: {
+        set: [
+          {
+            kind: "DEFENSE_PRIORITY",
+            key: "policy-overflow",
+            priority: { rules },
+          },
+        ],
+      },
+    };
+    const pool = new RecordingPool(() => ({
+      ok: true,
+      output,
+      usage: { queries: 0, materializedCells: 0 },
+    }));
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+  });
+
   it("normalizes worker rejection and worker-death responses without exposing process errors", async () => {
     let invocation = 0;
     const pool = new RecordingPool(() => {
