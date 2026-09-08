@@ -127,15 +127,36 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(alphaObservation).toEqual({
       tick: 1,
       decisionNumber: 0,
-      me: { id: "alpha", status: "ACTIVE" },
+      me: {
+        id: "alpha",
+        status: "ACTIVE",
+        population: {
+          total: 0,
+          available: 0,
+          committedOffense: 0,
+          committedCounterResponse: 0,
+          aboardTransports: 0,
+          neutralSettlementHalfResidual: 0,
+        },
+      },
       factions: [
         { id: "alpha", status: "ACTIVE" },
         { id: "beta", status: "ACTIVE" },
       ],
+      cells: [
+        { id: 0, terrain: "TEST" },
+        { id: 1, terrain: "TEST" },
+        { id: 2, terrain: "TEST" },
+        { id: 3, terrain: "TEST" },
+      ],
     });
     expect(Object.isFrozen(alphaObservation)).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.me)).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.me.population)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.factions)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.factions[0])).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.cells)).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.cells[0])).toBe(true);
     expect(JSON.stringify(alphaObservation)).not.toContain("testMarker");
     expect(JSON.stringify(alphaObservation)).not.toContain("canonicalSerialization");
     expect(JSON.stringify(alphaObservation)).not.toContain("rules");
