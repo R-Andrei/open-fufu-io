@@ -152,11 +152,19 @@
       ]
     },
     {
+      "path": "src/simulation/MapArtifact.ts",
+      "validators": [
+        "tests/MapArtifact.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/MatchRuntime.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
+        "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -168,6 +176,7 @@
         "tests/LandAuditRegression.test.ts",
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
+        "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
@@ -178,6 +187,7 @@
         "tests/LandAuditRegression.test.ts",
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
+        "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -198,6 +208,14 @@
       "validators": [
         "tests/Population.test.ts",
         "tests/PopulationRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/SimulationMap.ts",
+      "validators": [
+        "tests/MapArtifact.test.ts",
+        "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
     },
