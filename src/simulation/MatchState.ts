@@ -28,6 +28,7 @@ export interface MatchFactionState {
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
   readonly testMarker: number;
+  readonly fixedTeamId?: string;
 }
 
 export interface MatchState {
@@ -35,6 +36,7 @@ export interface MatchState {
   readonly tick: number;
   readonly map: SyntheticMapSpec;
   readonly ownership: readonly (string | null)[];
+  readonly fallout: readonly boolean[];
   readonly factions: readonly MatchFactionState[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -46,6 +48,7 @@ export interface MatchState {
 export interface MatchStateUpdate {
   readonly factions?: readonly MatchFactionState[];
   readonly ownership?: readonly (string | null)[];
+  readonly fallout?: readonly boolean[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -61,6 +64,9 @@ function freezeMap(map: SyntheticMapSpec): SyntheticMapSpec {
     ...(map.initialOwners === undefined
       ? {}
       : { initialOwners: Object.freeze([...map.initialOwners]) }),
+    ...(map.initialFallout === undefined
+      ? {}
+      : { initialFallout: Object.freeze([...map.initialFallout]) }),
   });
 }
 
@@ -75,6 +81,9 @@ function freezeFactions(
         rules: faction.rules,
         population: createPopulationState(faction.population),
         testMarker: faction.testMarker,
+        ...(faction.fixedTeamId === undefined
+          ? {}
+          : { fixedTeamId: faction.fixedTeamId }),
       }),
     ),
   );
@@ -90,6 +99,10 @@ function freezeOwnership(
   ownership: readonly (string | null)[],
 ): readonly (string | null)[] {
   return Object.freeze([...ownership]);
+}
+
+function freezeFallout(fallout: readonly boolean[]): readonly boolean[] {
+  return Object.freeze([...fallout]);
 }
 
 function freezeCaptureProgress(
@@ -145,15 +158,21 @@ function createState(
   tick: number,
   update: MatchStateUpdate,
 ): MatchState {
+  const cellCount = previous.map.width * previous.map.height;
   const ownership = update.ownership ?? previous.ownership;
-  if (ownership.length !== previous.map.width * previous.map.height) {
+  const fallout = update.fallout ?? previous.fallout;
+  if (ownership.length !== cellCount) {
     throw new Error("ownership length must equal width * height");
+  }
+  if (fallout.length !== cellCount) {
+    throw new Error("fallout length must equal width * height");
   }
   return Object.freeze({
     seed: previous.seed,
     tick,
     map: previous.map,
     ownership: freezeOwnership(ownership),
+    fallout: freezeFallout(fallout),
     factions: freezeFactions(update.factions ?? previous.factions),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
@@ -177,13 +196,16 @@ function createState(
 
 export function createInitialMatchState(spec: MatchSpec): MatchState {
   const map = freezeMap(spec.map);
+  const cellCount = spec.map.width * spec.map.height;
   return Object.freeze({
     seed: spec.seed,
     tick: 0,
     map,
     ownership: freezeOwnership(
-      spec.map.initialOwners ??
-        Array.from({ length: spec.map.width * spec.map.height }, () => null),
+      spec.map.initialOwners ?? Array.from({ length: cellCount }, () => null),
+    ),
+    fallout: freezeFallout(
+      spec.map.initialFallout ?? Array.from({ length: cellCount }, () => false),
     ),
     factions: freezeFactions(
       spec.factions.map((faction) => ({
@@ -192,6 +214,9 @@ export function createInitialMatchState(spec: MatchSpec): MatchState {
         rules: faction.rules,
         population: createEmptyPopulationState(),
         testMarker: 0,
+        ...(faction.fixedTeamId === undefined
+          ? {}
+          : { fixedTeamId: faction.fixedTeamId }),
       })),
     ),
     operations: Object.freeze([]),
@@ -222,6 +247,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     .map((faction) => ({
       id: faction.id,
       status: faction.status,
+      ...(faction.fixedTeamId === undefined
+        ? {}
+        : { fixedTeamId: faction.fixedTeamId }),
       population: {
         total: faction.population.total,
         available: faction.population.available,
@@ -282,6 +310,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       terrain: [...state.map.terrain],
     },
     ownership: [...state.ownership],
+    fallout: [...state.fallout],
     factions,
     operations,
     defensePriorities: [...state.defensePriorities]

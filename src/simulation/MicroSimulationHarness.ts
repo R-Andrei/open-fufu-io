@@ -6,6 +6,7 @@ export interface MicroSimulationSpecOptions {
   readonly height?: number;
   readonly terrain?: readonly string[];
   readonly initialOwners?: readonly (string | null)[];
+  readonly initialFallout?: readonly boolean[];
   readonly factions: readonly MatchFactionSpec[];
 }
 
@@ -26,6 +27,9 @@ export function createMicroSimulationSpec(
       ...(options.initialOwners === undefined
         ? {}
         : { initialOwners: Object.freeze([...options.initialOwners]) }),
+      ...(options.initialFallout === undefined
+        ? {}
+        : { initialFallout: Object.freeze([...options.initialFallout]) }),
     }),
     factions: Object.freeze([...options.factions]),
   });

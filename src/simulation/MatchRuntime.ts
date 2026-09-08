@@ -74,6 +74,17 @@ function validateMatchSpec(spec: MatchSpec): void {
   ) {
     throw new Error("synthetic map initialOwners length must equal width * height");
   }
+  if (
+    spec.map.initialFallout !== undefined &&
+    spec.map.initialFallout.length !== cellCount
+  ) {
+    throw new Error("synthetic map initialFallout length must equal width * height");
+  }
+  if (
+    spec.map.initialFallout?.some((value) => typeof value !== "boolean") === true
+  ) {
+    throw new Error("synthetic map initialFallout values must be boolean");
+  }
   if (spec.factions.length < 2) {
     throw new Error("MatchRuntime requires at least two factions");
   }
@@ -87,6 +98,12 @@ function validateMatchSpec(spec: MatchSpec): void {
       throw new Error(`duplicate faction id: ${faction.id}`);
     }
     ids.add(faction.id);
+    if (
+      faction.fixedTeamId !== undefined &&
+      faction.fixedTeamId.length === 0
+    ) {
+      throw new Error(`faction ${faction.id} fixedTeamId must not be empty`);
+    }
     if (typeof faction.rules.canonicalSerialization !== "string") {
       throw new Error(`faction ${faction.id} must provide a compiled rule profile`);
     }

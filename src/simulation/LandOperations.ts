@@ -1,3 +1,4 @@
+import { factionRelationBetween } from "../core/FactionRelations";
 import type {
   CellId,
   CellSelector,
@@ -9,6 +10,7 @@ import type {
   SpatialPolicy,
   TerrainType,
 } from "../core/controller/ControllerApi";
+import { RULE_COMPONENT } from "../core/rules/OriginRuleManifest";
 import { ruleScopeMatches, type RuleCondition, type RuleScope } from "../core/rules/RuleComposition";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
@@ -324,6 +326,7 @@ export interface LandFactionStateLike {
   readonly status: FactionStatus;
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
+  readonly fixedTeamId?: string;
 }
 
 export interface LandDirectiveStateLike<F extends LandFactionStateLike = LandFactionStateLike> {
@@ -336,6 +339,7 @@ export interface LandTickStateLike<F extends LandFactionStateLike = LandFactionS
   extends LandDirectiveStateLike<F> {
   readonly map: SyntheticMapSpec;
   readonly ownership: readonly (string | null)[];
+  readonly fallout: readonly boolean[];
   readonly captureProgress: readonly CaptureProgressState[];
   readonly counterResponseResiduals: readonly CounterResponseResidualState[];
 }
@@ -366,6 +370,13 @@ function counterResponseId(ownerId: string, key: string): string {
 
 function isPositivePopulation(value: number): boolean {
   return Number.isSafeInteger(value) && value > 0;
+}
+
+function relationIdentity(faction: LandFactionStateLike) {
+  return {
+    factionId: faction.id,
+    ...(faction.fixedTeamId === undefined ? {} : { fixedTeamId: faction.fixedTeamId }),
+  };
 }
 
 function cloneDirective(directive: PersistentDirective): PersistentDirective {
@@ -539,7 +550,7 @@ export function tryApplyPersistentDirectiveChanges<F extends LandFactionStateLik
         if (
           target === undefined ||
           target.status !== "ACTIVE" ||
-          target.id === factionId
+          factionRelationBetween(relationIdentity(faction), relationIdentity(target)) !== "ENEMY"
         ) {
           return directiveFailure("INVALID_TARGET", directive.key);
         }
@@ -595,11 +606,17 @@ export function tryApplyPersistentDirectiveChanges<F extends LandFactionStateLik
       const incoming = state.operations.find(
         (operation) => operation.id === directive.incomingOperationId,
       );
+      const incomingOwner =
+        incoming?.kind === "ATTACK"
+          ? factionById(state.factions, incoming.ownerId)
+          : undefined;
       if (
         incoming === undefined ||
         incoming.kind !== "ATTACK" ||
-        incoming.ownerId === factionId ||
-        incoming.targetFactionId !== factionId
+        incomingOwner === undefined ||
+        incomingOwner.status !== "ACTIVE" ||
+        incoming.targetFactionId !== factionId ||
+        factionRelationBetween(relationIdentity(faction), relationIdentity(incomingOwner)) !== "ENEMY"
       ) {
         return directiveFailure("INVALID_TARGET", directive.key);
       }
@@ -737,6 +754,7 @@ function selectorCellSet(
   selector: CellSelector,
   map: SyntheticMapSpec,
   ownership: readonly (string | null)[],
+  fallout: readonly boolean[],
 ): Set<CellId> {
   const all = () => new Set(Array.from({ length: map.width * map.height }, (_, index) => index));
   switch (selector.kind) {
@@ -757,7 +775,9 @@ function selectorCellSet(
         map.terrain.flatMap((terrain, index) => (terrain === selector.terrain ? [index] : [])),
       );
     case "FALLOUT":
-      return selector.value ? new Set() : all();
+      return new Set(
+        fallout.flatMap((value, index) => (value === selector.value ? [index] : [])),
+      );
     case "POPULATION_BEARING":
       return new Set(
         map.terrain.flatMap((terrain, index) =>
@@ -817,23 +837,23 @@ function selectorCellSet(
     case "UNION": {
       const result = new Set<number>();
       for (const child of selector.selectors) {
-        for (const cell of selectorCellSet(child, map, ownership)) result.add(cell);
+        for (const cell of selectorCellSet(child, map, ownership, fallout)) result.add(cell);
       }
       return result;
     }
     case "INTERSECTION": {
       if (selector.selectors.length === 0) return all();
       const [first, ...rest] = selector.selectors;
-      const result = selectorCellSet(first!, map, ownership);
+      const result = selectorCellSet(first!, map, ownership, fallout);
       for (const child of rest) {
-        const childSet = selectorCellSet(child, map, ownership);
+        const childSet = selectorCellSet(child, map, ownership, fallout);
         for (const cell of [...result]) if (!childSet.has(cell)) result.delete(cell);
       }
       return result;
     }
     case "DIFFERENCE": {
-      const result = selectorCellSet(selector.left, map, ownership);
-      const removed = selectorCellSet(selector.right, map, ownership);
+      const result = selectorCellSet(selector.left, map, ownership, fallout);
+      const removed = selectorCellSet(selector.right, map, ownership, fallout);
       for (const cell of removed) result.delete(cell);
       return result;
     }
@@ -845,25 +865,30 @@ function policyWeight(
   cellId: CellId,
   map: SyntheticMapSpec,
   ownership: readonly (string | null)[],
+  fallout: readonly boolean[],
 ): number {
   let weight = policy?.defaultWeight ?? 1;
   for (const rule of policy?.rules ?? []) {
-    if (selectorCellSet(rule.selector, map, ownership).has(cellId)) weight = rule.weight;
+    if (selectorCellSet(rule.selector, map, ownership, fallout).has(cellId)) weight = rule.weight;
   }
   return weight;
 }
 
-function territorialContactCount(
+function territorialContactCount<F extends LandFactionStateLike>(
   factionId: string,
+  factions: readonly F[],
   map: SyntheticMapSpec,
   ownership: readonly (string | null)[],
 ): number {
+  const active = new Set(
+    factions.filter((faction) => faction.status === "ACTIVE").map((faction) => faction.id),
+  );
   const contacts = new Set<string>();
   for (let cellId = 0; cellId < ownership.length; cellId += 1) {
     if (ownership[cellId] !== factionId) continue;
     for (const neighbor of neighbors(map, cellId)) {
       const owner = ownership[neighbor];
-      if (owner !== null && owner !== factionId) contacts.add(owner);
+      if (owner !== null && owner !== factionId && active.has(owner)) contacts.add(owner);
     }
   }
   return contacts.size;
@@ -871,12 +896,16 @@ function territorialContactCount(
 
 function dynamicRuleState<F extends LandFactionStateLike>(
   faction: F,
-  map: SyntheticMapSpec,
-  ownership: readonly (string | null)[],
+  state: LandTickStateLike<F>,
 ): RuleDynamicState {
   return Object.freeze({
     ownedPersistentStructureCount: 0,
-    territorialContactCount: territorialContactCount(faction.id, map, ownership),
+    territorialContactCount: territorialContactCount(
+      faction.id,
+      state.factions,
+      state.map,
+      state.ownership,
+    ),
     peakTotalPopulation: faction.population.peakTotal,
   });
 }
@@ -921,7 +950,7 @@ function scalarRule<F extends LandFactionStateLike>(
     RULE_AXIS_REGISTRY,
     axis,
     scope,
-    dynamicRuleState(faction, state.map, state.ownership),
+    dynamicRuleState(faction, state),
     conditionApplies(context),
   );
 }
@@ -950,6 +979,20 @@ function effectivePermission(
     allowed = true;
   }
   return allowed;
+}
+
+function componentSuppressed(
+  faction: LandFactionStateLike,
+  axis: string,
+  component: string,
+): boolean {
+  return faction.rules.normalizedRules.some(
+    (entry) =>
+      entry.axis === axis &&
+      ruleScopeMatches(entry.scope, { kind: "GLOBAL" }) &&
+      entry.value.kind === "UNION" &&
+      entry.value.values.includes(component),
+  );
 }
 
 interface MechanicalOperationGroup {
@@ -1042,8 +1085,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
   for (const group of groups) {
     const owner = factionById(state.factions, group.ownerId);
     if (owner === undefined || owner.status !== "ACTIVE") continue;
-    const sourceCells = [...selectorCellSet(group.source, state.map, state.ownership)].sort((a, b) => a - b);
-    const targetCells = selectorCellSet(group.target, state.map, state.ownership);
+    const sourceCells = [...selectorCellSet(group.source, state.map, state.ownership, state.fallout)].sort((a, b) => a - b);
+    const targetCells = selectorCellSet(group.target, state.map, state.ownership, state.fallout);
     for (const sourceCellId of sourceCells) {
       if (state.ownership[sourceCellId] !== group.ownerId) continue;
       const sourceTerrain = landTerrainBaseSpec(runtimeTerrain(state.map.terrain[sourceCellId]!));
@@ -1065,6 +1108,7 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
             targetCellId,
             state.map,
             state.ownership,
+            state.fallout,
           ),
         });
       }
@@ -1127,7 +1171,7 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
       const weights = lanes.map((lane) =>
         Math.max(
           0,
-          policyWeight(group.pressureWeight, lane.targetCellId, state.map, state.ownership),
+          policyWeight(group.pressureWeight, lane.targetCellId, state.map, state.ownership, state.fallout),
         ),
       );
       const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
@@ -1174,9 +1218,36 @@ function defensePriorityWeight<F extends LandFactionStateLike>(
     .filter((entry) => entry.ownerId === ownerId)
     .reduce(
       (sum, entry) =>
-        sum + policyWeight(entry.priority, cellId, state.map, state.ownership),
+        sum + policyWeight(entry.priority, cellId, state.map, state.ownership, state.fallout),
       0,
     );
+}
+
+function connectedThreatenedFronts(
+  map: SyntheticMapSpec,
+  cells: ReadonlySet<number>,
+): readonly (readonly number[])[] {
+  const unvisited = new Set(cells);
+  const fronts: number[][] = [];
+  while (unvisited.size > 0) {
+    const seed = [...unvisited].sort((a, b) => a - b)[0]!;
+    const queue = [seed];
+    unvisited.delete(seed);
+    const front: number[] = [];
+    while (queue.length > 0) {
+      const cell = queue.shift()!;
+      front.push(cell);
+      for (const adjacent of neighbors(map, cell)) {
+        if (!unvisited.has(adjacent) || !cells.has(adjacent)) continue;
+        unvisited.delete(adjacent);
+        queue.push(adjacent);
+      }
+    }
+    front.sort((a, b) => a - b);
+    fronts.push(front);
+  }
+  fronts.sort((left, right) => left[0]! - right[0]!);
+  return Object.freeze(fronts.map((front) => Object.freeze(front)));
 }
 
 function automaticDefenseCells<F extends LandFactionStateLike>(
@@ -1195,12 +1266,33 @@ function automaticDefenseCells<F extends LandFactionStateLike>(
   for (const [ownerId, cells] of [...threatenedByOwner.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const faction = factionById(state.factions, ownerId);
     if (faction === undefined) continue;
-    const ordered = [...cells].sort(
-      (left, right) =>
-        defensePriorityWeight(state, ownerId, right) - defensePriorityWeight(state, ownerId, left) ||
-        left - right,
-    );
-    for (const cell of ordered.slice(0, faction.population.available)) defended.add(cell);
+    const slots = Math.min(faction.population.available, cells.size);
+    if (slots <= 0) continue;
+    const fronts = connectedThreatenedFronts(state.map, cells);
+    const exactQuotas = fronts.map((front) => (slots * front.length) / cells.size);
+    const quotas = exactQuotas.map(Math.floor);
+    let remaining = slots - quotas.reduce((sum, quota) => sum + quota, 0);
+    const remainderOrder = exactQuotas
+      .map((value, index) => ({
+        index,
+        fraction: value - Math.floor(value),
+        firstCell: fronts[index]![0]!,
+      }))
+      .sort(
+        (left, right) =>
+          right.fraction - left.fraction || left.firstCell - right.firstCell,
+      );
+    for (let index = 0; index < remaining; index += 1) {
+      quotas[remainderOrder[index]!.index]! += 1;
+    }
+    for (let index = 0; index < fronts.length; index += 1) {
+      const ordered = [...fronts[index]!].sort(
+        (left, right) =>
+          defensePriorityWeight(state, ownerId, right) - defensePriorityWeight(state, ownerId, left) ||
+          left - right,
+      );
+      for (const cell of ordered.slice(0, quotas[index]!)) defended.add(cell);
+    }
   }
   return defended;
 }
@@ -1285,18 +1377,21 @@ function applyCounterResponses<F extends LandFactionStateLike>(
     const responder = factionById(state.factions, responderId);
     if (responder === undefined) continue;
     const responsePopulation = responses.reduce((sum, response) => sum + response.committedPopulation, 0);
-    const responseEffectiveness = scalarRule(
+    const calculated = calculateCounterResponseTick(
+      incomingPre.committedPopulation,
+      responsePopulation,
+    );
+    const effectiveResponseEffectiveness = scalarRule(
       responder,
       state,
       "COUNTER_RESPONSE_EFFECTIVENESS",
       { kind: "GLOBAL" },
-      1,
+      calculated.responseEffectiveness,
       { targetHasFallout: false },
     );
-    const calculated = calculateCounterResponseTick(
-      incomingPre.committedPopulation,
-      responsePopulation * responseEffectiveness,
-    );
+    const baseLoss = 0.005 * Math.min(incomingPre.committedPopulation, responsePopulation);
+    const attackingPopulationLost = baseLoss * effectiveResponseEffectiveness;
+    const respondingPopulationLost = calculated.respondingPopulationLost;
     const key = counterResidualKey(incomingPre.ownerId, responderId);
     const previous = residuals.get(key) ?? {
       attackerFactionId: incomingPre.ownerId,
@@ -1304,8 +1399,8 @@ function applyCounterResponses<F extends LandFactionStateLike>(
       attackingLossMicros: 0,
       respondingLossMicros: 0,
     };
-    const attackingTotalMicros = previous.attackingLossMicros + Math.round(calculated.attackingPopulationLost * COUNTER_RESIDUAL_SCALE);
-    const respondingTotalMicros = previous.respondingLossMicros + Math.round(calculated.respondingPopulationLost * COUNTER_RESIDUAL_SCALE);
+    const attackingTotalMicros = previous.attackingLossMicros + Math.round(attackingPopulationLost * COUNTER_RESIDUAL_SCALE);
+    const respondingTotalMicros = previous.respondingLossMicros + Math.round(respondingPopulationLost * COUNTER_RESIDUAL_SCALE);
     let attackingWhole = Math.floor(attackingTotalMicros / COUNTER_RESIDUAL_SCALE);
     let respondingWhole = Math.floor(respondingTotalMicros / COUNTER_RESIDUAL_SCALE);
 
@@ -1402,10 +1497,11 @@ function claimantTickFact<F extends LandFactionStateLike>(
   const targetTerrainId = runtimeTerrain(state.map.terrain[lane.targetCellId]!);
   const sourceTerrain = landTerrainBaseSpec(sourceTerrainId);
   const targetTerrain = landTerrainBaseSpec(targetTerrainId);
+  const targetHasFallout = state.fallout[lane.targetCellId] ?? false;
   const sourceContext: RuleContext = {
     ...(sourceTerrainId === "TEST" ? {} : { sourceTerrain: sourceTerrainId }),
     ...(targetTerrainId === "TEST" ? {} : { targetTerrain: targetTerrainId }),
-    targetHasFallout: false,
+    targetHasFallout,
   };
   const globalOffense = scalarRule(
     attacker,
@@ -1456,6 +1552,15 @@ function claimantTickFact<F extends LandFactionStateLike>(
 
   const denominator = attackingPressure + defendingPressure;
   const advantage = denominator === 0 ? 0 : (attackingPressure - defendingPressure) / denominator;
+  const canAcquire =
+    !targetHasFallout ||
+    effectivePermission(
+      attacker,
+      "FALLOUT_ACQUISITION_PERMISSION",
+      { kind: "GLOBAL" },
+      true,
+      sourceContext,
+    );
   let acquisitionMultiplier = targetTerrainId === "TEST"
     ? targetTerrain.acquisitionProgressMultiplier
     : scalarRule(
@@ -1466,6 +1571,16 @@ function claimantTickFact<F extends LandFactionStateLike>(
         targetTerrain.acquisitionProgressMultiplier,
         sourceContext,
       );
+  if (
+    targetHasFallout &&
+    !componentSuppressed(
+      attacker,
+      "ACQUISITION_SUPPRESSED_COMPONENTS",
+      RULE_COMPONENT.FALLOUT_ACQUISITION_RESISTANCE,
+    )
+  ) {
+    acquisitionMultiplier *= 0.5;
+  }
   acquisitionMultiplier = scalarRule(
     attacker,
     state,
@@ -1484,13 +1599,17 @@ function claimantTickFact<F extends LandFactionStateLike>(
       sourceContext,
     );
   }
-  const progressPerSecond = Math.max(0, advantage) * acquisitionMultiplier;
+  const progressPerSecond = canAcquire ? Math.max(0, advantage) * acquisitionMultiplier : 0;
   const increment = Math.max(0, Math.round((progressPerSecond / TICKS_PER_SECOND) * PROGRESS_SCALE));
+  const progressMicros =
+    !canAcquire || advantage <= 0
+      ? Math.max(0, previousProgressMicros - PROGRESS_DECAY_MICROS_PER_TICK)
+      : Math.min(REQUIRED_PROGRESS_MICROS, previousProgressMicros + increment);
   return Object.freeze({
     lane,
     effectiveAttackingPressure: attackingPressure,
     effectiveDefendingPressure: defendingPressure,
-    progressMicros: Math.min(REQUIRED_PROGRESS_MICROS, previousProgressMicros + increment),
+    progressMicros,
   });
 }
 
@@ -1504,7 +1623,7 @@ function neutralSettlementCost<F extends LandFactionStateLike>(
   if (!baseTerrain.populationBearing) return 0;
   const context: RuleContext = {
     ...(terrainId === "TEST" ? {} : { targetTerrain: terrainId }),
-    targetHasFallout: false,
+    targetHasFallout: state.fallout[targetCellId] ?? false,
   };
   return scalarRule(
     faction,
@@ -1535,29 +1654,53 @@ function settlementDebitAmount(
 function neutralOperationIds(
   operations: readonly LandOperationState[],
   ownerId: string,
-  preferred: readonly string[],
+  winningLane: FrozenLane,
+  resolvedLanes: readonly FrozenLane[],
 ): readonly string[] {
-  const preferredSet = new Set(preferred);
-  const preferredOrdered = preferred
-    .map((id) => operations.find((operation) => operation.id === id))
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const append = (ids: readonly string[]) => {
+    const entries = ids
+      .map((id) => operations.find((operation) => operation.id === id))
+      .filter(
+        (operation): operation is NeutralExpansionOperationState =>
+          operation !== undefined &&
+          operation.kind === "NEUTRAL_EXPANSION" &&
+          operation.ownerId === ownerId,
+      )
+      .sort(compareOperationProjection);
+    for (const operation of entries) {
+      if (seen.has(operation.id)) continue;
+      seen.add(operation.id);
+      ordered.push(operation.id);
+    }
+  };
+
+  append(winningLane.operationIds);
+  const otherLanes = resolvedLanes
     .filter(
-      (operation): operation is NeutralExpansionOperationState =>
-        operation !== undefined &&
-        operation.kind === "NEUTRAL_EXPANSION" &&
-        operation.ownerId === ownerId,
+      (lane) =>
+        lane.kind === "NEUTRAL_EXPANSION" &&
+        lane.ownerId === ownerId &&
+        lane !== winningLane,
     )
-    .sort(compareOperationProjection)
-    .map((operation) => operation.id);
-  const remaining = operations
-    .filter(
-      (operation): operation is NeutralExpansionOperationState =>
-        operation.kind === "NEUTRAL_EXPANSION" &&
-        operation.ownerId === ownerId &&
-        !preferredSet.has(operation.id),
-    )
-    .sort(compareOperationProjection)
-    .map((operation) => operation.id);
-  return Object.freeze([...preferredOrdered, ...remaining]);
+    .sort(
+      (left, right) =>
+        left.targetCellId - right.targetCellId || left.sourceCellId - right.sourceCellId,
+    );
+  for (const lane of otherLanes) append(lane.operationIds);
+  append(
+    operations
+      .filter(
+        (operation): operation is NeutralExpansionOperationState =>
+          operation.kind === "NEUTRAL_EXPANSION" &&
+          operation.ownerId === ownerId &&
+          !seen.has(operation.id),
+      )
+      .sort(compareOperationProjection)
+      .map((operation) => operation.id),
+  );
+  return Object.freeze(ordered);
 }
 
 interface CaptureFact {
@@ -1572,6 +1715,7 @@ interface CaptureFact {
 export interface LandTickResult<F extends LandFactionStateLike> {
   readonly factions: readonly F[];
   readonly ownership: readonly (string | null)[];
+  readonly fallout: readonly boolean[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -1587,6 +1731,7 @@ export function resolveLandTick<F extends LandFactionStateLike>(
   let operations = counter.operations;
   let factions = counter.factions;
   const ownership = [...state.ownership];
+  const fallout = [...state.fallout];
 
   const progress = new Map<string, CaptureProgressState>();
   for (const entry of state.captureProgress) {
@@ -1635,7 +1780,12 @@ export function resolveLandTick<F extends LandFactionStateLike>(
       const cost = neutralSettlementCost(state, capturingFaction, targetCellId);
       const settlement = settlementDebitAmount(capturingFaction.population, cost);
       if (settlement.debit > 0) {
-        const ids = neutralOperationIds(operations, capturingFaction.id, winner.lane.operationIds);
+        const ids = neutralOperationIds(
+          operations,
+          capturingFaction.id,
+          winner.lane,
+          lanes,
+        );
         const aggregate = ids.reduce(
           (sum, id) =>
             sum + (operations.find((operation) => operation.id === id)?.committedPopulation ?? 0),
@@ -1663,6 +1813,7 @@ export function resolveLandTick<F extends LandFactionStateLike>(
     }
 
     ownership[targetCellId] = capturingFaction.id;
+    fallout[targetCellId] = false;
 
     if (previousOwnerId !== null && defended.has(targetCellId)) {
       const previousOwner = factionById(factions, previousOwnerId);
@@ -1763,6 +1914,7 @@ export function resolveLandTick<F extends LandFactionStateLike>(
   return Object.freeze({
     factions: Object.freeze(factions),
     ownership: Object.freeze(ownership),
+    fallout: Object.freeze(fallout),
     operations: Object.freeze([...operations].sort(compareOperationProjection).map(materializeLandOperationState)),
     defensePriorities: Object.freeze(state.defensePriorities.map(materializeDefensePriorityState)),
     captureProgress: Object.freeze(

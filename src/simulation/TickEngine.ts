@@ -270,6 +270,7 @@ export class TickEngine {
     return createAdvancedMatchState(prospective, {
       factions: land.factions,
       ownership: land.ownership,
+      fallout: land.fallout,
       operations: land.operations,
       defensePriorities: land.defensePriorities,
       captureProgress: land.captureProgress,
