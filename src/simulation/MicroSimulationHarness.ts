@@ -1,4 +1,5 @@
 import type { MatchFactionSpec, MatchSpec } from "./MatchSpec";
+import type { StructureGrantRequest } from "./Structures";
 
 export interface MicroSimulationSpecOptions {
   readonly seed?: string;
@@ -7,6 +8,7 @@ export interface MicroSimulationSpecOptions {
   readonly terrain?: readonly string[];
   readonly initialOwners?: readonly (string | null)[];
   readonly initialFallout?: readonly boolean[];
+  readonly initialStructureGrants?: readonly StructureGrantRequest[];
   readonly factions: readonly MatchFactionSpec[];
 }
 
@@ -32,5 +34,14 @@ export function createMicroSimulationSpec(
         : { initialFallout: Object.freeze([...options.initialFallout]) }),
     }),
     factions: Object.freeze([...options.factions]),
+    ...(options.initialStructureGrants === undefined
+      ? {}
+      : {
+          initialStructureGrants: Object.freeze(
+            options.initialStructureGrants.map((grant) =>
+              Object.freeze({ ...grant }),
+            ),
+          ),
+        }),
   });
 }

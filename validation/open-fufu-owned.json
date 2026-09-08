@@ -33,6 +33,7 @@
     "tests/RuleValidationRegression.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
     "tests/StructureFieldGeometry.test.ts",
+    "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
@@ -190,7 +191,8 @@
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/StructureGrantLifecycle.test.ts"
       ]
     },
     {
@@ -217,6 +219,14 @@
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/Structures.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/StructureGrantLifecycle.test.ts"
       ]
     },
     {

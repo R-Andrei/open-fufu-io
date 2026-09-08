@@ -1,10 +1,16 @@
 import type {
   CellView,
   ControllerDecision,
+  ControllerMemory,
   DecisionFailure,
   DecisionReceipt,
   FactionStatus,
   PopulationView,
+  SpawnInfluenceContext,
+  SpawnInfluenceDecision,
+  SpawnOriginContext,
+  SpawnOriginDecision,
+  SpawnReconsiderContext,
 } from "../core/controller/ControllerApi";
 import {
   materializeDirectiveChanges,
@@ -13,6 +19,9 @@ import {
 import type { MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
+
+const MAX_CONTROLLER_MEMORY_BYTES = 131_072;
+const utf8Encoder = new TextEncoder();
 
 export interface LawfulFactionObservation {
   readonly id: string;
@@ -50,29 +59,423 @@ export interface LawfulControllerObservation {
   readonly lastDecision?: DecisionReceipt;
 }
 
+export interface HostedLawfulControllerObservation
+  extends LawfulControllerObservation {
+  readonly memory: Readonly<ControllerMemory>;
+}
+
+export type ControllerHostFaultCode = "RUNTIME_ERROR" | "INVALID_OUTPUT";
+
+export interface ControllerHostFault {
+  readonly code: ControllerHostFaultCode;
+}
+
+export type ControllerHostInvocationResult<T> =
+  | Readonly<{ readonly ok: true; readonly output?: T }>
+  | Readonly<{ readonly ok: false; readonly fault: ControllerHostFault }>;
+
 export interface ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
-  ): ControllerDecision | void;
+  ): ControllerHostInvocationResult<ControllerDecision>;
+  chooseInfluence(
+    factionId: string,
+    context: SpawnInfluenceContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision>;
+  reconsiderInfluence(
+    factionId: string,
+    context: SpawnReconsiderContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision>;
+  chooseOrigins(
+    factionId: string,
+    context: SpawnOriginContext,
+  ): ControllerHostInvocationResult<SpawnOriginDecision>;
 }
 
 export type InProcessController = (
   observation: LawfulControllerObservation,
 ) => ControllerDecision | void;
 
-export class InProcessTestControllerHost implements ControllerHost {
-  private readonly controllers: Readonly<Record<string, InProcessController>>;
+export interface InProcessTestControllerCallbacks {
+  readonly chooseInfluence?: (
+    context: SpawnInfluenceContext,
+  ) => SpawnInfluenceDecision | void;
+  readonly reconsiderInfluence?: (
+    context: SpawnReconsiderContext,
+  ) => SpawnInfluenceDecision | void;
+  readonly chooseOrigins?: (
+    context: SpawnOriginContext,
+  ) => SpawnOriginDecision | void;
+  readonly decide?: (
+    observation: HostedLawfulControllerObservation,
+  ) => ControllerDecision | void;
+}
 
-  constructor(controllers: Readonly<Record<string, InProcessController>>) {
-    this.controllers = Object.freeze({ ...controllers });
+export type InProcessTestControllerRegistration =
+  | InProcessController
+  | InProcessTestControllerCallbacks;
+
+type ControllerOutputWithMemory = Readonly<{
+  memory?: ControllerMemory;
+}>;
+
+class InvalidControllerValueError extends Error {}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function canonicalizeMemoryValue(
+  value: unknown,
+  ancestors: Set<object>,
+): string {
+  if (value === null) return "null";
+
+  switch (typeof value) {
+    case "boolean":
+      return value ? "true" : "false";
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new InvalidControllerValueError("controller memory number must be finite");
+      }
+      return JSON.stringify(Object.is(value, -0) ? 0 : value);
+    case "string":
+      return JSON.stringify(value);
+    case "object":
+      break;
+    default:
+      throw new InvalidControllerValueError("controller memory is not JSON-shaped");
+  }
+
+  if (ancestors.has(value)) {
+    throw new InvalidControllerValueError("controller memory must be acyclic");
+  }
+  ancestors.add(value);
+
+  try {
+    if (Array.isArray(value)) {
+      const entries: string[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          throw new InvalidControllerValueError(
+            "controller memory arrays must not be sparse",
+          );
+        }
+        entries.push(canonicalizeMemoryValue(value[index], ancestors));
+      }
+      return `[${entries.join(",")}]`;
+    }
+
+    if (!isPlainRecord(value)) {
+      throw new InvalidControllerValueError(
+        "controller memory objects must be plain records",
+      );
+    }
+
+    const entries = Object.keys(value)
+      .sort()
+      .map(
+        (key) =>
+          `${JSON.stringify(key)}:${canonicalizeMemoryValue(value[key], ancestors)}`,
+      );
+    return `{${entries.join(",")}}`;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function canonicalizeControllerMemory(value: unknown): string {
+  if (!isPlainRecord(value)) {
+    throw new InvalidControllerValueError(
+      "controller memory root must be a plain object",
+    );
+  }
+
+  const serialized = canonicalizeMemoryValue(value, new Set<object>());
+  if (utf8Encoder.encode(serialized).byteLength > MAX_CONTROLLER_MEMORY_BYTES) {
+    throw new InvalidControllerValueError("controller memory exceeds quota");
+  }
+  return serialized;
+}
+
+function deepFreezePlainValue<T>(value: T, seen = new Set<object>()): T {
+  if (value === null || typeof value !== "object" || seen.has(value)) {
+    return value;
+  }
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    for (const entry of value) deepFreezePlainValue(entry, seen);
+    return Object.freeze(value);
+  }
+
+  if (isPlainRecord(value)) {
+    for (const key of Object.keys(value)) {
+      deepFreezePlainValue(value[key], seen);
+    }
+    return Object.freeze(value);
+  }
+
+  return value;
+}
+
+function cloneLegalValue<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (value === null || typeof value !== "object") return value;
+
+  const existing = seen.get(value);
+  if (existing !== undefined) return existing as T;
+
+  if (Array.isArray(value)) {
+    const clone: unknown[] = [];
+    seen.set(value, clone);
+    for (const entry of value) clone.push(cloneLegalValue(entry, seen));
+    return Object.freeze(clone) as T;
+  }
+
+  if (!isPlainRecord(value)) return value;
+
+  const clone: Record<string, unknown> = {};
+  seen.set(value, clone);
+  for (const key of Object.keys(value)) {
+    Object.defineProperty(clone, key, {
+      value: cloneLegalValue(value[key], seen),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  return Object.freeze(clone) as T;
+}
+
+function projectHostedContext<T extends object>(
+  context: T,
+  memory: Readonly<ControllerMemory>,
+): T & { readonly memory: Readonly<ControllerMemory> } {
+  const clone: Record<string, unknown> = {};
+  for (const key of Object.keys(context)) {
+    if (key === "memory") continue;
+    Object.defineProperty(clone, key, {
+      value: cloneLegalValue((context as Record<string, unknown>)[key]),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
+  }
+  Object.defineProperty(clone, "memory", {
+    value: memory,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return Object.freeze(clone) as T & {
+    readonly memory: Readonly<ControllerMemory>;
+  };
+}
+
+function materializeControllerValue(
+  value: unknown,
+  ancestors: Set<object>,
+): unknown {
+  if (value === null) return null;
+
+  switch (typeof value) {
+    case "boolean":
+    case "string":
+      return value;
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new InvalidControllerValueError(
+          "controller output number must be finite",
+        );
+      }
+      return value;
+    case "object":
+      break;
+    default:
+      throw new InvalidControllerValueError(
+        "controller output must be transport-safe data",
+      );
+  }
+
+  if (ancestors.has(value)) {
+    throw new InvalidControllerValueError("controller output must be acyclic");
+  }
+  ancestors.add(value);
+
+  try {
+    if (Array.isArray(value)) {
+      const clone: unknown[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          throw new InvalidControllerValueError(
+            "controller output arrays must not be sparse",
+          );
+        }
+        clone.push(materializeControllerValue(value[index], ancestors));
+      }
+      return Object.freeze(clone);
+    }
+
+    if (!isPlainRecord(value)) {
+      throw new InvalidControllerValueError(
+        "controller output objects must be plain records",
+      );
+    }
+
+    const clone: Record<string, unknown> = {};
+    for (const key of Object.keys(value)) {
+      Object.defineProperty(clone, key, {
+        value: materializeControllerValue(value[key], ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+    return Object.freeze(clone);
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function hostSuccess<T>(
+  output?: T,
+): ControllerHostInvocationResult<T> {
+  return output === undefined
+    ? Object.freeze({ ok: true as const })
+    : Object.freeze({ ok: true as const, output });
+}
+
+function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationResult<T> {
+  return Object.freeze({
+    ok: false as const,
+    fault: Object.freeze({ code }),
+  });
+}
+
+function freezeControllerRegistration(
+  registration: InProcessTestControllerRegistration,
+): InProcessTestControllerRegistration {
+  return typeof registration === "function"
+    ? registration
+    : Object.freeze({ ...registration });
+}
+
+export class InProcessTestControllerHost implements ControllerHost {
+  private readonly controllers: Readonly<
+    Record<string, InProcessTestControllerRegistration>
+  >;
+  private readonly memoryByFaction = new Map<string, string>();
+
+  constructor(
+    controllers: Readonly<Record<string, InProcessTestControllerRegistration>>,
+  ) {
+    this.controllers = Object.freeze(
+      Object.fromEntries(
+        Object.entries(controllers).map(([factionId, registration]) => [
+          factionId,
+          freezeControllerRegistration(registration),
+        ]),
+      ),
+    );
   }
 
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
-  ): ControllerDecision | void {
-    return this.controllers[factionId]?.(observation);
+  ): ControllerHostInvocationResult<ControllerDecision> {
+    const registration = this.controllers[factionId];
+    if (registration === undefined) return hostSuccess();
+
+    if (typeof registration === "function") {
+      return this.executeInvocation(factionId, () => registration(observation));
+    }
+
+    return this.executeInvocation(factionId, (memory) =>
+      registration.decide?.(projectHostedContext(observation, memory)),
+    );
+  }
+
+  chooseInfluence(
+    factionId: string,
+    context: SpawnInfluenceContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
+    const registration = this.controllerCallbacks(factionId);
+    return this.executeInvocation(factionId, (memory) =>
+      registration?.chooseInfluence?.(projectHostedContext(context, memory)),
+    );
+  }
+
+  reconsiderInfluence(
+    factionId: string,
+    context: SpawnReconsiderContext,
+  ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
+    const registration = this.controllerCallbacks(factionId);
+    return this.executeInvocation(factionId, (memory) =>
+      registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
+    );
+  }
+
+  chooseOrigins(
+    factionId: string,
+    context: SpawnOriginContext,
+  ): ControllerHostInvocationResult<SpawnOriginDecision> {
+    const registration = this.controllerCallbacks(factionId);
+    return this.executeInvocation(factionId, (memory) =>
+      registration?.chooseOrigins?.(projectHostedContext(context, memory)),
+    );
+  }
+
+  private controllerCallbacks(
+    factionId: string,
+  ): InProcessTestControllerCallbacks | undefined {
+    const registration = this.controllers[factionId];
+    return registration !== undefined && typeof registration !== "function"
+      ? registration
+      : undefined;
+  }
+
+  private controllerMemory(factionId: string): Readonly<ControllerMemory> {
+    const serialized = this.memoryByFaction.get(factionId) ?? "{}";
+    return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
+  }
+
+  private executeInvocation<T extends ControllerOutputWithMemory>(
+    factionId: string,
+    invoke: (memory: Readonly<ControllerMemory>) => T | void,
+  ): ControllerHostInvocationResult<T> {
+    let output: T | void;
+    try {
+      output = invoke(this.controllerMemory(factionId));
+    } catch {
+      return hostFault("RUNTIME_ERROR");
+    }
+
+    if (output === undefined) return hostSuccess();
+    if (!isPlainRecord(output)) return hostFault("INVALID_OUTPUT");
+
+    try {
+      let nextMemory: string | undefined;
+      if (Object.prototype.hasOwnProperty.call(output, "memory")) {
+        nextMemory = canonicalizeControllerMemory(output.memory);
+      }
+
+      const materialized = materializeControllerValue(
+        output,
+        new Set<object>(),
+      ) as T;
+
+      if (nextMemory !== undefined) {
+        this.memoryByFaction.set(factionId, nextMemory);
+      }
+      return hostSuccess(materialized);
+    } catch {
+      return hostFault("INVALID_OUTPUT");
+    }
   }
 }
 
@@ -277,7 +680,17 @@ export function evaluateControllerRound(
       previousReceipts.get(factionId),
     );
     try {
-      proposals.set(factionId, host.invoke(factionId, observation));
+      const invocation = host.invoke(factionId, observation);
+      if (invocation.ok) {
+        proposals.set(factionId, invocation.output);
+      } else {
+        const nextFaultCount = (faultCounts.get(factionId) ?? 0) + 1;
+        faultCounts.set(factionId, nextFaultCount);
+        invocationFailures.set(
+          factionId,
+          Object.freeze({ code: "RUNTIME_ERROR" }),
+        );
+      }
     } catch {
       const nextFaultCount = (faultCounts.get(factionId) ?? 0) + 1;
       faultCounts.set(factionId, nextFaultCount);

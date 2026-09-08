@@ -1,12 +1,23 @@
+import type {
+  ControllerMemory,
+  SpawnInfluenceContext,
+  SpawnOriginContext,
+  SpawnReconsiderContext,
+} from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   InProcessTestControllerHost,
   type LawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
-import { createInitialMatchState } from "../src/simulation/MatchState";
+import {
+  createInitialMatchState,
+  createProspectiveMatchState,
+} from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { tryMaterializeStructureGrant } from "../src/simulation/Structures";
 import { TickEngine } from "../src/simulation/TickEngine";
 
 function emptyRules() {
@@ -24,6 +35,27 @@ function twoFactionRuntime(seed = "controller-runtime") {
       ],
     }),
   );
+}
+
+function ordinaryObservation(): LawfulControllerObservation {
+  return Object.freeze({
+    tick: 0,
+    decisionNumber: 0,
+    me: Object.freeze({
+      id: "alpha",
+      status: "ACTIVE" as const,
+      population: Object.freeze({
+        total: 0,
+        available: 0,
+        committedOffense: 0,
+        committedCounterResponse: 0,
+        aboardTransports: 0,
+        neutralSettlementHalfResidual: 0,
+      }),
+    }),
+    factions: Object.freeze([{ id: "alpha", status: "ACTIVE" as const }]),
+    cells: Object.freeze([]),
+  });
 }
 
 describe("authoritative MatchRuntime walking skeleton", () => {
@@ -359,5 +391,378 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         value: Number.NaN,
       }),
     ).toThrow(/finite integer/i);
+  });
+
+  it("executes all Strategic Spawn hooks through the same immutable host memory boundary", () => {
+    const seen: Array<{
+      hook: string;
+      memory: ControllerMemory;
+      contextFrozen: boolean;
+      memoryFrozen: boolean;
+    }> = [];
+
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence(context: SpawnInfluenceContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return {
+            centers: [11],
+            memory: { phase: "influence", discardedLater: true },
+          };
+        },
+        reconsiderInfluence(context: SpawnReconsiderContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return { centers: [12], memory: { phase: "reconsider" } };
+        },
+        chooseOrigins(context: SpawnOriginContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return { origins: [13] };
+        },
+        decide(
+          observation: LawfulControllerObservation & {
+            readonly memory: Readonly<ControllerMemory>;
+          },
+        ) {
+          seen.push({
+            hook: "DECIDE",
+            memory: { ...observation.memory },
+            contextFrozen: Object.isFrozen(observation),
+            memoryFrozen: Object.isFrozen(observation.memory),
+          });
+          return { commands: [], memory: { phase: "decide" } };
+        },
+      },
+    });
+
+    const influence = host.chooseInfluence(
+      "alpha",
+      {
+        phase: "INFLUENCE",
+        memory: { callerSupplied: "must-not-win" },
+      } as unknown as SpawnInfluenceContext,
+    );
+    const reconsider = host.reconsiderInfluence(
+      "alpha",
+      {
+        phase: "RECONSIDER",
+        memory: { callerSupplied: "must-not-win" },
+        currentInfluenceCenters: [11],
+        revealedFactions: [],
+      } as unknown as SpawnReconsiderContext,
+    );
+    const origins = host.chooseOrigins(
+      "alpha",
+      {
+        phase: "ORIGIN",
+        memory: { callerSupplied: "must-not-win" },
+        influenceCenters: [12],
+        revealedFactions: [],
+        spawn: {},
+      } as unknown as SpawnOriginContext,
+    );
+    const decision = host.invoke("alpha", ordinaryObservation());
+
+    expect(influence).toEqual({
+      ok: true,
+      output: {
+        centers: [11],
+        memory: { phase: "influence", discardedLater: true },
+      },
+    });
+    expect(reconsider).toEqual({
+      ok: true,
+      output: { centers: [12], memory: { phase: "reconsider" } },
+    });
+    expect(origins).toEqual({ ok: true, output: { origins: [13] } });
+    expect(decision).toEqual({
+      ok: true,
+      output: { commands: [], memory: { phase: "decide" } },
+    });
+    expect(seen).toEqual([
+      {
+        hook: "INFLUENCE",
+        memory: {},
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "RECONSIDER",
+        memory: { phase: "influence", discardedLater: true },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "ORIGIN",
+        memory: { phase: "reconsider" },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "DECIDE",
+        memory: { phase: "reconsider" },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+    ]);
+    expect(Object.isFrozen(influence)).toBe(true);
+    expect(Object.isFrozen(reconsider)).toBe(true);
+    expect(Object.isFrozen(origins)).toBe(true);
+    expect(Object.isFrozen(decision)).toBe(true);
+  });
+
+  it("normalizes Spawn hook faults and invalid memory while preserving prior committed memory", () => {
+    let decideMemory: ControllerMemory | undefined;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence() {
+          return { centers: [11], memory: { stable: 1 } };
+        },
+        reconsiderInfluence() {
+          throw new Error("controller failure");
+        },
+        chooseOrigins() {
+          return { origins: [13], memory: { invalid: Number.NaN } };
+        },
+        decide(
+          observation: LawfulControllerObservation & {
+            readonly memory: Readonly<ControllerMemory>;
+          },
+        ) {
+          decideMemory = { ...observation.memory };
+          return { commands: [] };
+        },
+      },
+    });
+
+    expect(
+      host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as unknown as SpawnInfluenceContext,
+      ),
+    ).toEqual({
+      ok: true,
+      output: { centers: [11], memory: { stable: 1 } },
+    });
+    expect(
+      host.reconsiderInfluence(
+        "alpha",
+        {
+          phase: "RECONSIDER",
+          memory: {},
+          currentInfluenceCenters: [11],
+          revealedFactions: [],
+        } as unknown as SpawnReconsiderContext,
+      ),
+    ).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
+    expect(
+      host.chooseOrigins(
+        "alpha",
+        {
+          phase: "ORIGIN",
+          memory: {},
+          influenceCenters: [11],
+          revealedFactions: [],
+          spawn: {},
+        } as unknown as SpawnOriginContext,
+      ),
+    ).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
+
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(decideMemory).toEqual({ stable: 1 });
+  });
+});
+
+describe("persistent structure grant foundation", () => {
+  it("materializes a legal deterministic initialization GRANT as an active completed structure", () => {
+    const rules = emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed: "initial-structure-grant",
+      width: 2,
+      height: 2,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta"],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-silo",
+          ownerId: "alpha",
+          type: "MISSILE_SILO",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+
+    const runtime = new MatchRuntime(spec);
+
+    expect(runtime.snapshot().structures).toEqual([
+      {
+        id: "alpha-silo",
+        ownerId: "alpha",
+        type: "MISSILE_SILO",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
+        acquisitionPath: "GRANT",
+      },
+    ]);
+  });
+
+  it("evaluates the N07 hard ownership cap before mutation", () => {
+    const alphaRules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["N07"]),
+    );
+    const betaRules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "structure-cap",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "beta", "beta"],
+        factions: [
+          { id: "alpha", rules: alphaRules },
+          { id: "beta", rules: betaRules },
+        ],
+      }),
+    );
+
+    const first = tryMaterializeStructureGrant(state, {
+      structureId: "alpha-city-1",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 0,
+      level: 1,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.failure.code);
+
+    const withFirst = createProspectiveMatchState(state, {
+      structures: first.structures,
+    });
+    const beforeSecond = withFirst.structures;
+    const second = tryMaterializeStructureGrant(withFirst, {
+      structureId: "alpha-city-2",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 1,
+      level: 1,
+    });
+
+    expect(second).toEqual({
+      ok: false,
+      failure: { code: "OWNERSHIP_CAP" },
+    });
+    expect(withFirst.structures).toBe(beforeSecond);
+    expect(withFirst.structures).toHaveLength(1);
+  });
+
+  it("rejects an occupied exact grant cell without partial mutation", () => {
+    const rules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "structure-occupancy",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "beta", "beta"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const first = tryMaterializeStructureGrant(state, {
+      structureId: "alpha-fort",
+      ownerId: "alpha",
+      type: "FORT",
+      cellId: 0,
+      level: 1,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.failure.code);
+
+    const withFirst = createProspectiveMatchState(state, {
+      structures: first.structures,
+    });
+    const beforeSecond = withFirst.structures;
+    const second = tryMaterializeStructureGrant(withFirst, {
+      structureId: "alpha-city",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 0,
+      level: 1,
+    });
+
+    expect(second).toEqual({
+      ok: false,
+      failure: { code: "CELL_OCCUPIED" },
+    });
+    expect(withFirst.structures).toBe(beforeSecond);
+    expect(withFirst.structures).toEqual(first.structures);
+  });
+
+  it("fingerprints and regenerates initialization GRANT state exactly", () => {
+    const rules = emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed: "structure-replay",
+      width: 2,
+      height: 2,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta"],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-silo",
+          ownerId: "alpha",
+          type: "MISSILE_SILO",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+    const runtime = new MatchRuntime(spec);
+    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+
+    expect(regenerated.snapshot()).toEqual(runtime.snapshot());
+    expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
+    expect(JSON.parse(runtime.stateFingerprint()).structures).toEqual([
+      {
+        id: "alpha-silo",
+        ownerId: "alpha",
+        type: "MISSILE_SILO",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
+        acquisitionPath: "GRANT",
+      },
+    ]);
   });
 });
