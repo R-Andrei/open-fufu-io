@@ -1,14 +1,17 @@
 import type {
+  CellView,
   ControllerDecision,
   DecisionFailure,
   DecisionReceipt,
   FactionStatus,
+  PopulationView,
 } from "../core/controller/ControllerApi";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
 import type { MatchState } from "./MatchState";
+import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
 export interface LawfulFactionObservation {
@@ -16,11 +19,34 @@ export interface LawfulFactionObservation {
   readonly status: FactionStatus;
 }
 
+export type LawfulPopulationObservation = Readonly<
+  Pick<
+    PopulationView,
+    | "total"
+    | "available"
+    | "committedOffense"
+    | "committedCounterResponse"
+    | "aboardTransports"
+    | "neutralSettlementHalfResidual"
+  >
+>;
+
+export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
+  readonly population: LawfulPopulationObservation;
+}
+
+export type LawfulLandCellObservation = Readonly<
+  Pick<CellView, "id" | "ownerId"> & {
+    readonly terrain: CellView["terrain"] | "TEST";
+  }
+>;
+
 export interface LawfulControllerObservation {
   readonly tick: number;
   readonly decisionNumber: number;
-  readonly me: LawfulFactionObservation;
+  readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
+  readonly cells: readonly LawfulLandCellObservation[];
   readonly lastDecision?: DecisionReceipt;
 }
 
@@ -79,6 +105,46 @@ function freezeFactionObservation(
   return Object.freeze({ id, status });
 }
 
+function freezePopulationObservation(
+  population: PopulationState,
+): LawfulPopulationObservation {
+  return Object.freeze({
+    total: population.total,
+    available: population.available,
+    committedOffense: population.committedOffensive,
+    committedCounterResponse: population.committedCounterResponse,
+    aboardTransports: population.aboardTransports,
+    neutralSettlementHalfResidual: population.neutralSettlementHalfResidual,
+  });
+}
+
+function freezeSelfFactionObservation(
+  id: string,
+  status: FactionStatus,
+  population: PopulationState,
+): LawfulSelfFactionObservation {
+  return Object.freeze({
+    id,
+    status,
+    population: freezePopulationObservation(population),
+  });
+}
+
+function freezeLandCellObservations(
+  state: MatchState,
+): readonly LawfulLandCellObservation[] {
+  return Object.freeze(
+    state.map.terrain.map((terrain, id) => {
+      const ownerId = state.ownership[id] ?? null;
+      return Object.freeze({
+        id,
+        terrain: terrain as LawfulLandCellObservation["terrain"],
+        ...(ownerId === null ? {} : { ownerId }),
+      });
+    }),
+  );
+}
+
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
@@ -99,8 +165,9 @@ export function projectLawfulControllerObservation(
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
-    me: freezeFactionObservation(me.id, me.status),
+    me: freezeSelfFactionObservation(me.id, me.status, me.population),
     factions,
+    cells: freezeLandCellObservations(state),
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
