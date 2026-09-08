@@ -9,14 +9,10 @@ import type { TerrainType } from "../core/controller/ControllerApi";
 import {
   SEGMENT_ADJACENCY_ENCODING,
   SEGMENT_ADJACENCY_OFFSETS_ENCODING,
-  SEGMENT_ADJACENCY_OFFSETS_PATH,
-  SEGMENT_ADJACENCY_PATH,
   SEGMENT_COUNT_LIMIT,
   SEGMENT_GENERATOR_VERSION,
   SEGMENT_MEMBERSHIP_ENCODING,
-  SEGMENT_MEMBERSHIP_PATH,
   SEGMENT_METADATA_ENCODING,
-  SEGMENT_METADATA_PATH,
   materializeSegmentArtifact,
 } from "./Segments";
 import { createSimulationMap, type SimulationMap } from "./SimulationMap";
@@ -28,6 +24,11 @@ export const OPEN_FUFU_MAP_FORMAT_VERSION_V1 = 1 as const;
 export const OPEN_FUFU_MAP_FORMAT_VERSION_V2 = 2 as const;
 export const OPEN_FUFU_MAP_CELL_COUNT = 4_800_000 as const;
 export const OPEN_FUFU_TERRAIN_ENCODING = "TERRAIN_U8_V1" as const;
+export const SEGMENT_MEMBERSHIP_PATH = "segments/membership.bin" as const;
+export const SEGMENT_METADATA_PATH = "segments/metadata.bin" as const;
+export const SEGMENT_ADJACENCY_OFFSETS_PATH =
+  "segments/adjacency-offsets.bin" as const;
+export const SEGMENT_ADJACENCY_PATH = "segments/adjacency.bin" as const;
 
 export interface MapArtifactBinding {
   readonly mapId: string;
