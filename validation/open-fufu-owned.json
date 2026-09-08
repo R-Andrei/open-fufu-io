@@ -4,7 +4,6 @@
   "ownedWorkflows": [
     ".github/workflows/ci.yml",
     ".github/workflows/documentation-authority.yml",
-    ".github/workflows/issue103-lockfile.yml",
     ".github/workflows/rule-composition-validation.yml"
   ],
   "ownedTests": [
@@ -44,23 +43,33 @@
   "ownedSources": [
     {
       "path": "design/official-ai/character-configurations.config.ts",
-      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+      "validators": [
+        "tests/OfficialAiConfiguration.test.ts"
+      ]
     },
     {
       "path": "design/official-ai/origin-configurations.config.ts",
-      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+      "validators": [
+        "tests/OfficialAiConfiguration.test.ts"
+      ]
     },
     {
       "path": "design/official-ai/origin-trait-support.config.ts",
-      "validators": ["tests/OfficialAiConfiguration.test.ts"]
+      "validators": [
+        "tests/OfficialAiConfiguration.test.ts"
+      ]
     },
     {
       "path": "src/core/DetMath.ts",
-      "validators": ["tests/RuleRationalMaterialization.test.ts"]
+      "validators": [
+        "tests/RuleRationalMaterialization.test.ts"
+      ]
     },
     {
       "path": "src/core/FactionRelations.ts",
-      "validators": ["tests/FactionRelations.test.ts"]
+      "validators": [
+        "tests/FactionRelations.test.ts"
+      ]
     },
     {
       "path": "src/core/controller/ControllerApi.ts",
@@ -71,7 +80,9 @@
     },
     {
       "path": "src/core/rules/EchoRuleRegistry.ts",
-      "validators": ["tests/EchoRuleRegistry.test.ts"]
+      "validators": [
+        "tests/EchoRuleRegistry.test.ts"
+      ]
     },
     {
       "path": "src/core/rules/OriginRuleManifest.ts",
@@ -111,27 +122,39 @@
     },
     {
       "path": "src/core/rules/RuleNormalization.ts",
-      "validators": ["tests/RuleNormalization.test.ts"]
+      "validators": [
+        "tests/RuleNormalization.test.ts"
+      ]
     },
     {
       "path": "src/core/rules/StructureFieldGeometry.ts",
-      "validators": ["tests/StructureFieldGeometry.test.ts"]
+      "validators": [
+        "tests/StructureFieldGeometry.test.ts"
+      ]
     },
     {
       "path": "src/core/rules/StructureFieldQualification.ts",
-      "validators": ["tests/StructureFieldGeometry.test.ts"]
+      "validators": [
+        "tests/StructureFieldGeometry.test.ts"
+      ]
     },
     {
       "path": "src/core/visibility/TacticalVisibility.ts",
-      "validators": ["tests/TacticalVisibility.test.ts"]
+      "validators": [
+        "tests/TacticalVisibility.test.ts"
+      ]
     },
     {
       "path": "src/official-ai/OfficialAiController.ts",
-      "validators": ["tests/OfficialAiRuntime.test.ts"]
+      "validators": [
+        "tests/OfficialAiRuntime.test.ts"
+      ]
     },
     {
       "path": "src/server/controller-runtime/ProductionControllerHost.ts",
-      "validators": ["tests/ControllerWorkerHost.test.ts"]
+      "validators": [
+        "tests/ControllerWorkerHost.test.ts"
+      ]
     },
     {
       "path": "src/simulation/ControllerRuntime.ts",
@@ -250,23 +273,33 @@
     },
     {
       "path": "tests/contracts/controller-api.typecheck.ts",
-      "validators": ["tests/ControllerApiContract.test.ts"]
+      "validators": [
+        "tests/ControllerApiContract.test.ts"
+      ]
     },
     {
       "path": "tests/types/ControllerApiTypes.ts",
-      "validators": ["tests/ControllerApiContract.test.ts"]
+      "validators": [
+        "tests/ControllerApiContract.test.ts"
+      ]
     },
     {
       "path": "scripts/checkDocumentationAuthority.ts",
-      "validators": [".github/workflows/documentation-authority.yml"]
+      "validators": [
+        ".github/workflows/documentation-authority.yml"
+      ]
     },
     {
       "path": "scripts/checkValidationBoundary.ts",
-      "validators": ["tests/ValidationBoundaryPolicy.test.ts"]
+      "validators": [
+        "tests/ValidationBoundaryPolicy.test.ts"
+      ]
     },
     {
       "path": "vitest.config.ts",
-      "validators": ["tests/ValidationBoundaryPolicy.test.ts"]
+      "validators": [
+        "tests/ValidationBoundaryPolicy.test.ts"
+      ]
     }
   ]
 }
