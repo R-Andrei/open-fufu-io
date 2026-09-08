@@ -251,6 +251,12 @@ Segments are immutable deterministic map-compiled strategic regions used for que
 
 There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility.
 
+## 6.5 Physical navigation
+
+Simulation-owned physical route selection minimizes **expected traversal time** across legal transitions under the moving subject's current effective movement profile. Focused terrain, unit, naval, rail, Origin, and other mechanic owners remain authoritative for transition legality and movement rates; generic navigation must not invent or shadow-copy those rules.
+
+Physical routing does not fold strategic danger, desirability, target value, or other controller/AI preferences into traversal time unless an explicit focused mechanic makes such a factor part of physical movement. Equal-traversal-time alternatives resolve deterministically.
+
 ---
 
 # 7. Population model
