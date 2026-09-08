@@ -24,22 +24,41 @@ jobs:
       - name: Generate exact isolated-vm lock state
         shell: bash
         run: |
-          set -euo pipefail
-          npm install --package-lock-only --ignore-scripts --save-exact isolated-vm@6.2.0
-          node <<'NODE'
-          const fs = require('node:fs');
-          const path = 'package.json';
-          const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-          pkg.allowScripts = {
-            ...(pkg.allowScripts ?? {}),
-            'isolated-vm@6.2.0': true,
-          };
-          fs.writeFileSync(path, `${JSON.stringify(pkg, null, 2)}\n`);
-          NODE
+          set -uo pipefail
           git config user.name "R-Andrei"
           git config user.email "30163089+R-Andrei@users.noreply.github.com"
-          git add package.json package-lock.json
+
+          log=/tmp/issue103-lockfile.log
+          {
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            npm install --package-lock-only --ignore-scripts --save-exact isolated-vm@6.2.0
+          } >"${log}" 2>&1
+          status=$?
+
+          if [ "${status}" -ne 0 ]; then
+            {
+              echo "OF-ISSUE103-20260908-18570D"
+              echo "npm package-lock generation failed with status ${status}."
+              cat "${log}"
+            } > .github/issue103-lockfile-error.txt
+            git add .github/issue103-lockfile-error.txt
+            git commit \
+              -m "OF-ISSUE103-20260908-18570D Record lockfile generator failure" \
+              -m "Finding: npm failed while generating the exact isolated-vm 6.2.0 lock state; the diagnostic file captures the command output." \
+              -m "Conclusion: do not guess or hand-edit package-lock.json." \
+              -m "Recommended next action: inspect the captured npm error and correct only the mechanical packaging path."
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+            exit "${status}"
+          fi
+
+          rm -f .github/issue103-lockfile-error.txt
+          git add package.json package-lock.json .github/issue103-lockfile-error.txt
           if ! git diff --cached --quiet; then
-            git commit -m "OF-ISSUE103-20260908-18570D Pin isolated-vm 6.2.0 lockfile"
+            git commit \
+              -m "OF-ISSUE103-20260908-18570D Pin isolated-vm 6.2.0 lockfile" \
+              -m "Finding: npm 11 on Node 24 generated a reproducible exact isolated-vm 6.2.0 dependency and lock state." \
+              -m "Conclusion: the native dependency can now be consumed by the dedicated controller-runtime build path." \
+              -m "Recommended next action: remove the temporary lockfile workflow, then implement the isolated worker GREEN against the proven sandbox RED."
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
