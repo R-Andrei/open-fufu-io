@@ -13,6 +13,10 @@ import type {
   SpawnReconsiderContext,
 } from "../core/controller/ControllerApi";
 import {
+  controllerOutputHasExpectedStructure,
+  type ControllerOutputKind,
+} from "../core/controller/ControllerOutputValidation";
+import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
@@ -398,13 +402,17 @@ export class InProcessTestControllerHost implements ControllerHost {
     if (registration === undefined) return hostSuccess();
 
     if (typeof registration === "function") {
-      return this.executeInvocation<ControllerDecision>(factionId, () =>
-        registration(observation),
+      return this.executeInvocation<ControllerDecision>(
+        factionId,
+        "DECIDE",
+        () => registration(observation),
       );
     }
 
-    return this.executeInvocation<ControllerDecision>(factionId, (memory) =>
-      registration.decide?.(projectHostedContext(observation, memory)),
+    return this.executeInvocation<ControllerDecision>(
+      factionId,
+      "DECIDE",
+      (memory) => registration.decide?.(projectHostedContext(observation, memory)),
     );
   }
 
@@ -413,8 +421,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnInfluenceContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
-      registration?.chooseInfluence?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnInfluenceDecision>(
+      factionId,
+      "CHOOSE_INFLUENCE",
+      (memory) => registration?.chooseInfluence?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -423,8 +433,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnReconsiderContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
-      registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnInfluenceDecision>(
+      factionId,
+      "RECONSIDER_INFLUENCE",
+      (memory) => registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -433,8 +445,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnOriginContext,
   ): ControllerHostInvocationResult<SpawnOriginDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnOriginDecision>(factionId, (memory) =>
-      registration?.chooseOrigins?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnOriginDecision>(
+      factionId,
+      "CHOOSE_ORIGINS",
+      (memory) => registration?.chooseOrigins?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -454,6 +468,7 @@ export class InProcessTestControllerHost implements ControllerHost {
 
   private executeInvocation<T extends ControllerOutputWithMemory>(
     factionId: string,
+    outputKind: ControllerOutputKind,
     invoke: (memory: Readonly<ControllerMemory>) => T | void,
   ): ControllerHostInvocationResult<T> {
     let output: T | void;
@@ -467,15 +482,18 @@ export class InProcessTestControllerHost implements ControllerHost {
     if (!isPlainRecord(output)) return hostFault("INVALID_OUTPUT");
 
     try {
-      let nextMemory: string | undefined;
-      if (Object.prototype.hasOwnProperty.call(output, "memory")) {
-        nextMemory = canonicalizeControllerMemory(output.memory);
-      }
-
       const materialized = materializeControllerValue(
         output,
         new Set<object>(),
       ) as T;
+      if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
+        return hostFault("INVALID_OUTPUT");
+      }
+
+      let nextMemory: string | undefined;
+      if (Object.prototype.hasOwnProperty.call(materialized, "memory")) {
+        nextMemory = canonicalizeControllerMemory(materialized.memory);
+      }
 
       if (nextMemory !== undefined) {
         this.memoryByFaction.set(factionId, nextMemory);
