@@ -34,8 +34,13 @@ import {
   type PopulationBucket,
 } from "./Population";
 import {
+  materializeSpawnInitialization,
+  type SpawnSnapshot,
+} from "./SpawnInitialization";
+import {
   TickEngine,
   type AcceptedSimulationInput,
+  type ApplyPersistentDirectivesAction,
   type SimulationAction,
 } from "./TickEngine";
 
@@ -64,6 +69,14 @@ const ARTIFACT_MAP_KEYS = ["kind", "mapId", "mapVersion", "mapHash"] as const;
 
 export interface MatchRuntimeDependencies {
   readonly mapArtifacts?: MapArtifactResolver;
+}
+
+export type MatchRuntimePhase = "INITIALIZING" | "ACTIVE";
+
+export interface SpawnAwareMatchState extends MatchState {
+  readonly phase: MatchRuntimePhase;
+  readonly spawnSnapshot: SpawnSnapshot;
+  readonly spawnImmunityEndsAtTickExclusive: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,12 +141,8 @@ function validateSyntheticMapSpec(map: SyntheticMapSpec): number {
 
 function validateMatchSpec(spec: MatchSpec): void {
   const artifact = isArtifactMapSpec(spec.map);
-  const cellCount = artifact
-    ? undefined
-    : validateSyntheticMapSpec(spec.map);
-  if (artifact) {
-    validateArtifactMapSpec(spec.map);
-  }
+  const cellCount = artifact ? undefined : validateSyntheticMapSpec(spec.map);
+  if (artifact) validateArtifactMapSpec(spec.map);
 
   if (spec.factions.length < 2) {
     throw new Error("MatchRuntime requires at least two factions");
@@ -156,6 +165,19 @@ function validateMatchSpec(spec: MatchSpec): void {
     }
     if (typeof faction.rules.canonicalSerialization !== "string") {
       throw new Error(`faction ${faction.id} must provide a compiled rule profile`);
+    }
+  }
+
+  if (spec.spawnInitialization !== undefined) {
+    if (!artifact && spec.map.initialOwners !== undefined) {
+      throw new Error(
+        "spawnInitialization cannot be combined with synthetic initialOwners scaffolding",
+      );
+    }
+    if (spec.initialStructureGrants !== undefined) {
+      throw new Error(
+        "spawnInitialization cannot be combined with legacy initialStructureGrants",
+      );
     }
   }
 
@@ -292,6 +314,30 @@ function freezeAcceptedInput(
   });
 }
 
+function hostileDirectiveKey(
+  action: ApplyPersistentDirectivesAction,
+): string | undefined {
+  return action.changes.set?.find(
+    (directive) =>
+      directive.kind === "COUNTER_RESPONSE" ||
+      (directive.kind === "LAND_OPERATION" && directive.operation === "ATTACK"),
+  )?.key;
+}
+
+function actionFactionId(action: SimulationAction): string | undefined {
+  switch (action.type) {
+    case "SET_TEST_MARKER":
+    case "CAPITULATE_FACTION":
+    case "GRANT_POPULATION":
+    case "REPARTITION_POPULATION":
+    case "REMOVE_POPULATION":
+    case "APPLY_PERSISTENT_DIRECTIVES":
+      return action.factionId;
+    case "TRANSFER_POPULATION":
+      return action.sourceFactionId;
+  }
+}
+
 export class MatchRuntime {
   private readonly engine = new TickEngine();
   private state: MatchState;
@@ -302,6 +348,9 @@ export class MatchRuntime {
   private lastControllerRoundTick = -1;
   private readonly controllerReceipts = new Map<string, DecisionReceipt>();
   private controllerFaultCounts = new Map<string, number>();
+  private phase: MatchRuntimePhase = "ACTIVE";
+  private spawnSnapshot?: SpawnSnapshot;
+  private spawnImmunityEndsAtTickExclusive?: number;
 
   constructor(
     readonly spec: MatchSpec,
@@ -312,10 +361,32 @@ export class MatchRuntime {
       ? resolveArtifactMap(spec.map, dependencies.mapArtifacts)
       : undefined;
     this.state = createInitialMatchState(spec, resolvedMap);
+    if (spec.spawnInitialization !== undefined) {
+      this.phase = "INITIALIZING";
+      const initialized = materializeSpawnInitialization(
+        this.state,
+        spec.spawnInitialization,
+      );
+      this.state = initialized.state;
+      this.spawnSnapshot = initialized.snapshot;
+      this.spawnImmunityEndsAtTickExclusive = initialized.immunityEndsAtTickExclusive;
+      this.phase = "ACTIVE";
+    }
   }
 
-  snapshot(): MatchState {
-    return this.state;
+  snapshot(): MatchState | SpawnAwareMatchState {
+    if (
+      this.spawnSnapshot === undefined ||
+      this.spawnImmunityEndsAtTickExclusive === undefined
+    ) {
+      return this.state;
+    }
+    return Object.freeze({
+      ...this.state,
+      phase: this.phase,
+      spawnSnapshot: this.spawnSnapshot,
+      spawnImmunityEndsAtTickExclusive: this.spawnImmunityEndsAtTickExclusive,
+    });
   }
 
   private validationState(): MatchState {
@@ -323,7 +394,21 @@ export class MatchRuntime {
     return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
+  private spawnImmunityActive(): boolean {
+    return (
+      this.spawnImmunityEndsAtTickExclusive !== undefined &&
+      this.state.tick < this.spawnImmunityEndsAtTickExclusive
+    );
+  }
+
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
+    if (
+      this.spawnImmunityActive() &&
+      action.type === "APPLY_PERSISTENT_DIRECTIVES" &&
+      hostileDirectiveKey(action) !== undefined
+    ) {
+      throw new Error("spawn immunity prohibits hostile targeting");
+    }
     validateAction(this.validationState(), action);
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
@@ -349,16 +434,43 @@ export class MatchRuntime {
       this.controllerFaultCounts,
     );
 
+    const blocked = new Map<string, string>();
+    if (this.spawnImmunityActive()) {
+      for (const action of evaluated.actions) {
+        if (action.type !== "APPLY_PERSISTENT_DIRECTIVES") continue;
+        const key = hostileDirectiveKey(action);
+        if (key !== undefined) blocked.set(action.factionId, key);
+      }
+    }
+
     for (const action of evaluated.actions) {
+      const factionId = actionFactionId(action);
+      if (factionId !== undefined && blocked.has(factionId)) continue;
       this.acceptAction(action);
     }
-    for (const entry of evaluated.receipts) {
+
+    const receipts = evaluated.receipts.map((entry) => {
+      const key = blocked.get(entry.factionId);
+      if (key === undefined) return entry;
+      return Object.freeze({
+        factionId: entry.factionId,
+        receipt: Object.freeze({
+          decisionNumber: entry.receipt.decisionNumber,
+          accepted: false,
+          failure: Object.freeze({ code: "INVALID_TARGET" as const, key }),
+          faultCount: entry.receipt.faultCount,
+          faulted: entry.receipt.faulted,
+        }),
+      });
+    });
+
+    for (const entry of receipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
     this.lastControllerRoundTick = this.state.tick;
     this.nextControllerDecisionNumber += 1;
-    return evaluated.receipts;
+    return Object.freeze(receipts);
   }
 
   tick(): MatchState {
@@ -374,7 +486,18 @@ export class MatchRuntime {
   }
 
   stateFingerprint(): string {
-    return canonicalMatchStateSerialization(this.state);
+    const base = canonicalMatchStateSerialization(this.state);
+    if (
+      this.spawnSnapshot === undefined ||
+      this.spawnImmunityEndsAtTickExclusive === undefined
+    ) {
+      return base;
+    }
+    return `{"matchState":${base},"phase":${JSON.stringify(
+      this.phase,
+    )},"spawnSnapshot":${JSON.stringify(
+      this.spawnSnapshot,
+    )},"spawnImmunityEndsAtTickExclusive":${this.spawnImmunityEndsAtTickExclusive}}`;
   }
 
   static regenerate(
