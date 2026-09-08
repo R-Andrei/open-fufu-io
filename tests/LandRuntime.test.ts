@@ -76,7 +76,7 @@ function setAttack(match: MatchRuntime, population: number): void {
 }
 
 describe("land operations through authoritative MatchRuntime", () => {
-  it("commits offense, captures through frozen adjacent frontage, settles casualties, and replays exactly", () => {
+  it("observes fixed land state, commits offense, captures, observes the result, and replays exactly", () => {
     const match = landRuntime({
       seed: "hostile-capture",
       terrain: ["PLAINS", "PLAINS"],
@@ -86,7 +86,63 @@ describe("land operations through authoritative MatchRuntime", () => {
     match.acceptAction({ type: "GRANT_POPULATION", factionId: "beta", amount: 1 });
     match.tick();
 
-    setAttack(match, 2);
+    let initialObservationUsed = false;
+    const receipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha(observation) {
+          const source = observation.cells.find(
+            (cell) => cell.ownerId === observation.me.id,
+          );
+          const target = observation.cells.find((cell) => cell.ownerId === "beta");
+          expect(source).toMatchObject({ id: 0, terrain: "PLAINS", ownerId: "alpha" });
+          expect(target).toMatchObject({ id: 1, terrain: "PLAINS", ownerId: "beta" });
+          expect(observation.me.population).toMatchObject({
+            total: 2,
+            available: 2,
+            committedOffense: 0,
+            committedCounterResponse: 0,
+            aboardTransports: 0,
+            neutralSettlementHalfResidual: 0,
+          });
+          initialObservationUsed = true;
+          return {
+            directives: {
+              set: [
+                {
+                  kind: "LAND_OPERATION",
+                  key: "alpha-attack",
+                  operation: "ATTACK",
+                  population: observation.me.population.available,
+                  targetFactionId: "beta",
+                  source: { kind: "CELLS", ids: [source!.id] },
+                  target: { kind: "CELLS", ids: [target!.id] },
+                },
+              ],
+            },
+          };
+        },
+      }),
+    );
+    expect(initialObservationUsed).toBe(true);
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
+      true,
+    );
+
+    match.tick();
+    expect(match.snapshot().operations).toEqual([
+      expect.objectContaining({
+        kind: "ATTACK",
+        ownerId: "alpha",
+        targetFactionId: "beta",
+        committedPopulation: 2,
+      }),
+    ]);
+    expect(match.snapshot().factions.find((entry) => entry.id === "alpha")?.population).toMatchObject({
+      total: 2,
+      available: 0,
+      committedOffensive: 2,
+    });
+
     tickUntil(match, () => match.snapshot().ownership[1] === "alpha");
 
     expect(match.snapshot().factions.find((entry) => entry.id === "alpha")?.population).toMatchObject({
@@ -98,6 +154,26 @@ describe("land operations through authoritative MatchRuntime", () => {
       total: 0,
       available: 0,
     });
+
+    let finalObservationSeen = false;
+    match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha(observation) {
+          expect(observation.cells.find((cell) => cell.id === 1)).toMatchObject({
+            id: 1,
+            terrain: "PLAINS",
+            ownerId: "alpha",
+          });
+          expect(observation.me.population).toMatchObject({
+            total: 1,
+            available: 0,
+            committedOffense: 1,
+          });
+          finalObservationSeen = true;
+        },
+      }),
+    );
+    expect(finalObservationSeen).toBe(true);
 
     const regenerated = MatchRuntime.regenerate(
       match.spec,
