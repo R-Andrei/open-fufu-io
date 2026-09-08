@@ -40,6 +40,17 @@ export interface StructureConstructionState {
   readonly remainingTicks: number;
 }
 
+export type StructureChargeSlotState =
+  | {
+      readonly slotId: number;
+      readonly state: "READY";
+    }
+  | {
+      readonly slotId: number;
+      readonly state: "RECHARGING";
+      readonly readyAtTick: number;
+    };
+
 export interface PersistentStructureState {
   readonly id: string;
   readonly ownerId: string;
@@ -48,6 +59,7 @@ export interface PersistentStructureState {
   readonly completedLevel?: StructureLevel;
   readonly active: boolean;
   readonly construction?: StructureConstructionState;
+  readonly chargeSlots?: readonly StructureChargeSlotState[];
   readonly acquisitionPath: StructureAcquisitionPath;
 }
 
@@ -109,6 +121,24 @@ function freezeConstruction(
   });
 }
 
+function freezeChargeSlots(
+  slots: readonly StructureChargeSlotState[],
+): readonly StructureChargeSlotState[] {
+  return Object.freeze(
+    [...slots]
+      .sort((left, right) => left.slotId - right.slotId)
+      .map((slot) =>
+        slot.state === "READY"
+          ? Object.freeze({ slotId: slot.slotId, state: "READY" as const })
+          : Object.freeze({
+              slotId: slot.slotId,
+              state: "RECHARGING" as const,
+              readyAtTick: slot.readyAtTick,
+            }),
+      ),
+  );
+}
+
 export function materializePersistentStructureState(
   structure: PersistentStructureState,
 ): PersistentStructureState {
@@ -124,6 +154,9 @@ export function materializePersistentStructureState(
     ...(structure.construction === undefined
       ? {}
       : { construction: freezeConstruction(structure.construction) }),
+    ...(structure.chargeSlots === undefined
+      ? {}
+      : { chargeSlots: freezeChargeSlots(structure.chargeSlots) }),
     acquisitionPath: structure.acquisitionPath,
   });
 }
@@ -332,6 +365,17 @@ export function evaluateStructureAcquisitionAdmission(
   return Object.freeze({ ok: true });
 }
 
+function initialGrantedChargeSlots(
+  grant: StructureGrantRequest,
+): readonly StructureChargeSlotState[] | undefined {
+  if (grant.type !== "MISSILE_SILO") return undefined;
+  return Object.freeze(
+    Array.from({ length: grant.level }, (_, slotId) =>
+      Object.freeze({ slotId, state: "READY" as const }),
+    ),
+  );
+}
+
 export function tryMaterializeStructureGrant(
   state: MatchState,
   grant: StructureGrantRequest,
@@ -343,6 +387,7 @@ export function tryMaterializeStructureGrant(
   const admission = evaluateStructureAcquisitionAdmission(state, request);
   if (!admission.ok) return admission;
 
+  const chargeSlots = initialGrantedChargeSlots(grant);
   const structure = materializePersistentStructureState({
     id: grant.structureId,
     ownerId: grant.ownerId,
@@ -350,6 +395,7 @@ export function tryMaterializeStructureGrant(
     cellId: grant.cellId,
     completedLevel: grant.level,
     active: true,
+    ...(chargeSlots === undefined ? {} : { chargeSlots }),
     acquisitionPath: "GRANT",
   });
   return Object.freeze({

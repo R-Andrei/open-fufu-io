@@ -309,6 +309,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
               remainingTicks: structure.construction.remainingTicks,
             },
           }),
+      ...(structure.chargeSlots === undefined
+        ? {}
+        : {
+            chargeSlots: structure.chargeSlots.map((slot) =>
+              slot.state === "READY"
+                ? { slotId: slot.slotId, state: slot.state }
+                : {
+                    slotId: slot.slotId,
+                    state: slot.state,
+                    readyAtTick: slot.readyAtTick,
+                  },
+            ),
+          }),
       acquisitionPath: structure.acquisitionPath,
     }));
 
