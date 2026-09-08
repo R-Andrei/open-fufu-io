@@ -299,6 +299,14 @@
       ]
     },
     {
+      "path": "src/simulation/SpawnSemantics.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts",
+        "tests/SpawnInitialization.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/Structures.ts",
       "validators": [
         "tests/MatchRuntime.test.ts",

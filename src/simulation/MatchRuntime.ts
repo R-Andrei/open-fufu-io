@@ -41,7 +41,6 @@ import {
 import {
   TickEngine,
   type AcceptedSimulationInput,
-  type ApplyPersistentDirectivesAction,
   type SimulationAction,
 } from "./TickEngine";
 
@@ -77,7 +76,6 @@ export type MatchRuntimePhase = "INITIALIZING" | "ACTIVE";
 export interface SpawnAwareMatchState extends MatchState {
   readonly phase: MatchRuntimePhase;
   readonly spawnSnapshot: SpawnSnapshot;
-  readonly spawnImmunityEndsAtTickExclusive: number;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -101,7 +99,9 @@ function validateArtifactMapSpec(map: ArtifactMapSpec): void {
     keys.length !== ARTIFACT_MAP_KEYS.length ||
     !ARTIFACT_MAP_KEYS.every((key) => Object.prototype.hasOwnProperty.call(map, key))
   ) {
-    throw new Error("artifact MatchSpec map must contain exactly kind, mapId, mapVersion, and mapHash");
+    throw new Error(
+      "artifact MatchSpec map must contain exactly kind, mapId, mapVersion, and mapHash",
+    );
   }
   if (map.kind !== "ARTIFACT") {
     throw new Error("artifact MatchSpec map kind must be ARTIFACT");
@@ -200,7 +200,9 @@ function validateMatchSpec(spec: MatchSpec): void {
     const ownerId = spec.map.initialOwners?.[index] ?? null;
     const hasFallout = spec.map.initialFallout?.[index] ?? false;
     if (hasFallout && ownerId !== null) {
-      throw new Error("Fallout cells must be neutral; owned Fallout initial state is invalid");
+      throw new Error(
+        "Fallout cells must be neutral; owned Fallout initial state is invalid",
+      );
     }
   }
 }
@@ -210,7 +212,9 @@ function resolveArtifactMap(
   resolver: MapArtifactResolver | undefined,
 ) {
   if (resolver === undefined) {
-    throw new Error("map artifact resolver is required for an artifact-backed MatchSpec");
+    throw new Error(
+      "map artifact resolver is required for an artifact-backed MatchSpec",
+    );
   }
   const binding: MapArtifactBinding = Object.freeze({
     mapId: spec.mapId,
@@ -323,30 +327,6 @@ function freezeAcceptedInput(
   });
 }
 
-function hostileDirectiveKey(
-  action: ApplyPersistentDirectivesAction,
-): string | undefined {
-  return action.changes.set?.find(
-    (directive) =>
-      directive.kind === "COUNTER_RESPONSE" ||
-      (directive.kind === "LAND_OPERATION" && directive.operation === "ATTACK"),
-  )?.key;
-}
-
-function actionFactionId(action: SimulationAction): string | undefined {
-  switch (action.type) {
-    case "SET_TEST_MARKER":
-    case "CAPITULATE_FACTION":
-    case "GRANT_POPULATION":
-    case "REPARTITION_POPULATION":
-    case "REMOVE_POPULATION":
-    case "APPLY_PERSISTENT_DIRECTIVES":
-      return action.factionId;
-    case "TRANSFER_POPULATION":
-      return action.sourceFactionId;
-  }
-}
-
 export class MatchRuntime {
   private readonly engine = new TickEngine();
   private state: MatchState;
@@ -362,7 +342,6 @@ export class MatchRuntime {
   private controllerFaultedFactionIds = new Set<string>();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
-  private spawnImmunityEndsAtTickExclusive?: number;
 
   constructor(
     readonly spec: MatchSpec,
@@ -381,23 +360,18 @@ export class MatchRuntime {
       );
       this.state = initialized.state;
       this.spawnSnapshot = initialized.snapshot;
-      this.spawnImmunityEndsAtTickExclusive = initialized.immunityEndsAtTickExclusive;
       this.phase = "ACTIVE";
     }
   }
 
   snapshot(): MatchState | SpawnAwareMatchState {
-    if (
-      this.spawnSnapshot === undefined ||
-      this.spawnImmunityEndsAtTickExclusive === undefined
-    ) {
+    if (this.spawnSnapshot === undefined) {
       return this.state;
     }
     return Object.freeze({
       ...this.state,
       phase: this.phase,
       spawnSnapshot: this.spawnSnapshot,
-      spawnImmunityEndsAtTickExclusive: this.spawnImmunityEndsAtTickExclusive,
     });
   }
 
@@ -406,21 +380,7 @@ export class MatchRuntime {
     return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
-  private spawnImmunityActive(): boolean {
-    return (
-      this.spawnImmunityEndsAtTickExclusive !== undefined &&
-      this.state.tick < this.spawnImmunityEndsAtTickExclusive
-    );
-  }
-
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
-    if (
-      this.spawnImmunityActive() &&
-      action.type === "APPLY_PERSISTENT_DIRECTIVES" &&
-      hostileDirectiveKey(action) !== undefined
-    ) {
-      throw new Error("spawn immunity prohibits hostile targeting");
-    }
     validateAction(this.validationState(), action);
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
@@ -436,36 +396,11 @@ export class MatchRuntime {
   private commitControllerRound(
     evaluated: ControllerRoundEvaluation,
   ): readonly ControllerRoundReceipt[] {
-    const blocked = new Map<string, string>();
-    if (this.spawnImmunityActive()) {
-      for (const action of evaluated.actions) {
-        if (action.type !== "APPLY_PERSISTENT_DIRECTIVES") continue;
-        const key = hostileDirectiveKey(action);
-        if (key !== undefined) blocked.set(action.factionId, key);
-      }
-    }
-
     for (const action of evaluated.actions) {
-      const factionId = actionFactionId(action);
-      if (factionId !== undefined && blocked.has(factionId)) continue;
       this.acceptAction(action);
     }
 
-    const receipts = evaluated.receipts.map((entry) => {
-      const key = blocked.get(entry.factionId);
-      if (key === undefined) return entry;
-      return Object.freeze({
-        factionId: entry.factionId,
-        receipt: Object.freeze({
-          decisionNumber: entry.receipt.decisionNumber,
-          accepted: false,
-          failure: Object.freeze({ code: "INVALID_TARGET" as const, key }),
-          faultCount: entry.receipt.faultCount,
-          faulted: entry.receipt.faulted,
-        }),
-      });
-    });
-
+    const receipts = Object.freeze([...evaluated.receipts]);
     for (const entry of receipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
@@ -476,7 +411,7 @@ export class MatchRuntime {
     this.controllerFaultedFactionIds = new Set(evaluated.faultedFactionIds);
     this.lastControllerRoundTick = this.state.tick;
     this.nextControllerDecisionNumber += 1;
-    return Object.freeze(receipts);
+    return receipts;
   }
 
   runControllerRound(
@@ -523,7 +458,9 @@ export class MatchRuntime {
     }
     const nextTick = this.state.tick + 1;
     const executing = this.pendingInputs.filter((input) => input.tick === nextTick);
-    this.pendingInputs = this.pendingInputs.filter((input) => input.tick !== nextTick);
+    this.pendingInputs = this.pendingInputs.filter(
+      (input) => input.tick !== nextTick,
+    );
     this.state = this.engine.advance(this.state, executing);
     return this.state;
   }
@@ -534,17 +471,12 @@ export class MatchRuntime {
 
   stateFingerprint(): string {
     const base = canonicalMatchStateSerialization(this.state);
-    if (
-      this.spawnSnapshot === undefined ||
-      this.spawnImmunityEndsAtTickExclusive === undefined
-    ) {
+    if (this.spawnSnapshot === undefined) {
       return base;
     }
     return `{"matchState":${base},"phase":${JSON.stringify(
       this.phase,
-    )},"spawnSnapshot":${JSON.stringify(
-      this.spawnSnapshot,
-    )},"spawnImmunityEndsAtTickExclusive":${this.spawnImmunityEndsAtTickExclusive}}`;
+    )},"spawnSnapshot":${JSON.stringify(this.spawnSnapshot)}}`;
   }
 
   static regenerate(
@@ -561,7 +493,9 @@ export class MatchRuntime {
       (left, right) => left.tick - right.tick || left.sequence - right.sequence,
     );
     if (orderedInputs.some((input) => input.tick < 1 || input.tick > finalTick)) {
-      throw new Error("accepted input stream contains a tick outside replay range");
+      throw new Error(
+        "accepted input stream contains a tick outside replay range",
+      );
     }
 
     const runtime = new MatchRuntime(spec, dependencies);
@@ -580,7 +514,9 @@ export class MatchRuntime {
           regenerated.tick !== recorded.tick ||
           regenerated.sequence !== recorded.sequence
         ) {
-          throw new Error("accepted input stream is not canonical for this MatchSpec");
+          throw new Error(
+            "accepted input stream is not canonical for this MatchSpec",
+          );
         }
         cursor += 1;
       }

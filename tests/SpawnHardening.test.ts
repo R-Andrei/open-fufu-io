@@ -5,7 +5,6 @@ import {
 } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
-import { landTerrainBaseSpec } from "../src/simulation/LandOperations";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import {
   createInitialMatchState,
@@ -17,6 +16,7 @@ import type {
 } from "../src/simulation/MatchSpec";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { materializeSpawnInitialization } from "../src/simulation/SpawnInitialization";
+import { spawnTerrainBaseSpec } from "../src/simulation/SpawnSemantics";
 
 function rules(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
@@ -142,19 +142,17 @@ describe("reopened #104 Spawn hardening contracts", () => {
   );
 
   it("exposes exact Spawn-seed eligibility separately from land ownability", () => {
-    expect(landTerrainBaseSpec("PLAINS") as unknown as Record<string, unknown>).toMatchObject({
+    expect(spawnTerrainBaseSpec("PLAINS")).toMatchObject({
       conquerable: true,
       landTraversable: true,
       spawnEligible: true,
     });
-    expect(landTerrainBaseSpec("TUNDRA") as unknown as Record<string, unknown>).toMatchObject({
+    expect(spawnTerrainBaseSpec("TUNDRA")).toMatchObject({
       conquerable: true,
       landTraversable: true,
       spawnEligible: false,
     });
-    expect(
-      landTerrainBaseSpec("SHALLOW_WATER") as unknown as Record<string, unknown>,
-    ).toMatchObject({
+    expect(spawnTerrainBaseSpec("SHALLOW_WATER")).toMatchObject({
       conquerable: true,
       landTraversable: true,
       spawnEligible: false,
