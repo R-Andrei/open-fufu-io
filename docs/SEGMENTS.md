@@ -4,6 +4,8 @@
 
 This file is the **canonical V1 owner for the Segment concept: purpose, generation, membership, sizing policy, connectivity, IDs, compilation, runtime behavior, and validation**.
 
+Exact executable Segment-generator profiles—including implementation parameters and deterministic tie-breaks—plus compiled Segment binary payload encodings and runtime indexing are owned by [`../src/simulation/Segments.ts`](../src/simulation/Segments.ts). Exact `OPEN_FUFU_MAP` package/manifest schemas, canonical serialization/content identity, and artifact validation are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts). Those executable owners implement this contract; they do not redefine Segment mechanics.
+
 [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) owns the surrounding game-wide spatial model; [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) owns migration work needed to implement this contract. Neither redefines Segment mechanics.
 
 ---
@@ -99,7 +101,7 @@ A small feature may deserve its own Segment because of shape, linear extent, ter
 
 There is intentionally no universal `if area < N then merge` rule. Feature significance is a deterministic map-compiler heuristic operating under the hard invariants and geography-first priorities in this document.
 
-Those feature-detection weights/heuristics are compiler implementation parameters, not live gameplay rules. They are versioned through the Segment-generator/map artifact, and the final compiled membership is authoritative for that map version.
+Those feature-detection weights/heuristics are compiler implementation parameters, not live gameplay rules. The exact parameter set and deterministic tie-breaks for each generator version live in the executable generator owner, and the final compiled membership is authoritative for that map version. Any output-semantic change that can alter membership, stable IDs, or adjacency requires a new Segment-generator version and a newly compiled map artifact rather than silently changing an existing version.
 
 ---
 
@@ -161,6 +163,8 @@ The compiled map artifact contains at least:
 - Segment adjacency;
 - terrain/geography metadata needed for efficient public summaries.
 
+The exact binary representation of those Segment payloads belongs to `src/simulation/Segments.ts`; their exact placement in a versioned `OPEN_FUFU_MAP` package/manifest belongs to `src/simulation/MapArtifact.ts`.
+
 The Segment layer contributes to the canonical map artifact/hash. Never load an old terrain raster and silently regenerate its Segments with a newer generator.
 
 Changing Segment-generation heuristics produces a new compiled map artifact/version; historical matches keep their old map hash and old Segment partition.
@@ -194,7 +198,7 @@ Every compiled map must validate at least:
 - no Segment count >= 65,536;
 - deterministic byte-identical membership for the same map input + generator version;
 - stable ID ordering by smallest CellId;
-- sensible preservation of representative rivers/waterways, ridges/mountains, islands/coasts, passes/chokepoints, and featureless plains in map-compiler fixtures;
+- representative golden compiler fixtures covering winding Shallow Water, longitudinal subdivision, mountain ridge/pass geometry, island/coast geography, legitimate mixed-terrain Segments, meaningless raster-speck cleanup, featureless subdivision, and edge/corner/diagonal 4-connectivity behavior;
 - no arbitrary hard failure merely because a useful Segment is much smaller/larger/longer/thinner than 4,096 cells.
 
 The distribution around 4,096 cells should be reported as a compiler diagnostic, not enforced as a gameplay legality gate.
