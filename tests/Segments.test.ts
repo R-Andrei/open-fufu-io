@@ -8,6 +8,8 @@ import {
 import {
   SEGMENT_GENERATOR_VERSION,
   compileSegments,
+  encodeCompiledSegments,
+  materializeSegmentArtifact,
 } from "../src/simulation/Segments";
 
 const PRODUCTION_CELL_COUNT = 4_800_000;
@@ -21,6 +23,15 @@ function filledTerrain(
   terrain: TerrainType,
 ): TerrainType[] {
   return Array.from({ length: width * height }, () => terrain);
+}
+
+function membershipArray(
+  compiled: ReturnType<typeof compileSegments>,
+  cellCount: number,
+): number[] {
+  return Array.from({ length: cellCount }, (_, cellId) =>
+    compiled.segmentIdOf(cellId),
+  );
 }
 
 function canonicalJson(value: unknown): string {
@@ -162,7 +173,7 @@ describe("deterministic Segment compiler", () => {
 
     expect(compiled.generatorVersion).toBe(SEGMENT_GENERATOR_VERSION);
     expect(compiled.segmentCount).toBe(3);
-    expect(waterCells.map((cellId) => compiled.membership[cellId])).toEqual(
+    expect(waterCells.map((cellId) => compiled.segmentIdOf(cellId))).toEqual(
       waterCells.map(() => 1),
     );
     expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 1, 2]);
@@ -179,7 +190,9 @@ describe("deterministic Segment compiler", () => {
     const compiled = compileSegments({ width, height, terrain });
 
     expect(compiled.segmentCount).toBe(1);
-    expect([...compiled.membership]).toEqual(Array.from({ length: 25 }, () => 0));
+    expect(membershipArray(compiled, 25)).toEqual(
+      Array.from({ length: 25 }, () => 0),
+    );
     expect(compiled.metadata[0]?.terrainCounts).toEqual({ PLAINS: 24, FOREST: 1 });
   });
 
@@ -192,7 +205,7 @@ describe("deterministic Segment compiler", () => {
     const compiled = compileSegments({ width, height, terrain });
 
     expect(compiled.segmentCount).toBe(2);
-    const islandId = compiled.membership[12]!;
+    const islandId = compiled.segmentIdOf(12);
     expect(compiled.cells(islandId)).toEqual([12]);
     expect(compiled.metadata[islandId]?.terrainCounts).toEqual({ PLAINS: 1 });
   });
@@ -212,7 +225,7 @@ describe("deterministic Segment compiler", () => {
 
     expect(compiled.segmentCount).toBe(3);
     expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 3, 31]);
-    expect(compiled.membership[passCell]).toBe(0);
+    expect(compiled.segmentIdOf(passCell)).toBe(0);
     expect(compiled.cells(1)).toEqual(northRidge);
     expect(compiled.cells(2)).toEqual(southRidge);
     expect(compiled.adjacentSegmentIds(1)).toEqual([0]);
@@ -247,7 +260,7 @@ describe("deterministic Segment compiler", () => {
 
     expect(compiled.segmentCount).toBe(3);
     expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 1, 4]);
-    expect([...compiled.membership]).toEqual([0, 1, 1, 1, 2, 1, 1, 1, 1]);
+    expect(membershipArray(compiled, 9)).toEqual([0, 1, 1, 1, 2, 1, 1, 1, 1]);
     expect(compiled.cells(0)).toEqual([0]);
     expect(compiled.cells(2)).toEqual([4]);
     expect(compiled.adjacentSegmentIds(0)).toEqual([1]);
@@ -255,6 +268,8 @@ describe("deterministic Segment compiler", () => {
   });
 
   it("subdivides large coherent geography deterministically without enforcing compactness", () => {
+    const plainCellCount = 100 * 100;
+    const longWaterCellCount = 9_000;
     const plain = compileSegments({
       width: 100,
       height: 100,
@@ -268,11 +283,12 @@ describe("deterministic Segment compiler", () => {
 
     expect(plain.segmentCount).toBe(2);
     expect(longWater.segmentCount).toBe(2);
-    for (const result of [plain, longWater]) {
+    for (const [result, cellCount] of [
+      [plain, plainCellCount],
+      [longWater, longWaterCellCount],
+    ] as const) {
       const counts = result.metadata.map((entry) => entry.cellCount);
-      expect(counts.reduce((sum, value) => sum + value, 0)).toBe(
-        result.membership.length,
-      );
+      expect(counts.reduce((sum, value) => sum + value, 0)).toBe(cellCount);
       expect(result.metadata.map((entry) => entry.minCellId)).toEqual(
         [...result.metadata]
           .map((entry) => entry.minCellId)
@@ -285,7 +301,9 @@ describe("deterministic Segment compiler", () => {
       height: 100,
       terrain: filledTerrain(100, 100, "PLAINS"),
     });
-    expect([...repeat.membership]).toEqual([...plain.membership]);
+    expect(membershipArray(repeat, plainCellCount)).toEqual(
+      membershipArray(plain, plainCellCount),
+    );
     expect(repeat.metadata).toEqual(plain.metadata);
     expect(
       repeat.metadata.map((_, id) => repeat.adjacentSegmentIds(id)),
@@ -374,12 +392,18 @@ describe("Segment review regression coverage", () => {
 
     const compiled = compileSegments({ width, height, terrain });
 
-    expect(compiled.segmentCount).toBe(4);
-    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 11, 18, 37]);
-    expect(neck.map((cellId) => compiled.membership[cellId])).toEqual([3, 3, 3]);
-    expect(compiled.membership[36]).toBe(1);
-    expect(compiled.membership[40]).toBe(2);
-    expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2]);
+    expect(compiled.segmentCount).toBe(5);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([
+      0,
+      11,
+      18,
+      37,
+      48,
+    ]);
+    expect(neck.map((cellId) => compiled.segmentIdOf(cellId))).toEqual([3, 3, 3]);
+    expect(compiled.segmentIdOf(36)).toBe(1);
+    expect(compiled.segmentIdOf(40)).toBe(2);
+    expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2, 4]);
   });
 
   it("preserves a three-cell-wide same-terrain neck between broad regions", () => {
@@ -401,11 +425,38 @@ describe("Segment review regression coverage", () => {
 
     const compiled = compileSegments({ width, height, terrain });
 
-    expect(compiled.segmentCount).toBe(4);
-    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 13, 22, 43]);
-    expect(neck.map((cellId) => compiled.membership[cellId])).toEqual(
+    expect(compiled.segmentCount).toBe(5);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([
+      0,
+      13,
+      22,
+      43,
+      82,
+    ]);
+    expect(neck.map((cellId) => compiled.segmentIdOf(cellId))).toEqual(
       neck.map(() => 3),
     );
+    expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2, 4]);
+  });
+
+  it("preserves an inset peninsula neck without relying on a map-edge barrier", () => {
+    const width = 12;
+    const height = 9;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    for (let y = 1; y <= 7; y += 1) {
+      for (let x = 1; x <= 4; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    for (let y = 2; y <= 6; y += 1) {
+      for (let x = 8; x <= 10; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    const neck = [53, 54, 55];
+    for (const cellId of neck) terrain[cellId] = "PLAINS";
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(4);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 13, 32, 53]);
+    expect(neck.map((cellId) => compiled.segmentIdOf(cellId))).toEqual([3, 3, 3]);
     expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2]);
   });
 
@@ -416,18 +467,8 @@ describe("Segment review regression coverage", () => {
       terrain: filledTerrain(100, 100, "PLAINS"),
     });
     const counts = compiled.metadata.map((entry) => entry.cellCount);
-    const diagnostics = (compiled as unknown as {
-      readonly diagnostics?: {
-        readonly segmentCount: number;
-        readonly minCellCount: number;
-        readonly maxCellCount: number;
-        readonly meanCellCount: number;
-        readonly belowHalfTargetCount: number;
-        readonly aboveDoubleTargetCount: number;
-      };
-    }).diagnostics;
 
-    expect(diagnostics).toEqual({
+    expect(compiled.diagnostics).toEqual({
       segmentCount: compiled.segmentCount,
       minCellCount: Math.min(...counts),
       maxCellCount: Math.max(...counts),
@@ -447,13 +488,11 @@ describe("Segment review regression coverage", () => {
 
     expect(publicShape.membership).toBeUndefined();
     expect(typeof publicShape.segmentIdOf).toBe("function");
+    expect(compiled.segmentIdOf(0)).toBe(0);
+    expect(() => compiled.segmentIdOf(25)).toThrow(/CellId/i);
   });
 
-  it("round-trips deterministic compiler output through the Segment binary materializer", async () => {
-    const {
-      encodeCompiledSegments,
-      materializeSegmentArtifact,
-    } = await import("../src/simulation/Segments");
+  it("round-trips deterministic compiler output through the Segment binary materializer", () => {
     const width = 7;
     const height = 5;
     const terrain = filledTerrain(width, height, "PLAINS");
@@ -496,9 +535,7 @@ describe("Segment review regression coverage", () => {
     }
   });
 
-  it("rejects disconnected membership, unstable IDs, and malformed CSR adjacency", async () => {
-    const { materializeSegmentArtifact } = await import("../src/simulation/Segments");
-
+  it("rejects disconnected membership, unstable IDs, and malformed CSR adjacency", () => {
     expect(() =>
       materializeSegmentArtifact({
         generatorVersion: 1,
