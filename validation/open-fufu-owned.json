@@ -18,6 +18,7 @@
     "tests/MatchRuntime.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
+    "tests/OfficialAiRuntime.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
     "tests/OriginRuleManifest.test.ts",
@@ -117,6 +118,10 @@
     {
       "path": "src/core/visibility/TacticalVisibility.ts",
       "validators": ["tests/TacticalVisibility.test.ts"]
+    },
+    {
+      "path": "src/official-ai/OfficialAiController.ts",
+      "validators": ["tests/OfficialAiRuntime.test.ts"]
     },
     {
       "path": "src/simulation/ControllerRuntime.ts",
