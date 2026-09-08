@@ -16,6 +16,10 @@ export interface PopulationState {
   readonly neutralSettlementHalfResidual: 0 | 1;
 }
 
+type MutablePopulationState = {
+  -readonly [Key in keyof PopulationState]: PopulationState[Key];
+};
+
 export type PopulationRuleDynamicState = Pick<
   RuleDynamicState,
   "peakTotalPopulation"
@@ -61,20 +65,24 @@ function bucketLabel(bucket: PopulationBucket): string {
   }
 }
 
-function withBucket(
-  state: PopulationState,
+function setBucket(
+  state: MutablePopulationState,
   bucket: PopulationBucket,
   value: number,
-): PopulationState {
+): void {
   switch (bucket) {
     case "AVAILABLE":
-      return createPopulationState({ ...state, available: value });
+      state.available = value;
+      break;
     case "OFFENSIVE":
-      return createPopulationState({ ...state, committedOffensive: value });
+      state.committedOffensive = value;
+      break;
     case "COUNTER_RESPONSE":
-      return createPopulationState({ ...state, committedCounterResponse: value });
+      state.committedCounterResponse = value;
+      break;
     case "TRANSPORT":
-      return createPopulationState({ ...state, aboardTransports: value });
+      state.aboardTransports = value;
+      break;
   }
 }
 
@@ -152,8 +160,10 @@ export function repartitionPopulation(
     amount,
     `${bucketLabel(to)} Population`,
   );
-  const debited = withBucket(state, from, source - amount);
-  return withBucket(debited, to, destination);
+  const next: MutablePopulationState = { ...state };
+  setBucket(next, from, source - amount);
+  setBucket(next, to, destination);
+  return createPopulationState(next);
 }
 
 export function removePopulation(
