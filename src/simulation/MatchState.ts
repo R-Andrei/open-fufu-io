@@ -15,12 +15,21 @@ import {
   type DefensePriorityState,
   type LandOperationState,
 } from "./LandOperations";
-import type { MatchSpec, SyntheticMapSpec } from "./MatchSpec";
+import {
+  isArtifactMapSpec,
+  type MatchSpec,
+  type SyntheticMapSpec,
+} from "./MatchSpec";
 import {
   createEmptyPopulationState,
   createPopulationState,
   type PopulationState,
 } from "./Population";
+import {
+  createSimulationMap,
+  type SimulationMap,
+  type SimulationTerrain,
+} from "./SimulationMap";
 import {
   materializePersistentStructures,
   tryMaterializeStructureGrant,
@@ -39,7 +48,7 @@ export interface MatchFactionState {
 export interface MatchState {
   readonly seed: string;
   readonly tick: number;
-  readonly map: SyntheticMapSpec;
+  readonly map: SimulationMap;
   readonly ownership: readonly (string | null)[];
   readonly fallout: readonly boolean[];
   readonly factions: readonly MatchFactionState[];
@@ -63,17 +72,14 @@ export interface MatchStateUpdate {
   readonly hostilityGrace?: readonly HostilityGraceState[];
 }
 
-function freezeMap(map: SyntheticMapSpec): SyntheticMapSpec {
-  return Object.freeze({
+function createSyntheticMap(map: SyntheticMapSpec): SimulationMap {
+  return createSimulationMap({
+    source: "SYNTHETIC",
     width: map.width,
     height: map.height,
-    terrain: Object.freeze([...map.terrain]),
-    ...(map.initialOwners === undefined
-      ? {}
-      : { initialOwners: Object.freeze([...map.initialOwners]) }),
-    ...(map.initialFallout === undefined
-      ? {}
-      : { initialFallout: Object.freeze([...map.initialFallout]) }),
+    terrain: map.terrain as readonly SimulationTerrain[],
+    ...(map.initialOwners === undefined ? {} : { initialOwners: map.initialOwners }),
+    ...(map.initialFallout === undefined ? {} : { initialFallout: map.initialFallout }),
   });
 }
 
@@ -165,7 +171,7 @@ function createState(
   tick: number,
   update: MatchStateUpdate,
 ): MatchState {
-  const cellCount = previous.map.width * previous.map.height;
+  const cellCount = previous.map.cellCount;
   const ownership = update.ownership ?? previous.ownership;
   const fallout = update.fallout ?? previous.fallout;
   if (ownership.length !== cellCount) {
@@ -204,18 +210,42 @@ function createState(
   });
 }
 
-export function createInitialMatchState(spec: MatchSpec): MatchState {
-  const map = freezeMap(spec.map);
-  const cellCount = spec.map.width * spec.map.height;
+export function createInitialMatchState(
+  spec: MatchSpec,
+  resolvedArtifactMap?: SimulationMap,
+): MatchState {
+  const artifact = isArtifactMapSpec(spec.map);
+  if (artifact && resolvedArtifactMap === undefined) {
+    throw new Error("artifact-backed MatchState creation requires a validated resolved map");
+  }
+  if (!artifact && resolvedArtifactMap !== undefined) {
+    throw new Error("synthetic MatchState creation must not receive an artifact map override");
+  }
+
+  const map = artifact ? resolvedArtifactMap! : createSyntheticMap(spec.map);
+  if (artifact) {
+    if (
+      map.source !== "ARTIFACT" ||
+      map.mapId !== spec.map.mapId ||
+      map.mapVersion !== spec.map.mapVersion ||
+      map.mapHash !== spec.map.mapHash
+    ) {
+      throw new Error("resolved artifact map identity does not match MatchSpec binding");
+    }
+  }
+  const cellCount = map.cellCount;
+  const initialOwners = artifact ? undefined : spec.map.initialOwners;
+  const initialFallout = artifact ? undefined : spec.map.initialFallout;
+
   let state: MatchState = Object.freeze({
     seed: spec.seed,
     tick: 0,
     map,
     ownership: freezeOwnership(
-      spec.map.initialOwners ?? Array.from({ length: cellCount }, () => null),
+      initialOwners ?? Array.from({ length: cellCount }, () => null),
     ),
     fallout: freezeFallout(
-      spec.map.initialFallout ?? Array.from({ length: cellCount }, () => false),
+      initialFallout ?? Array.from({ length: cellCount }, () => false),
     ),
     factions: freezeFactions(
       spec.factions.map((faction) => ({
@@ -359,14 +389,27 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           },
     );
 
+  const serializedMap =
+    state.map.source === "ARTIFACT"
+      ? {
+          source: "ARTIFACT",
+          formatVersion: state.map.formatVersion,
+          mapId: state.map.mapId,
+          mapVersion: state.map.mapVersion,
+          mapHash: state.map.mapHash,
+          width: state.map.width,
+          height: state.map.height,
+        }
+      : {
+          width: state.map.width,
+          height: state.map.height,
+          terrain: [...state.map.terrain],
+        };
+
   return JSON.stringify({
     seed: state.seed,
     tick: state.tick,
-    map: {
-      width: state.map.width,
-      height: state.map.height,
-      terrain: [...state.map.terrain],
-    },
+    map: serializedMap,
     ownership: [...state.ownership],
     fallout: [...state.fallout],
     factions,

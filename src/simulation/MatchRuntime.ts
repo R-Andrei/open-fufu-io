@@ -9,12 +9,23 @@ import {
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
 import {
+  materializeMapArtifact,
+  validateMapArtifactBinding,
+  type MapArtifactBinding,
+  type MapArtifactResolver,
+} from "./MapArtifact";
+import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
   type MatchFactionState,
   type MatchState,
 } from "./MatchState";
-import type { MatchSpec } from "./MatchSpec";
+import {
+  isArtifactMapSpec,
+  type ArtifactMapSpec,
+  type MatchSpec,
+  type SyntheticMapSpec,
+} from "./MatchSpec";
 import {
   grantPopulation,
   removePopulation,
@@ -49,42 +60,81 @@ const SYNTHETIC_TERRAINS = new Set([
   "IMPASSABLE",
 ]);
 
-function validateMatchSpec(spec: MatchSpec): void {
-  if (!Number.isInteger(spec.map.width) || spec.map.width <= 0) {
+const ARTIFACT_MAP_KEYS = ["kind", "mapId", "mapVersion", "mapHash"] as const;
+
+export interface MatchRuntimeDependencies {
+  readonly mapArtifacts?: MapArtifactResolver;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validateArtifactMapSpec(map: ArtifactMapSpec): void {
+  if (!isRecord(map)) {
+    throw new Error("artifact MatchSpec map must be an object");
+  }
+  const keys = Object.keys(map);
+  if (
+    keys.length !== ARTIFACT_MAP_KEYS.length ||
+    !ARTIFACT_MAP_KEYS.every((key) => Object.prototype.hasOwnProperty.call(map, key))
+  ) {
+    throw new Error("artifact MatchSpec map must contain exactly kind, mapId, mapVersion, and mapHash");
+  }
+  if (map.kind !== "ARTIFACT") {
+    throw new Error("artifact MatchSpec map kind must be ARTIFACT");
+  }
+  validateMapArtifactBinding(map);
+}
+
+function validateSyntheticMapSpec(map: SyntheticMapSpec): number {
+  if (!Number.isInteger(map.width) || map.width <= 0) {
     throw new Error("synthetic map width must be a positive integer");
   }
-  if (!Number.isInteger(spec.map.height) || spec.map.height <= 0) {
+  if (!Number.isInteger(map.height) || map.height <= 0) {
     throw new Error("synthetic map height must be a positive integer");
   }
-  const cellCount = spec.map.width * spec.map.height;
+  const cellCount = map.width * map.height;
   if (!Number.isSafeInteger(cellCount) || cellCount <= 0) {
     throw new Error("synthetic map cell count must be a positive safe integer");
   }
-  if (spec.map.terrain.length !== cellCount) {
+  if (map.terrain.length !== cellCount) {
     throw new Error("synthetic map terrain length must equal width * height");
   }
-  for (const terrain of spec.map.terrain) {
+  for (const terrain of map.terrain) {
     if (!SYNTHETIC_TERRAINS.has(terrain)) {
       throw new Error(`unknown synthetic terrain: ${terrain}`);
     }
   }
   if (
-    spec.map.initialOwners !== undefined &&
-    spec.map.initialOwners.length !== cellCount
+    map.initialOwners !== undefined &&
+    map.initialOwners.length !== cellCount
   ) {
     throw new Error("synthetic map initialOwners length must equal width * height");
   }
   if (
-    spec.map.initialFallout !== undefined &&
-    spec.map.initialFallout.length !== cellCount
+    map.initialFallout !== undefined &&
+    map.initialFallout.length !== cellCount
   ) {
     throw new Error("synthetic map initialFallout length must equal width * height");
   }
   if (
-    spec.map.initialFallout?.some((value) => typeof value !== "boolean") === true
+    map.initialFallout?.some((value) => typeof value !== "boolean") === true
   ) {
     throw new Error("synthetic map initialFallout values must be boolean");
   }
+  return cellCount;
+}
+
+function validateMatchSpec(spec: MatchSpec): void {
+  const artifact = isArtifactMapSpec(spec.map);
+  const cellCount = artifact
+    ? undefined
+    : validateSyntheticMapSpec(spec.map);
+  if (artifact) {
+    validateArtifactMapSpec(spec.map);
+  }
+
   if (spec.factions.length < 2) {
     throw new Error("MatchRuntime requires at least two factions");
   }
@@ -108,18 +158,41 @@ function validateMatchSpec(spec: MatchSpec): void {
       throw new Error(`faction ${faction.id} must provide a compiled rule profile`);
     }
   }
+
+  if (artifact) return;
   for (const ownerId of spec.map.initialOwners ?? []) {
     if (ownerId !== null && !ids.has(ownerId)) {
       throw new Error(`unknown initial owner faction: ${ownerId}`);
     }
   }
-  for (let index = 0; index < cellCount; index += 1) {
+  for (let index = 0; index < cellCount!; index += 1) {
     const ownerId = spec.map.initialOwners?.[index] ?? null;
     const hasFallout = spec.map.initialFallout?.[index] ?? false;
     if (hasFallout && ownerId !== null) {
       throw new Error("Fallout cells must be neutral; owned Fallout initial state is invalid");
     }
   }
+}
+
+function resolveArtifactMap(
+  spec: ArtifactMapSpec,
+  resolver: MapArtifactResolver | undefined,
+) {
+  if (resolver === undefined) {
+    throw new Error("map artifact resolver is required for an artifact-backed MatchSpec");
+  }
+  const binding: MapArtifactBinding = Object.freeze({
+    mapId: spec.mapId,
+    mapVersion: spec.mapVersion,
+    mapHash: spec.mapHash,
+  });
+  const artifactPackage = resolver.resolve(binding);
+  if (artifactPackage === undefined) {
+    throw new Error(
+      `map artifact not found for ${spec.mapId}@${spec.mapVersion}/${spec.mapHash}`,
+    );
+  }
+  return materializeMapArtifact(binding, artifactPackage);
 }
 
 function faction(state: MatchState, factionId: string): MatchFactionState {
@@ -230,9 +303,15 @@ export class MatchRuntime {
   private readonly controllerReceipts = new Map<string, DecisionReceipt>();
   private controllerFaultCounts = new Map<string, number>();
 
-  constructor(readonly spec: MatchSpec) {
+  constructor(
+    readonly spec: MatchSpec,
+    dependencies: MatchRuntimeDependencies = {},
+  ) {
     validateMatchSpec(spec);
-    this.state = createInitialMatchState(spec);
+    const resolvedMap = isArtifactMapSpec(spec.map)
+      ? resolveArtifactMap(spec.map, dependencies.mapArtifacts)
+      : undefined;
+    this.state = createInitialMatchState(spec, resolvedMap);
   }
 
   snapshot(): MatchState {
@@ -302,6 +381,7 @@ export class MatchRuntime {
     spec: MatchSpec,
     inputs: readonly AcceptedSimulationInput[],
     finalTick: number,
+    dependencies: MatchRuntimeDependencies = {},
   ): MatchRuntime {
     if (!Number.isInteger(finalTick) || finalTick < 0) {
       throw new Error("final replay tick must be a non-negative integer");
@@ -314,7 +394,7 @@ export class MatchRuntime {
       throw new Error("accepted input stream contains a tick outside replay range");
     }
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, dependencies);
     let cursor = 0;
 
     while (runtime.snapshot().tick < finalTick) {
