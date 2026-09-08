@@ -21,6 +21,8 @@ import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
 const MAX_CONTROLLER_MEMORY_BYTES = 131_072;
+const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
+const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
 
 export interface LawfulFactionObservation {
@@ -74,23 +76,27 @@ export type ControllerHostInvocationResult<T> =
   | Readonly<{ readonly ok: true; readonly output?: T }>
   | Readonly<{ readonly ok: false; readonly fault: ControllerHostFault }>;
 
+export type ControllerHostInvocation<T> =
+  | ControllerHostInvocationResult<T>
+  | Promise<ControllerHostInvocationResult<T>>;
+
 export interface ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
-  ): ControllerHostInvocationResult<ControllerDecision>;
+  ): ControllerHostInvocation<ControllerDecision>;
   chooseInfluence(
     factionId: string,
     context: SpawnInfluenceContext,
-  ): ControllerHostInvocationResult<SpawnInfluenceDecision>;
+  ): ControllerHostInvocation<SpawnInfluenceDecision>;
   reconsiderInfluence(
     factionId: string,
     context: SpawnReconsiderContext,
-  ): ControllerHostInvocationResult<SpawnInfluenceDecision>;
+  ): ControllerHostInvocation<SpawnInfluenceDecision>;
   chooseOrigins(
     factionId: string,
     context: SpawnOriginContext,
-  ): ControllerHostInvocationResult<SpawnOriginDecision>;
+  ): ControllerHostInvocation<SpawnOriginDecision>;
 }
 
 export type InProcessController = (
@@ -488,6 +494,8 @@ export interface ControllerRoundEvaluation {
   readonly actions: readonly SimulationAction[];
   readonly receipts: readonly ControllerRoundReceipt[];
   readonly faultCounts: ReadonlyMap<string, number>;
+  readonly consecutiveFaultCounts: ReadonlyMap<string, number>;
+  readonly faultedFactionIds: ReadonlySet<string>;
 }
 
 interface ProposalEvaluation {
@@ -495,10 +503,25 @@ interface ProposalEvaluation {
   readonly failure?: DecisionFailure;
 }
 
+interface InvocationOutcome {
+  readonly factionId: string;
+  readonly invocation?: ControllerHostInvocationResult<ControllerDecision>;
+  readonly threw?: true;
+  readonly skipped?: true;
+}
+
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
+}
+
+function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as Promise<T>).then === "function"
+  );
 }
 
 function freezeFactionObservation(
@@ -658,47 +681,65 @@ function evaluateProposal(
   return Object.freeze({ actions: Object.freeze(actions) });
 }
 
-export function evaluateControllerRound(
+function recordNormalRuntimeFault(
+  factionId: string,
+  faultCounts: Map<string, number>,
+  consecutiveFaultCounts: Map<string, number>,
+  faultedFactionIds: Set<string>,
+): void {
+  const total = (faultCounts.get(factionId) ?? 0) + 1;
+  const consecutive = (consecutiveFaultCounts.get(factionId) ?? 0) + 1;
+  faultCounts.set(factionId, total);
+  consecutiveFaultCounts.set(factionId, consecutive);
+  if (
+    consecutive >= MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS ||
+    total >= MAX_TOTAL_NORMAL_RUNTIME_FAULTS
+  ) {
+    faultedFactionIds.add(factionId);
+  }
+}
+
+function finalizeControllerRound(
   state: MatchState,
-  host: ControllerHost,
   decisionNumber: number,
-  previousReceipts: ReadonlyMap<string, DecisionReceipt>,
+  orderedFactionIds: readonly string[],
+  outcomes: readonly InvocationOutcome[],
   previousFaultCounts: ReadonlyMap<string, number>,
+  previousConsecutiveFaultCounts: ReadonlyMap<string, number>,
+  previousFaultedFactionIds: ReadonlySet<string>,
 ): ControllerRoundEvaluation {
-  const orderedFactionIds = [...state.factions]
-    .map((faction) => faction.id)
-    .sort(compareIds);
   const proposals = new Map<string, ControllerDecision | void>();
   const invocationFailures = new Map<string, DecisionFailure>();
   const faultCounts = new Map(previousFaultCounts);
+  const consecutiveFaultCounts = new Map(previousConsecutiveFaultCounts);
+  const faultedFactionIds = new Set(previousFaultedFactionIds);
 
-  for (const factionId of orderedFactionIds) {
-    const observation = projectLawfulControllerObservation(
-      state,
-      factionId,
-      decisionNumber,
-      previousReceipts.get(factionId),
-    );
-    try {
-      const invocation = host.invoke(factionId, observation);
-      if (invocation.ok) {
-        proposals.set(factionId, invocation.output);
-      } else {
-        const nextFaultCount = (faultCounts.get(factionId) ?? 0) + 1;
-        faultCounts.set(factionId, nextFaultCount);
-        invocationFailures.set(
-          factionId,
-          Object.freeze({ code: "RUNTIME_ERROR" }),
-        );
-      }
-    } catch {
-      const nextFaultCount = (faultCounts.get(factionId) ?? 0) + 1;
-      faultCounts.set(factionId, nextFaultCount);
+  for (const outcome of outcomes) {
+    if (outcome.skipped === true) {
       invocationFailures.set(
-        factionId,
+        outcome.factionId,
         Object.freeze({ code: "RUNTIME_ERROR" }),
       );
+      continue;
     }
+
+    const invocation = outcome.invocation;
+    if (outcome.threw === true || invocation === undefined || !invocation.ok) {
+      recordNormalRuntimeFault(
+        outcome.factionId,
+        faultCounts,
+        consecutiveFaultCounts,
+        faultedFactionIds,
+      );
+      invocationFailures.set(
+        outcome.factionId,
+        Object.freeze({ code: "RUNTIME_ERROR" }),
+      );
+      continue;
+    }
+
+    consecutiveFaultCounts.set(outcome.factionId, 0);
+    proposals.set(outcome.factionId, invocation.output);
   }
 
   const actions: SimulationAction[] = [];
@@ -742,7 +783,7 @@ export function evaluateControllerRound(
       accepted: failure === undefined,
       ...(failure === undefined ? {} : { failure }),
       faultCount: faultCounts.get(factionId) ?? 0,
-      faulted: false,
+      faulted: faultedFactionIds.has(factionId),
     });
     receipts.push(Object.freeze({ factionId, receipt }));
   }
@@ -751,5 +792,73 @@ export function evaluateControllerRound(
     actions: Object.freeze(actions),
     receipts: Object.freeze(receipts),
     faultCounts,
+    consecutiveFaultCounts,
+    faultedFactionIds,
   });
+}
+
+export function evaluateControllerRound(
+  state: MatchState,
+  host: ControllerHost,
+  decisionNumber: number,
+  previousReceipts: ReadonlyMap<string, DecisionReceipt>,
+  previousFaultCounts: ReadonlyMap<string, number>,
+  previousConsecutiveFaultCounts: ReadonlyMap<string, number> = new Map(),
+  previousFaultedFactionIds: ReadonlySet<string> = new Set(),
+): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
+  const orderedFactionIds = [...state.factions]
+    .map((faction) => faction.id)
+    .sort(compareIds);
+  const outcomes: Array<InvocationOutcome | Promise<InvocationOutcome>> = [];
+  let hasAsyncInvocation = false;
+
+  for (const factionId of orderedFactionIds) {
+    if (previousFaultedFactionIds.has(factionId)) {
+      outcomes.push(Object.freeze({ factionId, skipped: true as const }));
+      continue;
+    }
+
+    const observation = projectLawfulControllerObservation(
+      state,
+      factionId,
+      decisionNumber,
+      previousReceipts.get(factionId),
+    );
+
+    try {
+      const invocation = host.invoke(factionId, observation);
+      if (isPromiseLike(invocation)) {
+        hasAsyncInvocation = true;
+        outcomes.push(
+          Promise.resolve(invocation).then(
+            (resolved) => Object.freeze({ factionId, invocation: resolved }),
+            () => Object.freeze({ factionId, threw: true as const }),
+          ),
+        );
+      } else {
+        outcomes.push(Object.freeze({ factionId, invocation }));
+      }
+    } catch {
+      outcomes.push(Object.freeze({ factionId, threw: true as const }));
+    }
+  }
+
+  const finalize = (resolvedOutcomes: readonly InvocationOutcome[]) =>
+    finalizeControllerRound(
+      state,
+      decisionNumber,
+      orderedFactionIds,
+      resolvedOutcomes,
+      previousFaultCounts,
+      previousConsecutiveFaultCounts,
+      previousFaultedFactionIds,
+    );
+
+  if (!hasAsyncInvocation) {
+    return finalize(outcomes as readonly InvocationOutcome[]);
+  }
+
+  return Promise.all(outcomes.map((outcome) => Promise.resolve(outcome))).then(
+    finalize,
+  );
 }
