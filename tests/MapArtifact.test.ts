@@ -6,6 +6,8 @@ import { MatchRuntime } from "../src/simulation/MatchRuntime";
 const CELL_COUNT = 4_800_000;
 const WIDTH = 2_400;
 const HEIGHT = 2_000;
+const ARTIFACT_ALPHA_ORIGIN = WIDTH * 100 + 100;
+const ARTIFACT_BETA_ORIGIN = WIDTH * 1_000 + 1_000;
 const UTF8 = new TextEncoder();
 
 const TERRAIN_NAMES = [
@@ -55,6 +57,21 @@ interface TestArtifactMatchSpec {
     readonly id: string;
     readonly rules: TestRules;
   }[];
+  readonly initialization: Readonly<{
+    kind: "SPAWN";
+    input: Readonly<{
+      spawnMode: "FIXED";
+      spawnResolverVersion: "1";
+      factions: readonly Readonly<{
+        factionId: string;
+        origins: readonly Readonly<{
+          originSlot: number;
+          resolvedExactOrigin: number;
+          source: "FIXED_CONFIGURATION";
+        }>[];
+      }>[];
+    }>;
+  }>;
 }
 
 interface ArtifactRuntimeConstructor {
@@ -216,6 +233,35 @@ function artifactSpec(
       { id: "alpha", rules },
       { id: "beta", rules },
     ],
+    initialization: {
+      kind: "SPAWN",
+      input: {
+        spawnMode: "FIXED",
+        spawnResolverVersion: "1",
+        factions: [
+          {
+            factionId: "alpha",
+            origins: [
+              {
+                originSlot: 0,
+                resolvedExactOrigin: ARTIFACT_ALPHA_ORIGIN,
+                source: "FIXED_CONFIGURATION",
+              },
+            ],
+          },
+          {
+            factionId: "beta",
+            origins: [
+              {
+                originSlot: 0,
+                resolvedExactOrigin: ARTIFACT_BETA_ORIGIN,
+                source: "FIXED_CONFIGURATION",
+              },
+            ],
+          },
+        ],
+      },
+    },
   };
 }
 

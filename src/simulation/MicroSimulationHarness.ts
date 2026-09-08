@@ -34,6 +34,7 @@ export function createMicroSimulationSpec(
         : { initialFallout: Object.freeze([...options.initialFallout]) }),
     }),
     factions: Object.freeze([...options.factions]),
+    initialization: Object.freeze({ kind: "SYNTHETIC_FIXTURE" as const }),
     ...(options.initialStructureGrants === undefined
       ? {}
       : {

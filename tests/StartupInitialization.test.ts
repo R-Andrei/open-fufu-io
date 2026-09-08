@@ -44,19 +44,11 @@ function fixedSpawnInput(width: number): SpawnInitializationInput {
   });
 }
 
-type TaggedInitialization =
-  | Readonly<{ kind: "SYNTHETIC_FIXTURE" }>
-  | Readonly<{ kind: "SPAWN"; input: SpawnInitializationInput }>;
-
-type TaggedMatchSpec = Omit<MatchSpec, "spawnInitialization"> &
-  Readonly<{ initialization: TaggedInitialization }>;
-
 function tagged(
   spec: MatchSpec,
-  initialization: TaggedInitialization,
-): TaggedMatchSpec {
-  const { spawnInitialization: _legacy, ...rest } = spec;
-  return Object.freeze({ ...rest, initialization });
+  initialization: MatchSpec["initialization"],
+): MatchSpec {
+  return Object.freeze({ ...spec, initialization });
 }
 
 function ordinaryMicroSpec(options?: {

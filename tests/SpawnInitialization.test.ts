@@ -72,7 +72,13 @@ function withSpawnInitialization(
   spec: MatchSpec,
   spawnInitialization: SpawnInitializationInput,
 ): MatchSpec {
-  return Object.freeze({ ...spec, spawnInitialization });
+  return Object.freeze({
+    ...spec,
+    initialization: Object.freeze({
+      kind: "SPAWN" as const,
+      input: spawnInitialization,
+    }),
+  });
 }
 
 function ownerCount(state: SpawnAwareMatchState, factionId: string): number {

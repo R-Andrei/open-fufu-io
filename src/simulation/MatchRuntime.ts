@@ -153,6 +153,40 @@ function validateMatchSpec(spec: MatchSpec): void {
   const cellCount = artifact ? undefined : validateSyntheticMapSpec(spec.map);
   if (artifact) validateArtifactMapSpec(spec.map);
 
+  const initialization = isRecord(spec.initialization)
+    ? spec.initialization
+    : undefined;
+  if (
+    artifact &&
+    (initialization === undefined || initialization.kind !== "SPAWN")
+  ) {
+    throw new Error("artifact-backed MatchSpec requires SPAWN initialization");
+  }
+  if (
+    initialization === undefined ||
+    (initialization.kind !== "SPAWN" &&
+      initialization.kind !== "SYNTHETIC_FIXTURE")
+  ) {
+    throw new Error(
+      "MatchSpec initialization must be explicitly tagged SPAWN or SYNTHETIC_FIXTURE",
+    );
+  }
+  if (initialization.kind === "SPAWN") {
+    if (!("input" in initialization) || !isRecord(initialization.input)) {
+      throw new Error("SPAWN initialization requires a resolved Spawn input");
+    }
+    if (!artifact && spec.map.initialOwners !== undefined) {
+      throw new Error(
+        "SPAWN initialization cannot be combined with synthetic initialOwners",
+      );
+    }
+    if (spec.initialStructureGrants !== undefined) {
+      throw new Error(
+        "SPAWN initialization cannot be combined with legacy initialStructureGrants",
+      );
+    }
+  }
+
   if (spec.factions.length < 2) {
     throw new Error("MatchRuntime requires at least two factions");
   }
@@ -174,19 +208,6 @@ function validateMatchSpec(spec: MatchSpec): void {
     }
     if (typeof faction.rules.canonicalSerialization !== "string") {
       throw new Error(`faction ${faction.id} must provide a compiled rule profile`);
-    }
-  }
-
-  if (spec.spawnInitialization !== undefined) {
-    if (!artifact && spec.map.initialOwners !== undefined) {
-      throw new Error(
-        "spawnInitialization cannot be combined with synthetic initialOwners scaffolding",
-      );
-    }
-    if (spec.initialStructureGrants !== undefined) {
-      throw new Error(
-        "spawnInitialization cannot be combined with legacy initialStructureGrants",
-      );
     }
   }
 
@@ -352,11 +373,11 @@ export class MatchRuntime {
       ? resolveArtifactMap(spec.map, dependencies.mapArtifacts)
       : undefined;
     this.state = createInitialMatchState(spec, resolvedMap);
-    if (spec.spawnInitialization !== undefined) {
+    if (spec.initialization.kind === "SPAWN") {
       this.phase = "INITIALIZING";
       const initialized = materializeSpawnInitialization(
         this.state,
-        spec.spawnInitialization,
+        spec.initialization.input,
       );
       this.state = initialized.state;
       this.spawnSnapshot = initialized.snapshot;
