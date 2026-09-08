@@ -15,6 +15,7 @@
     "tests/LandCertification.test.ts",
     "tests/LandOperations.test.ts",
     "tests/LandRuntime.test.ts",
+    "tests/MapArtifact.test.ts",
     "tests/MatchRuntime.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
