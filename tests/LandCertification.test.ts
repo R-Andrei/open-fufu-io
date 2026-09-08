@@ -4,11 +4,11 @@ import {
   originRuleProfileInput,
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
+import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
 import {
   canonicalCellSelectorKey,
   canonicalSpatialPolicyKey,
 } from "../src/simulation/LandOperations";
-import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
@@ -31,40 +31,30 @@ function runtime(options: {
   readonly fallout?: readonly boolean[];
   readonly factions: readonly TestFaction[];
 }): MatchRuntime {
-  const width = options.width ?? options.terrain.length;
-  const height = options.height ?? 1;
   return new MatchRuntime(
     createMicroSimulationSpec({
       seed: options.seed,
-      width,
-      height,
+      width: options.width ?? options.terrain.length,
+      height: options.height ?? 1,
       terrain: options.terrain,
       initialOwners: options.owners,
       ...(options.fallout === undefined ? {} : { initialFallout: options.fallout }),
       factions: options.factions.map((faction) => ({
         id: faction.id,
         rules: rules(faction.traits),
-        ...(faction.fixedTeamId === undefined
-          ? {}
-          : { fixedTeamId: faction.fixedTeamId }),
+        ...(faction.fixedTeamId === undefined ? {} : { fixedTeamId: faction.fixedTeamId }),
       })),
     }),
   );
 }
 
 function progressFor(match: MatchRuntime, cellId: number, factionId: string): number {
-  return (
-    match.snapshot().captureProgress.find(
-      (entry) => entry.cellId === cellId && entry.claimantFactionId === factionId,
-    )?.progressMicros ?? 0
-  );
+  return match.snapshot().captureProgress.find(
+    (entry) => entry.cellId === cellId && entry.claimantFactionId === factionId,
+  )?.progressMicros ?? 0;
 }
 
-function tickUntil(
-  match: MatchRuntime,
-  predicate: () => boolean,
-  maximumTicks = 100,
-): void {
+function tickUntil(match: MatchRuntime, predicate: () => boolean, maximumTicks = 100): void {
   for (let index = 0; index < maximumTicks; index += 1) {
     if (predicate()) return;
     match.tick();
@@ -85,6 +75,24 @@ function grantAndTick(match: MatchRuntime, grants: Readonly<Record<string, numbe
     match.acceptAction({ type: "GRANT_POPULATION", factionId, amount });
   }
   match.tick();
+}
+
+function attack(
+  key: string,
+  population: number,
+  targetFactionId: string,
+  sourceIds: readonly number[],
+  targetIds: readonly number[],
+) {
+  return {
+    kind: "LAND_OPERATION" as const,
+    key,
+    operation: "ATTACK" as const,
+    population,
+    targetFactionId,
+    source: { kind: "CELLS" as const, ids: sourceIds },
+    target: { kind: "CELLS" as const, ids: targetIds },
+  };
 }
 
 describe("#88 final land certification", () => {
@@ -185,13 +193,7 @@ describe("#88 final land certification", () => {
       grantAndTick(match, { alpha: 1 });
       const receipts = setDirectives(match, "alpha", [
         {
-          kind: "LAND_OPERATION" as const,
-          key: "attack",
-          operation: "ATTACK" as const,
-          population: 1,
-          targetFactionId: "beta",
-          source: { kind: "CELLS" as const, ids: [1] },
-          target: { kind: "OWNER" as const, factionId: "beta" },
+          ...attack("attack", 1, "beta", [1], [0, 2]),
           engagementPriority: policy,
         },
       ]);
@@ -250,17 +252,7 @@ describe("#88 final land certification", () => {
         factions: [{ id: "alpha" }, { id: "beta" }],
       });
       grantAndTick(match, { alpha: 2 });
-      setDirectives(match, "alpha", [
-        {
-          kind: "LAND_OPERATION" as const,
-          key: "attack",
-          operation: "ATTACK" as const,
-          population: 2,
-          targetFactionId: "beta",
-          source: { kind: "CELLS" as const, ids: [0] },
-          target: { kind: "CELLS" as const, ids: [1] },
-        },
-      ]);
+      setDirectives(match, "alpha", [attack("attack", 2, "beta", [0], [1])]);
       tickUntil(match, () => match.snapshot().ownership[1] === "alpha");
       expect(
         match.snapshot().factions.find((entry) => entry.id === "alpha")!.population,
@@ -347,17 +339,7 @@ describe("#88 final land certification", () => {
       ],
     });
     grantAndTick(match, { alpha: 1, beta: 1 });
-    setDirectives(match, "alpha", [
-      {
-        kind: "LAND_OPERATION" as const,
-        key: "attack",
-        operation: "ATTACK" as const,
-        population: 1,
-        targetFactionId: "beta",
-        source: { kind: "CELLS" as const, ids: [1] },
-        target: { kind: "CELLS" as const, ids: [2] },
-      },
-    ]);
+    setDirectives(match, "alpha", [attack("attack", 1, "beta", [1], [2])]);
     match.tick();
     const withTeammate = progressFor(match, 2, "alpha");
     expect(withTeammate).toBe(4_762);
@@ -389,12 +371,10 @@ describe("#88 final land certification", () => {
       match.snapshot().factions.find((entry) => entry.id === "alpha")!.population.neutralSettlementHalfResidual,
     ).toBe(1);
 
-    const endReceipt = match.runControllerRound(
-      new InProcessTestControllerHost({
-        alpha: () => ({ directives: { end: ["first"] } }),
-      }),
+    const ended = match.runControllerRound(
+      new InProcessTestControllerHost({ alpha: () => ({ directives: { end: ["first"] } }) }),
     );
-    expect(endReceipt.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(true);
+    expect(ended.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(true);
     match.tick();
     setDirectives(match, "alpha", [
       {
@@ -423,33 +403,19 @@ describe("#88 final land certification", () => {
     });
     grantAndTick(match, { alpha: 6, beta: 2 });
     setDirectives(match, "alpha", [
-      {
-        kind: "LAND_OPERATION" as const,
-        key: "left",
-        operation: "ATTACK" as const,
-        population: 2,
-        targetFactionId: "beta",
-        source: { kind: "CELLS" as const, ids: [0] },
-        target: { kind: "CELLS" as const, ids: [1] },
-      },
-      {
-        kind: "LAND_OPERATION" as const,
-        key: "right",
-        operation: "ATTACK" as const,
-        population: 2,
-        targetFactionId: "beta",
-        source: { kind: "CELLS" as const, ids: [2] },
-        target: { kind: "CELLS" as const, ids: [3] },
-      },
+      attack("left", 2, "beta", [0], [1]),
+      attack("right", 2, "beta", [2], [3]),
     ]);
     tickUntil(
       match,
       () => match.snapshot().ownership[1] === "alpha" && match.snapshot().ownership[3] === "alpha",
     );
-    const alpha = match.snapshot().factions.find((entry) => entry.id === "alpha")!.population;
-    const beta = match.snapshot().factions.find((entry) => entry.id === "beta")!.population;
-    expect(alpha).toMatchObject({ total: 2, available: 2, committedOffensive: 0 });
-    expect(beta).toMatchObject({ total: 2, available: 2 });
+    expect(
+      match.snapshot().factions.find((entry) => entry.id === "alpha")!.population,
+    ).toMatchObject({ total: 2, available: 2, committedOffensive: 0 });
+    expect(
+      match.snapshot().factions.find((entry) => entry.id === "beta")!.population,
+    ).toMatchObject({ total: 2, available: 2 });
 
     const exhausted = runtime({
       seed: "p47-exhaustion",
@@ -458,17 +424,7 @@ describe("#88 final land certification", () => {
       factions: [{ id: "alpha" }, { id: "beta", traits: ["P47"] }],
     });
     grantAndTick(exhausted, { alpha: 1 });
-    setDirectives(exhausted, "alpha", [
-      {
-        kind: "LAND_OPERATION" as const,
-        key: "attack",
-        operation: "ATTACK" as const,
-        population: 1,
-        targetFactionId: "beta",
-        source: { kind: "CELLS" as const, ids: [0] },
-        target: { kind: "CELLS" as const, ids: [1] },
-      },
-    ]);
+    setDirectives(exhausted, "alpha", [attack("attack", 1, "beta", [0], [1])]);
     tickUntil(exhausted, () => exhausted.snapshot().ownership[1] === "alpha");
     expect(
       exhausted.snapshot().factions.find((entry) => entry.id === "alpha")!.population.total,
@@ -484,17 +440,7 @@ describe("#88 final land certification", () => {
         factions: [{ id: "alpha" }, { id: "beta", traits: betaTraits }],
       });
       grantAndTick(match, { alpha: 3, beta: 1 });
-      setDirectives(match, "alpha", [
-        {
-          kind: "LAND_OPERATION" as const,
-          key: "attack",
-          operation: "ATTACK" as const,
-          population: 2,
-          targetFactionId: "beta",
-          source: { kind: "CELLS" as const, ids: [0] },
-          target: { kind: "CELLS" as const, ids: [1] },
-        },
-      ]);
+      setDirectives(match, "alpha", [attack("attack", 2, "beta", [0], [1])]);
       tickUntil(match, () => match.snapshot().ownership[1] === "alpha");
       return match.snapshot().factions.find((entry) => entry.id === "alpha")!.population.total;
     };
@@ -503,8 +449,8 @@ describe("#88 final land certification", () => {
     expect(make("marsh-p47-p38", ["P47", "P38"])).toBe(1);
   });
 
-  it("locks unequal automatic-defense quotas plus largest-remainder and stable-cell ties", () => {
-    const make = (seed: string, betaPopulation: number) => {
+  it("locks proportional automatic-defense quotas, largest remainder, and stable-cell ties", () => {
+    const unequal = (seed: string, betaPopulation: number) => {
       const match = runtime({
         seed,
         width: 7,
@@ -519,36 +465,8 @@ describe("#88 final land certification", () => {
       grantAndTick(match, { alpha: 6, beta: betaPopulation, gamma: 2 });
       const receipts = match.runControllerRound(
         new InProcessTestControllerHost({
-          alpha: () => ({
-            directives: {
-              set: [
-                {
-                  kind: "LAND_OPERATION" as const,
-                  key: "large-front",
-                  operation: "ATTACK" as const,
-                  population: 6,
-                  targetFactionId: "beta",
-                  source: { kind: "CELLS" as const, ids: [0, 7] },
-                  target: { kind: "CELLS" as const, ids: [1, 8] },
-                },
-              ],
-            },
-          }),
-          gamma: () => ({
-            directives: {
-              set: [
-                {
-                  kind: "LAND_OPERATION" as const,
-                  key: "small-front",
-                  operation: "ATTACK" as const,
-                  population: 2,
-                  targetFactionId: "beta",
-                  source: { kind: "CELLS" as const, ids: [5, 12] },
-                  target: { kind: "CELLS" as const, ids: [6] },
-                },
-              ],
-            },
-          }),
+          alpha: () => ({ directives: { set: [attack("large-front", 6, "beta", [0, 7], [1, 8])] } }),
+          gamma: () => ({ directives: { set: [attack("small-front", 2, "beta", [5, 12], [6])] } }),
         }),
       );
       expect(receipts.every((entry) => entry.receipt.accepted)).toBe(true);
@@ -556,12 +474,31 @@ describe("#88 final land certification", () => {
       return match;
     };
 
-    const oneSlot = make("defense-largest-remainder", 1);
+    const oneSlot = unequal("defense-largest-remainder", 1);
     expect(progressFor(oneSlot, 1, "alpha")).toBeLessThan(progressFor(oneSlot, 6, "gamma"));
+    expect(progressFor(oneSlot, 8, "alpha")).toBe(100_000);
 
-    const twoSlots = make("defense-equal-remainder", 2);
+    const twoSlots = unequal("defense-proportional-2-1", 2);
     const alphaProgress = [1, 8].map((cellId) => progressFor(twoSlots, cellId, "alpha"));
-    expect(alphaProgress.filter((value) => value < 100_000)).toHaveLength(2);
-    expect(progressFor(twoSlots, 6, "gamma")).toBe(100_000);
+    expect(alphaProgress.filter((value) => value < 100_000)).toHaveLength(1);
+    expect(progressFor(twoSlots, 6, "gamma")).toBeLessThan(100_000);
+
+    const tie = runtime({
+      seed: "defense-equal-remainder-stable-cell",
+      terrain: ["TEST", "TEST", "TEST", "TEST", "TEST"],
+      owners: ["alpha", "beta", null, "beta", "gamma"],
+      factions: [{ id: "alpha" }, { id: "beta" }, { id: "gamma" }],
+    });
+    grantAndTick(tie, { alpha: 2, beta: 1, gamma: 2 });
+    const tieReceipts = tie.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha: () => ({ directives: { set: [attack("left", 2, "beta", [0], [1])] } }),
+        gamma: () => ({ directives: { set: [attack("right", 2, "beta", [4], [3])] } }),
+      }),
+    );
+    expect(tieReceipts.every((entry) => entry.receipt.accepted)).toBe(true);
+    tie.tick();
+    expect(progressFor(tie, 1, "alpha")).toBeLessThan(progressFor(tie, 3, "gamma"));
+    expect(progressFor(tie, 3, "gamma")).toBe(100_000);
   });
 });
