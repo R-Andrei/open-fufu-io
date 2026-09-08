@@ -401,6 +401,7 @@ describe("persistent structure grant foundation", () => {
         cellId: 0,
         completedLevel: 1,
         active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
         acquisitionPath: "GRANT",
       },
     ]);
@@ -536,6 +537,7 @@ describe("persistent structure grant foundation", () => {
         cellId: 0,
         completedLevel: 1,
         active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
         acquisitionPath: "GRANT",
       },
     ]);
