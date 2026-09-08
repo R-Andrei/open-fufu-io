@@ -13,6 +13,7 @@ type WorkerRequestEnvelope = Readonly<{
 type WorkerResponseEnvelope = Readonly<{
   requestId: number;
   response: ControllerWorkerResponse;
+  rssBytes: number;
 }>;
 
 const hardenGlobalSource = `
@@ -77,7 +78,7 @@ const invokeEntrypointSource = `
 `;
 
 function workerFault(
-  fault: Extract<ControllerWorkerResponse, { ok: false }>['fault'],
+  fault: Extract<ControllerWorkerResponse, { ok: false }>["fault"],
 ): ControllerWorkerResponse {
   return Object.freeze({ ok: false as const, fault });
 }
@@ -93,7 +94,11 @@ function isMemoryLimitError(error: unknown): boolean {
 function isWorkerRequestEnvelope(value: unknown): value is WorkerRequestEnvelope {
   if (value === null || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return Number.isInteger(record.requestId) && record.request !== null && typeof record.request === "object";
+  return (
+    Number.isInteger(record.requestId) &&
+    record.request !== null &&
+    typeof record.request === "object"
+  );
 }
 
 async function executeRequest(
@@ -206,6 +211,7 @@ async function handleMessage(message: unknown): Promise<void> {
   const envelope: WorkerResponseEnvelope = Object.freeze({
     requestId: message.requestId,
     response,
+    rssBytes: process.memoryUsage().rss,
   });
 
   process.send(envelope);
