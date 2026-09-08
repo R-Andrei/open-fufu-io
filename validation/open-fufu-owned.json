@@ -128,6 +128,10 @@
       "validators": ["tests/OfficialAiRuntime.test.ts"]
     },
     {
+      "path": "src/server/controller-runtime/ProductionControllerHost.ts",
+      "validators": ["tests/ControllerWorkerHost.test.ts"]
+    },
+    {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
         "tests/LandCertification.test.ts",
