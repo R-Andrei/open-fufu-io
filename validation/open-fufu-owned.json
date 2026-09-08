@@ -11,6 +11,7 @@
     "tests/ControllerStructureFieldProjection.test.ts",
     "tests/EchoRuleRegistry.test.ts",
     "tests/FactionRelations.test.ts",
+    "tests/MatchRuntime.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
@@ -22,6 +23,7 @@
     "tests/RuleNormalization.test.ts",
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
+    "tests/SimulationDependencyFirewall.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/TacticalVisibility.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
@@ -109,6 +111,41 @@
     {
       "path": "src/core/visibility/TacticalVisibility.ts",
       "validators": ["tests/TacticalVisibility.test.ts"]
+    },
+    {
+      "path": "src/simulation/MatchRuntime.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/MatchSpec.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/MatchState.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/MicroSimulationHarness.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/TickEngine.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
     },
     {
       "path": "tests/contracts/controller-api.typecheck.ts",
