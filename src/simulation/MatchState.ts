@@ -69,6 +69,18 @@ export function createInitialMatchState(spec: MatchSpec): MatchState {
   });
 }
 
+export function createProspectiveMatchState(
+  previous: MatchState,
+  factions: readonly MatchFactionState[],
+): MatchState {
+  return Object.freeze({
+    seed: previous.seed,
+    tick: previous.tick,
+    map: previous.map,
+    factions: freezeFactions(factions),
+  });
+}
+
 export function createAdvancedMatchState(
   previous: MatchState,
   factions: readonly MatchFactionState[],

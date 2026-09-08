@@ -1,5 +1,6 @@
 import {
   createAdvancedMatchState,
+  createProspectiveMatchState,
   type MatchFactionState,
   type MatchState,
 } from "./MatchState";
@@ -82,7 +83,7 @@ function updateFactionPopulation(
 }
 
 export class TickEngine {
-  advance(
+  applyAcceptedInputs(
     state: MatchState,
     inputs: readonly AcceptedSimulationInput[],
   ): MatchState {
@@ -184,6 +185,14 @@ export class TickEngine {
       }
     }
 
-    return createAdvancedMatchState(state, factions);
+    return createProspectiveMatchState(state, factions);
+  }
+
+  advance(
+    state: MatchState,
+    inputs: readonly AcceptedSimulationInput[],
+  ): MatchState {
+    const prospective = this.applyAcceptedInputs(state, inputs);
+    return createAdvancedMatchState(state, prospective.factions);
   }
 }

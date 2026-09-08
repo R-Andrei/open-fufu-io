@@ -157,7 +157,7 @@ export class MatchRuntime {
 
   private validationState(): MatchState {
     if (this.pendingInputs.length === 0) return this.state;
-    return this.engine.advance(this.state, this.pendingInputs);
+    return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
