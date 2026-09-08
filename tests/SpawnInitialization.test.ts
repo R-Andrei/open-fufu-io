@@ -4,6 +4,7 @@ import {
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
 import {
   MatchRuntime,
@@ -17,6 +18,27 @@ import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarn
 
 function rules(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
+}
+
+function rulesWithMissileSiloCapZero(
+  traits: readonly OriginTraitId[],
+) {
+  const input = originRuleProfileInput(traits);
+  const capZero = Object.freeze({
+    axis: "STRUCTURE_OWNERSHIP_CAP",
+    scope: Object.freeze({ kind: "STRUCTURE", structure: "MISSILE_SILO" }),
+    stage: "ORIGIN_CAP",
+    operator: "CAP_LIMIT",
+    sourceKind: "SCENARIO",
+    sourceId: "SPAWN_TEST_MISSILE_SILO_CAP_ZERO",
+    valueUnit: "COUNT",
+    value: 0,
+  } as const satisfies RuleContribution);
+  return compileRuleProfile(RULE_AXIS_REGISTRY, {
+    contributions: Object.freeze([...input.contributions, capZero]),
+    dynamicProviders: input.dynamicProviders,
+    customDomains: input.customDomains,
+  });
 }
 
 function fixedSpawnInput(
@@ -266,12 +288,11 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     expect(compactAlpha?.footprints[1]?.cellIds).not.toEqual(alpha?.footprints[1]?.cellIds);
   });
 
-  it("records a rejected P20 grant without rolling back the resolved Spawn state", () => {
+  it("records a rejected P20 grant without rolling back a legal resolved Spawn state", () => {
     const width = 100;
     const height = 100;
     const terrain = Array.from({ length: width * height }, () => "PLAINS");
     const alphaOrigin = cellId(width, 10, 10);
-    terrain[alphaOrigin] = "TUNDRA";
 
     const state = new MatchRuntime(
       withSpawnInitialization(
@@ -281,7 +302,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
           height,
           terrain,
           factions: [
-            { id: "alpha", rules: rules(["P20"]) },
+            { id: "alpha", rules: rulesWithMissileSiloCapZero(["P20"]) },
             { id: "beta", rules: rules() },
           ],
         }),
@@ -293,12 +314,8 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     ).snapshot() as SpawnAwareMatchState;
 
     expect(state.phase).toBe("ACTIVE");
-    expect(ownerCount(state, "alpha")).toBeGreaterThan(1_000);
-    expect(
-      state.ownership.filter(
-        (ownerId, index) => ownerId === "alpha" && terrain[index] === "PLAINS",
-      ),
-    ).toHaveLength(1_000);
+    expect(ownerCount(state, "alpha")).toBe(1_000);
+    expect(state.factions.find((faction) => faction.id === "alpha")?.population.total).toBe(500);
     expect(state.structures.filter((structure) => structure.ownerId === "alpha")).toEqual([]);
     expect(factionSnapshot(state, "alpha")?.singularEffects).toEqual([
       expect.objectContaining({
@@ -306,7 +323,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
         domain: "STARTING_STRUCTURE_GRANT",
         result: "REJECTED",
         cellId: alphaOrigin,
-        failureCode: "BUILD_NOT_PERMITTED",
+        failureCode: "OWNERSHIP_CAP",
       }),
     ]);
   });
