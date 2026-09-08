@@ -53,7 +53,7 @@ jobs:
           fi
 
           rm -f .github/issue103-lockfile-error.txt
-          git add package.json package-lock.json .github/issue103-lockfile-error.txt
+          git add package.json package-lock.json
           if ! git diff --cached --quiet; then
             git commit \
               -m "OF-ISSUE103-20260908-18570D Pin isolated-vm 6.2.0 lockfile" \
