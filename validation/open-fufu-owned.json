@@ -17,6 +17,7 @@
     "tests/LandRuntime.test.ts",
     "tests/MapArtifact.test.ts",
     "tests/MatchRuntime.test.ts",
+    "tests/Navigation.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
     "tests/OfficialAiRuntime.test.ts",
@@ -34,6 +35,7 @@
     "tests/Segments.test.ts",
     "tests/SegmentsProduction.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
+    "tests/SpawnInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
@@ -171,7 +173,8 @@
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnInitialization.test.ts"
       ]
     },
     {
@@ -182,7 +185,8 @@
         "tests/LandRuntime.test.ts",
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnInitialization.test.ts"
       ]
     },
     {
@@ -209,6 +213,13 @@
       ]
     },
     {
+      "path": "src/simulation/Navigation.ts",
+      "validators": [
+        "tests/Navigation.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/Population.ts",
       "validators": [
         "tests/Population.test.ts",
@@ -231,6 +242,13 @@
         "tests/MatchRuntime.test.ts",
         "tests/Segments.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/SpawnInitialization.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnInitialization.test.ts"
       ]
     },
     {
