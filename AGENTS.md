@@ -8,6 +8,12 @@ Testable behavior-changing implementation/bug-fix work MUST be RED-first: add/st
 
 Never assume an unestablished truth. If user instructions + current canonical authority do not determine a mechanic, semantic, intended behavior/value/order, theoretical premise, or other unknown, STOP and ask before encoding or acting on it. Only mechanical corrections with one unambiguous answer from established context (e.g. syntax/typo) may be inferred.
 
+Substantive issue-attributable work MUST follow the specification -> implementation -> certification lifecycle in [`docs/ISSUE_WORK_PROTOCOL.md`](docs/ISSUE_WORK_PROTOCOL.md). It is substantive when it changes executable behavior, public/canonical contracts, repository policy or architecture, validation ownership, or other acceptance-bearing repository state; purely mechanical edits with no semantic, behavioral, authority, or acceptance effect are exempt. Specification audit MUST establish acceptance/proof obligations and expose unresolved assumptions before production implementation.
+
+`IMPLEMENTATION GREEN != CERTIFIED != COMPLETED`. Passing implementation validation establishes only implementation GREEN. Before certification, agents MUST NOT describe substantive issue work as complete, done, acceptance-satisfied, certified, merge-ready, or ready to close; use `Implementation GREEN; certification pending` or equivalent. Certification MUST freshly reset, independently reconstruct requirements from the issue+canonical authority, challenge implementation/tests as claims rather than proof by default, and block completion on any `NOT PROVEN` or `AMBIGUOUS` obligation.
+
+Certification completion MUST provide a requirement-level coverage ledger. Exact/universal, atomicity, determinism, isolation/security, lifecycle, and other applicable guarantees require literal/adversarial proof as defined by the protocol; implementation-authored tests cannot be the sole certification evidence. A mechanically testable certification finding that changes behavior re-enters RED -> GREEN before affected certification repeats. Claim/ownership, RED-first, canonical-authority, validation-boundary, current-main reconciliation, and Game/Origin/Character-AI rules remain independently mandatory.
+
 ## Git/ownership
 
 DEFAULT: short-lived topic branch -> PR -> merge unless user explicitly requests another workflow.
