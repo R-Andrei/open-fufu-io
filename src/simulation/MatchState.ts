@@ -1,6 +1,11 @@
 import type { FactionStatus } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import {
+  canonicalHostilitySideKey,
+  materializeHostilityGraceState,
+  type HostilityGraceState,
+} from "./HostilityState";
+import {
   canonicalCellSelectorKey,
   canonicalSpatialPolicyKey,
   materializeDefensePriorityState,
@@ -35,6 +40,7 @@ export interface MatchState {
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
   readonly counterResponseResiduals: readonly CounterResponseResidualState[];
+  readonly hostilityGrace: readonly HostilityGraceState[];
 }
 
 export interface MatchStateUpdate {
@@ -44,6 +50,7 @@ export interface MatchStateUpdate {
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
   readonly counterResponseResiduals?: readonly CounterResponseResidualState[];
+  readonly hostilityGrace?: readonly HostilityGraceState[];
 }
 
 function freezeMap(map: SyntheticMapSpec): SyntheticMapSpec {
@@ -113,6 +120,26 @@ function freezeCounterResiduals(
   );
 }
 
+function freezeHostilityGrace(
+  entries: readonly HostilityGraceState[],
+): readonly HostilityGraceState[] {
+  return Object.freeze(
+    entries
+      .map(materializeHostilityGraceState)
+      .sort(
+        (left, right) =>
+          compareIds(
+            canonicalHostilitySideKey(left.sideA),
+            canonicalHostilitySideKey(right.sideA),
+          ) ||
+          compareIds(
+            canonicalHostilitySideKey(left.sideB),
+            canonicalHostilitySideKey(right.sideB),
+          ),
+      ),
+  );
+}
+
 function createState(
   previous: MatchState,
   tick: number,
@@ -142,6 +169,9 @@ function createState(
     counterResponseResiduals: freezeCounterResiduals(
       update.counterResponseResiduals ?? previous.counterResponseResiduals,
     ),
+    hostilityGrace: freezeHostilityGrace(
+      update.hostilityGrace ?? previous.hostilityGrace,
+    ),
   });
 }
 
@@ -168,6 +198,7 @@ export function createInitialMatchState(spec: MatchSpec): MatchState {
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
     counterResponseResiduals: Object.freeze([]),
+    hostilityGrace: Object.freeze([]),
   });
 }
 
@@ -266,5 +297,10 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       })),
     captureProgress: [...state.captureProgress],
     counterResponseResiduals: [...state.counterResponseResiduals],
+    hostilityGrace: state.hostilityGrace.map((entry) => ({
+      sideA: entry.sideA,
+      sideB: entry.sideB,
+      expiresAtTickExclusive: entry.expiresAtTickExclusive,
+    })),
   });
 }

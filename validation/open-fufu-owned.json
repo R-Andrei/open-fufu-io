@@ -125,6 +125,13 @@
       ]
     },
     {
+      "path": "src/simulation/HostilityState.ts",
+      "validators": [
+        "tests/LandRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/LandOperations.ts",
       "validators": [
         "tests/LandOperations.test.ts",

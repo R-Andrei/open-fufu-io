@@ -1,4 +1,5 @@
 import type { DirectiveChanges } from "../core/controller/ControllerApi";
+import { reconcileHostilityGrace } from "./HostilityState";
 import {
   resolveLandTick,
   tryApplyPersistentDirectiveChanges,
@@ -128,15 +129,26 @@ export class TickEngine {
             ),
           });
           break;
-        case "CAPITULATE_FACTION":
+        case "CAPITULATE_FACTION": {
+          const nextFactions = working.factions.map((faction) =>
+            faction.id === action.factionId
+              ? { ...faction, status: "CAPITULATED" as const }
+              : faction,
+          );
+          const hostilityGrace = reconcileHostilityGrace(
+            working.factions,
+            working.operations,
+            nextFactions,
+            working.operations,
+            working.hostilityGrace,
+            nextTick,
+          );
           working = createProspectiveMatchState(working, {
-            factions: working.factions.map((faction) =>
-              faction.id === action.factionId
-                ? { ...faction, status: "CAPITULATED" }
-                : faction,
-            ),
+            factions: nextFactions,
+            hostilityGrace,
           });
           break;
+        }
         case "GRANT_POPULATION":
           working = createProspectiveMatchState(working, {
             factions: updateFactionPopulation(
@@ -218,10 +230,19 @@ export class TickEngine {
               `accepted directive action became invalid: ${applied.failure.code}`,
             );
           }
+          const hostilityGrace = reconcileHostilityGrace(
+            working.factions,
+            working.operations,
+            applied.factions,
+            applied.operations,
+            working.hostilityGrace,
+            nextTick,
+          );
           working = createProspectiveMatchState(working, {
             factions: applied.factions,
             operations: applied.operations,
             defensePriorities: applied.defensePriorities,
+            hostilityGrace,
           });
           break;
         }
@@ -237,6 +258,15 @@ export class TickEngine {
   ): MatchState {
     const prospective = this.applyAcceptedInputs(state, inputs);
     const land = resolveLandTick(prospective);
+    const nextTick = prospective.tick + 1;
+    const hostilityGrace = reconcileHostilityGrace(
+      prospective.factions,
+      prospective.operations,
+      land.factions,
+      land.operations,
+      prospective.hostilityGrace,
+      nextTick,
+    );
     return createAdvancedMatchState(prospective, {
       factions: land.factions,
       ownership: land.ownership,
@@ -244,6 +274,7 @@ export class TickEngine {
       defensePriorities: land.defensePriorities,
       captureProgress: land.captureProgress,
       counterResponseResiduals: land.counterResponseResiduals,
+      hostilityGrace,
     });
   }
 }
