@@ -196,6 +196,13 @@
       ]
     },
     {
+      "path": "src/simulation/Structures.ts",
+      "validators": [
+        "tests/MatchRuntime.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/TickEngine.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",

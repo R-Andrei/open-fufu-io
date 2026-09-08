@@ -1,4 +1,5 @@
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import type { StructureGrantRequest } from "./Structures";
 
 export interface SyntheticMapSpec {
   readonly width: number;
@@ -18,4 +19,5 @@ export interface MatchSpec {
   readonly seed: string;
   readonly map: SyntheticMapSpec;
   readonly factions: readonly MatchFactionSpec[];
+  readonly initialStructureGrants?: readonly StructureGrantRequest[];
 }
