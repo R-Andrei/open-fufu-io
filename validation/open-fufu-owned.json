@@ -36,6 +36,7 @@
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
+    "tests/SpawnHardening.test.ts",
     "tests/SpawnInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
@@ -206,7 +207,8 @@
         "tests/LandCertification.test.ts",
         "tests/LandOperations.test.ts",
         "tests/LandRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts"
       ]
     },
     {
@@ -226,6 +228,7 @@
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts",
         "tests/SpawnInitialization.test.ts"
       ]
     },
@@ -291,6 +294,7 @@
       "path": "src/simulation/SpawnInitialization.ts",
       "validators": [
         "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts",
         "tests/SpawnInitialization.test.ts"
       ]
     },
