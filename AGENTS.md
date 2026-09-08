@@ -4,6 +4,10 @@ Applies to automated coding/documentation agents in this repository.
 
 EVERY repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion + concrete recommended next action grounded in them+these rules. Investigations/work MUST disclose results; observation-only reporting is forbidden. Repository file content is excluded.
 
+Testable behavior-changing implementation/bug-fix work MUST be RED-first: add/strengthen a focused test, prove it fails for the intended reason, then make the smallest GREEN production change, then run relevant broader invariants/validation. Production-first + backfilled proof is forbidden unless genuinely non-testable/emergency and explicitly justified.
+
+Never assume an unestablished truth. If user instructions + current canonical authority do not determine a mechanic, semantic, intended behavior/value/order, theoretical premise, or other unknown, STOP and ask before encoding or acting on it. Only mechanical corrections with one unambiguous answer from established context (e.g. syntax/typo) may be inferred.
+
 ## Git/ownership
 
 DEFAULT: short-lived topic branch -> PR -> merge unless user explicitly requests another workflow.
