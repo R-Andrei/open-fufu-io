@@ -19,6 +19,8 @@ export const SEGMENT_ADJACENCY_OFFSETS_ENCODING =
   "SEGMENT_ADJACENCY_OFFSETS_U32LE_V1" as const;
 export const SEGMENT_ADJACENCY_ENCODING = "SEGMENT_ADJACENCY_U16LE_V1" as const;
 
+// OPEN_FUFU_MAP placement is owned by MapArtifact.ts. These compatibility
+// exports remain temporarily until that owner consumes the paths directly.
 export const SEGMENT_MEMBERSHIP_PATH = "segments/membership.bin" as const;
 export const SEGMENT_METADATA_PATH = "segments/metadata.bin" as const;
 export const SEGMENT_ADJACENCY_OFFSETS_PATH =
@@ -52,20 +54,31 @@ const STRONG_DOMAIN_TERRAINS = new Set<TerrainType>([
   "IMPASSABLE",
 ]);
 
-// Generator-v1 implementation parameters. These are intentionally compiler
-// parameters rather than live gameplay rules; changing output semantics requires
-// a new Segment generator version/map artifact.
+// Generator-v1 implementation parameters. These are compiler parameters rather
+// than live gameplay rules; changing output semantics requires a new Segment
+// generator version/map artifact.
 const ORDINARY_FEATURE_MIN_CELLS = 8;
 const ORDINARY_FEATURE_MIN_SPAN = 6;
 const MOUNTAIN_FEATURE_MIN_CELLS = 3;
 const MOUNTAIN_FEATURE_MIN_SPAN = 3;
 const STRONG_DOMAIN_MIN_CELLS = 2;
 const STRONG_DOMAIN_MIN_SPAN = 3;
+const TOPOLOGY_NECK_MAX_WIDTH = 3;
+const TOPOLOGY_SIDE_MIN_CELLS = 12;
 
 export interface SegmentMetadata {
   readonly minCellId: CellId;
   readonly cellCount: number;
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
+}
+
+export interface SegmentCompilerDiagnostics {
+  readonly segmentCount: number;
+  readonly minCellCount: number;
+  readonly maxCellCount: number;
+  readonly meanCellCount: number;
+  readonly belowHalfTargetCount: number;
+  readonly aboveDoubleTargetCount: number;
 }
 
 export interface SegmentCompilerInput {
@@ -77,8 +90,9 @@ export interface SegmentCompilerInput {
 export interface CompiledSegments {
   readonly generatorVersion: typeof SEGMENT_GENERATOR_VERSION;
   readonly segmentCount: number;
-  readonly membership: Uint16Array;
   readonly metadata: readonly SegmentMetadata[];
+  readonly diagnostics: SegmentCompilerDiagnostics;
+  segmentIdOf(cellId: CellId): SegmentId;
   cells(segmentId: SegmentId): readonly CellId[];
   adjacentSegmentIds(segmentId: SegmentId): readonly SegmentId[];
 }
@@ -112,6 +126,7 @@ interface ComponentStats {
   readonly maxX: number;
   readonly minY: number;
   readonly maxY: number;
+  readonly topologyProtected: boolean;
 }
 
 interface RegionStats {
@@ -129,6 +144,14 @@ interface RuntimeData {
   readonly adjacency: readonly (readonly SegmentId[])[];
 }
 
+interface TopologyComponent {
+  readonly terrain: TerrainType;
+  readonly candidate: boolean;
+  readonly count: number;
+}
+
+const COMPILED_MEMBERSHIP = new WeakMap<CompiledSegments, Uint16Array>();
+
 function assertDimension(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
     throw new Error(`${label} must be a positive safe integer`);
@@ -143,6 +166,12 @@ function checkedCellCount(width: number, height: number): number {
     throw new Error("Segment compiler cell count must be a positive safe integer");
   }
   return cellCount;
+}
+
+function assertCellId(cellId: number, cellCount: number): void {
+  if (!Number.isSafeInteger(cellId) || cellId < 0 || cellId >= cellCount) {
+    throw new Error(`CellId is outside compiled Segment membership: ${String(cellId)}`);
+  }
 }
 
 function cardinalNeighbors(
@@ -169,6 +198,156 @@ function incrementNeighbor(
   map.set(neighbor, (map.get(neighbor) ?? 0) + 1);
 }
 
+function narrowRunCandidates(
+  width: number,
+  height: number,
+  terrain: readonly TerrainType[],
+): Uint8Array | undefined {
+  const candidate = new Uint8Array(width * height);
+  let anyCandidate = false;
+
+  for (let y = 0; y < height; y += 1) {
+    let x = 0;
+    while (x < width) {
+      const start = x;
+      const currentTerrain = terrain[y * width + x]!;
+      x += 1;
+      while (x < width && terrain[y * width + x] === currentTerrain) x += 1;
+      if (x - start <= TOPOLOGY_NECK_MAX_WIDTH) {
+        anyCandidate = true;
+        for (let mark = start; mark < x; mark += 1) {
+          candidate[y * width + mark] = 1;
+        }
+      }
+    }
+  }
+
+  for (let x = 0; x < width; x += 1) {
+    let y = 0;
+    while (y < height) {
+      const start = y;
+      const currentTerrain = terrain[y * width + x]!;
+      y += 1;
+      while (y < height && terrain[y * width + x] === currentTerrain) y += 1;
+      if (y - start <= TOPOLOGY_NECK_MAX_WIDTH) {
+        anyCandidate = true;
+        for (let mark = start; mark < y; mark += 1) {
+          candidate[mark * width + x] = 1;
+        }
+      }
+    }
+  }
+
+  return anyCandidate ? candidate : undefined;
+}
+
+function buildTopologyProtectedMask(
+  width: number,
+  height: number,
+  terrain: readonly TerrainType[],
+  queue: Uint32Array,
+  neighborsScratch: number[],
+): Uint8Array {
+  const cellCount = width * height;
+  const protectedMask = new Uint8Array(cellCount);
+  const candidate = narrowRunCandidates(width, height, terrain);
+  if (candidate === undefined) return protectedMask;
+
+  const componentOf = new Int32Array(cellCount);
+  componentOf.fill(-1);
+  const components: TopologyComponent[] = [];
+
+  for (let start = 0; start < cellCount; start += 1) {
+    if (componentOf[start] !== -1) continue;
+    const componentId = components.length;
+    const componentTerrain = terrain[start]!;
+    const componentCandidate = candidate[start] === 1;
+    let head = 0;
+    let tail = 0;
+    let count = 0;
+    queue[tail++] = start;
+    componentOf[start] = componentId;
+
+    while (head < tail) {
+      const cellId = queue[head++]!;
+      count += 1;
+      for (const neighbor of cardinalNeighbors(
+        cellId,
+        width,
+        height,
+        neighborsScratch,
+      )) {
+        if (
+          componentOf[neighbor] === -1 &&
+          terrain[neighbor] === componentTerrain &&
+          (candidate[neighbor] === 1) === componentCandidate
+        ) {
+          componentOf[neighbor] = componentId;
+          queue[tail++] = neighbor;
+        }
+      }
+    }
+
+    components.push({
+      terrain: componentTerrain,
+      candidate: componentCandidate,
+      count,
+    });
+  }
+
+  const componentNeighbors = Array.from(
+    { length: components.length },
+    () => new Set<number>(),
+  );
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const cellId = y * width + x;
+      const current = componentOf[cellId]!;
+      if (x + 1 < width) {
+        const right = componentOf[cellId + 1]!;
+        if (current !== right) {
+          componentNeighbors[current]!.add(right);
+          componentNeighbors[right]!.add(current);
+        }
+      }
+      if (y + 1 < height) {
+        const down = componentOf[cellId + width]!;
+        if (current !== down) {
+          componentNeighbors[current]!.add(down);
+          componentNeighbors[down]!.add(current);
+        }
+      }
+    }
+  }
+
+  const protectedComponent = new Uint8Array(components.length);
+  for (let componentId = 0; componentId < components.length; componentId += 1) {
+    const component = components[componentId]!;
+    if (!component.candidate) continue;
+    let substantialSameTerrainSides = 0;
+    for (const neighborId of componentNeighbors[componentId]!) {
+      const neighbor = components[neighborId]!;
+      if (
+        !neighbor.candidate &&
+        neighbor.terrain === component.terrain &&
+        neighbor.count >= TOPOLOGY_SIDE_MIN_CELLS
+      ) {
+        substantialSameTerrainSides += 1;
+      }
+    }
+    if (substantialSameTerrainSides >= 2) {
+      protectedComponent[componentId] = 1;
+    }
+  }
+
+  for (let cellId = 0; cellId < cellCount; cellId += 1) {
+    if (protectedComponent[componentOf[cellId]!] === 1) {
+      protectedMask[cellId] = 1;
+    }
+  }
+  return protectedMask;
+}
+
 function isIsolatedLandIsland(
   componentId: number,
   components: readonly ComponentStats[],
@@ -189,6 +368,7 @@ function isMeaningfulComponent(
   neighbors: readonly Map<number, number>[],
 ): boolean {
   const component = components[componentId]!;
+  if (component.topologyProtected) return true;
   const span = Math.max(
     component.maxX - component.minX + 1,
     component.maxY - component.minY + 1,
@@ -427,6 +607,32 @@ function buildMetadata(
   );
 }
 
+function buildDiagnostics(
+  metadata: readonly SegmentMetadata[],
+  cellCount: number,
+): SegmentCompilerDiagnostics {
+  let minCellCount = Number.POSITIVE_INFINITY;
+  let maxCellCount = 0;
+  let belowHalfTargetCount = 0;
+  let aboveDoubleTargetCount = 0;
+  const halfTarget = SEGMENT_TARGET_CELL_COUNT / 2;
+  const doubleTarget = SEGMENT_TARGET_CELL_COUNT * 2;
+  for (const entry of metadata) {
+    minCellCount = Math.min(minCellCount, entry.cellCount);
+    maxCellCount = Math.max(maxCellCount, entry.cellCount);
+    if (entry.cellCount < halfTarget) belowHalfTargetCount += 1;
+    if (entry.cellCount > doubleTarget) aboveDoubleTargetCount += 1;
+  }
+  return Object.freeze({
+    segmentCount: metadata.length,
+    minCellCount,
+    maxCellCount,
+    meanCellCount: cellCount / metadata.length,
+    belowHalfTargetCount,
+    aboveDoubleTargetCount,
+  });
+}
+
 function buildAdjacency(
   membership: Uint16Array,
   segmentCount: number,
@@ -500,6 +706,14 @@ function validateConnectivity(
   }
 }
 
+function compiledMembership(compiled: CompiledSegments): Uint16Array {
+  const membership = COMPILED_MEMBERSHIP.get(compiled);
+  if (membership === undefined) {
+    throw new Error("Segment compiler result was not created by this generator");
+  }
+  return membership;
+}
+
 export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
   const cellCount = checkedCellCount(input.width, input.height);
   if (input.terrain.length !== cellCount) {
@@ -511,16 +725,25 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
     }
   }
 
-  const componentOf = new Int32Array(cellCount);
-  componentOf.fill(-1);
   const queue = new Uint32Array(cellCount);
   const neighborsScratch: number[] = [];
+  const topologyProtected = buildTopologyProtectedMask(
+    input.width,
+    input.height,
+    input.terrain,
+    queue,
+    neighborsScratch,
+  );
+
+  const componentOf = new Int32Array(cellCount);
+  componentOf.fill(-1);
   const components: ComponentStats[] = [];
 
   for (let start = 0; start < cellCount; start += 1) {
     if (componentOf[start] !== -1) continue;
     const componentId = components.length;
     const terrain = input.terrain[start]!;
+    const protectedTopology = topologyProtected[start] === 1;
     let head = 0;
     let tail = 0;
     queue[tail++] = start;
@@ -550,7 +773,8 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
       )) {
         if (
           componentOf[neighbor] === -1 &&
-          input.terrain[neighbor] === terrain
+          input.terrain[neighbor] === terrain &&
+          (topologyProtected[neighbor] === 1) === protectedTopology
         ) {
           componentOf[neighbor] = componentId;
           queue[tail++] = neighbor;
@@ -566,6 +790,7 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
       maxX,
       minY,
       maxY,
+      topologyProtected: protectedTopology,
     });
   }
 
@@ -769,12 +994,17 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
     provisionalCount,
   );
   const cellCache = new Map<number, readonly CellId[]>();
+  const diagnostics = buildDiagnostics(metadata, cellCount);
 
-  return Object.freeze({
+  const compiled = Object.freeze({
     generatorVersion: SEGMENT_GENERATOR_VERSION,
     segmentCount: provisionalCount,
-    membership,
     metadata,
+    diagnostics,
+    segmentIdOf(cellId: CellId): SegmentId {
+      assertCellId(cellId, membership.length);
+      return membership[cellId]!;
+    },
     cells(segmentId: SegmentId): readonly CellId[] {
       assertSegmentId(segmentId, provisionalCount);
       const cached = cellCache.get(segmentId);
@@ -794,7 +1024,9 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
       assertSegmentId(segmentId, provisionalCount);
       return adjacency[segmentId]!;
     },
-  });
+  }) satisfies CompiledSegments;
+  COMPILED_MEMBERSHIP.set(compiled, membership);
+  return compiled;
 }
 
 function encodeUint16(values: ArrayLike<number>): Uint8Array {
@@ -852,6 +1084,7 @@ export function encodeCompiledSegments(
   ) {
     throw new Error("cannot encode an invalid Segment count");
   }
+  const membership = compiledMembership(compiled);
 
   const metadataValues = new Uint32Array(compiled.segmentCount * 12);
   const adjacencyOffsets = new Uint32Array(compiled.segmentCount + 1);
@@ -871,7 +1104,7 @@ export function encodeCompiledSegments(
   adjacencyOffsets[compiled.segmentCount] = adjacencyValues.length;
 
   return Object.freeze({
-    membership: encodeUint16(compiled.membership),
+    membership: encodeUint16(membership),
     metadata: encodeUint32(metadataValues),
     adjacencyOffsets: encodeUint32(adjacencyOffsets),
     adjacency: encodeUint16(adjacencyValues),
@@ -1008,13 +1241,7 @@ function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
     generatorVersion: SEGMENT_GENERATOR_VERSION,
     segmentCount: metadata.length,
     segmentIdOf(cellId: CellId): SegmentId {
-      if (
-        !Number.isSafeInteger(cellId) ||
-        cellId < 0 ||
-        cellId >= membership.length
-      ) {
-        throw new Error(`CellId is outside compiled Segment membership: ${String(cellId)}`);
-      }
+      assertCellId(cellId, membership.length);
       return membership[cellId]!;
     },
     metadata(segmentId: SegmentId): SegmentMetadata {
@@ -1041,7 +1268,7 @@ export function createSegmentRuntimeIndex(
     ),
   );
   return runtimeIndexFromData({
-    membership: compiled.membership,
+    membership: compiledMembership(compiled),
     metadata: compiled.metadata,
     adjacency,
   });
