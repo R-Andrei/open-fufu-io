@@ -4,6 +4,7 @@
   "ownedWorkflows": [
     ".github/workflows/ci.yml",
     ".github/workflows/documentation-authority.yml",
+    ".github/workflows/issue103-lockfile.yml",
     ".github/workflows/rule-composition-validation.yml"
   ],
   "ownedTests": [
