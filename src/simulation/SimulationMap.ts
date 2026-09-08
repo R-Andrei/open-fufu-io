@@ -77,6 +77,16 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
   ) {
     throw new Error("map initialFallout length must equal width * height");
   }
+  if (
+    input.segments !== undefined &&
+    (input.segments.width !== input.width ||
+      input.segments.height !== input.height ||
+      input.segments.cellCount !== cellCount)
+  ) {
+    throw new Error(
+      "Segment runtime index raster must match map width, height, and cell count",
+    );
+  }
 
   const terrain = Object.freeze([...input.terrain]);
   const map: Record<string, unknown> = {
