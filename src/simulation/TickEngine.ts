@@ -18,6 +18,11 @@ export interface SetTestMarkerAction {
   readonly value: number;
 }
 
+export interface CapitulateFactionAction {
+  readonly type: "CAPITULATE_FACTION";
+  readonly factionId: string;
+}
+
 export interface GrantPopulationAction {
   readonly type: "GRANT_POPULATION";
   readonly factionId: string;
@@ -49,6 +54,7 @@ export interface TransferPopulationAction {
 
 export type SimulationAction =
   | SetTestMarkerAction
+  | CapitulateFactionAction
   | GrantPopulationAction
   | RepartitionPopulationAction
   | RemovePopulationAction
@@ -103,6 +109,13 @@ export class TickEngine {
           factions = factions.map((faction) =>
             faction.id === input.action.factionId
               ? { ...faction, testMarker: input.action.value }
+              : faction,
+          );
+          break;
+        case "CAPITULATE_FACTION":
+          factions = factions.map((faction) =>
+            faction.id === input.action.factionId
+              ? { ...faction, status: "CAPITULATED" }
               : faction,
           );
           break;
