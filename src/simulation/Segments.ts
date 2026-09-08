@@ -142,6 +142,7 @@ interface RuntimeData {
   readonly membership: Uint16Array;
   readonly metadata: readonly SegmentMetadata[];
   readonly adjacency: readonly (readonly SegmentId[])[];
+  readonly terrainIdentity: Uint8Array;
 }
 
 interface TopologyComponent {
@@ -151,6 +152,8 @@ interface TopologyComponent {
 }
 
 const COMPILED_MEMBERSHIP = new WeakMap<CompiledSegments, Uint16Array>();
+const COMPILED_TERRAIN_IDENTITY = new WeakMap<CompiledSegments, Uint8Array>();
+const RUNTIME_TERRAIN_IDENTITY = new WeakMap<SegmentRuntimeIndex, Uint8Array>();
 
 function assertDimension(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -166,6 +169,44 @@ function checkedCellCount(width: number, height: number): number {
     throw new Error("Segment compiler cell count must be a positive safe integer");
   }
   return cellCount;
+}
+
+function encodeTerrainIdentity(
+  terrain: readonly TerrainType[],
+  label: string,
+): Uint8Array {
+  const identity = new Uint8Array(terrain.length);
+  for (let cellId = 0; cellId < terrain.length; cellId += 1) {
+    const terrainIndex = TERRAIN_INDEX.get(terrain[cellId]!);
+    if (terrainIndex === undefined) {
+      throw new Error(`${label} encountered unsupported terrain at CellId ${cellId}`);
+    }
+    identity[cellId] = terrainIndex;
+  }
+  return identity;
+}
+
+function compiledTerrainIdentity(compiled: CompiledSegments): Uint8Array {
+  const identity = COMPILED_TERRAIN_IDENTITY.get(compiled);
+  if (identity === undefined) {
+    throw new Error("Segment compiler result was not created by this generator");
+  }
+  return identity;
+}
+
+export function segmentRuntimeIndexMatchesTerrain(
+  index: SegmentRuntimeIndex,
+  terrain: readonly TerrainType[],
+): boolean {
+  const identity = RUNTIME_TERRAIN_IDENTITY.get(index);
+  if (identity === undefined || identity.length !== terrain.length) return false;
+  for (let cellId = 0; cellId < terrain.length; cellId += 1) {
+    const terrainIndex = TERRAIN_INDEX.get(terrain[cellId]!);
+    if (terrainIndex === undefined || terrainIndex !== identity[cellId]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function assertCellId(cellId: number, cellCount: number): void {
@@ -1056,6 +1097,10 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
     },
   }) satisfies CompiledSegments;
   COMPILED_MEMBERSHIP.set(compiled, membership);
+  COMPILED_TERRAIN_IDENTITY.set(
+    compiled,
+    encodeTerrainIdentity(input.terrain, "Segment compiler"),
+  );
   return compiled;
 }
 
@@ -1243,6 +1288,9 @@ function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
   if (data.membership.length !== cellCount) {
     throw new Error("Segment runtime membership must match its raster cell count");
   }
+  if (data.terrainIdentity.length !== cellCount) {
+    throw new Error("Segment runtime terrain identity must match its raster cell count");
+  }
   const membership = data.membership.slice();
   const metadata = Object.freeze(
     data.metadata.map((entry) =>
@@ -1271,7 +1319,7 @@ function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
     });
   });
 
-  return Object.freeze({
+  const runtime = Object.freeze({
     generatorVersion: SEGMENT_GENERATOR_VERSION,
     width: data.width,
     height: data.height,
@@ -1293,7 +1341,9 @@ function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
       assertSegmentId(segmentId, metadata.length);
       return adjacency[segmentId]!;
     },
-  });
+  }) satisfies SegmentRuntimeIndex;
+  RUNTIME_TERRAIN_IDENTITY.set(runtime, data.terrainIdentity);
+  return runtime;
 }
 
 export function createSegmentRuntimeIndex(
@@ -1310,6 +1360,7 @@ export function createSegmentRuntimeIndex(
     membership: compiledMembership(compiled),
     metadata: compiled.metadata,
     adjacency,
+    terrainIdentity: compiledTerrainIdentity(compiled),
   });
 }
 
@@ -1382,5 +1433,6 @@ export function materializeSegmentArtifact(input: {
     membership,
     metadata,
     adjacency,
+    terrainIdentity: encodeTerrainIdentity(input.terrain, "Segment artifact"),
   });
 }
