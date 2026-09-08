@@ -93,6 +93,13 @@
       ]
     },
     {
+      "path": "src/core/controller/ControllerOutputValidation.ts",
+      "validators": [
+        "tests/ControllerRuntime.test.ts",
+        "tests/ControllerWorkerHost.test.ts"
+      ]
+    },
+    {
       "path": "src/core/rules/EchoRuleRegistry.ts",
       "validators": [
         "tests/EchoRuleRegistry.test.ts"
