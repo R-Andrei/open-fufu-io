@@ -455,6 +455,10 @@ A merely adjacent inactive border consumes no defender. Available Population mus
 
 When Available Population is insufficient, scarce defense slots are apportioned across active incoming fronts and then assigned using the controller's strategy-neutral defensive-priority policy. Equal-priority fallback behavior must remain deterministic.
 
+For this automatic-defense apportionment only, a V1 **active incoming front** is one maximal 4-neighbor-connected component of the threatened owned target cells in the frozen tick geometry. It is a resolver partition, not the strategic `Front` object rejected in §6.4. Operation identity, controller directive identity, attacker registration order, and the number of attacking operation objects do not split or merge these components.
+
+Let `S = min(AvailablePopulation, threatenedOwnedCells)`, let `n_i` be the threatened-cell count of front `i`, and let `N = sum(n_i)`. Front `i` first receives `floor(S × n_i / N)` automatic-defense slots. Any remaining slots are assigned by largest fractional remainder; equal remainders are ordered by the lowest stable `cellId` in the front. Within each front's resulting quota, cells are chosen by defensive-priority weight descending and then stable `cellId` ascending. The sum of all front quotas is exactly `S`, so this stage cannot duplicate Available Population. Legal splitting or recreation of equivalent incoming operations does not change the apportionment.
+
 Terrain, structures, Origins, Echoes, and other explicit modifiers may alter the effectiveness of the one defender; they do not silently create additional defenders.
 
 ## 9.2 Active counter-response
