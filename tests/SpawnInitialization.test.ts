@@ -5,71 +5,15 @@ import {
 } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
-import { MatchRuntime } from "../src/simulation/MatchRuntime";
-import type { MatchSpec } from "../src/simulation/MatchSpec";
+import {
+  MatchRuntime,
+  type SpawnAwareMatchState,
+} from "../src/simulation/MatchRuntime";
+import type {
+  MatchSpec,
+  SpawnInitializationInput,
+} from "../src/simulation/MatchSpec";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
-
-type SpawnMode = "STRATEGIC" | "RANDOM" | "FIXED";
-type SpawnSource =
-  | "STRATEGIC_SUBMISSION"
-  | "RANDOM_RESOLUTION"
-  | "FIXED_CONFIGURATION";
-
-interface TestResolvedOrigin {
-  readonly originSlot: number;
-  readonly resolvedExactOrigin: number;
-  readonly source: SpawnSource;
-  readonly resolutionReason?: string;
-}
-
-interface TestSpawnInitializationInput {
-  readonly spawnMode: SpawnMode;
-  readonly spawnResolverVersion: "1";
-  readonly factions: readonly {
-    readonly factionId: string;
-    readonly origins: readonly TestResolvedOrigin[];
-  }[];
-}
-
-interface TestSpawnFootprintSnapshot {
-  readonly footprintSlot: number;
-  readonly populationBearingQuota: number;
-  readonly shapeProfile: "COMPACT" | "STAR";
-  readonly shapeTemplateId?: string;
-  readonly shapeTemplateSha256?: string;
-  readonly cellIds: readonly number[];
-  readonly cellSetSha256: string;
-}
-
-interface TestSpawnFactionSnapshot {
-  readonly factionId: string;
-  readonly effectiveSpawnProfile: {
-    readonly exactOriginCount: number;
-    readonly initialTerritoryPopulationBearingQuota: number;
-    readonly footprintShapeProfile: "COMPACT" | "STAR";
-  };
-  readonly origins: readonly TestResolvedOrigin[];
-  readonly footprints: readonly TestSpawnFootprintSnapshot[];
-  readonly singularEffects: readonly {
-    readonly effectId: string;
-    readonly domain: string;
-    readonly result: "GRANTED" | "REJECTED";
-    readonly cellId?: number;
-  }[];
-}
-
-interface TestSpawnSnapshot {
-  readonly spawnMode: SpawnMode;
-  readonly spawnResolverVersion: "1";
-  readonly stableTie32Id: "FNV1A32_LENPREFIX_V1";
-  readonly factions: readonly TestSpawnFactionSnapshot[];
-}
-
-type SpawnAwareState = ReturnType<MatchRuntime["snapshot"]> & {
-  readonly phase?: "INITIALIZING" | "ACTIVE";
-  readonly spawnSnapshot?: TestSpawnSnapshot;
-  readonly spawnImmunityEndsAtTickExclusive?: number;
-};
 
 function rules(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
@@ -80,7 +24,7 @@ function fixedSpawnInput(
     readonly factionId: string;
     readonly origins: readonly number[];
   }[],
-): TestSpawnInitializationInput {
+): SpawnInitializationInput {
   return Object.freeze({
     spawnMode: "FIXED" as const,
     spawnResolverVersion: "1" as const,
@@ -89,10 +33,10 @@ function fixedSpawnInput(
         Object.freeze({
           factionId: faction.factionId,
           origins: Object.freeze(
-            faction.origins.map((cellId, originSlot) =>
+            faction.origins.map((resolvedExactOrigin, originSlot) =>
               Object.freeze({
                 originSlot,
-                resolvedExactOrigin: cellId,
+                resolvedExactOrigin,
                 source: "FIXED_CONFIGURATION" as const,
               }),
             ),
@@ -105,20 +49,17 @@ function fixedSpawnInput(
 
 function withSpawnInitialization(
   spec: MatchSpec,
-  spawnInitialization: TestSpawnInitializationInput,
+  spawnInitialization: SpawnInitializationInput,
 ): MatchSpec {
-  return Object.freeze({
-    ...spec,
-    spawnInitialization,
-  }) as MatchSpec;
+  return Object.freeze({ ...spec, spawnInitialization });
 }
 
-function ownerCount(state: SpawnAwareState, factionId: string): number {
+function ownerCount(state: SpawnAwareMatchState, factionId: string): number {
   return state.ownership.filter((ownerId) => ownerId === factionId).length;
 }
 
-function factionSnapshot(state: SpawnAwareState, factionId: string) {
-  return state.spawnSnapshot?.factions.find(
+function factionSnapshot(state: SpawnAwareMatchState, factionId: string) {
+  return state.spawnSnapshot.factions.find(
     (faction) => faction.factionId === factionId,
   );
 }
@@ -152,12 +93,11 @@ function attackController() {
 describe("shared deterministic pre-match Spawn initialization", () => {
   it("materializes ordinary Fixed starts atomically, freezes replay evidence, and regenerates identically", () => {
     const width = 100;
-    const height = 100;
     const spec = withSpawnInitialization(
       createMicroSimulationSpec({
         seed: "spawn-fixed-ordinary",
         width,
-        height,
+        height: 100,
         factions: [
           { id: "alpha", rules: rules() },
           { id: "beta", rules: rules() },
@@ -170,7 +110,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     );
 
     const runtime = new MatchRuntime(spec);
-    const state = runtime.snapshot() as SpawnAwareState;
+    const state = runtime.snapshot() as SpawnAwareMatchState;
 
     expect(state.phase).toBe("ACTIVE");
     expect(ownerCount(state, "alpha")).toBe(1_000);
@@ -231,23 +171,20 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     );
 
     const blocked = runtime.runControllerRound(attackController());
-    expect(blocked.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
-      false,
-    );
+    expect(blocked.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(false);
     expect(runtime.acceptedInputs()).toEqual([]);
 
     for (let tick = 0; tick < 50; tick += 1) runtime.tick();
     expect(runtime.snapshot().tick).toBe(50);
 
     const allowed = runtime.runControllerRound(attackController());
-    expect(allowed.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
-      true,
-    );
+    expect(allowed.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(true);
   });
 
-  it("composes P01, P39, P20, and P54 through the shared lifecycle without duplicating singular grants", () => {
+  it("composes P01, P39, P20, and P54 without duplicating the singular grant", () => {
     const width = 140;
     const height = 100;
+    const terrain = Array.from({ length: width * height }, () => "PLAINS");
     const primary = cellId(width, 20, 20);
     const secondary = cellId(width, 20, 80);
     const betaOrigin = cellId(width, 120, 50);
@@ -256,33 +193,24 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       { factionId: "beta", origins: [betaOrigin] },
     ]);
 
-    const starSpec = withSpawnInitialization(
-      createMicroSimulationSpec({
-        seed: "spawn-origin-composition",
-        width,
-        height,
-        factions: [
-          { id: "alpha", rules: rules(["P01", "P20", "P39", "P54"]) },
-          { id: "beta", rules: rules() },
-        ],
-      }),
-      spawn,
-    );
-    const compactSpec = withSpawnInitialization(
-      createMicroSimulationSpec({
-        seed: "spawn-origin-composition",
-        width,
-        height,
-        factions: [
-          { id: "alpha", rules: rules(["P01", "P20", "P39"]) },
-          { id: "beta", rules: rules() },
-        ],
-      }),
-      spawn,
-    );
+    const makeSpec = (traits: readonly OriginTraitId[]) =>
+      withSpawnInitialization(
+        createMicroSimulationSpec({
+          seed: "spawn-origin-composition",
+          width,
+          height,
+          terrain,
+          factions: [
+            { id: "alpha", rules: rules(traits) },
+            { id: "beta", rules: rules() },
+          ],
+        }),
+        spawn,
+      );
 
-    const starRuntime = new MatchRuntime(starSpec);
-    const starState = starRuntime.snapshot() as SpawnAwareState;
+    const starState = new MatchRuntime(
+      makeSpec(["P01", "P20", "P39", "P54"]),
+    ).snapshot() as SpawnAwareMatchState;
     const alpha = factionSnapshot(starState, "alpha");
 
     expect(ownerCount(starState, "alpha")).toBe(1_150);
@@ -299,12 +227,8 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       575,
       575,
     ]);
-    expect(alpha?.footprints.every((footprint) => footprint.shapeProfile === "STAR")).toBe(
-      true,
-    );
-    expect(alpha?.footprints.every((footprint) => footprint.shapeTemplateId === "P54_STAR_V1")).toBe(
-      true,
-    );
+    expect(alpha?.footprints.every((footprint) => footprint.shapeProfile === "STAR")).toBe(true);
+    expect(alpha?.footprints.every((footprint) => footprint.shapeTemplateId === "P54_STAR_V1")).toBe(true);
     expect(
       alpha?.footprints.every(
         (footprint) =>
@@ -313,16 +237,18 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       ),
     ).toBe(true);
 
-    const alphaSilos = starState.structures.filter(
-      (structure) => structure.ownerId === "alpha" && structure.type === "MISSILE_SILO",
-    );
-    expect(alphaSilos).toHaveLength(1);
-    expect(alphaSilos[0]).toMatchObject({
-      cellId: primary,
-      completedLevel: 1,
-      active: true,
-      acquisitionPath: "GRANT",
-    });
+    expect(
+      starState.structures.filter(
+        (structure) => structure.ownerId === "alpha" && structure.type === "MISSILE_SILO",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        cellId: primary,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      }),
+    ]);
     expect(alpha?.singularEffects).toEqual([
       expect.objectContaining({
         effectId: "P20",
@@ -333,11 +259,56 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     ]);
 
     const compactAlpha = factionSnapshot(
-      new MatchRuntime(compactSpec).snapshot() as SpawnAwareState,
+      new MatchRuntime(makeSpec(["P01", "P20", "P39"])).snapshot() as SpawnAwareMatchState,
       "alpha",
     );
     expect(compactAlpha?.footprints[0]?.cellIds).not.toEqual(alpha?.footprints[0]?.cellIds);
     expect(compactAlpha?.footprints[1]?.cellIds).not.toEqual(alpha?.footprints[1]?.cellIds);
+  });
+
+  it("records a rejected P20 grant without rolling back the resolved Spawn state", () => {
+    const width = 100;
+    const height = 100;
+    const terrain = Array.from({ length: width * height }, () => "PLAINS");
+    const alphaOrigin = cellId(width, 10, 10);
+    terrain[alphaOrigin] = "TUNDRA";
+
+    const state = new MatchRuntime(
+      withSpawnInitialization(
+        createMicroSimulationSpec({
+          seed: "spawn-p20-rejected",
+          width,
+          height,
+          terrain,
+          factions: [
+            { id: "alpha", rules: rules(["P20"]) },
+            { id: "beta", rules: rules() },
+          ],
+        }),
+        fixedSpawnInput([
+          { factionId: "alpha", origins: [alphaOrigin] },
+          { factionId: "beta", origins: [cellId(width, 90, 90)] },
+        ]),
+      ),
+    ).snapshot() as SpawnAwareMatchState;
+
+    expect(state.phase).toBe("ACTIVE");
+    expect(ownerCount(state, "alpha")).toBeGreaterThan(1_000);
+    expect(
+      state.ownership.filter(
+        (ownerId, index) => ownerId === "alpha" && terrain[index] === "PLAINS",
+      ),
+    ).toHaveLength(1_000);
+    expect(state.structures.filter((structure) => structure.ownerId === "alpha")).toEqual([]);
+    expect(factionSnapshot(state, "alpha")?.singularEffects).toEqual([
+      expect.objectContaining({
+        effectId: "P20",
+        domain: "STARTING_STRUCTURE_GRANT",
+        result: "REJECTED",
+        cellId: alphaOrigin,
+        failureCode: "BUILD_NOT_PERMITTED",
+      }),
+    ]);
   });
 
   it("uses P48 faction-relative Shallow-Water population-bearing permission while filling quota", () => {
@@ -357,45 +328,31 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       { factionId: "alpha", origins: [alphaOrigin] },
       { factionId: "beta", origins: [betaOrigin] },
     ]);
-    const withP48 = withSpawnInitialization(
-      createMicroSimulationSpec({
-        seed: "spawn-p48",
-        width,
-        height,
-        terrain,
-        factions: [
-          { id: "alpha", rules: rules(["P48"]) },
-          { id: "beta", rules: rules() },
-        ],
-      }),
-      input,
-    );
-    const withoutP48 = withSpawnInitialization(
-      createMicroSimulationSpec({
-        seed: "spawn-p48",
-        width,
-        height,
-        terrain,
-        factions: [
-          { id: "alpha", rules: rules() },
-          { id: "beta", rules: rules() },
-        ],
-      }),
-      input,
-    );
+    const makeSpec = (traits: readonly OriginTraitId[]) =>
+      withSpawnInitialization(
+        createMicroSimulationSpec({
+          seed: "spawn-p48",
+          width,
+          height,
+          terrain,
+          factions: [
+            { id: "alpha", rules: rules(traits) },
+            { id: "beta", rules: rules() },
+          ],
+        }),
+        input,
+      );
 
-    const state = new MatchRuntime(withP48).snapshot() as SpawnAwareState;
+    const state = new MatchRuntime(makeSpec(["P48"])).snapshot() as SpawnAwareMatchState;
     expect(ownerCount(state, "alpha")).toBe(1_000);
     expect(
       state.ownership.filter(
         (ownerId, index) => ownerId === "alpha" && terrain[index] === "SHALLOW_WATER",
       ),
     ).toHaveLength(999);
-    expect(state.factions.find((faction) => faction.id === "alpha")?.population.total).toBe(
-      500,
-    );
+    expect(state.factions.find((faction) => faction.id === "alpha")?.population.total).toBe(500);
 
-    expect(() => new MatchRuntime(withoutP48)).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
+    expect(() => new MatchRuntime(makeSpec([]))).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
   });
 
   it("rejects an unfillable resolved configuration before any partial match can become active", () => {
