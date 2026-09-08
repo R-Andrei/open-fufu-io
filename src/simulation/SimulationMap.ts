@@ -3,7 +3,10 @@ import type {
   MapPoint,
   TerrainType,
 } from "../core/controller/ControllerApi";
-import type { SegmentRuntimeIndex } from "./Segments";
+import {
+  segmentRuntimeIndexMatchesTerrain,
+  type SegmentRuntimeIndex,
+} from "./Segments";
 
 export type SimulationTerrain = TerrainType | "TEST";
 export type SimulationMapSource = "SYNTHETIC" | "ARTIFACT";
@@ -86,6 +89,16 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
     throw new Error(
       "Segment runtime index raster must match map width, height, and cell count",
     );
+  }
+  if (
+    input.segments !== undefined &&
+    (input.terrain.some((terrain) => terrain === "TEST") ||
+      !segmentRuntimeIndexMatchesTerrain(
+        input.segments,
+        input.terrain as readonly TerrainType[],
+      ))
+  ) {
+    throw new Error("Segment runtime index terrain must match map base terrain");
   }
 
   const terrain = Object.freeze([...input.terrain]);
