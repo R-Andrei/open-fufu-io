@@ -20,22 +20,21 @@ function rules(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
 }
 
-function rulesWithMissileSiloCapZero(
+function rulesWithMissileSiloBuildProhibited(
   traits: readonly OriginTraitId[],
 ) {
   const input = originRuleProfileInput(traits);
-  const capZero = Object.freeze({
-    axis: "STRUCTURE_OWNERSHIP_CAP",
+  const buildProhibited = Object.freeze({
+    axis: "STRUCTURE_BUILD_PERMISSION",
     scope: Object.freeze({ kind: "STRUCTURE", structure: "MISSILE_SILO" }),
-    stage: "ORIGIN_CAP",
-    operator: "CAP_LIMIT",
+    stage: "PERMISSION",
+    operator: "PROHIBIT",
     sourceKind: "SCENARIO",
-    sourceId: "SPAWN_TEST_MISSILE_SILO_CAP_ZERO",
-    valueUnit: "COUNT",
-    value: 0,
+    sourceId: "SPAWN_TEST_MISSILE_SILO_BUILD_PROHIBITED",
+    valueUnit: "NONE",
   } as const satisfies RuleContribution);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
-    contributions: Object.freeze([...input.contributions, capZero]),
+    contributions: Object.freeze([...input.contributions, buildProhibited]),
     dynamicProviders: input.dynamicProviders,
     customDomains: input.customDomains,
   });
@@ -302,7 +301,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
           height,
           terrain,
           factions: [
-            { id: "alpha", rules: rulesWithMissileSiloCapZero(["P20"]) },
+            { id: "alpha", rules: rulesWithMissileSiloBuildProhibited(["P20"]) },
             { id: "beta", rules: rules() },
           ],
         }),
@@ -323,7 +322,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
         domain: "STARTING_STRUCTURE_GRANT",
         result: "REJECTED",
         cellId: alphaOrigin,
-        failureCode: "OWNERSHIP_CAP",
+        failureCode: "BUILD_NOT_PERMITTED",
       }),
     ]);
   });
