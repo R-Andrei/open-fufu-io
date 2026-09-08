@@ -440,23 +440,25 @@ describe("Segment review regression coverage", () => {
   });
 
   it("preserves an inset peninsula neck without relying on a map-edge barrier", () => {
-    const width = 12;
+    const width = 15;
     const height = 9;
     const terrain = filledTerrain(width, height, "DEEP_WATER");
     for (let y = 1; y <= 7; y += 1) {
       for (let x = 1; x <= 4; x += 1) terrain[y * width + x] = "PLAINS";
     }
     for (let y = 2; y <= 6; y += 1) {
-      for (let x = 8; x <= 10; x += 1) terrain[y * width + x] = "PLAINS";
+      for (let x = 10; x <= 13; x += 1) terrain[y * width + x] = "PLAINS";
     }
-    const neck = [53, 54, 55];
+    const neck = [65, 66, 67, 68, 69];
     for (const cellId of neck) terrain[cellId] = "PLAINS";
 
     const compiled = compileSegments({ width, height, terrain });
 
     expect(compiled.segmentCount).toBe(4);
-    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 13, 32, 53]);
-    expect(neck.map((cellId) => compiled.segmentIdOf(cellId))).toEqual([3, 3, 3]);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 16, 40, 65]);
+    expect(neck.map((cellId) => compiled.segmentIdOf(cellId))).toEqual(
+      neck.map(() => 3),
+    );
     expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2]);
   });
 
