@@ -113,12 +113,15 @@ The V1 compiler should use the following deterministic geography-first pipeline:
 terrain/topology raster
 → identify connected coherent terrain/topology features
 → preserve meaningful narrow/topological features
+→ deterministically normalize meaningless raster fragments where appropriate
 → subdivide oversized featureless interiors toward ~4,096 cells
-→ merge meaningless raster fragments where appropriate
+→ perform any remaining fragment cleanup needed by subdivision
 → enforce/repair cardinal connectivity
 → assign stable Segment IDs
 → compile membership + metadata + adjacency into map artifact
 ```
+
+Fragment normalization is not constrained to a single post-subdivision pass. Generator v1 may merge meaningless raster noise before generic size subdivision when doing so gives the subdivision a cleaner coherent region, provided meaningful geography/topology has already been identified and protected. Any cleanup after subdivision remains subject to the same geography-first priorities and hard connectivity invariants.
 
 ### 6.1 Feature-first extraction
 
@@ -134,7 +137,7 @@ A long coherent feature that is worth subdividing should normally be split **alo
 
 ### 6.3 Fragment cleanup
 
-Meaningless isolated fragments may merge into an adjacent Segment selected deterministically using shared-boundary/topological/terrain fit. Fragment cleanup must never break cardinal connectivity or erase a strategically meaningful narrow feature merely because that feature is small.
+Meaningless isolated fragments may merge into an adjacent coherent region/Segment selected deterministically using shared-boundary/topological/terrain fit. This normalization may occur before subdivision and, where subdivision creates cleanup work, afterward. Fragment cleanup must never break cardinal connectivity or erase a strategically meaningful narrow feature merely because that feature is small.
 
 ### 6.4 No match-seeded segmentation
 
