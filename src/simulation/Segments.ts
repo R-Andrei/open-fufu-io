@@ -19,14 +19,6 @@ export const SEGMENT_ADJACENCY_OFFSETS_ENCODING =
   "SEGMENT_ADJACENCY_OFFSETS_U32LE_V1" as const;
 export const SEGMENT_ADJACENCY_ENCODING = "SEGMENT_ADJACENCY_U16LE_V1" as const;
 
-// OPEN_FUFU_MAP placement is owned by MapArtifact.ts. These compatibility
-// exports remain temporarily until that owner consumes the paths directly.
-export const SEGMENT_MEMBERSHIP_PATH = "segments/membership.bin" as const;
-export const SEGMENT_METADATA_PATH = "segments/metadata.bin" as const;
-export const SEGMENT_ADJACENCY_OFFSETS_PATH =
-  "segments/adjacency-offsets.bin" as const;
-export const SEGMENT_ADJACENCY_PATH = "segments/adjacency.bin" as const;
-
 const TERRAIN_ORDER = Object.freeze([
   "PLAINS",
   "HIGHLAND",
