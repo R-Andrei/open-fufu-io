@@ -1,3 +1,9 @@
+import type {
+  ControllerMemory,
+  SpawnInfluenceContext,
+  SpawnOriginContext,
+  SpawnReconsiderContext,
+} from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
@@ -24,6 +30,27 @@ function twoFactionRuntime(seed = "controller-runtime") {
       ],
     }),
   );
+}
+
+function ordinaryObservation(): LawfulControllerObservation {
+  return Object.freeze({
+    tick: 0,
+    decisionNumber: 0,
+    me: Object.freeze({
+      id: "alpha",
+      status: "ACTIVE" as const,
+      population: Object.freeze({
+        total: 0,
+        available: 0,
+        committedOffense: 0,
+        committedCounterResponse: 0,
+        aboardTransports: 0,
+        neutralSettlementHalfResidual: 0,
+      }),
+    }),
+    factions: Object.freeze([{ id: "alpha", status: "ACTIVE" as const }]),
+    cells: Object.freeze([]),
+  });
 }
 
 describe("authoritative MatchRuntime walking skeleton", () => {
@@ -359,5 +386,201 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         value: Number.NaN,
       }),
     ).toThrow(/finite integer/i);
+  });
+
+  it("executes all Strategic Spawn hooks through the same immutable host memory boundary", () => {
+    const seen: Array<{
+      hook: string;
+      memory: ControllerMemory;
+      contextFrozen: boolean;
+      memoryFrozen: boolean;
+    }> = [];
+
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence(context: SpawnInfluenceContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return {
+            centers: [11],
+            memory: { phase: "influence", discardedLater: true },
+          };
+        },
+        reconsiderInfluence(context: SpawnReconsiderContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return { centers: [12], memory: { phase: "reconsider" } };
+        },
+        chooseOrigins(context: SpawnOriginContext) {
+          seen.push({
+            hook: context.phase,
+            memory: { ...context.memory },
+            contextFrozen: Object.isFrozen(context),
+            memoryFrozen: Object.isFrozen(context.memory),
+          });
+          return { origins: [13] };
+        },
+        decide(
+          observation: LawfulControllerObservation & {
+            readonly memory: Readonly<ControllerMemory>;
+          },
+        ) {
+          seen.push({
+            hook: "DECIDE",
+            memory: { ...observation.memory },
+            contextFrozen: Object.isFrozen(observation),
+            memoryFrozen: Object.isFrozen(observation.memory),
+          });
+          return { commands: [], memory: { phase: "decide" } };
+        },
+      },
+    });
+
+    const influence = host.chooseInfluence(
+      "alpha",
+      {
+        phase: "INFLUENCE",
+        memory: { callerSupplied: "must-not-win" },
+      } as unknown as SpawnInfluenceContext,
+    );
+    const reconsider = host.reconsiderInfluence(
+      "alpha",
+      {
+        phase: "RECONSIDER",
+        memory: { callerSupplied: "must-not-win" },
+        currentInfluenceCenters: [11],
+        revealedFactions: [],
+      } as unknown as SpawnReconsiderContext,
+    );
+    const origins = host.chooseOrigins(
+      "alpha",
+      {
+        phase: "ORIGIN",
+        memory: { callerSupplied: "must-not-win" },
+        influenceCenters: [12],
+        revealedFactions: [],
+        spawn: {},
+      } as unknown as SpawnOriginContext,
+    );
+    const decision = host.invoke("alpha", ordinaryObservation());
+
+    expect(influence).toEqual({
+      ok: true,
+      output: {
+        centers: [11],
+        memory: { phase: "influence", discardedLater: true },
+      },
+    });
+    expect(reconsider).toEqual({
+      ok: true,
+      output: { centers: [12], memory: { phase: "reconsider" } },
+    });
+    expect(origins).toEqual({ ok: true, output: { origins: [13] } });
+    expect(decision).toEqual({
+      ok: true,
+      output: { commands: [], memory: { phase: "decide" } },
+    });
+    expect(seen).toEqual([
+      {
+        hook: "INFLUENCE",
+        memory: {},
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "RECONSIDER",
+        memory: { phase: "influence", discardedLater: true },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "ORIGIN",
+        memory: { phase: "reconsider" },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+      {
+        hook: "DECIDE",
+        memory: { phase: "reconsider" },
+        contextFrozen: true,
+        memoryFrozen: true,
+      },
+    ]);
+    expect(Object.isFrozen(influence)).toBe(true);
+    expect(Object.isFrozen(reconsider)).toBe(true);
+    expect(Object.isFrozen(origins)).toBe(true);
+    expect(Object.isFrozen(decision)).toBe(true);
+  });
+
+  it("normalizes Spawn hook faults and invalid memory while preserving prior committed memory", () => {
+    let decideMemory: ControllerMemory | undefined;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence() {
+          return { centers: [11], memory: { stable: 1 } };
+        },
+        reconsiderInfluence() {
+          throw new Error("controller failure");
+        },
+        chooseOrigins() {
+          return { origins: [13], memory: { invalid: Number.NaN } };
+        },
+        decide(
+          observation: LawfulControllerObservation & {
+            readonly memory: Readonly<ControllerMemory>;
+          },
+        ) {
+          decideMemory = { ...observation.memory };
+          return { commands: [] };
+        },
+      },
+    });
+
+    expect(
+      host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as unknown as SpawnInfluenceContext,
+      ),
+    ).toEqual({
+      ok: true,
+      output: { centers: [11], memory: { stable: 1 } },
+    });
+    expect(
+      host.reconsiderInfluence(
+        "alpha",
+        {
+          phase: "RECONSIDER",
+          memory: {},
+          currentInfluenceCenters: [11],
+          revealedFactions: [],
+        } as unknown as SpawnReconsiderContext,
+      ),
+    ).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
+    expect(
+      host.chooseOrigins(
+        "alpha",
+        {
+          phase: "ORIGIN",
+          memory: {},
+          influenceCenters: [11],
+          revealedFactions: [],
+          spawn: {},
+        } as unknown as SpawnOriginContext,
+      ),
+    ).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
+
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(decideMemory).toEqual({ stable: 1 });
   });
 });
