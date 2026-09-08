@@ -220,7 +220,7 @@ describe("land operations through authoritative MatchRuntime", () => {
     expect(match.snapshot().factions.find((entry) => entry.id === "alpha")?.population.total).toBe(1);
   });
 
-  it("charges P47 Marsh attrition after an otherwise casualty-free hostile capture", () => {
+  it("charges P47 Marsh attrition after the ordinary hostile-capture attacker loss", () => {
     const match = landRuntime({
       seed: "p47-marsh",
       terrain: ["PLAINS", "MARSH"],
