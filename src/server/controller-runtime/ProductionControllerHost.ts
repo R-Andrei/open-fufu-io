@@ -275,6 +275,25 @@ function validUsage(usage: ControllerResourceUsage): boolean {
   );
 }
 
+function spatialPolicyRuleCount(value: unknown): number {
+  if (!isPlainRecord(value)) return 0;
+  return Array.isArray(value.rules) ? value.rules.length : 0;
+}
+
+function directivePolicyRuleCount(value: unknown): number {
+  if (!isPlainRecord(value)) return 0;
+  if (value.kind === "LAND_OPERATION") {
+    return (
+      spatialPolicyRuleCount(value.engagementPriority) +
+      spatialPolicyRuleCount(value.pressureWeight)
+    );
+  }
+  if (value.kind === "DEFENSE_PRIORITY") {
+    return spatialPolicyRuleCount(value.priority);
+  }
+  return 0;
+}
+
 function outputWithinResourceCeilings(output: OutputRecord): boolean {
   if (Object.prototype.hasOwnProperty.call(output, "commands")) {
     if (!Array.isArray(output.commands)) return false;
@@ -292,6 +311,16 @@ function outputWithinResourceCeilings(output: OutputRecord): boolean {
     const updates = (Array.isArray(set) ? set.length : 0) + (Array.isArray(end) ? end.length : 0);
     if (updates > PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision) {
       return false;
+    }
+
+    if (Array.isArray(set)) {
+      let policyRules = 0;
+      for (const directive of set) {
+        policyRules += directivePolicyRuleCount(directive);
+        if (policyRules > PRODUCTION_CONTROLLER_LIMITS.policyRulesPerDecision) {
+          return false;
+        }
+      }
     }
   }
 
