@@ -12,6 +12,7 @@
     "tests/EchoRuleRegistry.test.ts",
     "tests/FactionRelations.test.ts",
     "tests/LandAuditRegression.test.ts",
+    "tests/LandCertification.test.ts",
     "tests/LandOperations.test.ts",
     "tests/LandRuntime.test.ts",
     "tests/MatchRuntime.test.ts",
@@ -120,6 +121,7 @@
     {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -137,6 +139,7 @@
       "path": "src/simulation/LandOperations.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandOperations.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -146,6 +149,7 @@
       "path": "src/simulation/MatchRuntime.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
@@ -156,6 +160,7 @@
       "path": "src/simulation/MatchSpec.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -165,6 +170,7 @@
       "path": "src/simulation/MatchState.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
@@ -175,6 +181,7 @@
       "path": "src/simulation/MicroSimulationHarness.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
@@ -192,6 +199,7 @@
       "path": "src/simulation/TickEngine.ts",
       "validators": [
         "tests/LandAuditRegression.test.ts",
+        "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
