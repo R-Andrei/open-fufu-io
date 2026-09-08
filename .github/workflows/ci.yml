@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           image="open-fufu-controller-runtime:${GITHUB_SHA}"
-          docker build -t "$image" .
+          docker build --target prod-deps -t "$image" .
           docker run --rm --entrypoint node "$image" \
             --no-node-snapshot \
             -e "import('isolated-vm').then(() => console.log('isolated-vm native runtime ok')).catch((error) => { console.error(error); process.exit(1); })"
