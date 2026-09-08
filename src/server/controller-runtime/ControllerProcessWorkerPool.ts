@@ -1,4 +1,5 @@
 import { fork, type ChildProcess } from "node:child_process";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type {
@@ -38,9 +39,16 @@ type WorkerSlot = {
   failed: boolean;
 };
 
-const workerEntrypoint = fileURLToPath(
-  new URL("./ControllerWorkerProcess.ts", import.meta.url),
-);
+function resolveWorkerEntrypoint(): string {
+  const moduleUrl = new URL("./ControllerWorkerProcess.ts", import.meta.url);
+  if (moduleUrl.protocol === "file:") return fileURLToPath(moduleUrl);
+  return resolve(
+    process.cwd(),
+    "src/server/controller-runtime/ControllerWorkerProcess.ts",
+  );
+}
+
+const workerEntrypoint = resolveWorkerEntrypoint();
 
 const controllerWorkerFault = Object.freeze({
   ok: false as const,
