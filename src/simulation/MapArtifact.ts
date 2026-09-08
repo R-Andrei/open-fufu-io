@@ -94,6 +94,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isUint8Array(value: unknown): value is Uint8Array {
+  return (
+    ArrayBuffer.isView(value) &&
+    Object.prototype.toString.call(value) === "[object Uint8Array]"
+  );
+}
+
 function hasExactKeys(
   value: Record<string, unknown>,
   expected: readonly string[],
@@ -281,7 +288,7 @@ function validatedPackageFiles(rawPackage: unknown): readonly MapArtifactFile[] 
     if (typeof rawFile.path !== "string") {
       throw new Error("map artifact file path must be a string");
     }
-    if (!(rawFile.bytes instanceof Uint8Array)) {
+    if (!isUint8Array(rawFile.bytes)) {
       throw new Error(`map artifact file ${rawFile.path} bytes must be Uint8Array`);
     }
     if (seen.has(rawFile.path)) {
