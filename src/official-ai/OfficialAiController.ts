@@ -125,7 +125,10 @@ export class OfficialAiControllerHost implements ControllerHost {
     if (profile === undefined) return successfulInvocation();
 
     try {
-      return successfulInvocation(decideBaseline(profile, observation));
+      const decision = decideBaseline(profile, observation);
+      return decision === undefined
+        ? successfulInvocation<ControllerDecision>()
+        : successfulInvocation<ControllerDecision>(decision);
     } catch {
       return runtimeFailure();
     }

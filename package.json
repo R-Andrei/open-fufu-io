@@ -112,6 +112,7 @@
     "howler": "^2.2.4",
     "intl-messageformat": "^11.2.3",
     "ip-anonymize": "^0.1.0",
+    "isolated-vm": "6.2.0",
     "jose": "^6.2.3",
     "lil-gui": "^0.21.0",
     "limiter": "^3.0.0",
