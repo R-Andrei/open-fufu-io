@@ -1,12 +1,13 @@
 # Contributing to Open Fufu
 
-Open Fufu is being migrated from the inherited OpenFront codebase. The active repository workflow is owned by [`AGENTS.md`](./AGENTS.md); this file is a contributor-facing summary and must not override those instructions. Repository validation/test ownership is defined by [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md).
+Open Fufu is being migrated from the inherited OpenFront codebase. Automated-agent bootstrap/routing is owned by [`AGENTS.md`](./AGENTS.md); detailed repository-process policies live in the canonical owners it routes to. This file is a contributor-facing summary and must not override those instructions. Repository validation/test ownership is defined by [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md).
 
 ## Work tracking and coordination
 
 - Use GitHub Issues for non-trivial planned work.
 - Coordinate ownership before starting overlapping work.
-- Automated agents must follow the unique issue-claim/work-session and attributable-branch rules in `AGENTS.md`.
+- Automated agents must follow [`docs/REPOSITORY_OWNERSHIP_PROTOCOL.md`](./docs/REPOSITORY_OWNERSHIP_PROTOCOL.md) for unique claims, attributable branches, mutation authority, transfer, merge checks, and cleanup.
+- Substantive issue work must follow [`docs/ISSUE_WORK_PROTOCOL.md`](./docs/ISSUE_WORK_PROTOCOL.md).
 - Use a short-lived topic branch and a pull request unless the user explicitly authorizes another workflow.
 - There is no OpenFront `approved`-label, milestone, Discord, or automatic-close requirement for Open Fufu contributions.
 
@@ -46,11 +47,11 @@ A pull request should:
 - explain the change and its ownership boundary;
 - record the focused owned validation performed;
 - add/update/register appropriate validators when introducing or adopting Open Fufu executable code;
-- include the required cross-layer impact audit when gameplay, Origin, or character-AI semantics are affected;
+- include the required coupled Game/Origin/Character-AI audit from [`docs/official-ai/README.md`](./docs/official-ai/README.md) when triggered;
 - remain focused enough that ownership and review are clear.
 
-After merge, clean up the remote topic branch as required by `AGENTS.md`.
+After merge, clean up the remote topic branch as required by [`docs/REPOSITORY_OWNERSHIP_PROTOCOL.md`](./docs/REPOSITORY_OWNERSHIP_PROTOCOL.md).
 
 ## Canonical design and documentation
 
-Before adding a new design/documentation/configuration file, locate the existing canonical owner. Prefer updating that owner over creating overlapping sources of truth. When a rule changes, update or remove stale references in the same change rather than leaving contradictory active documentation.
+Follow [`docs/DOCUMENTATION_AUTHORITY_POLICY.md`](./docs/DOCUMENTATION_AUTHORITY_POLICY.md) before adding/changing/moving canonical documentation or code-readable design configuration. Locate the existing canonical owner, prefer updating it over creating overlap, and remove/update stale references in the same change.

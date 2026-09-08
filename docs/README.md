@@ -1,14 +1,18 @@
 # Open Fufu documentation map
 
-Use this file to find the canonical owner of a concern. It is navigation only; it does not restate subsystem rules. Repository-wide ownership policy is defined in [`../AGENTS.md`](../AGENTS.md).
+Use this file to find the canonical owner of a concern. It is navigation only; it does not restate subsystem rules. Automated-agent bootstrap/routing is defined in [`../AGENTS.md`](../AGENTS.md); detailed repository-process policies are registered below.
 
 ## Canonical target owners
 
 | Concern | Canonical owner |
 | --- | --- |
-| High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
+| Automated-agent bootstrap, universal communication/assumption/RED-first invariants, and mandatory protocol routing | [`../AGENTS.md`](../AGENTS.md) |
+| Repository claim/session ownership, issue/branch/PR mutation authority, current-main branch reconciliation, and remote cleanup | [`REPOSITORY_OWNERSHIP_PROTOCOL.md`](./REPOSITORY_OWNERSHIP_PROTOCOL.md) |
+| Documentation/configuration canonical-authority governance, duplicate/stale authority prevention, splitting, gateways, and canonical-overlap reconciliation | [`DOCUMENTATION_AUTHORITY_POLICY.md`](./DOCUMENTATION_AUTHORITY_POLICY.md) |
 | Repository validation scope, test ownership, and executable-code adoption | [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md) |
 | Issue-work specification/readiness gates, implementation-GREEN lifecycle, adversarial certification, and requirement-level completion evidence | [`ISSUE_WORK_PROTOCOL.md`](./ISSUE_WORK_PROTOCOL.md) |
+| Game/Origin/Character-AI coupled-change audit and task-routing procedure | [`official-ai/README.md`](./official-ai/README.md) |
+| High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
 | Game-wide effective-rule composition, rule-axis taxonomy, modifier algebra, normalization, and static composition validation | [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md) |
 | OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
 | Exact V1 production map-artifact package schema, canonical serialization/content identity, terrain-code encoding, and artifact validation | [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts) |

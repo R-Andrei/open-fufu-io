@@ -1,8 +1,97 @@
 # Open Fufu — Official AI documentation gateway
 
-This directory is the mandatory **entry point for work on Official PvE AI**. It is a navigation/integration gateway; it does not own gameplay mechanics, child-document contracts, exact configuration mappings, or project-completion state.
+This directory is the mandatory entry point for work on Official PvE AI and the canonical owner of the repository-wide **Game/Origin/Character-AI coupled-change audit procedure**. It owns integration/audit routing only; it does not own gameplay mechanics, child-document contracts, exact configuration mappings, or project-completion state.
+
+## Read this freshly before
+
+Freshly read this file before changing gameplay/mechanics, numerical balance with strategic consequences, Origin traits/drawbacks, Official-Origin composition, Official-AI support/configuration, allowed-Origin pools, CharacterProfile/planner behavior, character-specific AI hooks, or related strategic semantics.
 
 For any Official-AI task, read this file first, then [`OFFICIAL_AI_ARCHITECTURE.md`](./OFFICIAL_AI_ARCHITECTURE.md). Follow the task-specific owner trail below rather than editing AI documents in isolation.
+
+## Coupled-audit invariant
+
+```text
+mechanics / rules
+      ↕
+Origin traits + named Origins + AI Origin support
+      ↕
+character AI + preset pools + character adaptation
+```
+
+Gameplay/mechanics, Origin, and Character-AI are strategically coupled. Any triggering change in any layer MUST explicitly inspect all three, bidirectionally, before completion.
+
+`reviewed-no-change` is valid; skipped review is not.
+
+Character-specific workarounds MUST NOT silently compensate for broken/incomplete mechanic or Origin abstractions. A mechanically legal change MUST NOT be assumed strategically neutral to Origin support or character reasoning.
+
+## Coupled-audit triggers
+
+The audit is triggered by adding/removing/changing any of the following when strategic behavior may change:
+
+- core mechanics or formulas;
+- balance values affecting strategic value, timing, risk, payoff, range, cost, throughput, damage, growth, capacity, cooldown, coverage, or opportunity cost;
+- structures, units, terrain, economy, combat, capture, strategic weapons, visibility/information, Spawn, or other controller-visible mechanics;
+- Origin traits/drawbacks or their numerical/mechanical semantics;
+- Official-Origin composition or roster;
+- trait AI-support mappings;
+- combination support or support suppression;
+- named-Origin AI assertions/support;
+- Official-AI allowed-Origin pools;
+- `CharacterProfile` evaluator/planner capability;
+- Doctrine/Goal generation, arbitration, persistence, Expression, or Origin adaptation;
+- character-specific trait/Origin overrides/hooks;
+- a new Official-AI preset/character;
+- retirement/removal of a mechanic, trait, Origin, or preset.
+
+Numeric-only changes still trigger inspection. A config edit is not automatic, but strategic thresholds, theme, or preference may change.
+
+## Required bidirectional inspection
+
+### Mechanics
+
+Inspect the authoritative rule/formula/value, including legality, timing, scale, opportunity cost, interactions, public-information exposure, related mechanics, tests, and docs.
+
+### Origins/traits
+
+Inspect trait mechanics/costs/descriptions against the rule; relevant `origin-trait-support.config.ts` themes, affordances, cautions, tags, hooks, combinations, and suppressions; affected `origin-configurations.config.ts` composition; Official-Origin synergy/conflict/validation.
+
+### Character AI
+
+Inspect affected allowed-Origin pools; `CharacterProfile` valuation through Doctrine, Origin adaptation, plan ranking, persistence, Expression, and bespoke hooks; tactic attractiveness and any re-tuning/re-benchmarking even when config shape does not change; affected character × Origin fidelity/validation.
+
+### Reverse-direction questions
+
+Ask whether:
+
+- character logic should instead be generic Origin/mechanics behavior;
+- an Origin mechanic is general enough and correctly surfaced through `EffectiveRulesView`;
+- a mechanics change leaves stale higher-layer assumptions despite compilation/tests passing.
+
+## Required completion evidence
+
+Triggering work is incomplete until task/PR evidence records:
+
+- Mechanics: `updated` or `reviewed-no-change` + reason;
+- Origins/traits: `updated` or `reviewed-no-change` + reason;
+- Character AI: `updated` or `reviewed-no-change` + reason;
+- affected character × Origin validation: `updated`, `rerun`, or `not required` + reason.
+
+For PR work, place this in the PR description or review-visible summary. For direct-branch work, place it in the task/commit summary and carry it into any eventual PR.
+
+`not applicable` is forbidden merely because the work originated in another layer.
+
+## Validation guidance
+
+Where practical, automated validation SHOULD verify:
+
+- exactly one AI-support mapping per deployed trait;
+- Official-Origin trait membership equals the gameplay roster;
+- required combination/suppression IDs exist and compose deterministically;
+- allowed-Origin IDs resolve to active configured Origins;
+- character trait/Origin overrides reference valid content;
+- every character × allowed-Origin pairing has accelerated validation coverage.
+
+Automation/CI supplements, never replaces, manual semantic review. It cannot prove that a numerical rebalance still matches intended strategy/theme.
 
 ## Canonical reading map
 
@@ -85,23 +174,9 @@ Read/check:
 
 Do **not** restate the Echo reward formula in AI documentation.
 
-## Bidirectional synchronization invariant
-
-```text
-mechanics / rules
-      ↕
-Origin traits + named Origins + AI Origin support
-      ↕
-character AI + preset pools + character adaptation
-```
-
-Any strategically meaningful change originating at any layer must inspect both directions before completion. Do not repair a generic mechanics/Origin problem solely with a character exception; do not change mechanics/balance without checking AI valuation; do not change character assumptions without checking the underlying mechanic/Origin.
-
-This repository-wide rule is also enforced in `AGENTS.md`.
-
 ## Documentation ownership rule
 
-- `README.md` is navigation/integration policy only.
+- This `README.md` owns the coupled audit and navigation/integration policy only.
 - `OFFICIAL_AI_ARCHITECTURE.md` owns broad Official-AI architecture.
 - Each other document owns one narrower concern.
 - Exact tables/mappings live in the listed TypeScript configs where identified, not duplicated in prose.
