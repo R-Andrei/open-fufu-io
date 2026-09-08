@@ -3,6 +3,7 @@ import type {
   MapPoint,
   TerrainType,
 } from "../core/controller/ControllerApi";
+import type { SegmentRuntimeIndex } from "./Segments";
 
 export type SimulationTerrain = TerrainType | "TEST";
 export type SimulationMapSource = "SYNTHETIC" | "ARTIFACT";
@@ -20,6 +21,7 @@ export interface SimulationMap {
   readonly mapId?: string;
   readonly mapVersion?: string;
   readonly mapHash?: string;
+  readonly segments?: SegmentRuntimeIndex;
 
   isValidCellId(cellId: CellId): boolean;
   cellIdAt(x: number, y: number): CellId | undefined;
@@ -39,6 +41,7 @@ export interface SimulationMapInput {
   readonly mapId?: string;
   readonly mapVersion?: string;
   readonly mapHash?: string;
+  readonly segments?: SegmentRuntimeIndex;
 }
 
 function assertPositiveSafeDimension(value: number, label: string): void {
@@ -152,6 +155,9 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
     ...(input.mapHash === undefined
       ? {}
       : { mapHash: { value: input.mapHash, enumerable: false } }),
+    ...(input.segments === undefined
+      ? {}
+      : { segments: { value: input.segments, enumerable: false } }),
     isValidCellId: { value: isValidCellId, enumerable: false },
     cellIdAt: { value: cellIdAt, enumerable: false },
     positionOf: { value: positionOf, enumerable: false },
