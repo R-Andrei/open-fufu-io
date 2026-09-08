@@ -18,6 +18,7 @@
     "tests/MatchRuntime.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
+    "tests/OfficialAiRuntime.test.ts",
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
     "tests/OriginRuleManifest.test.ts",
