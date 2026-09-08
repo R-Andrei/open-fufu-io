@@ -359,3 +359,206 @@ describe("OPEN_FUFU_MAP V2 Segment artifact", () => {
     15_000,
   );
 });
+
+describe("Segment review regression coverage", () => {
+  it("preserves a one-cell-wide same-terrain neck between broad regions", () => {
+    const width = 11;
+    const height = 7;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    for (let y = 1; y <= 5; y += 1) {
+      for (let x = 0; x <= 3; x += 1) terrain[y * width + x] = "PLAINS";
+      for (let x = 7; x <= 10; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    const neck = [37, 38, 39];
+    for (const cellId of neck) terrain[cellId] = "PLAINS";
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(4);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 11, 18, 37]);
+    expect(neck.map((cellId) => compiled.membership[cellId])).toEqual([3, 3, 3]);
+    expect(compiled.membership[36]).toBe(1);
+    expect(compiled.membership[40]).toBe(2);
+    expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2]);
+  });
+
+  it("preserves a three-cell-wide same-terrain neck between broad regions", () => {
+    const width = 13;
+    const height = 9;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    for (let y = 1; y <= 7; y += 1) {
+      for (let x = 0; x <= 3; x += 1) terrain[y * width + x] = "PLAINS";
+      for (let x = 9; x <= 12; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    const neck: number[] = [];
+    for (let y = 3; y <= 5; y += 1) {
+      for (let x = 4; x <= 8; x += 1) {
+        const cellId = y * width + x;
+        terrain[cellId] = "PLAINS";
+        neck.push(cellId);
+      }
+    }
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(4);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 13, 22, 43]);
+    expect(neck.map((cellId) => compiled.membership[cellId])).toEqual(
+      neck.map(() => 3),
+    );
+    expect(compiled.adjacentSegmentIds(3)).toEqual([0, 1, 2]);
+  });
+
+  it("reports Segment-size distribution diagnostics without turning them into legality gates", () => {
+    const compiled = compileSegments({
+      width: 100,
+      height: 100,
+      terrain: filledTerrain(100, 100, "PLAINS"),
+    });
+    const counts = compiled.metadata.map((entry) => entry.cellCount);
+    const diagnostics = (compiled as unknown as {
+      readonly diagnostics?: {
+        readonly segmentCount: number;
+        readonly minCellCount: number;
+        readonly maxCellCount: number;
+        readonly meanCellCount: number;
+        readonly belowHalfTargetCount: number;
+        readonly aboveDoubleTargetCount: number;
+      };
+    }).diagnostics;
+
+    expect(diagnostics).toEqual({
+      segmentCount: compiled.segmentCount,
+      minCellCount: Math.min(...counts),
+      maxCellCount: Math.max(...counts),
+      meanCellCount: 10_000 / compiled.segmentCount,
+      belowHalfTargetCount: counts.filter((count) => count < 2_048).length,
+      aboveDoubleTargetCount: counts.filter((count) => count > 8_192).length,
+    });
+  });
+
+  it("does not expose mutable compiler membership that can desynchronize metadata and adjacency", () => {
+    const compiled = compileSegments({
+      width: 5,
+      height: 5,
+      terrain: filledTerrain(5, 5, "PLAINS"),
+    });
+    const publicShape = compiled as unknown as Record<string, unknown>;
+
+    expect(publicShape.membership).toBeUndefined();
+    expect(typeof publicShape.segmentIdOf).toBe("function");
+  });
+
+  it("round-trips deterministic compiler output through the Segment binary materializer", async () => {
+    const {
+      encodeCompiledSegments,
+      materializeSegmentArtifact,
+    } = await import("../src/simulation/Segments");
+    const width = 7;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "PLAINS");
+    for (const cellId of [1, 8, 15, 16, 17, 24, 31]) {
+      terrain[cellId] = "SHALLOW_WATER";
+    }
+
+    const first = compileSegments({ width, height, terrain });
+    const second = compileSegments({ width, height, terrain });
+    const firstBytes = encodeCompiledSegments(first);
+    const secondBytes = encodeCompiledSegments(second);
+
+    expect([...firstBytes.membership]).toEqual([...secondBytes.membership]);
+    expect([...firstBytes.metadata]).toEqual([...secondBytes.metadata]);
+    expect([...firstBytes.adjacencyOffsets]).toEqual([...secondBytes.adjacencyOffsets]);
+    expect([...firstBytes.adjacency]).toEqual([...secondBytes.adjacency]);
+
+    const runtime = materializeSegmentArtifact({
+      generatorVersion: first.generatorVersion,
+      segmentCount: first.segmentCount,
+      width,
+      height,
+      terrain,
+      membershipBytes: firstBytes.membership,
+      metadataBytes: firstBytes.metadata,
+      adjacencyOffsetsBytes: firstBytes.adjacencyOffsets,
+      adjacencyBytes: firstBytes.adjacency,
+    });
+
+    expect(runtime.segmentCount).toBe(first.segmentCount);
+    for (let segmentId = 0; segmentId < first.segmentCount; segmentId += 1) {
+      expect(runtime.metadata(segmentId)).toEqual(first.metadata[segmentId]);
+      const span = runtime.cells(segmentId);
+      expect(
+        Array.from({ length: span.length }, (_, index) => span.at(index)),
+      ).toEqual(first.cells(segmentId));
+      expect(runtime.adjacentSegmentIds(segmentId)).toEqual(
+        first.adjacentSegmentIds(segmentId),
+      );
+    }
+  });
+
+  it("rejects disconnected membership, unstable IDs, and malformed CSR adjacency", async () => {
+    const { materializeSegmentArtifact } = await import("../src/simulation/Segments");
+
+    expect(() =>
+      materializeSegmentArtifact({
+        generatorVersion: 1,
+        segmentCount: 2,
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        membershipBytes: uint16Le([0, 1, 0]),
+        metadataBytes: new Uint8Array(2 * 12 * 4),
+        adjacencyOffsetsBytes: uint32Le([0, 0, 0]),
+        adjacencyBytes: new Uint8Array(0),
+      }),
+    ).toThrow(/4-connected/i);
+
+    const singletonMetadata = (minCellId: number) => [
+      minCellId,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+    ];
+    expect(() =>
+      materializeSegmentArtifact({
+        generatorVersion: 1,
+        segmentCount: 2,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        membershipBytes: uint16Le([1, 0]),
+        metadataBytes: uint32Le([
+          ...singletonMetadata(1),
+          ...singletonMetadata(0),
+        ]),
+        adjacencyOffsetsBytes: uint32Le([0, 1, 2]),
+        adjacencyBytes: uint16Le([1, 0]),
+      }),
+    ).toThrow(/stable ID ordering/i);
+
+    expect(() =>
+      materializeSegmentArtifact({
+        generatorVersion: 1,
+        segmentCount: 2,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        membershipBytes: uint16Le([0, 1]),
+        metadataBytes: uint32Le([
+          ...singletonMetadata(0),
+          ...singletonMetadata(1),
+        ]),
+        adjacencyOffsetsBytes: uint32Le([0, 1, 2]),
+        adjacencyBytes: uint16Le([0, 0]),
+      }),
+    ).toThrow(/adjacent to itself|adjacency/i);
+  });
+});
