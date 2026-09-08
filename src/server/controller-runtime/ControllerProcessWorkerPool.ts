@@ -8,8 +8,15 @@ import type {
   ControllerWorkerResponse,
 } from "./ProductionControllerHost";
 
+const DEFAULT_WORKER_POOL_SIZE = 4;
+const DEFAULT_MAX_WORKER_AGE_MS = 60 * 60 * 1_000;
+const DEFAULT_MAX_WORKER_RSS_BYTES = 512 * 1024 * 1024;
+
 export interface ControllerProcessWorkerPoolOptions {
-  readonly size: number;
+  readonly size?: number;
+  readonly maxWorkerAgeMs?: number;
+  readonly maxWorkerRssBytes?: number;
+  readonly nowMs?: () => number;
 }
 
 type WorkerRequestEnvelope = Readonly<{
@@ -20,6 +27,7 @@ type WorkerRequestEnvelope = Readonly<{
 type WorkerResponseEnvelope = Readonly<{
   requestId: number;
   response: ControllerWorkerResponse;
+  rssBytes: number;
 }>;
 
 type QueuedInvocation = Readonly<{
@@ -37,6 +45,7 @@ type WorkerSlot = {
   child: ChildProcess;
   pending?: PendingInvocation;
   failed: boolean;
+  startedAtMs: number;
 };
 
 function resolveWorkerEntrypoint(): string {
@@ -60,21 +69,49 @@ function isWorkerResponseEnvelope(value: unknown): value is WorkerResponseEnvelo
   const record = value as Record<string, unknown>;
   if (!Number.isInteger(record.requestId)) return false;
   if (record.response === null || typeof record.response !== "object") return false;
-  return typeof (record.response as Record<string, unknown>).ok === "boolean";
+  if (typeof (record.response as Record<string, unknown>).ok !== "boolean") {
+    return false;
+  }
+  return (
+    typeof record.rssBytes === "number" &&
+    Number.isFinite(record.rssBytes) &&
+    record.rssBytes >= 0
+  );
+}
+
+function requirePositiveFinite(value: number, name: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new RangeError(`${name} must be a positive finite number`);
+  }
+  return value;
 }
 
 export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private readonly slots: WorkerSlot[] = [];
   private readonly queue: QueuedInvocation[] = [];
+  private readonly maxWorkerAgeMs: number;
+  private readonly maxWorkerRssBytes: number;
+  private readonly nowMs: () => number;
   private nextRequestId = 1;
   private closing = false;
 
-  constructor(options: ControllerProcessWorkerPoolOptions) {
-    if (!Number.isInteger(options.size) || options.size <= 0) {
+  constructor(options: ControllerProcessWorkerPoolOptions = {}) {
+    const size = options.size ?? DEFAULT_WORKER_POOL_SIZE;
+    if (!Number.isInteger(size) || size <= 0) {
       throw new RangeError("controller worker pool size must be a positive integer");
     }
 
-    for (let index = 0; index < options.size; index += 1) {
+    this.maxWorkerAgeMs = requirePositiveFinite(
+      options.maxWorkerAgeMs ?? DEFAULT_MAX_WORKER_AGE_MS,
+      "controller worker max age",
+    );
+    this.maxWorkerRssBytes = requirePositiveFinite(
+      options.maxWorkerRssBytes ?? DEFAULT_MAX_WORKER_RSS_BYTES,
+      "controller worker max RSS",
+    );
+    this.nowMs = options.nowMs ?? Date.now;
+
+    for (let index = 0; index < size; index += 1) {
       this.slots.push(this.spawnWorker(index));
     }
   }
@@ -130,6 +167,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     const slot: WorkerSlot = {
       child,
       failed: false,
+      startedAtMs: this.nowMs(),
     };
 
     child.on("message", (message) => this.handleMessage(slot, message));
@@ -146,6 +184,11 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     for (const slot of this.slots) {
       if (this.queue.length === 0) return;
       if (slot.failed || slot.pending !== undefined) continue;
+
+      if (this.workerAgeMs(slot) >= this.maxWorkerAgeMs) {
+        this.retireIdleWorker(slot);
+        continue;
+      }
 
       const queued = this.queue.shift();
       if (queued === undefined) return;
@@ -196,7 +239,28 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     slot.pending = undefined;
     clearTimeout(pending.watchdog);
     pending.resolve(message.response);
+
+    if (
+      this.workerAgeMs(slot) >= this.maxWorkerAgeMs ||
+      message.rssBytes > this.maxWorkerRssBytes
+    ) {
+      this.retireIdleWorker(slot);
+      return;
+    }
+
     this.pump();
+  }
+
+  private workerAgeMs(slot: WorkerSlot): number {
+    return Math.max(0, this.nowMs() - slot.startedAtMs);
+  }
+
+  private retireIdleWorker(slot: WorkerSlot): void {
+    if (slot.failed || slot.pending !== undefined) return;
+    slot.failed = true;
+    if (slot.child.exitCode === null && slot.child.signalCode === null) {
+      slot.child.kill("SIGTERM");
+    }
   }
 
   private markWorkerFailed(slot: WorkerSlot): void {
