@@ -5,6 +5,7 @@ import {
   type OriginTraitId,
 } from "../src/core/rules/OriginRuleManifest";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
+import { matchStateAtWar } from "../src/simulation/HostilityState";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
@@ -278,5 +279,42 @@ describe("land operations through authoritative MatchRuntime", () => {
     match.tick();
     expect(match.snapshot().factions.find((entry) => entry.id === "alpha")?.population.total).toBe(99);
     expect(match.snapshot().factions.find((entry) => entry.id === "beta")?.population.total).toBe(99);
+  });
+
+  it("creates symmetric atWar from an attack and preserves exact post-source grace", () => {
+    const match = landRuntime({
+      seed: "attack-hostility-grace",
+      terrain: ["PLAINS", "PLAINS"],
+      owners: ["alpha", "beta"],
+    });
+    match.acceptAction({ type: "GRANT_POPULATION", factionId: "alpha", amount: 1 });
+    match.acceptAction({ type: "GRANT_POPULATION", factionId: "beta", amount: 1 });
+    match.tick();
+
+    setAttack(match, 1);
+    match.tick();
+    expect(matchStateAtWar(match.snapshot(), "alpha", "beta")).toBe(true);
+    expect(matchStateAtWar(match.snapshot(), "beta", "alpha")).toBe(true);
+
+    const endReceipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha() {
+          return { directives: { end: ["alpha-attack"] } };
+        },
+      }),
+    );
+    expect(endReceipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(true);
+    match.tick();
+
+    const grace = match.snapshot().hostilityGrace[0];
+    expect(grace).toBeDefined();
+    expect(grace!.expiresAtTickExclusive).toBe(match.snapshot().tick + 600);
+    expect(matchStateAtWar(match.snapshot(), "alpha", "beta")).toBe(true);
+
+    while (match.snapshot().tick + 1 < grace!.expiresAtTickExclusive) match.tick();
+    expect(matchStateAtWar(match.snapshot(), "alpha", "beta")).toBe(true);
+    match.tick();
+    expect(match.snapshot().tick).toBe(grace!.expiresAtTickExclusive);
+    expect(matchStateAtWar(match.snapshot(), "alpha", "beta")).toBe(false);
   });
 });
