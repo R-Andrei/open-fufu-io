@@ -483,13 +483,15 @@ Exact capture-progress arithmetic is owned by `COMBAT_TUNING.md`.
 
 Ordinary hostile land casualties are capture-coupled rather than continuous ambient attrition.
 
-For each successfully captured **automatically defended population-bearing hostile cell** under the baseline rule:
+For every successfully captured hostile cell under the baseline rule:
 
-- the previous owner loses the one Population defending that cell;
-- the winning offensive commitment loses one Population;
-- Capacity transfers with population-bearing-cell ownership.
+- the winning offensive commitment loses **1 Population**, regardless of terrain, Population Capacity, population-bearing status, or whether the cell had an automatic defender;
+- if the cell had one automatic Population defender, the previous owner also loses that defender unless an explicit rule preserves it;
+- Capacity changes only according to the captured cell's effective population-bearing ownership state.
 
-If the hostile-owned cell had no automatic Population defender, ordinary hostile cell capture causes no baseline capture casualty for either side. Other explicit mechanics may still cause Population loss independently.
+The mandatory winning-offense debit and the hostile ownership transfer are one authoritative transaction. If the winning commitment cannot supply that 1 Population after earlier same-tick losses, the ownership transfer does not commit; completed capture progress remains saturated at its required threshold and may resolve on a later legal tick.
+
+A hostile cell without an automatic defender therefore still costs the attacker 1 Population to capture; it causes no baseline defender casualty because no automatic defender existed. Other explicit mechanics may add Population consequences independently.
 
 In multi-faction combat, finite same-faction pressure is aggregated before resolution. A cell changes owner at most once per tick; deterministic simultaneous-resolution rules choose the successful claimant. Unsuccessful third-party claimants do not lose Population merely because they contested the same cell.
 
