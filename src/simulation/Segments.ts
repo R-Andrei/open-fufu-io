@@ -81,6 +81,9 @@ export interface SegmentCompilerInput {
 
 export interface CompiledSegments {
   readonly generatorVersion: typeof SEGMENT_GENERATOR_VERSION;
+  readonly width: number;
+  readonly height: number;
+  readonly cellCount: number;
   readonly segmentCount: number;
   readonly metadata: readonly SegmentMetadata[];
   readonly diagnostics: SegmentCompilerDiagnostics;
@@ -96,6 +99,9 @@ export interface SegmentCellSpan {
 
 export interface SegmentRuntimeIndex {
   readonly generatorVersion: typeof SEGMENT_GENERATOR_VERSION;
+  readonly width: number;
+  readonly height: number;
+  readonly cellCount: number;
   readonly segmentCount: number;
   segmentIdOf(cellId: CellId): SegmentId;
   metadata(segmentId: SegmentId): SegmentMetadata;
@@ -131,6 +137,8 @@ interface RegionStats {
 }
 
 interface RuntimeData {
+  readonly width: number;
+  readonly height: number;
   readonly membership: Uint16Array;
   readonly metadata: readonly SegmentMetadata[];
   readonly adjacency: readonly (readonly SegmentId[])[];
@@ -340,6 +348,21 @@ function buildTopologyProtectedMask(
   return protectedMask;
 }
 
+function isOrdinaryLandTerrain(terrain: TerrainType): boolean {
+  return !WATER_TERRAINS.has(terrain) && terrain !== "IMPASSABLE";
+}
+
+function noiseParentTerrainFit(
+  current: TerrainType,
+  candidate: TerrainType,
+): number {
+  if (current === candidate) return 2;
+  if (isOrdinaryLandTerrain(current) && isOrdinaryLandTerrain(candidate)) {
+    return 1;
+  }
+  return 0;
+}
+
 function isIsolatedLandIsland(
   componentId: number,
   components: readonly ComponentStats[],
@@ -391,7 +414,12 @@ function chooseNoiseParent(
   meaningful: readonly boolean[],
 ): number {
   const current = components[componentId]!;
+  const hasCompatibleNeighbor = [...neighbors[componentId]!.keys()].some(
+    (candidateId) =>
+      noiseParentTerrainFit(current.terrain, components[candidateId]!.terrain) > 0,
+  );
   let best = -1;
+  let bestTerrainFit = -1;
   let bestMeaningful = -1;
   let bestBoundary = -1;
   let bestCount = -1;
@@ -399,6 +427,8 @@ function chooseNoiseParent(
 
   for (const [candidateId, sharedBoundary] of neighbors[componentId]!) {
     const candidate = components[candidateId]!;
+    const terrainFit = noiseParentTerrainFit(current.terrain, candidate.terrain);
+    if (hasCompatibleNeighbor && terrainFit === 0) continue;
     const candidateMeaningful = meaningful[candidateId] ? 1 : 0;
     const acyclic =
       candidateMeaningful === 1 ||
@@ -408,18 +438,23 @@ function chooseNoiseParent(
     if (!acyclic) continue;
 
     if (
-      candidateMeaningful > bestMeaningful ||
-      (candidateMeaningful === bestMeaningful &&
+      terrainFit > bestTerrainFit ||
+      (terrainFit === bestTerrainFit && candidateMeaningful > bestMeaningful) ||
+      (terrainFit === bestTerrainFit &&
+        candidateMeaningful === bestMeaningful &&
         sharedBoundary > bestBoundary) ||
-      (candidateMeaningful === bestMeaningful &&
+      (terrainFit === bestTerrainFit &&
+        candidateMeaningful === bestMeaningful &&
         sharedBoundary === bestBoundary &&
         candidate.count > bestCount) ||
-      (candidateMeaningful === bestMeaningful &&
+      (terrainFit === bestTerrainFit &&
+        candidateMeaningful === bestMeaningful &&
         sharedBoundary === bestBoundary &&
         candidate.count === bestCount &&
         candidate.minCellId < bestMinCell)
     ) {
       best = candidateId;
+      bestTerrainFit = terrainFit;
       bestMeaningful = candidateMeaningful;
       bestBoundary = sharedBoundary;
       bestCount = candidate.count;
@@ -990,6 +1025,9 @@ export function compileSegments(input: SegmentCompilerInput): CompiledSegments {
 
   const compiled = Object.freeze({
     generatorVersion: SEGMENT_GENERATOR_VERSION,
+    width: input.width,
+    height: input.height,
+    cellCount,
     segmentCount: provisionalCount,
     metadata,
     diagnostics,
@@ -1201,6 +1239,10 @@ function validateArtifactAdjacency(
 }
 
 function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
+  const cellCount = checkedCellCount(data.width, data.height);
+  if (data.membership.length !== cellCount) {
+    throw new Error("Segment runtime membership must match its raster cell count");
+  }
   const membership = data.membership.slice();
   const metadata = Object.freeze(
     data.metadata.map((entry) =>
@@ -1231,6 +1273,9 @@ function runtimeIndexFromData(data: RuntimeData): SegmentRuntimeIndex {
 
   return Object.freeze({
     generatorVersion: SEGMENT_GENERATOR_VERSION,
+    width: data.width,
+    height: data.height,
+    cellCount,
     segmentCount: metadata.length,
     segmentIdOf(cellId: CellId): SegmentId {
       assertCellId(cellId, membership.length);
@@ -1260,6 +1305,8 @@ export function createSegmentRuntimeIndex(
     ),
   );
   return runtimeIndexFromData({
+    width: compiled.width,
+    height: compiled.height,
     membership: compiledMembership(compiled),
     metadata: compiled.metadata,
     adjacency,
@@ -1329,5 +1376,11 @@ export function materializeSegmentArtifact(input: {
     decodeUint32(input.adjacencyOffsetsBytes, "Segment adjacency offsets"),
     decodeUint16(input.adjacencyBytes, "Segment adjacency"),
   );
-  return runtimeIndexFromData({ membership, metadata, adjacency });
+  return runtimeIndexFromData({
+    width: input.width,
+    height: input.height,
+    membership,
+    metadata,
+    adjacency,
+  });
 }
