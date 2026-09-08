@@ -197,6 +197,63 @@ describe("deterministic Segment compiler", () => {
     expect(compiled.metadata[islandId]?.terrainCounts).toEqual({ PLAINS: 1 });
   });
 
+  it("preserves a mountain ridge split by a cardinal pass", () => {
+    const width = 7;
+    const height = 7;
+    const terrain = filledTerrain(width, height, "PLAINS");
+    const northRidge = [3, 10, 17];
+    const passCell = 24;
+    const southRidge = [31, 38, 45];
+    for (const cellId of [...northRidge, ...southRidge]) {
+      terrain[cellId] = "MOUNTAIN";
+    }
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(3);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 3, 31]);
+    expect(compiled.membership[passCell]).toBe(0);
+    expect(compiled.cells(1)).toEqual(northRidge);
+    expect(compiled.cells(2)).toEqual(southRidge);
+    expect(compiled.adjacentSegmentIds(1)).toEqual([0]);
+    expect(compiled.adjacentSegmentIds(2)).toEqual([0]);
+  });
+
+  it("allows a legitimate mixed-terrain Segment after deterministic fragment cleanup", () => {
+    const width = 5;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "PLAINS");
+    for (const cellId of [6, 7, 11, 12]) terrain[cellId] = "FOREST";
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(1);
+    expect(compiled.cells(0)).toEqual(Array.from({ length: 25 }, (_, cellId) => cellId));
+    expect(compiled.metadata[0]).toEqual({
+      minCellId: 0,
+      cellCount: 25,
+      terrainCounts: { PLAINS: 21, FOREST: 4 },
+    });
+  });
+
+  it("keeps diagonal corner/island contacts separate under cardinal connectivity", () => {
+    const width = 3;
+    const height = 3;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    terrain[0] = "PLAINS";
+    terrain[4] = "PLAINS";
+
+    const compiled = compileSegments({ width, height, terrain });
+
+    expect(compiled.segmentCount).toBe(3);
+    expect(compiled.metadata.map((entry) => entry.minCellId)).toEqual([0, 1, 4]);
+    expect([...compiled.membership]).toEqual([0, 1, 1, 1, 2, 1, 1, 1, 1]);
+    expect(compiled.cells(0)).toEqual([0]);
+    expect(compiled.cells(2)).toEqual([4]);
+    expect(compiled.adjacentSegmentIds(0)).toEqual([1]);
+    expect(compiled.adjacentSegmentIds(2)).toEqual([1]);
+  });
+
   it("subdivides large coherent geography deterministically without enforcing compactness", () => {
     const plain = compileSegments({
       width: 100,
