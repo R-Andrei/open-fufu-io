@@ -10,7 +10,12 @@ export interface SetTestMarkerAction {
   readonly value: number;
 }
 
-export type SimulationAction = SetTestMarkerAction;
+export interface CapitulateFactionAction {
+  readonly type: "CAPITULATE_FACTION";
+  readonly factionId: string;
+}
+
+export type SimulationAction = SetTestMarkerAction | CapitulateFactionAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -46,6 +51,13 @@ export class TickEngine {
           factions = factions.map((faction) =>
             faction.id === input.action.factionId
               ? { ...faction, testMarker: input.action.value }
+              : faction,
+          );
+          break;
+        case "CAPITULATE_FACTION":
+          factions = factions.map((faction) =>
+            faction.id === input.action.factionId
+              ? { ...faction, status: "CAPITULATED" }
               : faction,
           );
           break;
