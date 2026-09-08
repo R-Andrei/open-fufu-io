@@ -398,10 +398,12 @@ export class InProcessTestControllerHost implements ControllerHost {
     if (registration === undefined) return hostSuccess();
 
     if (typeof registration === "function") {
-      return this.executeInvocation(factionId, () => registration(observation));
+      return this.executeInvocation<ControllerDecision>(factionId, () =>
+        registration(observation),
+      );
     }
 
-    return this.executeInvocation(factionId, (memory) =>
+    return this.executeInvocation<ControllerDecision>(factionId, (memory) =>
       registration.decide?.(projectHostedContext(observation, memory)),
     );
   }
@@ -411,7 +413,7 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnInfluenceContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation(factionId, (memory) =>
+    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
       registration?.chooseInfluence?.(projectHostedContext(context, memory)),
     );
   }
@@ -421,7 +423,7 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnReconsiderContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation(factionId, (memory) =>
+    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
       registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
     );
   }
@@ -431,7 +433,7 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnOriginContext,
   ): ControllerHostInvocationResult<SpawnOriginDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation(factionId, (memory) =>
+    return this.executeInvocation<SpawnOriginDecision>(factionId, (memory) =>
       registration?.chooseOrigins?.(projectHostedContext(context, memory)),
     );
   }
