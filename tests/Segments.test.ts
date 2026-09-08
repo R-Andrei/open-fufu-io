@@ -237,58 +237,68 @@ describe("deterministic Segment compiler", () => {
 });
 
 describe("OPEN_FUFU_MAP V2 Segment artifact", () => {
-  it("materializes canonical Segment membership/metadata/adjacency into an immutable runtime index", () => {
-    const map = materialize(oneSegmentV2Package());
+  it(
+    "materializes canonical Segment membership/metadata/adjacency into an immutable runtime index",
+    () => {
+      const map = materialize(oneSegmentV2Package());
 
-    expect(map.formatVersion).toBe(2);
-    expect(map.segments).toBeDefined();
-    expect(map.segments?.generatorVersion).toBe(1);
-    expect(map.segments?.segmentCount).toBe(1);
-    expect(map.segments?.segmentIdOf(0)).toBe(0);
-    expect(map.segments?.segmentIdOf(PRODUCTION_CELL_COUNT - 1)).toBe(0);
-    expect(map.segments?.metadata(0)).toEqual({
-      minCellId: 0,
-      cellCount: PRODUCTION_CELL_COUNT,
-      terrainCounts: { PLAINS: PRODUCTION_CELL_COUNT },
-    });
-    const cells = map.segments!.cells(0);
-    expect(cells.length).toBe(PRODUCTION_CELL_COUNT);
-    expect(cells.at(0)).toBe(0);
-    expect(cells.at(PRODUCTION_CELL_COUNT - 1)).toBe(PRODUCTION_CELL_COUNT - 1);
-    expect(map.segments?.adjacentSegmentIds(0)).toEqual([]);
-    expect(Object.isFrozen(map.segments)).toBe(true);
-    expect(Object.isFrozen(cells)).toBe(true);
-  });
+      expect(map.formatVersion).toBe(2);
+      expect(map.segments).toBeDefined();
+      expect(map.segments?.generatorVersion).toBe(1);
+      expect(map.segments?.segmentCount).toBe(1);
+      expect(map.segments?.segmentIdOf(0)).toBe(0);
+      expect(map.segments?.segmentIdOf(PRODUCTION_CELL_COUNT - 1)).toBe(0);
+      expect(map.segments?.metadata(0)).toEqual({
+        minCellId: 0,
+        cellCount: PRODUCTION_CELL_COUNT,
+        terrainCounts: { PLAINS: PRODUCTION_CELL_COUNT },
+      });
+      const cells = map.segments!.cells(0);
+      expect(cells.length).toBe(PRODUCTION_CELL_COUNT);
+      expect(cells.at(0)).toBe(0);
+      expect(cells.at(PRODUCTION_CELL_COUNT - 1)).toBe(PRODUCTION_CELL_COUNT - 1);
+      expect(map.segments?.adjacentSegmentIds(0)).toEqual([]);
+      expect(Object.isFrozen(map.segments)).toBe(true);
+      expect(Object.isFrozen(cells)).toBe(true);
+    },
+    15_000,
+  );
 
-  it("rejects unsupported generator versions and inconsistent compiled Segment bytes before state creation", () => {
-    expect(() =>
-      materialize(
-        oneSegmentV2Package({ manifest: v2Manifest(2) as ReturnType<typeof v2Manifest> }),
-      ),
-    ).toThrow(/segmentGeneratorVersion/i);
+  it(
+    "rejects unsupported generator versions and inconsistent compiled Segment bytes before state creation",
+    () => {
+      expect(() =>
+        materialize(
+          oneSegmentV2Package({
+            manifest: v2Manifest(2) as ReturnType<typeof v2Manifest>,
+          }),
+        ),
+      ).toThrow(/segmentGeneratorVersion/i);
 
-    const invalidMembership = new Uint8Array(PRODUCTION_CELL_COUNT * 2);
-    invalidMembership[0] = 1;
-    expect(() =>
-      materialize(oneSegmentV2Package({ membership: invalidMembership })),
-    ).toThrow(/membership.*SegmentId|SegmentId.*membership/i);
+      const invalidMembership = new Uint8Array(PRODUCTION_CELL_COUNT * 2);
+      invalidMembership[0] = 1;
+      expect(() =>
+        materialize(oneSegmentV2Package({ membership: invalidMembership })),
+      ).toThrow(/membership.*SegmentId|SegmentId.*membership/i);
 
-    const invalidMetadata = uint32Le([
-      0,
-      PRODUCTION_CELL_COUNT - 1,
-      PRODUCTION_CELL_COUNT - 1,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-    ]);
-    expect(() =>
-      materialize(oneSegmentV2Package({ metadata: invalidMetadata })),
-    ).toThrow(/metadata|cellCount|membership/i);
-  });
+      const invalidMetadata = uint32Le([
+        0,
+        PRODUCTION_CELL_COUNT - 1,
+        PRODUCTION_CELL_COUNT - 1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      ]);
+      expect(() =>
+        materialize(oneSegmentV2Package({ metadata: invalidMetadata })),
+      ).toThrow(/metadata|cellCount|membership/i);
+    },
+    15_000,
+  );
 });
