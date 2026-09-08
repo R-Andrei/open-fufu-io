@@ -1,0 +1,18 @@
+import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+
+export interface SyntheticMapSpec {
+  readonly width: number;
+  readonly height: number;
+  readonly terrain: readonly string[];
+}
+
+export interface MatchFactionSpec {
+  readonly id: string;
+  readonly rules: CompiledRuleProfile;
+}
+
+export interface MatchSpec {
+  readonly seed: string;
+  readonly map: SyntheticMapSpec;
+  readonly factions: readonly MatchFactionSpec[];
+}
