@@ -7,14 +7,29 @@ import {
 import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
+  type MatchFactionState,
   type MatchState,
 } from "./MatchState";
 import type { MatchSpec } from "./MatchSpec";
+import {
+  grantPopulation,
+  removePopulation,
+  repartitionPopulation,
+  transferPopulation,
+  type PopulationBucket,
+} from "./Population";
 import {
   TickEngine,
   type AcceptedSimulationInput,
   type SimulationAction,
 } from "./TickEngine";
+
+const POPULATION_BUCKETS = new Set<PopulationBucket>([
+  "AVAILABLE",
+  "OFFENSIVE",
+  "COUNTER_RESPONSE",
+  "TRANSPORT",
+]);
 
 function validateMatchSpec(spec: MatchSpec): void {
   if (!Number.isInteger(spec.map.width) || spec.map.width <= 0) {
@@ -45,25 +60,68 @@ function validateMatchSpec(spec: MatchSpec): void {
   }
 }
 
-function validateAction(state: MatchState, action: SimulationAction): void {
-  const faction = state.factions.find(
-    (candidate) => candidate.id === action.factionId,
-  );
-  if (faction === undefined) {
-    throw new Error(`unknown faction: ${action.factionId}`);
-  }
+function faction(state: MatchState, factionId: string): MatchFactionState {
+  const result = state.factions.find((entry) => entry.id === factionId);
+  if (result === undefined) throw new Error(`unknown faction: ${factionId}`);
+  return result;
+}
 
+function validateBucket(bucket: PopulationBucket): void {
+  if (!POPULATION_BUCKETS.has(bucket)) {
+    throw new Error(`unknown Population bucket: ${String(bucket)}`);
+  }
+}
+
+function validateAction(state: MatchState, action: SimulationAction): void {
   switch (action.type) {
-    case "SET_TEST_MARKER":
+    case "SET_TEST_MARKER": {
+      faction(state, action.factionId);
       if (!Number.isFinite(action.value) || !Number.isInteger(action.value)) {
         throw new Error("test marker value must be a finite integer");
       }
       break;
-    case "CAPITULATE_FACTION":
-      if (faction.status !== "ACTIVE") {
+    }
+    case "CAPITULATE_FACTION": {
+      const target = faction(state, action.factionId);
+      if (target.status !== "ACTIVE") {
         throw new Error(`faction is not active: ${action.factionId}`);
       }
       break;
+    }
+    case "GRANT_POPULATION":
+      grantPopulation(faction(state, action.factionId).population, action.amount);
+      break;
+    case "REPARTITION_POPULATION":
+      validateBucket(action.from);
+      validateBucket(action.to);
+      repartitionPopulation(
+        faction(state, action.factionId).population,
+        action.from,
+        action.to,
+        action.amount,
+      );
+      break;
+    case "REMOVE_POPULATION":
+      validateBucket(action.from);
+      removePopulation(
+        faction(state, action.factionId).population,
+        action.from,
+        action.amount,
+      );
+      break;
+    case "TRANSFER_POPULATION": {
+      validateBucket(action.sourceBucket);
+      if (action.sourceFactionId === action.recipientFactionId) {
+        throw new Error("Population transfer requires two distinct factions");
+      }
+      transferPopulation(
+        faction(state, action.sourceFactionId).population,
+        faction(state, action.recipientFactionId).population,
+        action.sourceBucket,
+        action.amount,
+      );
+      break;
+    }
   }
 }
 
@@ -97,8 +155,13 @@ export class MatchRuntime {
     return this.state;
   }
 
+  private validationState(): MatchState {
+    if (this.pendingInputs.length === 0) return this.state;
+    return this.engine.advance(this.state, this.pendingInputs);
+  }
+
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
-    validateAction(this.state, action);
+    validateAction(this.validationState(), action);
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
       sequence: this.nextSequence,
