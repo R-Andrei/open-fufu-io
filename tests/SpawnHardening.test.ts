@@ -16,7 +16,11 @@ import type {
 } from "../src/simulation/MatchSpec";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { materializeSpawnInitialization } from "../src/simulation/SpawnInitialization";
-import { spawnTerrainBaseSpec } from "../src/simulation/SpawnSemantics";
+import {
+  compareSpawnUtf8,
+  spawnTerrainBaseSpec,
+  stableTie32,
+} from "../src/simulation/SpawnSemantics";
 
 function rules(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
@@ -115,6 +119,58 @@ function attackController() {
 }
 
 describe("reopened #104 Spawn hardening contracts", () => {
+  it("matches resolver-v1 stableTie32 golden vectors and raw UTF-8 fallback ordering", () => {
+    expect(
+      stableTie32("exact-origin-priority", "1", "seed-0001", "F-A", 0),
+    ).toBe(753_298_903);
+    expect(
+      stableTie32("spawn-footprint-cell", "1", "seed-0001", 12_345, "F-A", 0),
+    ).toBe(1_594_207_403);
+    expect(
+      stableTie32("spawn-star-cell", "1", "seed-0001", "F-A", 0, 12_345),
+    ).toBe(1_777_288_741);
+    expect(
+      stableTie32("spawn-compact-cell", "1", "seed-0001", "F-A", 0, 12_345),
+    ).toBe(786_146_991);
+
+    expect(compareSpawnUtf8("A", "B")).toBeLessThan(0);
+    expect(compareSpawnUtf8("F", "F-A")).toBeLessThan(0);
+    expect(compareSpawnUtf8("z", "é")).toBeLessThan(0);
+  });
+
+  it("resolves competing footprints identically when resolved faction input enumeration is reversed", () => {
+    const width = 120;
+    const height = 20;
+    const state = spawnState({ seed: "footprint-input-order", width, height });
+    const alphaOrigin = cellId(width, 35, 10);
+    const betaOrigin = cellId(width, 85, 10);
+
+    const forward = materializeSpawnInitialization(
+      state,
+      fixedSpawnInput([
+        { factionId: "alpha", origins: [alphaOrigin] },
+        { factionId: "beta", origins: [betaOrigin] },
+      ]),
+    );
+    const reversed = materializeSpawnInitialization(
+      state,
+      fixedSpawnInput([
+        { factionId: "beta", origins: [betaOrigin] },
+        { factionId: "alpha", origins: [alphaOrigin] },
+      ]),
+    );
+
+    expect(reversed.state).toEqual(forward.state);
+    expect(reversed.snapshot).toEqual(forward.snapshot);
+    expect(
+      forward.snapshot.factions.some((faction) =>
+        faction.footprints.some(
+          (footprint) => footprint.contestsWon > 0 || footprint.contestsLost > 0,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it.each([
     ["TUNDRA", [] as readonly OriginTraitId[]],
     ["SHALLOW_WATER", [] as readonly OriginTraitId[]],
