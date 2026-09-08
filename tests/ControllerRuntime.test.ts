@@ -1,4 +1,7 @@
-import type { ControllerDecision } from "../src/core/controller/ControllerApi";
+import type {
+  ControllerDecision,
+  SpawnInfluenceDecision,
+} from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
@@ -25,6 +28,30 @@ function twoFactionRuntime(seed: string) {
       ],
     }),
   );
+}
+
+function ordinaryObservation(): LawfulControllerObservation {
+  return Object.freeze({
+    tick: 7,
+    decisionNumber: 3,
+    me: Object.freeze({
+      id: "alpha",
+      status: "ACTIVE" as const,
+      population: Object.freeze({
+        total: 10,
+        available: 8,
+        committedOffense: 2,
+        committedCounterResponse: 0,
+        aboardTransports: 0,
+        neutralSettlementHalfResidual: 0,
+      }),
+    }),
+    factions: Object.freeze([
+      Object.freeze({ id: "alpha", status: "ACTIVE" as const }),
+      Object.freeze({ id: "beta", status: "ACTIVE" as const }),
+    ]),
+    cells: Object.freeze([]),
+  });
 }
 
 function alphaReceipt(
@@ -243,5 +270,75 @@ describe("controller runtime production-host foundation", () => {
       faultCount: 0,
       faulted: false,
     });
+  });
+
+  it("rejects structurally malformed in-process normal output before committing proposed memory", () => {
+    const seenMemory: unknown[] = [];
+    let invocation = 0;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        decide(observation) {
+          seenMemory.push({ ...observation.memory });
+          invocation += 1;
+          if (invocation === 1) {
+            return {
+              commands: [null],
+              memory: { mustNotCommit: true },
+            } as unknown as ControllerDecision;
+          }
+          return { commands: [] };
+        },
+      },
+    });
+
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "INVALID_OUTPUT" },
+    });
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemory).toEqual([{}, {}]);
+  });
+
+  it("rejects structurally malformed in-process Spawn output before committing proposed memory", () => {
+    const seenMemory: unknown[] = [];
+    let invocation = 0;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence(context) {
+          seenMemory.push({ ...context.memory });
+          invocation += 1;
+          if (invocation === 1) {
+            return {
+              centers: null,
+              memory: { mustNotCommit: true },
+            } as unknown as SpawnInfluenceDecision;
+          }
+          return { centers: [1] };
+        },
+        decide() {
+          return { commands: [] };
+        },
+      },
+    });
+
+    expect(
+      host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as never,
+      ),
+    ).toEqual({
+      ok: false,
+      fault: { code: "INVALID_OUTPUT" },
+    });
+    expect(
+      host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as never,
+      ),
+    ).toEqual({ ok: true, output: { centers: [1] } });
+    expect(seenMemory).toEqual([{}, {}]);
   });
 });
