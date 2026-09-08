@@ -1,12 +1,17 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   InProcessTestControllerHost,
   type LawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
-import { createInitialMatchState } from "../src/simulation/MatchState";
+import {
+  createInitialMatchState,
+  createProspectiveMatchState,
+} from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { tryMaterializeStructureGrant } from "../src/simulation/Structures";
 import { TickEngine } from "../src/simulation/TickEngine";
 
 function emptyRules() {
@@ -359,5 +364,182 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         value: Number.NaN,
       }),
     ).toThrow(/finite integer/i);
+  });
+});
+
+describe("persistent structure grant foundation", () => {
+  it("materializes a legal deterministic initialization GRANT as an active completed structure", () => {
+    const rules = emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed: "initial-structure-grant",
+      width: 2,
+      height: 2,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta"],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-silo",
+          ownerId: "alpha",
+          type: "MISSILE_SILO",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+
+    const runtime = new MatchRuntime(spec);
+
+    expect(runtime.snapshot().structures).toEqual([
+      {
+        id: "alpha-silo",
+        ownerId: "alpha",
+        type: "MISSILE_SILO",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
+        acquisitionPath: "GRANT",
+      },
+    ]);
+  });
+
+  it("evaluates the N07 hard ownership cap before mutation", () => {
+    const alphaRules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["N07"]),
+    );
+    const betaRules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "structure-cap",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "beta", "beta"],
+        factions: [
+          { id: "alpha", rules: alphaRules },
+          { id: "beta", rules: betaRules },
+        ],
+      }),
+    );
+
+    const first = tryMaterializeStructureGrant(state, {
+      structureId: "alpha-city-1",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 0,
+      level: 1,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.failure.code);
+
+    const withFirst = createProspectiveMatchState(state, {
+      structures: first.structures,
+    });
+    const beforeSecond = withFirst.structures;
+    const second = tryMaterializeStructureGrant(withFirst, {
+      structureId: "alpha-city-2",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 1,
+      level: 1,
+    });
+
+    expect(second).toEqual({
+      ok: false,
+      failure: { code: "OWNERSHIP_CAP" },
+    });
+    expect(withFirst.structures).toBe(beforeSecond);
+    expect(withFirst.structures).toHaveLength(1);
+  });
+
+  it("rejects an occupied exact grant cell without partial mutation", () => {
+    const rules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "structure-occupancy",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "beta", "beta"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const first = tryMaterializeStructureGrant(state, {
+      structureId: "alpha-fort",
+      ownerId: "alpha",
+      type: "FORT",
+      cellId: 0,
+      level: 1,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.failure.code);
+
+    const withFirst = createProspectiveMatchState(state, {
+      structures: first.structures,
+    });
+    const beforeSecond = withFirst.structures;
+    const second = tryMaterializeStructureGrant(withFirst, {
+      structureId: "alpha-city",
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 0,
+      level: 1,
+    });
+
+    expect(second).toEqual({
+      ok: false,
+      failure: { code: "CELL_OCCUPIED" },
+    });
+    expect(withFirst.structures).toBe(beforeSecond);
+    expect(withFirst.structures).toEqual(first.structures);
+  });
+
+  it("fingerprints and regenerates initialization GRANT state exactly", () => {
+    const rules = emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed: "structure-replay",
+      width: 2,
+      height: 2,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta"],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-silo",
+          ownerId: "alpha",
+          type: "MISSILE_SILO",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+    const runtime = new MatchRuntime(spec);
+    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+
+    expect(regenerated.snapshot()).toEqual(runtime.snapshot());
+    expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
+    expect(JSON.parse(runtime.stateFingerprint()).structures).toEqual([
+      {
+        id: "alpha-silo",
+        ownerId: "alpha",
+        type: "MISSILE_SILO",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        chargeSlots: [{ slotId: 0, state: "READY" }],
+        acquisitionPath: "GRANT",
+      },
+    ]);
   });
 });

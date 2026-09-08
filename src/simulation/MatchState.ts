@@ -21,6 +21,11 @@ import {
   createPopulationState,
   type PopulationState,
 } from "./Population";
+import {
+  materializePersistentStructures,
+  tryMaterializeStructureGrant,
+  type PersistentStructureState,
+} from "./Structures";
 
 export interface MatchFactionState {
   readonly id: string;
@@ -38,6 +43,7 @@ export interface MatchState {
   readonly ownership: readonly (string | null)[];
   readonly fallout: readonly boolean[];
   readonly factions: readonly MatchFactionState[];
+  readonly structures: readonly PersistentStructureState[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -49,6 +55,7 @@ export interface MatchStateUpdate {
   readonly factions?: readonly MatchFactionState[];
   readonly ownership?: readonly (string | null)[];
   readonly fallout?: readonly boolean[];
+  readonly structures?: readonly PersistentStructureState[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -174,6 +181,9 @@ function createState(
     ownership: freezeOwnership(ownership),
     fallout: freezeFallout(fallout),
     factions: freezeFactions(update.factions ?? previous.factions),
+    structures: materializePersistentStructures(
+      update.structures ?? previous.structures,
+    ),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -197,7 +207,7 @@ function createState(
 export function createInitialMatchState(spec: MatchSpec): MatchState {
   const map = freezeMap(spec.map);
   const cellCount = spec.map.width * spec.map.height;
-  return Object.freeze({
+  let state: MatchState = Object.freeze({
     seed: spec.seed,
     tick: 0,
     map,
@@ -219,12 +229,20 @@ export function createInitialMatchState(spec: MatchSpec): MatchState {
           : { fixedTeamId: faction.fixedTeamId }),
       })),
     ),
+    structures: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
     counterResponseResiduals: Object.freeze([]),
     hostilityGrace: Object.freeze([]),
   });
+
+  for (const grant of spec.initialStructureGrants ?? []) {
+    const result = tryMaterializeStructureGrant(state, grant);
+    if (!result.ok) continue;
+    state = createProspectiveMatchState(state, { structures: result.structures });
+  }
+  return state;
 }
 
 export function createProspectiveMatchState(
@@ -265,6 +283,46 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         version: faction.rules.version,
         canonicalSerialization: faction.rules.canonicalSerialization,
       },
+    }));
+
+  const structures = [...state.structures]
+    .sort(
+      (left, right) =>
+        compareIds(left.id, right.id) ||
+        left.cellId - right.cellId ||
+        compareIds(left.ownerId, right.ownerId),
+    )
+    .map((structure) => ({
+      id: structure.id,
+      ownerId: structure.ownerId,
+      type: structure.type,
+      cellId: structure.cellId,
+      ...(structure.completedLevel === undefined
+        ? {}
+        : { completedLevel: structure.completedLevel }),
+      active: structure.active,
+      ...(structure.construction === undefined
+        ? {}
+        : {
+            construction: {
+              targetLevel: structure.construction.targetLevel,
+              remainingTicks: structure.construction.remainingTicks,
+            },
+          }),
+      ...(structure.chargeSlots === undefined
+        ? {}
+        : {
+            chargeSlots: structure.chargeSlots.map((slot) =>
+              slot.state === "READY"
+                ? { slotId: slot.slotId, state: slot.state }
+                : {
+                    slotId: slot.slotId,
+                    state: slot.state,
+                    readyAtTick: slot.readyAtTick,
+                  },
+            ),
+          }),
+      acquisitionPath: structure.acquisitionPath,
     }));
 
   const operations = [...state.operations]
@@ -312,6 +370,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     ownership: [...state.ownership],
     fallout: [...state.fallout],
     factions,
+    structures,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(
