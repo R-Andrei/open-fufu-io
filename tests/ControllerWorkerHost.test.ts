@@ -271,4 +271,110 @@ describe("production controller worker host", () => {
       fault: { code: "RUNTIME_ERROR" },
     });
   });
+
+  it("rejects malformed nested decisions rather than treating copied data as a typed decision", async () => {
+    const malformedOutputs: readonly unknown[] = [
+      { commands: [null] },
+      { commands: [{ kind: "CAPITULATE" }] },
+      { directives: { set: [null] } },
+      { directives: { end: [1] } },
+      { debug: [null] },
+    ];
+
+    for (const output of malformedOutputs) {
+      const pool = new RecordingPool(() => ({
+        ok: true,
+        output,
+        usage: { queries: 0, materializedCells: 0 },
+      }));
+      const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "INVALID_OUTPUT" },
+      });
+    }
+  });
+
+  it("rejects malformed normal output before committing its proposed memory", async () => {
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: {
+            commands: [null],
+            memory: { mustNotCommit: true },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "INVALID_OUTPUT" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}"]);
+  });
+
+  it("rejects malformed Spawn output before committing its proposed memory", async () => {
+    const spawnArtifact: ControllerRuntimeArtifact = Object.freeze({
+      moduleSource: "export function chooseInfluence() { return { centers: [] }; }",
+      entrypoints: Object.freeze({
+        decide: "decide",
+        chooseInfluence: "chooseInfluence",
+      }),
+    });
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: {
+            centers: null,
+            memory: { mustNotCommit: true },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: spawnArtifact });
+
+    expect(
+      await host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as never,
+      ),
+    ).toEqual({
+      ok: false,
+      fault: { code: "INVALID_OUTPUT" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}"]);
+  });
 });
