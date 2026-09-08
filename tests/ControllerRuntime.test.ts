@@ -96,6 +96,46 @@ describe("controller runtime production-host foundation", () => {
     ]);
   });
 
+  it("keeps an asynchronous controller round atomic against tick and same-tick re-entry", async () => {
+    const runtime = twoFactionRuntime("async-host-atomicity");
+    let resolveAlpha: ((result: ControllerHostInvocationResult<ControllerDecision>) => void) | undefined;
+    const host = {
+      invoke(factionId: string) {
+        if (factionId === "alpha") {
+          return new Promise<ControllerHostInvocationResult<ControllerDecision>>(
+            (resolve) => {
+              resolveAlpha = resolve;
+            },
+          );
+        }
+        return Promise.resolve({ ok: true as const });
+      },
+      chooseInfluence() {
+        return Promise.resolve({ ok: true as const });
+      },
+      reconsiderInfluence() {
+        return Promise.resolve({ ok: true as const });
+      },
+      chooseOrigins() {
+        return Promise.resolve({ ok: true as const });
+      },
+    } as unknown as ControllerHost;
+
+    const pending = runtime.runControllerRound(host);
+
+    expect(() => runtime.tick()).toThrow(/controller round.*in progress/i);
+    expect(() => runtime.runControllerRound(host)).toThrow(
+      /controller round.*in progress/i,
+    );
+
+    if (resolveAlpha === undefined) throw new Error("alpha invocation did not start");
+    resolveAlpha({ ok: true });
+    await pending;
+
+    expect(runtime.snapshot().tick).toBe(0);
+    expect(() => runtime.runControllerRound(host)).toThrow(/already executed/i);
+  });
+
   it("faults a controller on the fifth consecutive normal-runtime fault and skips later invocation", async () => {
     const runtime = twoFactionRuntime("controller-circuit-consecutive");
     let alphaInvocations = 0;
