@@ -1,3 +1,10 @@
+// Exact executable owner for the OPEN_FUFU_MAP V1 package schema, canonical
+// serialization/content identity, terrain-code encoding, artifact validation,
+// and map-artifact binding. Broader migration/version-binding architecture is
+// owned by docs/OPENFRONT_INTEGRATION_PLAN.md; the raster-cell invariant and
+// spatial ontology by docs/OPEN_FUFU_DESIGN.md; terrain mechanics by
+// docs/TERRAIN_AND_STRUCTURES.md; Segment semantics by docs/SEGMENTS.md.
+
 import type { TerrainType } from "../core/controller/ControllerApi";
 import { createSimulationMap, type SimulationMap } from "./SimulationMap";
 
