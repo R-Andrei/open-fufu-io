@@ -120,6 +120,10 @@
       "validators": ["tests/TacticalVisibility.test.ts"]
     },
     {
+      "path": "src/official-ai/OfficialAiController.ts",
+      "validators": ["tests/OfficialAiRuntime.test.ts"]
+    },
+    {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
         "tests/LandCertification.test.ts",
