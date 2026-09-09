@@ -103,6 +103,22 @@ export interface MapPoint {
   readonly y: number;
 }
 
+/**
+ * Cheap immutable public map facts available locally to every controller.
+ * Invalid CellIds/coordinates use deterministic absence rather than throwing.
+ */
+export interface MapApi {
+  readonly width: number;
+  readonly height: number;
+  readonly cellCount: number;
+  isValidCellId(id: CellId): boolean;
+  cellIdAt(x: number, y: number): CellId | undefined;
+  positionOf(id: CellId): Readonly<MapPoint> | undefined;
+  terrainAt(id: CellId): TerrainType | undefined;
+  segmentIdOf(id: CellId): SegmentId | undefined;
+  cardinalNeighbors(id: CellId): readonly CellId[] | undefined;
+}
+
 export interface GameView {
   readonly matchId: string;
   readonly tick: Tick;
@@ -349,6 +365,8 @@ export interface QueryPage<T> {
 }
 
 export interface CellsApi {
+  /** Public political ownership; null is neutral and undefined is an invalid CellId. */
+  owner(id: CellId): FactionId | null | undefined;
   get(id: CellId): Promise<CellView | undefined>;
   query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
   count(selector: CellSelector): Promise<number>;
@@ -357,10 +375,6 @@ export interface CellsApi {
     selector: CellSelector,
     limit?: number,
   ): Promise<QueryPage<CellView>>;
-  connectedComponents(
-    selector: CellSelector,
-    limit?: number,
-  ): Promise<QueryPage<CellSelector>>;
   distance(a: CellId, b: CellId): Promise<number>;
 }
 
@@ -368,6 +382,8 @@ export interface SegmentsApi {
   get(id: SegmentId): Promise<SegmentView | undefined>;
   list(): Promise<readonly SegmentView[]>;
   cells(id: SegmentId): CellSelector;
+  /** Cheap canonical CellIds for this immutable compiled Segment; undefined if invalid. */
+  cellIds(id: SegmentId): readonly CellId[] | undefined;
 }
 
 export interface ContactsApi {
@@ -1184,6 +1200,7 @@ export interface ControllerContext<
   readonly game: GameView;
   readonly me: SelfFactionView;
   readonly factions: FactionsApi;
+  readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
   readonly contacts: ContactsApi;
@@ -1259,6 +1276,7 @@ export interface SpawnBaseContext<
 > {
   readonly game: GameView;
   readonly me: SelfFactionView;
+  readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
   readonly rules: RulesView;
