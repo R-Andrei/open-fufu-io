@@ -130,6 +130,12 @@ describe("#107 Strategic Spawn coordinator", () => {
         },
         chooseOrigins(context) {
           phase3Seen.alpha = context;
+          expect(context.spawn.isValidOriginChoice(25, 0)).toBe(true);
+          expect(context.spawn.validateOriginChoices([25])).toEqual({ valid: true });
+          expect(context.spawn.validateOriginChoices([])).toEqual({
+            valid: false,
+            code: "WRONG_ORIGIN_COUNT",
+          });
           return { origins: [25] };
         },
       },
