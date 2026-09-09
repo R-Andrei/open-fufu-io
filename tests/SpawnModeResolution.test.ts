@@ -333,6 +333,7 @@ describe("#106 deterministic Fixed and Random Spawn providers", () => {
       seed: "random-unfillable",
       width,
       height: 1,
+      terrain,
     });
 
     expect(() => resolveRandomSpawnInitialization(state)).toThrow(
