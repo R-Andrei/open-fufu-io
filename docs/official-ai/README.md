@@ -26,7 +26,7 @@ Character-specific workarounds MUST NOT silently compensate for broken/incomplet
 
 ## Coupled-audit triggers
 
-The audit is triggered by adding/removing/changing any of the following when strategic behavior may change:
+The audit is triggered by adding/removing/changing any of the following:
 
 - core mechanics or formulas;
 - balance values affecting strategic value, timing, risk, payoff, range, cost, throughput, damage, growth, capacity, cooldown, coverage, or opportunity cost;

@@ -69,7 +69,8 @@ When that protocol identifies material overlap involving canonical/config owners
 
 Before completing authoritative or documentation-heavy work:
 
-- search changed mechanic/trait/entity names plus old terminology/formulas/status;
+- inspect relevant directories for duplicate or temporary files;
+- search changed mechanic/trait/entity names, old terminology/superseded formulas/renamed entities, and references to deleted files;
 - inspect every relevant hit and fix stale/duplicate authority;
 - re-read modified/referenced owners against the changed code/config;
 - verify every durable concern has a clear single owner;
