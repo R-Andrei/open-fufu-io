@@ -70,14 +70,10 @@ function invertedOwnership(cellCount: number): (string | null)[] {
 
 describe("ownership-plane adversarial certification", () => {
   it("binds a coalesced ownership publication to the authoritative tick of its final observation", () => {
-    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 }) as OwnershipPlanePublisher & {
-      observe(ownership: readonly (string | null)[], tick: number): void;
-    };
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
     const initial = Object.freeze(alternatingOwnership(128));
     publisher.observe(initial, 0);
-    const baseline = requirePublication(publisher.flush()) as OwnershipPublication & {
-      tick: number;
-    };
+    const baseline = requirePublication(publisher.flush());
     expect(baseline.tick).toBe(0);
 
     const first = initial.slice();
@@ -90,17 +86,19 @@ describe("ownership-plane adversarial certification", () => {
     final[2] = "beta";
     publisher.observe(Object.freeze(final), 5);
 
-    const delta = requirePublication(publisher.flush()) as OwnershipPublication & {
-      tick: number;
-    };
+    const delta = requirePublication(publisher.flush());
     expect(delta.tick).toBe(5);
     expect(delta.revision).toBe(2);
+    expect(() => publisher.observe(Object.freeze(final.slice()), 4)).toThrow(
+      /tick must not regress/,
+    );
+    expect(() => publisher.observe(Object.freeze(final.slice()), -1)).toThrow(
+      /non-negative safe integer/,
+    );
 
-    const cache = new OwnershipPlaneCache() as OwnershipPlaneCache & {
-      tick(): number | undefined;
-    };
+    const cache = new OwnershipPlaneCache();
     expect(
-      cache.applyEnvelope({ streamId: "tick-bound", seq: 1, tick: 0 } as never),
+      cache.applyEnvelope({ streamId: "tick-bound", seq: 1, tick: 0 }),
     ).toEqual({ ok: true, revision: 0 });
     expect(
       cache.applyEnvelope({
@@ -108,11 +106,11 @@ describe("ownership-plane adversarial certification", () => {
         seq: 2,
         tick: baseline.tick,
         bytes: baseline.bytes,
-      } as never),
+      }),
     ).toEqual({ ok: true, revision: 1 });
     expect(cache.tick()).toBe(0);
     expect(
-      cache.applyEnvelope({ streamId: "tick-bound", seq: 3, tick: 4 } as never),
+      cache.applyEnvelope({ streamId: "tick-bound", seq: 3, tick: 4 }),
     ).toEqual({ ok: true, revision: 1 });
     expect(cache.tick()).toBe(0);
     expect(
@@ -121,10 +119,14 @@ describe("ownership-plane adversarial certification", () => {
         seq: 4,
         tick: delta.tick,
         bytes: delta.bytes,
-      } as never),
+      }),
     ).toEqual({ ok: true, revision: 2 });
     expect(cache.tick()).toBe(5);
     expect(cache.ownerAt(2)).toBe("beta");
+    expect(
+      cache.applyEnvelope({ streamId: "tick-bound", seq: 5, tick: 4 }),
+    ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
+    expect(cache.tick()).toBe(5);
   });
 
   it("encodes identical logical revisions byte-for-byte deterministically", () => {
@@ -141,9 +143,9 @@ describe("ownership-plane adversarial certification", () => {
     const publications: OwnershipPublication[][] = [];
     for (let run = 0; run < 3; run += 1) {
       const publisher = new OwnershipPlanePublisher({ chunkSize: 1_024 });
-      publisher.observe(initial);
+      publisher.observe(initial, 0);
       const baseline = requirePublication(publisher.flush());
-      publisher.observe(next);
+      publisher.observe(next, 0);
       const delta = requirePublication(publisher.flush());
       publications.push([baseline, delta]);
     }
@@ -165,7 +167,7 @@ describe("ownership-plane adversarial certification", () => {
     const initial = Object.freeze(initialMutable);
 
     const publisher = new OwnershipPlanePublisher({ chunkSize });
-    publisher.observe(initial);
+    publisher.observe(initial, 0);
     const baseline = requirePublication(publisher.flush());
 
     const nextMutable = initial.slice();
@@ -173,7 +175,7 @@ describe("ownership-plane adversarial certification", () => {
       nextMutable[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
     }
     const next = Object.freeze(nextMutable);
-    publisher.observe(next);
+    publisher.observe(next, 0);
     const delta = requirePublication(publisher.flush());
 
     expect(delta.kind).toBe("DELTA");
@@ -183,22 +185,32 @@ describe("ownership-plane adversarial certification", () => {
     );
 
     const cache = new OwnershipPlaneCache();
-    expect(cache.applyEnvelope({ streamId: "replace", seq: 1 })).toEqual({
+    expect(cache.applyEnvelope({ streamId: "replace", seq: 1, tick: 0 })).toEqual({
       ok: true,
       revision: 0,
     });
     expect(
-      cache.applyEnvelope({ streamId: "replace", seq: 2, bytes: baseline.bytes }),
+      cache.applyEnvelope({
+        streamId: "replace",
+        seq: 2,
+        tick: baseline.tick,
+        bytes: baseline.bytes,
+      }),
     ).toEqual({ ok: true, revision: 1 });
     expect(
-      cache.applyEnvelope({ streamId: "replace", seq: 3, bytes: delta.bytes }),
+      cache.applyEnvelope({
+        streamId: "replace",
+        seq: 3,
+        tick: delta.tick,
+        bytes: delta.bytes,
+      }),
     ).toEqual({ ok: true, revision: 2 });
     assertCacheMatches(cache, next);
   });
 
   it("rejects an unsupported ownership schema version before logical application", () => {
     const publisher = new OwnershipPlanePublisher();
-    publisher.observe(Object.freeze(["alpha", null, "beta"]));
+    publisher.observe(Object.freeze(["alpha", null, "beta"]), 0);
     const baseline = requirePublication(publisher.flush());
     const unsupported = baseline.bytes.slice();
     unsupported[4] = OWNERSHIP_PLANE_SCHEMA_VERSION + 1;
@@ -208,12 +220,17 @@ describe("ownership-plane adversarial certification", () => {
     );
 
     const cache = new OwnershipPlaneCache();
-    expect(cache.applyEnvelope({ streamId: "schema", seq: 1 })).toEqual({
+    expect(cache.applyEnvelope({ streamId: "schema", seq: 1, tick: 0 })).toEqual({
       ok: true,
       revision: 0,
     });
     expect(
-      cache.applyEnvelope({ streamId: "schema", seq: 2, bytes: unsupported }),
+      cache.applyEnvelope({
+        streamId: "schema",
+        seq: 2,
+        tick: baseline.tick,
+        bytes: unsupported,
+      }),
     ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
     expect(cache.revision()).toBe(0);
     expect(cache.cellCount()).toBe(0);
@@ -226,7 +243,7 @@ describe("ownership-plane adversarial certification", () => {
     for (const chunkSize of chunkSizes) {
       const publisher = new OwnershipPlanePublisher({ chunkSize });
       let current = alternatingOwnership(V1_CELL_COUNT);
-      publisher.observe(Object.freeze(current));
+      publisher.observe(Object.freeze(current), 0);
       const baseline = requirePublication(publisher.flush());
       const baselineDecoded = decodeBenchmark(baseline);
       expect(baselineDecoded.decoded.kind).toBe("SNAPSHOT");
@@ -250,7 +267,7 @@ describe("ownership-plane adversarial certification", () => {
         const cellId = Math.floor((index * (V1_CELL_COUNT - 1)) / 255);
         next[cellId] = next[cellId] === "alpha" ? "beta" : "alpha";
       }
-      publisher.observe(Object.freeze(next));
+      publisher.observe(Object.freeze(next), 0);
       const sparse = requirePublication(publisher.flush());
       const sparseDecoded = decodeBenchmark(sparse);
       expect(sparse.kind).toBe("DELTA");
@@ -276,13 +293,13 @@ describe("ownership-plane adversarial certification", () => {
       const contiguousEnd = 1_800_000;
       next = current.slice();
       next.fill("alpha", contiguousStart, contiguousEnd);
-      publisher.observe(Object.freeze(next));
+      publisher.observe(Object.freeze(next), 0);
       requirePublication(publisher.flush());
       current = next;
 
       next = current.slice();
       next.fill("beta", contiguousStart, contiguousEnd);
-      publisher.observe(Object.freeze(next));
+      publisher.observe(Object.freeze(next), 0);
       const contiguous = requirePublication(publisher.flush());
       const contiguousDecoded = decodeBenchmark(contiguous);
       expect(contiguous.kind).toBe("DELTA");
@@ -306,7 +323,7 @@ describe("ownership-plane adversarial certification", () => {
       current = next;
 
       next = invertedOwnership(V1_CELL_COUNT);
-      publisher.observe(Object.freeze(next));
+      publisher.observe(Object.freeze(next), 0);
       const nearGlobal = requirePublication(publisher.flush());
       const nearGlobalDecoded = decodeBenchmark(nearGlobal);
       expect(nearGlobal.stats.changedCells).toBeGreaterThan(2_000_000);

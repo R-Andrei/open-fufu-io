@@ -33,6 +33,7 @@ export type OwnershipPublicationStats = Readonly<{
 export type OwnershipPublication = Readonly<{
   schemaVersion: number;
   kind: "SNAPSHOT" | "DELTA";
+  tick: number;
   revision: number;
   baseRevision?: number;
   bytes: Uint8Array;
@@ -876,10 +877,12 @@ export function decodeOwnershipFrame(bytes: Uint8Array): DecodedOwnershipFrame {
 export class OwnershipPlanePublisher {
   private readonly chunkSizeValue: number;
   private observed?: readonly (string | null)[];
+  private observedTick?: number;
   private publishedObservation?: readonly (string | null)[];
   private publishedCodes?: OwnerCodePlane;
   private publishedPalette: readonly string[] = Object.freeze([]);
   private publishedRevision = 0;
+  private publishedTick?: number;
 
   constructor(options: Readonly<{ chunkSize?: number }> = {}) {
     this.chunkSizeValue = options.chunkSize ?? DEFAULT_CHUNK_SIZE;
@@ -889,19 +892,29 @@ export class OwnershipPlanePublisher {
     }
   }
 
-  observe(ownership: readonly (string | null)[]): void {
+  observe(ownership: readonly (string | null)[], tick: number): void {
     if (!Array.isArray(ownership)) {
       throw new TypeError("ownership observation must be an array");
     }
     if (ownership.length <= 0 || ownership.length > MAX_OWNERSHIP_CELL_COUNT) {
       throw new RangeError("ownership observation has invalid cell count");
     }
+    requireNonNegativeSafeInteger(tick, "ownership authoritative tick");
+    if (this.observedTick !== undefined && tick < this.observedTick) {
+      throw new RangeError("ownership authoritative tick must not regress");
+    }
     this.observed = ownership;
+    this.observedTick = tick;
   }
 
   flush(): OwnershipPublication | null {
     const ownership = this.observed;
-    if (ownership === undefined || ownership === this.publishedObservation) {
+    const tick = this.observedTick;
+    if (ownership === undefined || tick === undefined) {
+      return null;
+    }
+    if (ownership === this.publishedObservation) {
+      this.publishedTick = tick;
       return null;
     }
     const started = Date.now();
@@ -914,6 +927,7 @@ export class OwnershipPlanePublisher {
       codePlanesEqual(nextCodes, this.publishedCodes)
     ) {
       this.publishedObservation = ownership;
+      this.publishedTick = tick;
       return null;
     }
 
@@ -960,6 +974,7 @@ export class OwnershipPlanePublisher {
     this.publishedCodes = nextCodes;
     this.publishedPalette = palette;
     this.publishedRevision = revision;
+    this.publishedTick = tick;
     const stats = Object.freeze({
       cellCount: nextCodes.length,
       changedCells,
@@ -980,6 +995,7 @@ export class OwnershipPlanePublisher {
     return Object.freeze({
       schemaVersion: OWNERSHIP_PLANE_SCHEMA_VERSION,
       kind,
+      tick,
       revision,
       ...(baseRevision === undefined ? {} : { baseRevision }),
       bytes: selectedBytes,
@@ -989,7 +1005,11 @@ export class OwnershipPlanePublisher {
   }
 
   currentSnapshot(): OwnershipPublication {
-    if (this.publishedCodes === undefined || this.publishedRevision <= 0) {
+    if (
+      this.publishedCodes === undefined ||
+      this.publishedRevision <= 0 ||
+      this.publishedTick === undefined
+    ) {
       throw new Error("ownership publisher has no published state");
     }
     const started = Date.now();
@@ -1002,6 +1022,7 @@ export class OwnershipPlanePublisher {
     return Object.freeze({
       schemaVersion: OWNERSHIP_PLANE_SCHEMA_VERSION,
       kind: "SNAPSHOT" as const,
+      tick: this.publishedTick,
       revision: this.publishedRevision,
       bytes,
       chunkModes: Object.freeze([]),
@@ -1031,6 +1052,7 @@ export class OwnershipPlanePublisher {
 type ApplyEnvelope = Readonly<{
   streamId: string;
   seq: number;
+  tick: number;
   bytes?: Uint8Array;
 }>;
 
@@ -1055,13 +1077,19 @@ function applyFailure(
 export class OwnershipPlaneCache {
   private streamIdValue?: string;
   private lastSeq?: number;
+  private lastEnvelopeTick?: number;
   private revisionValue = 0;
+  private ownershipTickValue?: number;
   private palette: readonly string[] = Object.freeze([]);
   private codes?: OwnerCodePlane;
   private requiresResync = false;
 
   revision(): number {
     return this.revisionValue;
+  }
+
+  tick(): number | undefined {
+    return this.ownershipTickValue;
   }
 
   cellCount(): number {
@@ -1107,6 +1135,8 @@ export class OwnershipPlaneCache {
       envelope.streamId.length === 0 ||
       !Number.isSafeInteger(envelope.seq) ||
       envelope.seq <= 0 ||
+      !Number.isSafeInteger(envelope.tick) ||
+      envelope.tick < 0 ||
       (envelope.bytes !== undefined && !(envelope.bytes instanceof Uint8Array))
     ) {
       this.requiresResync = true;
@@ -1125,18 +1155,29 @@ export class OwnershipPlaneCache {
       this.requiresResync = true;
       return applyFailure("SEQUENCE_GAP");
     }
+    if (
+      sameStream &&
+      this.lastEnvelopeTick !== undefined &&
+      envelope.tick < this.lastEnvelopeTick
+    ) {
+      this.requiresResync = true;
+      return applyFailure("INVALID_PAYLOAD");
+    }
 
     if (envelope.bytes === undefined) {
       if (!sameStream) {
         this.streamIdValue = envelope.streamId;
         this.lastSeq = envelope.seq;
+        this.lastEnvelopeTick = envelope.tick;
         this.revisionValue = 0;
+        this.ownershipTickValue = undefined;
         this.palette = Object.freeze([]);
         this.codes = undefined;
         this.requiresResync = false;
         return Object.freeze({ ok: true, revision: 0 });
       }
       this.lastSeq = envelope.seq;
+      this.lastEnvelopeTick = envelope.tick;
       return Object.freeze({ ok: true, revision: this.revisionValue });
     }
 
@@ -1147,6 +1188,7 @@ export class OwnershipPlaneCache {
       if (!sameStream) {
         this.streamIdValue = envelope.streamId;
         this.lastSeq = envelope.seq;
+        this.lastEnvelopeTick = envelope.tick;
       }
       this.requiresResync = true;
       return applyFailure("INVALID_PAYLOAD");
@@ -1156,12 +1198,15 @@ export class OwnershipPlaneCache {
       if (decoded.kind !== "SNAPSHOT") {
         this.streamIdValue = envelope.streamId;
         this.lastSeq = envelope.seq;
+        this.lastEnvelopeTick = envelope.tick;
         this.requiresResync = true;
         return applyFailure("RESYNC_REQUIRED");
       }
       this.streamIdValue = envelope.streamId;
       this.lastSeq = envelope.seq;
+      this.lastEnvelopeTick = envelope.tick;
       this.revisionValue = decoded.revision;
+      this.ownershipTickValue = envelope.tick;
       this.palette = decoded.palette;
       this.codes = decoded.codes;
       this.requiresResync = false;
@@ -1174,7 +1219,9 @@ export class OwnershipPlaneCache {
         return applyFailure("REVISION_MISMATCH");
       }
       this.lastSeq = envelope.seq;
+      this.lastEnvelopeTick = envelope.tick;
       this.revisionValue = decoded.revision;
+      this.ownershipTickValue = envelope.tick;
       this.palette = decoded.palette;
       this.codes = decoded.codes;
       return Object.freeze({ ok: true, revision: decoded.revision });
@@ -1208,7 +1255,9 @@ export class OwnershipPlaneCache {
       }
     }
     this.lastSeq = envelope.seq;
+    this.lastEnvelopeTick = envelope.tick;
     this.revisionValue = decoded.revision;
+    this.ownershipTickValue = envelope.tick;
     return Object.freeze({ ok: true, revision: decoded.revision });
   }
 }
