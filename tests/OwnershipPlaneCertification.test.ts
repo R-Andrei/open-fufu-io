@@ -69,6 +69,24 @@ function invertedOwnership(cellCount: number): (string | null)[] {
 }
 
 describe("ownership-plane adversarial certification", () => {
+  it("rejects a fresh ownership stream that skips ordered sequence one", () => {
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    publisher.observe(Object.freeze(alternatingOwnership(128)), 0);
+    const baseline = requirePublication(publisher.flush());
+
+    const cache = new OwnershipPlaneCache();
+    expect(
+      cache.applyEnvelope({
+        streamId: "fresh-gap",
+        seq: 2,
+        tick: baseline.tick,
+        bytes: baseline.bytes,
+      }),
+    ).toEqual({ ok: false, reason: "SEQUENCE_GAP", resyncRequired: true });
+    expect(cache.revision()).toBe(0);
+    expect(cache.cellCount()).toBe(0);
+  });
+
   it("binds a coalesced ownership publication to the authoritative tick of its final observation", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
     const initial = Object.freeze(alternatingOwnership(128));
