@@ -52,10 +52,18 @@ function assertCacheMatches(
   }
 }
 
-function nearGlobalOwnership(cellCount: number): (string | null)[] {
+function alternatingOwnership(cellCount: number): (string | null)[] {
   const ownership = new Array<string | null>(cellCount);
   for (let cellId = 0; cellId < cellCount; cellId += 1) {
     ownership[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
+  }
+  return ownership;
+}
+
+function invertedOwnership(cellCount: number): (string | null)[] {
+  const ownership = new Array<string | null>(cellCount);
+  for (let cellId = 0; cellId < cellCount; cellId += 1) {
+    ownership[cellId] = cellId % 2 === 0 ? "beta" : "alpha";
   }
   return ownership;
 }
@@ -159,8 +167,7 @@ describe("ownership-plane adversarial certification", () => {
 
     for (const chunkSize of chunkSizes) {
       const publisher = new OwnershipPlanePublisher({ chunkSize });
-      let current = new Array<string | null>(V1_CELL_COUNT).fill("alpha");
-      current[V1_CELL_COUNT - 1] = "beta";
+      let current = alternatingOwnership(V1_CELL_COUNT);
       publisher.observe(Object.freeze(current));
       const baseline = requirePublication(publisher.flush());
       const baselineDecoded = decodeBenchmark(baseline);
@@ -182,8 +189,8 @@ describe("ownership-plane adversarial certification", () => {
 
       let next = current.slice();
       for (let index = 0; index < 256; index += 1) {
-        const cellId = Math.floor((index * (V1_CELL_COUNT - 2)) / 255);
-        next[cellId] = "beta";
+        const cellId = Math.floor((index * (V1_CELL_COUNT - 1)) / 255);
+        next[cellId] = next[cellId] === "alpha" ? "beta" : "alpha";
       }
       publisher.observe(Object.freeze(next));
       const sparse = requirePublication(publisher.flush());
@@ -231,7 +238,7 @@ describe("ownership-plane adversarial certification", () => {
       });
       current = next;
 
-      next = nearGlobalOwnership(V1_CELL_COUNT);
+      next = invertedOwnership(V1_CELL_COUNT);
       publisher.observe(Object.freeze(next));
       const nearGlobal = requirePublication(publisher.flush());
       const nearGlobalDecoded = decodeBenchmark(nearGlobal);
