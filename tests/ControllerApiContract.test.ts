@@ -85,6 +85,7 @@ export type Issue107SpawnParticipantStartingPopulation =
   Issue107SpawnParticipantContract["startingPopulation"];
 export type Issue107SpawnParticipantEffectiveModifiers =
   Issue107SpawnParticipantContract["effectiveModifiers"]["values"];
+export type Issue107SpawnSegmentsContract = SpawnInfluenceContext["segments"];
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
