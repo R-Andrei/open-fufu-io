@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import ivm from "isolated-vm";
 
 import type {
@@ -145,6 +147,42 @@ async function withinModuleInitializationDeadline<T>(
   });
 }
 
+function createModuleCompletionProbe(): Readonly<{
+  exportName: string;
+  token: string;
+}> {
+  const token = randomUUID();
+  return Object.freeze({
+    exportName: `__openFufuModuleCompletion_${token.replaceAll("-", "_")}`,
+    token,
+  });
+}
+
+function instrumentModuleSource(
+  moduleSource: string,
+  completion: Readonly<{ exportName: string; token: string }>,
+): string {
+  return `${moduleSource}\nexport var ${completion.exportName} = ${JSON.stringify(completion.token)};\n`;
+}
+
+async function evaluateModuleWithinInitializationDeadline(
+  module: ivm.Module,
+  deadline: bigint,
+  completion: Readonly<{ exportName: string; token: string }>,
+): Promise<void> {
+  await withinModuleInitializationDeadline(deadline, async (remainingMs) => {
+    await module.evaluate({ timeout: remainingMs });
+
+    while (true) {
+      const value = await module.namespace.get(completion.exportName, {
+        copy: true,
+      });
+      if (value === completion.token) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  });
+}
+
 async function executeRequest(
   request: ControllerWorkerRequest,
 ): Promise<ControllerWorkerResponse> {
@@ -165,13 +203,17 @@ async function executeRequest(
     const moduleInitializationDeadline = createModuleInitializationDeadline(
       request.moduleEvaluationTimeoutMs,
     );
+    const completion = createModuleCompletionProbe();
 
     const module = await withinModuleInitializationDeadline(
       moduleInitializationDeadline,
       () =>
-        isolate!.compileModule(request.artifact.moduleSource, {
-          filename: `open-fufu-controller:${request.factionId}`,
-        }),
+        isolate!.compileModule(
+          instrumentModuleSource(request.artifact.moduleSource, completion),
+          {
+            filename: `open-fufu-controller:${request.factionId}`,
+          },
+        ),
     );
 
     if (module.dependencySpecifiers.length !== 0) {
@@ -187,13 +229,10 @@ async function executeRequest(
     );
 
     try {
-      await withinModuleInitializationDeadline(
+      await evaluateModuleWithinInitializationDeadline(
+        module,
         moduleInitializationDeadline,
-        (remainingMs) =>
-          module.evaluate({
-            timeout: remainingMs,
-            promise: true,
-          }),
+        completion,
       );
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
