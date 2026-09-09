@@ -49,324 +49,48 @@
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
-    {
-      "path": "design/official-ai/character-configurations.config.ts",
-      "validators": [
-        "tests/OfficialAiConfiguration.test.ts"
-      ]
-    },
-    {
-      "path": "design/official-ai/origin-configurations.config.ts",
-      "validators": [
-        "tests/OfficialAiConfiguration.test.ts"
-      ]
-    },
-    {
-      "path": "design/official-ai/origin-trait-support.config.ts",
-      "validators": [
-        "tests/OfficialAiConfiguration.test.ts"
-      ]
-    },
-    {
-      "path": "scripts/checkDocumentationAuthority.ts",
-      "validators": [
-        ".github/workflows/documentation-authority.yml"
-      ]
-    },
-    {
-      "path": "scripts/checkValidationBoundary.ts",
-      "validators": [
-        "tests/ValidationBoundaryPolicy.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/DetMath.ts",
-      "validators": [
-        "tests/RuleRationalMaterialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/FactionRelations.ts",
-      "validators": [
-        "tests/FactionRelations.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/controller/ControllerApi.ts",
-      "validators": [
-        "tests/ControllerApiContract.test.ts",
-        "tests/ControllerStructureFieldProjection.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/EchoRuleRegistry.ts",
-      "validators": [
-        "tests/EchoRuleRegistry.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/OriginRuleManifest.ts",
-      "validators": [
-        "tests/OriginRuleManifest.test.ts",
-        "tests/OriginManifestConformance.test.ts",
-        "tests/OriginCatalogueCompile.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/RuleAxisRegistry.ts",
-      "validators": [
-        "tests/RuleComposition.test.ts",
-        "tests/RuleValidationRegression.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/RuleCompiler.ts",
-      "validators": [
-        "tests/RuleCompiler.test.ts",
-        "tests/OriginCatalogueCompile.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/RuleComposition.ts",
-      "validators": [
-        "tests/RuleComposition.test.ts",
-        "tests/RuleValidationRegression.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/RuleMaterialization.ts",
-      "validators": [
-        "tests/RuleMaterialization.test.ts",
-        "tests/RuleRationalMaterialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/RuleNormalization.ts",
-      "validators": [
-        "tests/RuleNormalization.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/StructureFieldGeometry.ts",
-      "validators": [
-        "tests/StructureFieldGeometry.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/rules/StructureFieldQualification.ts",
-      "validators": [
-        "tests/StructureFieldGeometry.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/visibility/TacticalVisibility.ts",
-      "validators": [
-        "tests/TacticalVisibility.test.ts"
-      ]
-    },
-    {
-      "path": "src/official-ai/OfficialAiController.ts",
-      "validators": [
-        "tests/OfficialAiRuntime.test.ts"
-      ]
-    },
-    {
-      "path": "src/server/controller-runtime/ControllerProcessWorkerPool.ts",
-      "validators": [
-        "tests/ControllerSandbox.test.ts"
-      ]
-    },
-    {
-      "path": "src/server/controller-runtime/ControllerWorkerProcess.ts",
-      "validators": [
-        "tests/ControllerSandbox.test.ts"
-      ]
-    },
-    {
-      "path": "src/server/controller-runtime/ProductionControllerHost.ts",
-      "validators": [
-        "tests/ControllerWorkerHost.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/ControllerRuntime.ts",
-      "validators": [
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/HostilityState.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/LandOperations.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandOperations.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnHardening.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/MapArtifact.ts",
-      "validators": [
-        "tests/MapArtifact.test.ts",
-        "tests/Segments.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/MatchRuntime.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MapArtifact.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnHardening.test.ts",
-        "tests/SpawnInitialization.test.ts",
-        "tests/StartupInitialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/MatchSpec.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MapArtifact.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnInitialization.test.ts",
-        "tests/StartupInitialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/MatchState.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MapArtifact.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/StructureGrantLifecycle.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/MicroSimulationHarness.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/StartupInitialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/Navigation.ts",
-      "validators": [
-        "tests/Navigation.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/Population.ts",
-      "validators": [
-        "tests/Population.test.ts",
-        "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/Segments.ts",
-      "validators": [
-        "tests/Segments.test.ts",
-        "tests/SegmentsProduction.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/SimulationMap.ts",
-      "validators": [
-        "tests/MapArtifact.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/Segments.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/SpawnInitialization.ts",
-      "validators": [
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnHardening.test.ts",
-        "tests/SpawnInitialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/SpawnModeResolution.ts",
-      "validators": [
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnModeResolution.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/SpawnSemantics.ts",
-      "validators": [
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnHardening.test.ts",
-        "tests/SpawnInitialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/Structures.ts",
-      "validators": [
-        "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/StructureGrantLifecycle.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/TickEngine.ts",
-      "validators": [
-        "tests/LandAuditRegression.test.ts",
-        "tests/LandCertification.test.ts",
-        "tests/LandRuntime.test.ts",
-        "tests/MatchRuntime.test.ts",
-        "tests/PopulationRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "tests/contracts/controller-api.typecheck.ts",
-      "validators": [
-        "tests/ControllerApiContract.test.ts"
-      ]
-    },
-    {
-      "path": "tests/types/ControllerApiTypes.ts",
-      "validators": [
-        "tests/ControllerApiContract.test.ts"
-      ]
-    },
-    {
-      "path": "vitest.config.ts",
-      "validators": [
-        "tests/ValidationBoundaryPolicy.test.ts"
-      ]
-    }
+    {"path":"design/official-ai/character-configurations.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
+    {"path":"design/official-ai/origin-configurations.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
+    {"path":"design/official-ai/origin-trait-support.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
+    {"path":"scripts/checkDocumentationAuthority.ts","validators":[".github/workflows/documentation-authority.yml"]},
+    {"path":"scripts/checkValidationBoundary.ts","validators":["tests/ValidationBoundaryPolicy.test.ts"]},
+    {"path":"src/core/DetMath.ts","validators":["tests/RuleRationalMaterialization.test.ts"]},
+    {"path":"src/core/FactionRelations.ts","validators":["tests/FactionRelations.test.ts"]},
+    {"path":"src/core/controller/ControllerApi.ts","validators":["tests/ControllerApiContract.test.ts","tests/ControllerStructureFieldProjection.test.ts"]},
+    {"path":"src/core/rules/EchoRuleRegistry.ts","validators":["tests/EchoRuleRegistry.test.ts"]},
+    {"path":"src/core/rules/OriginRuleManifest.ts","validators":["tests/OriginRuleManifest.test.ts","tests/OriginManifestConformance.test.ts","tests/OriginCatalogueCompile.test.ts"]},
+    {"path":"src/core/rules/RuleAxisRegistry.ts","validators":["tests/RuleComposition.test.ts","tests/RuleValidationRegression.test.ts"]},
+    {"path":"src/core/rules/RuleCompiler.ts","validators":["tests/RuleCompiler.test.ts","tests/OriginCatalogueCompile.test.ts"]},
+    {"path":"src/core/rules/RuleComposition.ts","validators":["tests/RuleComposition.test.ts","tests/RuleValidationRegression.test.ts"]},
+    {"path":"src/core/rules/RuleMaterialization.ts","validators":["tests/RuleMaterialization.test.ts","tests/RuleRationalMaterialization.test.ts"]},
+    {"path":"src/core/rules/RuleNormalization.ts","validators":["tests/RuleNormalization.test.ts"]},
+    {"path":"src/core/rules/StructureFieldGeometry.ts","validators":["tests/StructureFieldGeometry.test.ts"]},
+    {"path":"src/core/rules/StructureFieldQualification.ts","validators":["tests/StructureFieldGeometry.test.ts"]},
+    {"path":"src/core/visibility/TacticalVisibility.ts","validators":["tests/TacticalVisibility.test.ts"]},
+    {"path":"src/official-ai/OfficialAiController.ts","validators":["tests/OfficialAiRuntime.test.ts"]},
+    {"path":"src/server/controller-runtime/ControllerProcessWorkerPool.ts","validators":["tests/ControllerSandbox.test.ts"]},
+    {"path":"src/server/controller-runtime/ControllerWorkerProcess.ts","validators":["tests/ControllerSandbox.test.ts"]},
+    {"path":"src/server/controller-runtime/ProductionControllerHost.ts","validators":["tests/ControllerWorkerHost.test.ts"]},
+    {"path":"src/simulation/ControllerRuntime.ts","validators":["tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/HostilityState.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/LandOperations.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandOperations.test.ts","tests/LandRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts"]},
+    {"path":"src/simulation/MapArtifact.ts","validators":["tests/MapArtifact.test.ts","tests/Segments.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/MatchRuntime.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts","tests/SpawnInitialization.test.ts","tests/StartupInitialization.test.ts"]},
+    {"path":"src/simulation/MatchSpec.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/SpawnInitialization.test.ts","tests/StartupInitialization.test.ts"]},
+    {"path":"src/simulation/MatchState.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureGrantLifecycle.test.ts"]},
+    {"path":"src/simulation/MicroSimulationHarness.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StartupInitialization.test.ts"]},
+    {"path":"src/simulation/Navigation.ts","validators":["tests/Navigation.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/Population.ts","validators":["tests/Population.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/Segments.ts","validators":["tests/Segments.test.ts","tests/SegmentsProduction.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/SimulationMap.ts","validators":["tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/Segments.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/SpawnInitialization.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts","tests/SpawnInitialization.test.ts"]},
+    {"path":"src/simulation/SpawnModeResolution.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnModeResolution.test.ts"]},
+    {"path":"src/simulation/SpawnSemantics.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts","tests/SpawnInitialization.test.ts"]},
+    {"path":"src/simulation/StrategicSpawn.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/StrategicSpawn.test.ts"]},
+    {"path":"src/simulation/Structures.ts","validators":["tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureGrantLifecycle.test.ts"]},
+    {"path":"src/simulation/TickEngine.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},
+    {"path":"tests/types/ControllerApiTypes.ts","validators":["tests/ControllerApiContract.test.ts"]},
+    {"path":"vitest.config.ts","validators":["tests/ValidationBoundaryPolicy.test.ts"]}
   ]
 }
