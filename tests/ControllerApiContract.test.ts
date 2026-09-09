@@ -318,62 +318,89 @@ void destruction.creditedPopulationTransfer?.destination;
     ).toContain(path.normalize("src/core/controller/ControllerApi.ts"));
   });
 
-  it("requires asynchronous Cells/Segments queries and Promise-capable callbacks", () => {
+  it("requires local public map/ownership access plus asynchronous derived queries", () => {
     const options = compilerOptions();
     const virtualFixturePath = path.resolve(
-      "tests/contracts/issue105-async-controller-api.virtual.ts",
+      "tests/contracts/issue105-full-map-controller-api.virtual.ts",
     );
     const virtualFixtureSource = `
 import type {
+  CellId,
   CellSelector,
   CellView,
   ControllerMemory,
+  FactionId,
+  MapPoint,
   OpenFufuController,
   QueryPage,
+  SegmentId,
   SegmentView,
+  TerrainType,
 } from "../../src/core/controller/ControllerApi";
 
 type FixtureMemory = ControllerMemory & { readonly marker: number };
 type DecisionContext = Parameters<OpenFufuController<FixtureMemory>["decide"]>[0];
 
 declare const context: DecisionContext;
+const mapWidth: number = context.map.width;
+const mapHeight: number = context.map.height;
+const mapCellCount: number = context.map.cellCount;
+const validCell: boolean = context.map.isValidCellId(0);
+const cellAt: CellId | undefined = context.map.cellIdAt(0, 0);
+const position: Readonly<MapPoint> | undefined = context.map.positionOf(0);
+const terrain: TerrainType | undefined = context.map.terrainAt(0);
+const segmentId: SegmentId | undefined = context.map.segmentIdOf(0);
+const neighbors: readonly CellId[] | undefined = context.map.cardinalNeighbors(0);
+const owner: FactionId | null | undefined = context.cells.owner(0);
+const segmentCellIds: readonly CellId[] | undefined = context.segments.cellIds(0);
 const getResult: Promise<CellView | undefined> = context.cells.get(0);
 const queryResult: Promise<QueryPage<CellView>> = context.cells.query({ kind: "CELLS", ids: [0] });
 const countResult: Promise<number> = context.cells.count({ kind: "CELLS", ids: [0] });
 const neighborsResult: Promise<readonly number[]> = context.cells.neighbors(0);
 const boundaryResult: Promise<QueryPage<CellView>> = context.cells.boundary({ kind: "CELLS", ids: [0] });
-const componentsResult: Promise<QueryPage<CellSelector>> = context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
 const distanceResult: Promise<number> = context.cells.distance(0, 1);
 const segmentGetResult: Promise<SegmentView | undefined> = context.segments.get(0);
 const segmentListResult: Promise<readonly SegmentView[]> = context.segments.list();
 const segmentSelector: CellSelector = context.segments.cells(0);
+// @ts-expect-error Dynamic connected-component enumeration is intentionally not a V1 API.
+context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
 
 const controller: OpenFufuController<FixtureMemory> = {
   async chooseInfluence(context) {
+    const totalCells: number = context.map.cellCount;
     const candidates = await context.cells.query(
       { kind: "POPULATION_BEARING", value: true },
       context.profile.influenceSlotCount,
     );
+    void totalCells;
     return {
       centers: candidates.items.map((cell) => cell.id),
       memory: { ...context.memory, marker: context.game.decisionNumber },
     };
   },
   async reconsiderInfluence(context) {
+    const owner: FactionId | null | undefined =
+      context.cells.owner(context.currentInfluenceCenters[0] ?? -1);
     await context.cells.get(context.currentInfluenceCenters[0] ?? -1);
+    void owner;
     return {
       centers: context.currentInfluenceCenters,
       memory: { ...context.memory, marker: context.game.decisionNumber },
     };
   },
   async chooseOrigins(context) {
+    const segmentCellIds: readonly CellId[] | undefined = context.segments.cellIds(0);
     await context.cells.count({ kind: "POPULATION_BEARING", value: true });
+    void segmentCellIds;
     return {
       origins: context.influenceCenters.slice(0, context.profile.exactOriginCount),
       memory: { ...context.memory, marker: context.game.decisionNumber },
     };
   },
   async decide(context) {
+    context.map.terrainAt(0);
+    context.cells.owner(0);
+    context.segments.cellIds(0);
     await context.segments.list();
     return {
       memory: { ...context.memory, marker: context.game.decisionNumber },
@@ -382,12 +409,22 @@ const controller: OpenFufuController<FixtureMemory> = {
   },
 };
 
+void mapWidth;
+void mapHeight;
+void mapCellCount;
+void validCell;
+void cellAt;
+void position;
+void terrain;
+void segmentId;
+void neighbors;
+void owner;
+void segmentCellIds;
 void getResult;
 void queryResult;
 void countResult;
 void neighborsResult;
 void boundaryResult;
-void componentsResult;
 void distanceResult;
 void segmentGetResult;
 void segmentListResult;
