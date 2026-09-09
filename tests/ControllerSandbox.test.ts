@@ -265,6 +265,24 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("allows top-level await that settles inside the module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          await Promise.resolve();
+          export function decide() {
+            return { commands: [], log: "tla-settled" };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "tla-settled" },
+      });
+    });
+  });
+
   it("rejects module imports and malformed non-data output without exposing host references", async () => {
     await withPool(async (pool) => {
       const importing = new ProductionControllerHost(pool, {
