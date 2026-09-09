@@ -349,21 +349,24 @@ export interface QueryPage<T> {
 }
 
 export interface CellsApi {
-  get(id: CellId): CellView | undefined;
-  query(selector: CellSelector, limit?: number): QueryPage<CellView>;
-  count(selector: CellSelector): number;
-  neighbors(id: CellId): readonly CellId[];
-  boundary(selector: CellSelector, limit?: number): QueryPage<CellView>;
+  get(id: CellId): Promise<CellView | undefined>;
+  query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
+  count(selector: CellSelector): Promise<number>;
+  neighbors(id: CellId): Promise<readonly CellId[]>;
+  boundary(
+    selector: CellSelector,
+    limit?: number,
+  ): Promise<QueryPage<CellView>>;
   connectedComponents(
     selector: CellSelector,
     limit?: number,
-  ): readonly CellSelector[];
-  distance(a: CellId, b: CellId): number;
+  ): Promise<QueryPage<CellSelector>>;
+  distance(a: CellId, b: CellId): Promise<number>;
 }
 
 export interface SegmentsApi {
-  get(id: SegmentId): SegmentView | undefined;
-  list(): readonly SegmentView[];
+  get(id: SegmentId): Promise<SegmentView | undefined>;
+  list(): Promise<readonly SegmentView[]>;
   cells(id: SegmentId): CellSelector;
 }
 
@@ -1313,13 +1316,23 @@ export interface OpenFufuController<
 > {
   chooseInfluence?(
     context: SpawnInfluenceContext<M>,
-  ): SpawnInfluenceDecision<M> | void;
+  ):
+    | SpawnInfluenceDecision<M>
+    | void
+    | Promise<SpawnInfluenceDecision<M> | void>;
 
   reconsiderInfluence?(
     context: SpawnReconsiderContext<M>,
-  ): SpawnInfluenceDecision<M> | void;
+  ):
+    | SpawnInfluenceDecision<M>
+    | void
+    | Promise<SpawnInfluenceDecision<M> | void>;
 
-  chooseOrigins?(context: SpawnOriginContext<M>): SpawnOriginDecision<M> | void;
+  chooseOrigins?(
+    context: SpawnOriginContext<M>,
+  ): SpawnOriginDecision<M> | void | Promise<SpawnOriginDecision<M> | void>;
 
-  decide(context: ControllerContext<M>): ControllerDecision<M> | void;
+  decide(
+    context: ControllerContext<M>,
+  ): ControllerDecision<M> | void | Promise<ControllerDecision<M> | void>;
 }
