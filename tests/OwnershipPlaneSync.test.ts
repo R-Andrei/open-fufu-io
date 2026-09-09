@@ -7,6 +7,7 @@ import {
 import { OwnershipFanout } from "../src/server/participant/OwnershipFanout";
 
 const V1_CELL_COUNT = 4_800_000;
+const OWNERSHIP_MAGIC = [0x4f, 0x46, 0x4f, 0x50] as const;
 
 function requirePublication<T>(value: T | null | undefined): T {
   if (value === null || value === undefined) {
@@ -21,6 +22,82 @@ function alternatingOwnership(cellCount: number): (string | null)[] {
     ownership[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
   }
   return ownership;
+}
+
+function encodeVaruint(value: number): number[] {
+  const bytes: number[] = [];
+  let remaining = value;
+  while (remaining >= 0x80) {
+    bytes.push((remaining % 0x80) | 0x80);
+    remaining = Math.floor(remaining / 0x80);
+  }
+  bytes.push(remaining);
+  return bytes;
+}
+
+function malformedHugeRleSnapshot(): Uint8Array {
+  return Uint8Array.from([
+    ...OWNERSHIP_MAGIC,
+    OWNERSHIP_PLANE_SCHEMA_VERSION,
+    0,
+    ...encodeVaruint(1),
+    ...encodeVaruint(V1_CELL_COUNT),
+    ...encodeVaruint(0),
+    1,
+    ...encodeVaruint(1),
+    ...encodeVaruint(1),
+    ...encodeVaruint(0),
+  ]);
+}
+
+function malformedHugeSparseDelta(): Uint8Array {
+  return Uint8Array.from([
+    ...OWNERSHIP_MAGIC,
+    OWNERSHIP_PLANE_SCHEMA_VERSION,
+    1,
+    ...encodeVaruint(2),
+    ...encodeVaruint(V1_CELL_COUNT),
+    ...encodeVaruint(0),
+    ...encodeVaruint(1),
+    ...encodeVaruint(V1_CELL_COUNT),
+    ...encodeVaruint(1),
+    ...encodeVaruint(0),
+    0,
+    ...encodeVaruint(V1_CELL_COUNT),
+  ]);
+}
+
+function captureTypedArrayLengthAllocations(
+  key: "Uint8Array" | "Uint32Array",
+  callback: () => void,
+): readonly number[] {
+  const globals = globalThis as unknown as Record<string, unknown>;
+  const original = globals[key] as Function;
+  const allocations: number[] = [];
+  const replacement = new Proxy(original, {
+    construct(target, args) {
+      if (typeof args[0] === "number") allocations.push(args[0]);
+      return Reflect.construct(target, args, target);
+    },
+  });
+  Object.defineProperty(replacement, Symbol.hasInstance, {
+    value(value: unknown) {
+      return value instanceof (original as typeof Uint8Array);
+    },
+  });
+  globals[key] = replacement;
+  try {
+    callback();
+  } finally {
+    globals[key] = original;
+  }
+  return allocations;
+}
+
+function sequenceOnlyEnvelope(streamId: string, seq: number) {
+  return { streamId, seq } as unknown as Parameters<
+    OwnershipPlaneCache["applyEnvelope"]
+  >[0];
 }
 
 describe("participant ownership-plane synchronization", () => {
@@ -180,6 +257,46 @@ describe("participant ownership-plane synchronization", () => {
     expect(publisher.flush()).toBeNull();
   });
 
+  it("tracks participant sequence across non-ownership envelopes without inventing ownership gaps", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    publisher.observe(initial);
+    const baseline = requirePublication(publisher.flush());
+    const next = initial.slice();
+    next[2] = "beta";
+    publisher.observe(Object.freeze(next));
+    const delta = requirePublication(publisher.flush());
+
+    const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-interleaved", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-interleaved",
+        seq: 2,
+        bytes: baseline.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 1 });
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-interleaved", 3))).toEqual({
+      ok: true,
+      revision: 1,
+    });
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-interleaved", 4))).toEqual({
+      ok: true,
+      revision: 1,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-interleaved",
+        seq: 5,
+        bytes: delta.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 2 });
+    expect(cache.ownerAt(2)).toBe("beta");
+  });
+
   it("fails closed across sequence and ownership-revision gaps without partial mutation", () => {
     const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
@@ -238,6 +355,20 @@ describe("participant ownership-plane synchronization", () => {
     expect(revisionGap.ownerAt(4)).toBe("alpha");
   });
 
+  it("rejects attacker-declared decode sizes before allocating from those counts", () => {
+    const snapshot = malformedHugeRleSnapshot();
+    const snapshotAllocations = captureTypedArrayLengthAllocations("Uint8Array", () => {
+      expect(() => decodeOwnershipFrame(snapshot)).toThrow();
+    });
+    expect(snapshotAllocations).not.toContain(V1_CELL_COUNT);
+
+    const sparseDelta = malformedHugeSparseDelta();
+    const sparseAllocations = captureTypedArrayLengthAllocations("Uint32Array", () => {
+      expect(() => decodeOwnershipFrame(sparseDelta)).toThrow();
+    });
+    expect(sparseAllocations).not.toContain(V1_CELL_COUNT);
+  });
+
   it("rejects truncated ownership data before mutating the installed logical plane", () => {
     const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
@@ -264,6 +395,43 @@ describe("participant ownership-plane synchronization", () => {
     ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
     expect(cache.revision()).toBe(1);
     expect(cache.ownerAt(2)).toBe("alpha");
+  });
+
+  it("fails closed for malformed envelope containers and requires a fresh stream after corruption", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    publisher.observe(initial);
+    const baseline = requirePublication(publisher.flush());
+
+    const malformedContainer = new OwnershipPlaneCache();
+    expect(malformedContainer.applyEnvelope(null as never)).toEqual({
+      ok: false,
+      reason: "INVALID_PAYLOAD",
+      resyncRequired: true,
+    });
+
+    const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("new-stream", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "new-stream",
+        seq: 2,
+        bytes: Uint8Array.of(0),
+      }),
+    ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
+    expect(
+      cache.applyEnvelope({ streamId: "new-stream", seq: 3, bytes: baseline.bytes }),
+    ).toEqual({ ok: false, reason: "RESYNC_REQUIRED", resyncRequired: true });
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("fresh-stream", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({ streamId: "fresh-stream", seq: 2, bytes: baseline.bytes }),
+    ).toEqual({ ok: true, revision: 1 });
   });
 
   it("installs a fresh replacement stream after a resync without replaying match history", () => {
