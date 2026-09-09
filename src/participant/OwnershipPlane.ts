@@ -1081,6 +1081,22 @@ export class OwnershipPlaneCache {
     return code === 0 ? null : this.palette[code - 1];
   }
 
+  acceptResume(streamId: string, afterSeq: number): boolean {
+    if (
+      typeof streamId !== "string" ||
+      streamId.length === 0 ||
+      !Number.isSafeInteger(afterSeq) ||
+      afterSeq <= 0 ||
+      !this.requiresResync ||
+      this.streamIdValue !== streamId ||
+      this.lastSeq !== afterSeq
+    ) {
+      return false;
+    }
+    this.requiresResync = false;
+    return true;
+  }
+
   applyEnvelope(envelope: ApplyEnvelope): ApplyResult {
     if (typeof envelope !== "object" || envelope === null) {
       this.requiresResync = true;
