@@ -1,5 +1,6 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
 import {
   evaluateControllerRound,
 } from "../src/simulation/ControllerRuntime";
@@ -12,6 +13,7 @@ import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
+  type ControllerWorkerRequest,
 } from "../src/server/controller-runtime/ProductionControllerHost";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
 
@@ -80,6 +82,20 @@ function artifact(moduleSource: string): ControllerRuntimeArtifact {
   return Object.freeze({
     moduleSource,
     entrypoints: Object.freeze({ decide: "decide" }),
+  });
+}
+
+function workerRequest(moduleSource: string): ControllerWorkerRequest {
+  return Object.freeze({
+    factionId: "alpha",
+    artifact: artifact(moduleSource),
+    hook: "DECIDE",
+    entrypoint: "decide",
+    context: Object.freeze({ tick: 7 }),
+    memoryJson: "{}",
+    timeoutMs: 20_000,
+    moduleEvaluationTimeoutMs: 100,
+    isolateMemoryMb: 32,
   });
 }
 
@@ -189,6 +205,117 @@ describe("controller local public spatial runtime", () => {
         faultCount: 1,
         faulted: false,
       });
+    } finally {
+      await pool.close();
+    }
+  });
+
+  it("reuses a production-shaped public spatial revision and replaces extreme ownership churn coherently", async () => {
+    const width = 2_400;
+    const height = 2_000;
+    const cellCount = width * height;
+    let terrainReads = 0;
+    let allowTerrainReads = true;
+    const map = Object.freeze({
+      width,
+      height,
+      cellCount,
+      terrainAt() {
+        if (!allowTerrainReads) {
+          throw new Error("static map raster was rebuilt for an unchanged map");
+        }
+        terrainReads += 1;
+        return "PLAINS" as const;
+      },
+      segments: undefined,
+    }) as unknown as MatchState["map"];
+
+    const ownershipRevision = (
+      ownerId: string,
+      onRead: () => void,
+    ): MatchState["ownership"] => {
+      const target = new Array<string | null>(cellCount);
+      return new Proxy(target, {
+        get(array, property, receiver) {
+          if (typeof property === "string" && /^\d+$/.test(property)) {
+            onRead();
+            return ownerId;
+          }
+          return Reflect.get(array, property, receiver);
+        },
+      });
+    };
+
+    let firstOwnershipReads = 0;
+    let allowFirstOwnershipReads = true;
+    const firstOwnership = ownershipRevision("alpha", () => {
+      if (!allowFirstOwnershipReads) {
+        throw new Error("unchanged ownership revision was rescanned");
+      }
+      firstOwnershipReads += 1;
+    });
+    const firstSession = Object.freeze({
+      publicSpatial: Object.freeze({ map, ownership: firstOwnership }),
+      usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
+    }) as unknown as ControllerQuerySession;
+
+    const request = workerRequest(`
+      export function decide(context) {
+        return {
+          commands: [],
+          log: [
+            context.map.cellCount,
+            context.map.terrainAt(0),
+            context.cells.owner(0),
+            context.cells.owner(2400000),
+            context.cells.owner(4799999),
+          ].join(":"),
+        };
+      }
+    `);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const first = await pool.invoke(request, firstSession);
+      expect(first).toEqual({
+        ok: true,
+        output: {
+          commands: [],
+          log: "4800000:PLAINS:alpha:alpha:alpha",
+        },
+        usage: { queries: 0, materializedCells: 0 },
+      });
+      expect(terrainReads).toBe(cellCount);
+      expect(firstOwnershipReads).toBe(cellCount);
+
+      allowTerrainReads = false;
+      allowFirstOwnershipReads = false;
+      const repeated = await pool.invoke(request, firstSession);
+      expect(repeated).toEqual(first);
+      expect(terrainReads).toBe(cellCount);
+      expect(firstOwnershipReads).toBe(cellCount);
+
+      let replacementOwnershipReads = 0;
+      const replacementSession = Object.freeze({
+        publicSpatial: Object.freeze({
+          map,
+          ownership: ownershipRevision("beta", () => {
+            replacementOwnershipReads += 1;
+          }),
+        }),
+        usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
+      }) as unknown as ControllerQuerySession;
+      const replaced = await pool.invoke(request, replacementSession);
+      expect(replaced).toEqual({
+        ok: true,
+        output: {
+          commands: [],
+          log: "4800000:PLAINS:beta:beta:beta",
+        },
+        usage: { queries: 0, materializedCells: 0 },
+      });
+      expect(terrainReads).toBe(cellCount);
+      expect(replacementOwnershipReads).toBe(cellCount);
     } finally {
       await pool.close();
     }
