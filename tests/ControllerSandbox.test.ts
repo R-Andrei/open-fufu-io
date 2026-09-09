@@ -218,6 +218,53 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("counts compilation inside the single module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(
+            `/*${"x".repeat(8 * 1024 * 1024)}*/\n` +
+              "export function decide() { return { commands: [] }; }",
+          ),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 20,
+          moduleEvaluationTimeoutMs: 5,
+          isolateMemoryMb: 128,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "TIMEOUT" });
+      expect(await healthyHost(pool, "after-compile-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-compile-timeout" },
+      });
+    });
+  });
+
+  it("counts top-level-await settlement inside the module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          await new Promise(() => {});
+          export function decide() { return { commands: [] }; }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "TIMEOUT" },
+      });
+      expect(await healthyHost(pool, "after-tla-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-tla-timeout" },
+      });
+    });
+  });
+
   it("rejects module imports and malformed non-data output without exposing host references", async () => {
     await withPool(async (pool) => {
       const importing = new ProductionControllerHost(pool, {
