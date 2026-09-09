@@ -28,6 +28,7 @@
     "tests/OriginCatalogueCompile.test.ts",
     "tests/OriginManifestConformance.test.ts",
     "tests/OriginRuleManifest.test.ts",
+    "tests/OwnershipPlaneSync.test.ts",
     "tests/Population.test.ts",
     "tests/PopulationRuntime.test.ts",
     "tests/RuleCompiler.test.ts",
