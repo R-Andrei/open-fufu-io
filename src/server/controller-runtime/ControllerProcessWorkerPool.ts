@@ -80,10 +80,16 @@ type WorkerOwnershipSnapshot = Readonly<{
   ownerCodes: Uint32Array;
 }>;
 
+type CachedOwnershipSnapshot = Readonly<{
+  cacheKey: number;
+  snapshot: WorkerOwnershipSnapshot;
+}>;
+
 type WorkerPublicSpatialUpdate = Readonly<{
   cacheKey: number;
+  ownershipCacheKey: number;
   static?: WorkerStaticSpatialSnapshot;
-  ownership: WorkerOwnershipSnapshot;
+  ownership?: WorkerOwnershipSnapshot;
 }>;
 
 type WorkerRequestEnvelope = Readonly<{
@@ -132,6 +138,7 @@ type WorkerSlot = {
   failed: boolean;
   startedAtMs: number;
   publicSpatialCacheKey?: number;
+  publicOwnershipCacheKey?: number;
 };
 
 function resolveWorkerEntrypoint(): string {
@@ -311,7 +318,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private readonly nowMs: () => number;
   private readonly staticSpatialCache = new WeakMap<object, WorkerStaticSpatialSnapshot>();
   private readonly staticSpatialKeys = new WeakMap<object, number>();
+  private readonly ownershipCache = new WeakMap<object, CachedOwnershipSnapshot>();
   private nextStaticSpatialKey = 1;
+  private nextOwnershipCacheKey = 1;
   private nextRequestId = 1;
   private closing = false;
 
@@ -419,18 +428,39 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     return cached;
   }
 
+  private ownershipFor(
+    source: ControllerPublicSpatialSource,
+  ): CachedOwnershipSnapshot {
+    const ownershipKey = source.ownership as object;
+    let cached = this.ownershipCache.get(ownershipKey);
+    if (cached === undefined) {
+      cached = Object.freeze({
+        cacheKey: this.nextOwnershipCacheKey,
+        snapshot: encodeOwnership(source),
+      });
+      this.nextOwnershipCacheKey += 1;
+      this.ownershipCache.set(ownershipKey, cached);
+    }
+    return cached;
+  }
+
   private publicSpatialUpdate(
     slot: WorkerSlot,
     source: ControllerPublicSpatialSource | undefined,
   ): WorkerPublicSpatialUpdate | undefined {
     if (source === undefined) return undefined;
     const staticSpatial = this.staticSpatialFor(source);
+    const ownership = this.ownershipFor(source);
     const needsStatic = slot.publicSpatialCacheKey !== staticSpatial.cacheKey;
-    if (needsStatic) slot.publicSpatialCacheKey = staticSpatial.cacheKey;
+    const needsOwnership =
+      needsStatic || slot.publicOwnershipCacheKey !== ownership.cacheKey;
+    slot.publicSpatialCacheKey = staticSpatial.cacheKey;
+    slot.publicOwnershipCacheKey = ownership.cacheKey;
     return Object.freeze({
       cacheKey: staticSpatial.cacheKey,
+      ownershipCacheKey: ownership.cacheKey,
       ...(needsStatic ? { static: staticSpatial } : {}),
-      ownership: encodeOwnership(source),
+      ...(needsOwnership ? { ownership: ownership.snapshot } : {}),
     });
   }
 
