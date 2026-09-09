@@ -219,34 +219,33 @@ function createState(
   });
 }
 
-export function createInitialMatchState(
-  spec: MatchSpec,
-  resolvedArtifactMap?: SimulationMap,
+type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "map" | "factions">>;
+
+function assertResolvedArtifactMapMatches(
+  spec: InitialMatchStateSpec,
+  map: SimulationMap,
+): void {
+  if (!isArtifactMapSpec(spec.map)) {
+    throw new Error("artifact map identity validation requires an artifact-backed binding");
+  }
+  if (
+    map.source !== "ARTIFACT" ||
+    map.mapId !== spec.map.mapId ||
+    map.mapVersion !== spec.map.mapVersion ||
+    map.mapHash !== spec.map.mapHash
+  ) {
+    throw new Error("resolved artifact map identity does not match MatchSpec binding");
+  }
+}
+
+function createEmptyInitialMatchState(
+  spec: Pick<MatchSpec, "seed" | "factions">,
+  map: SimulationMap,
+  initialOwners?: readonly (string | null)[],
+  initialFallout?: readonly boolean[],
 ): MatchState {
-  const artifact = isArtifactMapSpec(spec.map);
-  if (artifact && resolvedArtifactMap === undefined) {
-    throw new Error("artifact-backed MatchState creation requires a validated resolved map");
-  }
-  if (!artifact && resolvedArtifactMap !== undefined) {
-    throw new Error("synthetic MatchState creation must not receive an artifact map override");
-  }
-
-  const map = artifact ? resolvedArtifactMap! : createSyntheticMap(spec.map);
-  if (artifact) {
-    if (
-      map.source !== "ARTIFACT" ||
-      map.mapId !== spec.map.mapId ||
-      map.mapVersion !== spec.map.mapVersion ||
-      map.mapHash !== spec.map.mapHash
-    ) {
-      throw new Error("resolved artifact map identity does not match MatchSpec binding");
-    }
-  }
   const cellCount = map.cellCount;
-  const initialOwners = artifact ? undefined : spec.map.initialOwners;
-  const initialFallout = artifact ? undefined : spec.map.initialFallout;
-
-  let state: MatchState = Object.freeze({
+  return Object.freeze({
     seed: spec.seed,
     tick: 0,
     map,
@@ -275,6 +274,48 @@ export function createInitialMatchState(
     counterResponseResiduals: Object.freeze([]),
     hostilityGrace: Object.freeze([]),
   });
+}
+
+/**
+ * Creates the neutral authoritative state consumed by mode-specific Spawn
+ * providers after artifact validation and before resolved exact origins exist.
+ * It intentionally cannot accept synthetic ownership, legacy grants, or choose
+ * a Spawn mode; those remain owned by their existing startup/provider layers.
+ */
+export function createPreSpawnMatchState(
+  spec: InitialMatchStateSpec,
+  resolvedArtifactMap: SimulationMap,
+): MatchState {
+  if (!isArtifactMapSpec(spec.map)) {
+    throw new Error("pre-Spawn MatchState creation requires an artifact-backed map");
+  }
+  assertResolvedArtifactMapMatches(spec, resolvedArtifactMap);
+  return createEmptyInitialMatchState(spec, resolvedArtifactMap);
+}
+
+export function createInitialMatchState(
+  spec: MatchSpec,
+  resolvedArtifactMap?: SimulationMap,
+): MatchState {
+  const artifact = isArtifactMapSpec(spec.map);
+  if (artifact && resolvedArtifactMap === undefined) {
+    throw new Error("artifact-backed MatchState creation requires a validated resolved map");
+  }
+  if (!artifact && resolvedArtifactMap !== undefined) {
+    throw new Error("synthetic MatchState creation must not receive an artifact map override");
+  }
+
+  const map = artifact ? resolvedArtifactMap! : createSyntheticMap(spec.map);
+  if (artifact) assertResolvedArtifactMapMatches(spec, map);
+  const initialOwners = artifact ? undefined : spec.map.initialOwners;
+  const initialFallout = artifact ? undefined : spec.map.initialFallout;
+
+  let state = createEmptyInitialMatchState(
+    spec,
+    map,
+    initialOwners,
+    initialFallout,
+  );
 
   for (const grant of spec.initialStructureGrants ?? []) {
     const result = tryMaterializeStructureGrant(state, grant);
