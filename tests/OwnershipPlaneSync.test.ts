@@ -362,6 +362,70 @@ describe("participant ownership-plane synchronization", () => {
     expect(revisionGap.ownerAt(4)).toBe("alpha");
   });
 
+  it("replays retained same-stream envelopes only after server-approved resume", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    publisher.observe(initial);
+    const baseline = requirePublication(publisher.flush());
+
+    const first = initial.slice();
+    first[2] = "beta";
+    publisher.observe(Object.freeze(first));
+    const firstDelta = requirePublication(publisher.flush());
+    const second = first.slice();
+    second[4] = "beta";
+    publisher.observe(Object.freeze(second));
+    const secondDelta = requirePublication(publisher.flush());
+
+    expect(firstDelta.kind).toBe("DELTA");
+    expect(secondDelta.kind).toBe("DELTA");
+
+    const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-retained", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-retained",
+        seq: 2,
+        bytes: baseline.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 1 });
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-retained",
+        seq: 4,
+        bytes: secondDelta.bytes,
+      }),
+    ).toEqual({ ok: false, reason: "SEQUENCE_GAP", resyncRequired: true });
+    expect(cache.revision()).toBe(1);
+
+    const resumable = cache as unknown as {
+      acceptResume(streamId: string, afterSeq: number): boolean;
+    };
+    expect(resumable.acceptResume("other-stream", 2)).toBe(false);
+    expect(resumable.acceptResume("stream-retained", 1)).toBe(false);
+    expect(resumable.acceptResume("stream-retained", 2)).toBe(true);
+
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-retained",
+        seq: 3,
+        bytes: firstDelta.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 2 });
+    expect(
+      cache.applyEnvelope({
+        streamId: "stream-retained",
+        seq: 4,
+        bytes: secondDelta.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 3 });
+    expect(cache.ownerAt(2)).toBe("beta");
+    expect(cache.ownerAt(4)).toBe("beta");
+  });
+
   it("rejects attacker-declared decode sizes before allocating from those counts", () => {
     const snapshot = malformedHugeRleSnapshot();
     const snapshotAllocations = captureTypedArrayLengthAllocations("Uint16Array", () => {
