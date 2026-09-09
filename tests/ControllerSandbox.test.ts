@@ -470,6 +470,37 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("contains fatal isolate heap exhaustion and leaves the worker pool usable", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const retained = [];
+              while (true) {
+                retained.push(new Array(100_000).fill(0));
+              }
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 2_000,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
+      expect(await healthyHost(pool, "after-fatal-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-fatal-memory-limit" },
+      });
+    });
+  });
+
   it("normalizes catastrophic worker abort, replaces the failed process, and resumes service", async () => {
     await withPool(async (pool) => {
       const originalPid = pool.workerProcessIds()[0];
