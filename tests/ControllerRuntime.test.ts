@@ -286,7 +286,7 @@ describe("controller runtime production-host foundation", () => {
         height: 2,
         terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
         initialOwners: ["alpha", null, null, null],
-        initialFallout: [true, false, false, false],
+        initialFallout: [false, false, false, false],
         factions: [
           { id: "alpha", rules },
           { id: "beta", rules },
@@ -306,7 +306,7 @@ describe("controller runtime production-host foundation", () => {
       id: 0,
       position: { x: 0, y: 0 },
       terrain: "PLAINS",
-      hasFallout: true,
+      hasFallout: false,
       conquerable: true,
       populationBearing: true,
       ownerId: "alpha",
