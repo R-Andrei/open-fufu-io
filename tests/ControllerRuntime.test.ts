@@ -538,4 +538,99 @@ describe("controller runtime production-host foundation", () => {
     await expect(mixed.cells.get(0)).rejects.toThrow();
     expect(mixed.usage()).toEqual({ queries: 3, materializedCells: 25_000 });
   });
+
+  it("projects canonical Segment summaries, selectors, membership, and synthetic absence", async () => {
+    const [{ compileSegments, createSegmentRuntimeIndex }, { createSimulationMap }] =
+      await Promise.all([
+        import("../src/simulation/Segments"),
+        import("../src/simulation/SimulationMap"),
+      ]);
+    const rules = emptyRules();
+    const terrain = [
+      "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+      "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+      "DEEP_WATER", "DEEP_WATER", "DEEP_WATER", "DEEP_WATER",
+      "DEEP_WATER", "DEEP_WATER", "DEEP_WATER", "DEEP_WATER",
+    ] as const;
+    const owners = [
+      "alpha", "alpha", "alpha", "alpha",
+      "beta", "beta", null, null,
+      null, null, null, null,
+      null, null, null, null,
+    ] as const;
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-segment-red",
+        width: 4,
+        height: 4,
+        terrain,
+        initialOwners: owners,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const compiled = compileSegments({ width: 4, height: 4, terrain });
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 4,
+      height: 4,
+      terrain,
+      segments: createSegmentRuntimeIndex(compiled),
+    });
+    const state = Object.freeze({ ...runtime.snapshot(), map });
+    const session = createControllerQuerySession(state, "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const list = await session.segments.list();
+    expect(list).toEqual([
+      {
+        id: 0,
+        cellCount: 8,
+        populationBearingCellCount: 8,
+        ownerShares: { alpha: 0.5, beta: 0.25 },
+        adjacentSegmentIds: [1],
+        terrainCounts: { PLAINS: 8 },
+      },
+      {
+        id: 1,
+        cellCount: 8,
+        populationBearingCellCount: 0,
+        ownerShares: {},
+        adjacentSegmentIds: [0],
+        terrainCounts: { DEEP_WATER: 8 },
+      },
+    ]);
+    expect(Object.isFrozen(list)).toBe(true);
+    expect(Object.isFrozen(list[0])).toBe(true);
+    expect(Object.isFrozen(list[0]?.ownerShares)).toBe(true);
+    expect(Object.isFrozen(list[0]?.terrainCounts)).toBe(true);
+    expect(Object.isFrozen(list[0]?.adjacentSegmentIds)).toBe(true);
+    expect(await session.segments.get(1)).toEqual(list[1]);
+
+    const selector = session.segments.cells(0);
+    expect(selector).toEqual({ kind: "SEGMENT", segmentId: 0 });
+    expect(Object.isFrozen(selector)).toBe(true);
+    const firstSegmentCells = await session.cells.query(selector);
+    expect(firstSegmentCells.items.map((cell) => cell.id)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]);
+    expect(firstSegmentCells.truncated).toBe(false);
+    expect((await session.cells.get(8))?.segmentId).toBe(1);
+    expect(session.usage()).toEqual({ queries: 4, materializedCells: 9 });
+
+    const tiny = createControllerQuerySession(
+      twoFactionRuntime("controller-segmentless-synthetic").snapshot(),
+      "alpha",
+      {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      },
+    );
+    expect(await tiny.segments.list()).toEqual([]);
+    expect(tiny.usage()).toEqual({ queries: 1, materializedCells: 0 });
+  });
 });
