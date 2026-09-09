@@ -23,18 +23,14 @@ export interface ControllerQueryUsage {
   readonly materializedCells: number;
 }
 
-export interface ControllerQueryCellIdentity {
-  readonly id: CellId;
-}
-
 export interface ControllerQuerySession {
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
-    query(
-      selector: CellSelector,
-      limit?: number,
-    ): Promise<QueryPage<ControllerQueryCellIdentity>>;
+    query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
+    count(selector: CellSelector): Promise<number>;
     neighbors(id: CellId): Promise<readonly CellId[]>;
+    boundary(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
+    connectedComponents(selector: CellSelector): Promise<QueryPage<CellSelector>>;
     distance(a: CellId, b: CellId): Promise<number>;
   }>;
   usage(): ControllerQueryUsage;
@@ -49,6 +45,13 @@ function orderedExplicitCellIds(
       (left, right) => left - right,
     ),
   );
+}
+
+function explicitCellIds(state: MatchState, selector: CellSelector): readonly CellId[] {
+  if (selector.kind !== "CELLS") {
+    throw new Error(`controller selector not implemented: ${selector.kind}`);
+  }
+  return orderedExplicitCellIds(state, selector);
 }
 
 function cellConditionApplies(
@@ -155,6 +158,43 @@ function materializeCellView(
   });
 }
 
+function orderedBoundaryIds(
+  state: MatchState,
+  selected: readonly CellId[],
+): readonly CellId[] {
+  const membership = new Set(selected);
+  return Object.freeze(
+    selected.filter((id) =>
+      state.map.cardinalNeighbors(id).some((neighbor) => !membership.has(neighbor)),
+    ),
+  );
+}
+
+function orderedComponents(
+  state: MatchState,
+  selected: readonly CellId[],
+): readonly (readonly CellId[])[] {
+  const unvisited = new Set(selected);
+  const components: (readonly CellId[])[] = [];
+
+  for (const start of selected) {
+    if (!unvisited.delete(start)) continue;
+    const queue: CellId[] = [start];
+    const ids: CellId[] = [];
+    for (let cursor = 0; cursor < queue.length; cursor += 1) {
+      const id = queue[cursor]!;
+      ids.push(id);
+      for (const neighbor of state.map.cardinalNeighbors(id)) {
+        if (unvisited.delete(neighbor)) queue.push(neighbor);
+      }
+    }
+    ids.sort((left, right) => left - right);
+    components.push(Object.freeze(ids));
+  }
+
+  return Object.freeze(components);
+}
+
 export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
@@ -174,6 +214,32 @@ export function createControllerQuerySession(
     queries += 1;
   };
 
+  const remainingMaterialization = (): number =>
+    Math.max(0, limits.materializedCellsPerDecision - materializedCells);
+
+  const materializePage = (
+    ids: readonly CellId[],
+    limit?: number,
+  ): QueryPage<CellView> => {
+    const requested =
+      limit === undefined
+        ? remainingMaterialization()
+        : Math.min(limit, remainingMaterialization());
+    const selected = ids.slice(0, requested);
+    const items = Object.freeze(
+      selected.map((id) => {
+        const cell = materializeCellView(state, id);
+        if (cell === undefined) throw new Error(`invalid materialized cell ${id}`);
+        return cell;
+      }),
+    );
+    materializedCells += items.length;
+    return Object.freeze({
+      items,
+      truncated: ids.length > items.length,
+    });
+  };
+
   const get = async (id: CellId): Promise<CellView | undefined> => {
     beginQuery();
     const cell = materializeCellView(state, id);
@@ -184,36 +250,48 @@ export function createControllerQuerySession(
   const query = async (
     selector: CellSelector,
     limit?: number,
-  ): Promise<QueryPage<ControllerQueryCellIdentity>> => {
+  ): Promise<QueryPage<CellView>> => {
     beginQuery();
-    if (selector.kind !== "CELLS") {
-      throw new Error(`controller selector not implemented: ${selector.kind}`);
-    }
+    return materializePage(explicitCellIds(state, selector), limit);
+  };
 
-    const matching = orderedExplicitCellIds(state, selector);
-    const remainingMaterialization = Math.max(
-      0,
-      limits.materializedCellsPerDecision - materializedCells,
-    );
-    const requested =
-      limit === undefined
-        ? remainingMaterialization
-        : Math.min(limit, remainingMaterialization);
-    const selected = matching.slice(0, requested);
-    const items = Object.freeze(
-      selected.map((id) => Object.freeze({ id })),
-    );
-    materializedCells += items.length;
-
-    return Object.freeze({
-      items,
-      truncated: matching.length > items.length,
-    });
+  const count = async (selector: CellSelector): Promise<number> => {
+    beginQuery();
+    return explicitCellIds(state, selector).length;
   };
 
   const neighbors = async (id: CellId): Promise<readonly CellId[]> => {
     beginQuery();
     return state.map.cardinalNeighbors(id);
+  };
+
+  const boundary = async (
+    selector: CellSelector,
+    limit?: number,
+  ): Promise<QueryPage<CellView>> => {
+    beginQuery();
+    return materializePage(
+      orderedBoundaryIds(state, explicitCellIds(state, selector)),
+      limit,
+    );
+  };
+
+  const connectedComponents = async (
+    selector: CellSelector,
+  ): Promise<QueryPage<CellSelector>> => {
+    beginQuery();
+    const components = orderedComponents(state, explicitCellIds(state, selector));
+    const items: CellSelector[] = [];
+    let truncated = false;
+    for (const ids of components) {
+      if (ids.length > remainingMaterialization()) {
+        truncated = true;
+        break;
+      }
+      items.push(Object.freeze({ kind: "CELLS" as const, ids }));
+      materializedCells += ids.length;
+    }
+    return Object.freeze({ items: Object.freeze(items), truncated });
   };
 
   const distance = async (a: CellId, b: CellId): Promise<number> => {
@@ -224,7 +302,15 @@ export function createControllerQuerySession(
   };
 
   return Object.freeze({
-    cells: Object.freeze({ get, query, neighbors, distance }),
+    cells: Object.freeze({
+      get,
+      query,
+      count,
+      neighbors,
+      boundary,
+      connectedComponents,
+      distance,
+    }),
     usage: () => Object.freeze({ queries, materializedCells }),
   });
 }
