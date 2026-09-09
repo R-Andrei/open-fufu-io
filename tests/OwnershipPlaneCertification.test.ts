@@ -214,13 +214,22 @@ describe("ownership-plane adversarial certification", () => {
       });
       current = next;
 
+      const contiguousStart = 1_200_000;
+      const contiguousEnd = 1_800_000;
       next = current.slice();
-      next.fill("beta", 1_200_000, 1_800_000);
+      next.fill("alpha", contiguousStart, contiguousEnd);
+      publisher.observe(Object.freeze(next));
+      requirePublication(publisher.flush());
+      current = next;
+
+      next = current.slice();
+      next.fill("beta", contiguousStart, contiguousEnd);
       publisher.observe(Object.freeze(next));
       const contiguous = requirePublication(publisher.flush());
       const contiguousDecoded = decodeBenchmark(contiguous);
       expect(contiguous.kind).toBe("DELTA");
       expect(contiguous.chunkModes).toContain("RUN");
+      expect(contiguous.stats.changedCells).toBe(contiguousEnd - contiguousStart);
       expect(contiguous.stats.encodedBytes).toBeLessThan(
         contiguous.stats.richJsonEstimateBytes,
       );
