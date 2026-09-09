@@ -488,7 +488,7 @@ function defaultOriginRequests(
         `Strategic Spawn missing final influence center ${faction.factionId}/${originSlot}`,
       );
     }
-    const candidate = nearestLegalInRegion(
+    const inRegion = nearestLegalInRegion(
       state,
       legalSeeds,
       faction,
@@ -496,10 +496,21 @@ function defaultOriginRequests(
       originSlot,
       center,
     );
+    const candidate =
+      inRegion ??
+      [...legalSeeds].sort((left, right) =>
+        compareOriginCandidate(
+          state,
+          faction.factionId,
+          originSlot,
+          center,
+          "exact-origin-global-cell",
+          left,
+          right,
+        ),
+      )[0];
     if (candidate === undefined) {
-      throw new Error(
-        `Strategic Spawn chooseOrigins default has no legal in-region candidate:${faction.factionId}/${originSlot}`,
-      );
+      throw new Error("ORIGIN_GLOBAL_UNFILLABLE");
     }
     result.push(candidate);
   }
