@@ -1,4 +1,5 @@
 import type { CellSelector } from "../src/core/controller/ControllerApi";
+import { isTerrainScopeId } from "../src/core/rules/RuleComposition";
 import {
   calculateCounterResponseTick,
   canonicalCellSelectorKey,
@@ -32,6 +33,13 @@ describe("land-operation focused contracts", () => {
     expect(canonicalCellSelectorKey({ kind: "CELLS", ids: [9, 2, 9] })).toBe(
       canonicalCellSelectorKey({ kind: "CELLS", ids: [2, 9] }),
     );
+  });
+
+  it("keeps non-rule-scope terrain outside terrain rule evaluation", () => {
+    expect(isTerrainScopeId("PLAINS")).toBe(true);
+    expect(isTerrainScopeId("SHALLOW_WATER")).toBe(true);
+    expect(isTerrainScopeId("DEEP_WATER")).toBe(false);
+    expect(isTerrainScopeId("IMPASSABLE")).toBe(false);
   });
 
   it("uses the canonical terrain baselines for land acquisition and pressure", () => {
