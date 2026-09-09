@@ -316,6 +316,13 @@
       ]
     },
     {
+      "path": "src/simulation/SpawnModeResolution.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnModeResolution.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/SpawnSemantics.ts",
       "validators": [
         "tests/SimulationDependencyFirewall.test.ts",
