@@ -1,7 +1,10 @@
 import type { LawfulControllerObservation } from "../src/simulation/ControllerRuntime";
+import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
+  type ControllerWorkerRequest,
+  type ControllerWorkerResponse,
 } from "../src/server/controller-runtime/ProductionControllerHost";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
 
@@ -95,6 +98,105 @@ describe("production controller sandbox process", () => {
       });
       expect(pool.workerProcessIds()).toHaveLength(1);
       expect(pool.workerProcessIds()[0]).not.toBe(process.pid);
+    });
+  });
+
+  it("awaits authoritative host-resolved Cells queries through copied async IPC", async () => {
+    await withPool(async (pool) => {
+      const sourceCell = {
+        id: 9,
+        position: { x: 9, y: 0 },
+        terrain: "PLAINS" as const,
+        hasFallout: false,
+        conquerable: true,
+        populationBearing: true,
+        ownerId: "alpha",
+        isCoast: false,
+        isShoreline: false,
+      };
+      const queryCalls: unknown[] = [];
+      let usage = { queries: 0, materializedCells: 0 };
+      const querySession = {
+        cells: {
+          async query(selector: unknown, limit?: number) {
+            queryCalls.push({ selector, limit });
+            usage = { queries: 1, materializedCells: 1 };
+            return {
+              items: [sourceCell],
+              truncated: false,
+            };
+          },
+        },
+        segments: {
+          cells(id: number) {
+            return { kind: "SEGMENT" as const, segmentId: id };
+          },
+        },
+        usage() {
+          return usage;
+        },
+      } as unknown as ControllerQuerySession;
+
+      const request: ControllerWorkerRequest = Object.freeze({
+        factionId: "alpha",
+        artifact: artifact(`
+          export async function decide(context) {
+            const page = await context.cells.query(
+              { kind: "CELLS", ids: [9] },
+              1,
+            );
+            let mutationBlocked = false;
+            try {
+              page.items[0].ownerId = "beta";
+            } catch {
+              mutationBlocked = true;
+            }
+            return {
+              commands: [],
+              log: JSON.stringify({
+                id: page.items[0].id,
+                ownerId: page.items[0].ownerId,
+                mutationBlocked,
+                segmentSelector: context.segments.cells(4),
+              }),
+            };
+          }
+        `),
+        hook: "DECIDE",
+        entrypoint: "decide",
+        context: Object.freeze({ tick: 7 }),
+        memoryJson: "{}",
+        timeoutMs: 500,
+        moduleEvaluationTimeoutMs: 100,
+        isolateMemoryMb: 32,
+      });
+      const invokeWithQueries = pool.invoke.bind(pool) as unknown as (
+        request: ControllerWorkerRequest,
+        queries: ControllerQuerySession,
+      ) => Promise<ControllerWorkerResponse>;
+
+      const response = await invokeWithQueries(request, querySession);
+
+      expect(response).toEqual({
+        ok: true,
+        output: {
+          commands: [],
+          log: JSON.stringify({
+            id: 9,
+            ownerId: "alpha",
+            mutationBlocked: true,
+            segmentSelector: { kind: "SEGMENT", segmentId: 4 },
+          }),
+        },
+        usage: { queries: 1, materializedCells: 1 },
+      });
+      expect(queryCalls).toEqual([
+        {
+          selector: { kind: "CELLS", ids: [9] },
+          limit: 1,
+        },
+      ]);
+      expect(sourceCell.ownerId).toBe("alpha");
     });
   });
 
