@@ -1,6 +1,6 @@
 import ivm from "isolated-vm";
 
-import type { CellId, CellSelector, SegmentId } from "../../core/controller/ControllerApi";
+import type { CellId, CellSelector, SegmentId, TerrainType } from "../../core/controller/ControllerApi";
 import type {
   ControllerWorkerRequest,
   ControllerWorkerResponse,
@@ -29,9 +29,31 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "SEGMENTS_GET"; args: readonly [SegmentId] }>
   | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>;
 
+type WorkerStaticSpatialSnapshot = Readonly<{
+  cacheKey: number;
+  width: number;
+  height: number;
+  cellCount: number;
+  terrainCodes: Uint8Array;
+  segmentIds: Uint16Array;
+  segmentCount: number;
+}>;
+
+type WorkerOwnershipSnapshot = Readonly<{
+  factionIds: readonly string[];
+  ownerCodes: Uint32Array;
+}>;
+
+type WorkerPublicSpatialUpdate = Readonly<{
+  cacheKey: number;
+  static?: WorkerStaticSpatialSnapshot;
+  ownership: WorkerOwnershipSnapshot;
+}>;
+
 type WorkerRequestEnvelope = Readonly<{
   requestId: number;
   request: ControllerWorkerRequest;
+  publicSpatial?: WorkerPublicSpatialUpdate;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -58,6 +80,35 @@ type PendingQuery = Readonly<{
   resolve: (value: unknown) => void;
   reject: (error: Error) => void;
 }>;
+
+type WorkerPublicSpatialCache = Readonly<{
+  cacheKey: number;
+  width: number;
+  height: number;
+  cellCount: number;
+  terrainCodes: Uint8Array;
+  segmentIds: Uint16Array;
+  segmentCount: number;
+  segmentOffsets: Uint32Array;
+  segmentCells: Uint32Array;
+  factionIds: readonly string[];
+  ownerCodes: Uint32Array;
+}>;
+
+const NO_SEGMENT_ID = 0xffff;
+const NO_PUBLIC_TERRAIN = 0xff;
+const PUBLIC_TERRAIN_ORDER = Object.freeze([
+  "PLAINS",
+  "HIGHLAND",
+  "MOUNTAIN",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+  "SHALLOW_WATER",
+  "DEEP_WATER",
+  "IMPASSABLE",
+] as const satisfies readonly TerrainType[]);
 
 const hardenGlobalSource = `
   "use strict";
@@ -112,9 +163,40 @@ const invokeEntrypointSource = `
     return deepFreeze(value);
   };
 
+  const localSpatial = (operation, args) => {
+    const value = $2.applySync(
+      undefined,
+      [{ operation, args }],
+      {
+        arguments: { copy: true },
+        result: { copy: true }
+      }
+    );
+    return deepFreeze(value);
+  };
+
+  const hasLocalSpatial = $3 === true;
   const input = deepFreeze({
     ...globalThis.__openFufuInput,
+    ...(hasLocalSpatial
+      ? {
+          map: {
+            width: localSpatial("MAP_WIDTH", []),
+            height: localSpatial("MAP_HEIGHT", []),
+            cellCount: localSpatial("MAP_CELL_COUNT", []),
+            isValidCellId: (id) => localSpatial("MAP_IS_VALID_CELL_ID", [id]),
+            cellIdAt: (x, y) => localSpatial("MAP_CELL_ID_AT", [x, y]),
+            positionOf: (id) => localSpatial("MAP_POSITION_OF", [id]),
+            terrainAt: (id) => localSpatial("MAP_TERRAIN_AT", [id]),
+            segmentIdOf: (id) => localSpatial("MAP_SEGMENT_ID_OF", [id]),
+            cardinalNeighbors: (id) => localSpatial("MAP_CARDINAL_NEIGHBORS", [id])
+          }
+        }
+      : {}),
     cells: {
+      ...(hasLocalSpatial
+        ? { owner: (id) => localSpatial("CELL_OWNER", [id]) }
+        : {}),
       get: (id) => hostQuery("CELLS_GET", [id]),
       query: (selector, limit) =>
         limit === undefined
@@ -133,7 +215,10 @@ const invokeEntrypointSource = `
     segments: {
       get: (id) => hostQuery("SEGMENTS_GET", [id]),
       list: () => hostQuery("SEGMENTS_LIST", []),
-      cells: (id) => deepFreeze({ kind: "SEGMENT", segmentId: id })
+      cells: (id) => deepFreeze({ kind: "SEGMENT", segmentId: id }),
+      ...(hasLocalSpatial
+        ? { cellIds: (id) => localSpatial("SEGMENT_CELL_IDS", [id]) }
+        : {})
     }
   });
 
@@ -162,6 +247,7 @@ const invokeEntrypointSource = `
 let activeRequestId: number | undefined;
 let nextQueryId = 1;
 const pendingQueries = new Map<number, PendingQuery>();
+let publicSpatialCache: WorkerPublicSpatialCache | undefined;
 
 function workerFault(
   fault: Extract<ControllerWorkerResponse, { ok: false }>["fault"],
@@ -221,10 +307,7 @@ function isControllerWorkerQueryRequest(
 
 function isWorkerRequestEnvelope(value: unknown): value is WorkerRequestEnvelope {
   if (!isPlainRecord(value)) return false;
-  return (
-    Number.isInteger(value.requestId) &&
-    isPlainRecord(value.request)
-  );
+  return Number.isInteger(value.requestId) && isPlainRecord(value.request);
 }
 
 function isWorkerQueryResultEnvelope(
@@ -284,12 +367,240 @@ function settleQueryResult(message: WorkerQueryResultEnvelope): void {
   }
 }
 
+function buildSegmentIndex(
+  membership: Uint16Array,
+  segmentCount: number,
+): Readonly<{ offsets: Uint32Array; cells: Uint32Array }> {
+  const offsets = new Uint32Array(segmentCount + 1);
+  for (let cellId = 0; cellId < membership.length; cellId += 1) {
+    const segmentId = membership[cellId]!;
+    if (segmentId === NO_SEGMENT_ID) continue;
+    if (segmentId >= segmentCount) {
+      throw new Error("controller public Segment membership is invalid");
+    }
+    offsets[segmentId + 1] += 1;
+  }
+  for (let segmentId = 0; segmentId < segmentCount; segmentId += 1) {
+    offsets[segmentId + 1] += offsets[segmentId]!;
+  }
+  const cursor = offsets.slice(0, segmentCount);
+  const cells = new Uint32Array(offsets[segmentCount]!);
+  for (let cellId = 0; cellId < membership.length; cellId += 1) {
+    const segmentId = membership[cellId]!;
+    if (segmentId === NO_SEGMENT_ID) continue;
+    cells[cursor[segmentId]!] = cellId;
+    cursor[segmentId] += 1;
+  }
+  return Object.freeze({ offsets, cells });
+}
+
+function installPublicSpatialUpdate(
+  update: WorkerPublicSpatialUpdate | undefined,
+): number | undefined {
+  if (update === undefined) return undefined;
+  if (!Number.isSafeInteger(update.cacheKey) || update.cacheKey <= 0) {
+    throw new Error("controller public spatial cache key is invalid");
+  }
+
+  if (update.static !== undefined) {
+    const incoming = update.static;
+    if (
+      incoming.cacheKey !== update.cacheKey ||
+      !Number.isSafeInteger(incoming.width) ||
+      incoming.width <= 0 ||
+      !Number.isSafeInteger(incoming.height) ||
+      incoming.height <= 0 ||
+      !Number.isSafeInteger(incoming.cellCount) ||
+      incoming.cellCount !== incoming.width * incoming.height ||
+      !(incoming.terrainCodes instanceof Uint8Array) ||
+      incoming.terrainCodes.length !== incoming.cellCount ||
+      !(incoming.segmentIds instanceof Uint16Array) ||
+      incoming.segmentIds.length !== incoming.cellCount ||
+      !Number.isSafeInteger(incoming.segmentCount) ||
+      incoming.segmentCount < 0 ||
+      incoming.segmentCount >= NO_SEGMENT_ID
+    ) {
+      throw new Error("controller public static spatial snapshot is invalid");
+    }
+    for (let cellId = 0; cellId < incoming.cellCount; cellId += 1) {
+      const terrainCode = incoming.terrainCodes[cellId]!;
+      if (
+        terrainCode !== NO_PUBLIC_TERRAIN &&
+        terrainCode >= PUBLIC_TERRAIN_ORDER.length
+      ) {
+        throw new Error("controller public terrain cache contains invalid code");
+      }
+      const segmentId = incoming.segmentIds[cellId]!;
+      if (segmentId !== NO_SEGMENT_ID && segmentId >= incoming.segmentCount) {
+        throw new Error("controller public Segment cache contains invalid membership");
+      }
+    }
+    const segmentIndex = buildSegmentIndex(
+      incoming.segmentIds,
+      incoming.segmentCount,
+    );
+    publicSpatialCache = Object.freeze({
+      cacheKey: update.cacheKey,
+      width: incoming.width,
+      height: incoming.height,
+      cellCount: incoming.cellCount,
+      terrainCodes: incoming.terrainCodes,
+      segmentIds: incoming.segmentIds,
+      segmentCount: incoming.segmentCount,
+      segmentOffsets: segmentIndex.offsets,
+      segmentCells: segmentIndex.cells,
+      factionIds: Object.freeze([]),
+      ownerCodes: new Uint32Array(incoming.cellCount),
+    });
+  }
+
+  const cache = publicSpatialCache;
+  if (cache === undefined || cache.cacheKey !== update.cacheKey) {
+    throw new Error("controller public spatial cache is unavailable for this request");
+  }
+  const ownership = update.ownership;
+  if (
+    !Array.isArray(ownership.factionIds) ||
+    ownership.factionIds.some((id) => typeof id !== "string") ||
+    !(ownership.ownerCodes instanceof Uint32Array) ||
+    ownership.ownerCodes.length !== cache.cellCount
+  ) {
+    throw new Error("controller public ownership snapshot is invalid");
+  }
+  for (let cellId = 0; cellId < ownership.ownerCodes.length; cellId += 1) {
+    if (ownership.ownerCodes[cellId]! > ownership.factionIds.length) {
+      throw new Error("controller public ownership code is invalid");
+    }
+  }
+
+  publicSpatialCache = Object.freeze({
+    ...cache,
+    factionIds: Object.freeze([...ownership.factionIds]),
+    ownerCodes: ownership.ownerCodes,
+  });
+  return update.cacheKey;
+}
+
+function activePublicSpatial(cacheKey: number | undefined): WorkerPublicSpatialCache {
+  const cache = publicSpatialCache;
+  if (
+    cacheKey === undefined ||
+    cache === undefined ||
+    cache.cacheKey !== cacheKey
+  ) {
+    throw new Error("controller public spatial cache is not active for this invocation");
+  }
+  return cache;
+}
+
+function validCellId(cache: WorkerPublicSpatialCache, value: unknown): value is number {
+  return (
+    Number.isSafeInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) < cache.cellCount
+  );
+}
+
+function resolvePublicSpatial(
+  cacheKey: number | undefined,
+  value: unknown,
+): unknown {
+  if (!isPlainRecord(value) || !Array.isArray(value.args)) {
+    throw new Error("invalid controller local spatial request");
+  }
+  const cache = activePublicSpatial(cacheKey);
+  const args = value.args;
+
+  switch (value.operation) {
+    case "MAP_WIDTH":
+      if (args.length !== 0) break;
+      return cache.width;
+    case "MAP_HEIGHT":
+      if (args.length !== 0) break;
+      return cache.height;
+    case "MAP_CELL_COUNT":
+      if (args.length !== 0) break;
+      return cache.cellCount;
+    case "MAP_IS_VALID_CELL_ID":
+      if (args.length !== 1) break;
+      return validCellId(cache, args[0]);
+    case "MAP_CELL_ID_AT": {
+      if (args.length !== 2) break;
+      const [x, y] = args;
+      if (
+        !Number.isSafeInteger(x) ||
+        !Number.isSafeInteger(y) ||
+        (x as number) < 0 ||
+        (x as number) >= cache.width ||
+        (y as number) < 0 ||
+        (y as number) >= cache.height
+      ) {
+        return undefined;
+      }
+      return (y as number) * cache.width + (x as number);
+    }
+    case "MAP_POSITION_OF": {
+      if (args.length !== 1 || !validCellId(cache, args[0])) return undefined;
+      const cellId = args[0];
+      return { x: cellId % cache.width, y: Math.floor(cellId / cache.width) };
+    }
+    case "MAP_TERRAIN_AT": {
+      if (args.length !== 1 || !validCellId(cache, args[0])) return undefined;
+      const code = cache.terrainCodes[args[0]]!;
+      return code === NO_PUBLIC_TERRAIN ? undefined : PUBLIC_TERRAIN_ORDER[code];
+    }
+    case "MAP_SEGMENT_ID_OF": {
+      if (args.length !== 1 || !validCellId(cache, args[0])) return undefined;
+      const segmentId = cache.segmentIds[args[0]]!;
+      return segmentId === NO_SEGMENT_ID ? undefined : segmentId;
+    }
+    case "MAP_CARDINAL_NEIGHBORS": {
+      if (args.length !== 1 || !validCellId(cache, args[0])) return undefined;
+      const cellId = args[0];
+      const x = cellId % cache.width;
+      const y = Math.floor(cellId / cache.width);
+      const neighbors: number[] = [];
+      if (x > 0) neighbors.push(cellId - 1);
+      if (x + 1 < cache.width) neighbors.push(cellId + 1);
+      if (y > 0) neighbors.push(cellId - cache.width);
+      if (y + 1 < cache.height) neighbors.push(cellId + cache.width);
+      neighbors.sort((left, right) => left - right);
+      return neighbors;
+    }
+    case "CELL_OWNER": {
+      if (args.length !== 1 || !validCellId(cache, args[0])) return undefined;
+      const code = cache.ownerCodes[args[0]]!;
+      return code === 0 ? null : cache.factionIds[code - 1];
+    }
+    case "SEGMENT_CELL_IDS": {
+      if (
+        args.length !== 1 ||
+        !Number.isSafeInteger(args[0]) ||
+        (args[0] as number) < 0 ||
+        (args[0] as number) >= cache.segmentCount
+      ) {
+        return undefined;
+      }
+      const segmentId = args[0] as number;
+      return Array.from(
+        cache.segmentCells.subarray(
+          cache.segmentOffsets[segmentId]!,
+          cache.segmentOffsets[segmentId + 1]!,
+        ),
+      );
+    }
+  }
+  throw new Error("invalid controller local spatial request");
+}
+
 async function executeRequest(
   requestId: number,
   request: ControllerWorkerRequest,
+  spatialCacheKey?: number,
 ): Promise<ControllerWorkerResponse> {
   let isolate: ivm.Isolate | undefined;
   let queryReference: ivm.Reference | undefined;
+  let spatialReference: ivm.Reference | undefined;
 
   try {
     isolate = new ivm.Isolate({
@@ -354,12 +665,20 @@ async function executeRequest(
       }
       return requestHostQuery(requestId, query);
     });
+    spatialReference = new ivm.Reference((query: unknown) =>
+      resolvePublicSpatial(spatialCacheKey, query),
+    );
 
     let invocationStatus: unknown;
     try {
       invocationStatus = await context.evalClosure(
         invokeEntrypointSource,
-        [entrypoint.derefInto(), queryReference],
+        [
+          entrypoint.derefInto(),
+          queryReference,
+          spatialReference,
+          spatialCacheKey !== undefined,
+        ],
         {
           timeout: request.timeoutMs,
           result: { promise: true, copy: true },
@@ -395,6 +714,7 @@ async function executeRequest(
     if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
     return workerFault("RUNTIME_ERROR");
   } finally {
+    spatialReference?.release();
     queryReference?.release();
     isolate?.dispose();
   }
@@ -403,7 +723,18 @@ async function executeRequest(
 async function handleInvocation(message: WorkerRequestEnvelope): Promise<void> {
   if (process.send === undefined) return;
 
-  const response = await executeRequest(message.requestId, message.request);
+  let spatialCacheKey: number | undefined;
+  let response: ControllerWorkerResponse;
+  try {
+    spatialCacheKey = installPublicSpatialUpdate(message.publicSpatial);
+    response = await executeRequest(
+      message.requestId,
+      message.request,
+      spatialCacheKey,
+    );
+  } catch {
+    response = workerFault("RUNTIME_ERROR");
+  }
   const envelope: WorkerResponseEnvelope = Object.freeze({
     requestId: message.requestId,
     response,

@@ -43,7 +43,14 @@ export interface ControllerQueryUsage {
   readonly materializedCells: number;
 }
 
+/** Internal same-process source for cheap public spatial projection. */
+export interface ControllerPublicSpatialSource {
+  readonly map: MatchState["map"];
+  readonly ownership: MatchState["ownership"];
+}
+
 export interface ControllerQuerySession {
+  readonly publicSpatial: ControllerPublicSpatialSource;
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -909,6 +916,10 @@ export function createControllerQuerySession(
     Object.freeze({ kind: "SEGMENT" as const, segmentId: id });
 
   return Object.freeze({
+    publicSpatial: Object.freeze({
+      map: state.map,
+      ownership: state.ownership,
+    }),
     cells: Object.freeze({
       get,
       query,

@@ -2,8 +2,16 @@ import { fork, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { CellId, CellSelector, SegmentId } from "../../core/controller/ControllerApi";
-import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
+import type {
+  CellId,
+  CellSelector,
+  SegmentId,
+  TerrainType,
+} from "../../core/controller/ControllerApi";
+import type {
+  ControllerPublicSpatialSource,
+  ControllerQuerySession,
+} from "../../simulation/ControllerQueryProjection";
 import type {
   ControllerWorkerPool,
   ControllerWorkerRequest,
@@ -13,6 +21,23 @@ import type {
 const DEFAULT_WORKER_POOL_SIZE = 4;
 const DEFAULT_MAX_WORKER_AGE_MS = 60 * 60 * 1_000;
 const DEFAULT_MAX_WORKER_RSS_BYTES = 512 * 1024 * 1024;
+const NO_SEGMENT_ID = 0xffff;
+const NO_PUBLIC_TERRAIN = 0xff;
+const PUBLIC_TERRAIN_ORDER = Object.freeze([
+  "PLAINS",
+  "HIGHLAND",
+  "MOUNTAIN",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+  "SHALLOW_WATER",
+  "DEEP_WATER",
+  "IMPASSABLE",
+] as const satisfies readonly TerrainType[]);
+const PUBLIC_TERRAIN_CODE = new Map<TerrainType, number>(
+  PUBLIC_TERRAIN_ORDER.map((terrain, index) => [terrain, index]),
+);
 
 export interface ControllerProcessWorkerPoolOptions {
   readonly size?: number;
@@ -44,9 +69,31 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "SEGMENTS_GET"; args: readonly [SegmentId] }>
   | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>;
 
+type WorkerStaticSpatialSnapshot = Readonly<{
+  cacheKey: number;
+  width: number;
+  height: number;
+  cellCount: number;
+  terrainCodes: Uint8Array;
+  segmentIds: Uint16Array;
+  segmentCount: number;
+}>;
+
+type WorkerOwnershipSnapshot = Readonly<{
+  factionIds: readonly string[];
+  ownerCodes: Uint32Array;
+}>;
+
+type WorkerPublicSpatialUpdate = Readonly<{
+  cacheKey: number;
+  static?: WorkerStaticSpatialSnapshot;
+  ownership: WorkerOwnershipSnapshot;
+}>;
+
 type WorkerRequestEnvelope = Readonly<{
   requestId: number;
   request: ControllerWorkerRequest;
+  publicSpatial?: WorkerPublicSpatialUpdate;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -88,6 +135,7 @@ type WorkerSlot = {
   pending?: PendingInvocation;
   failed: boolean;
   startedAtMs: number;
+  publicSpatialCacheKey?: number;
 };
 
 function resolveWorkerEntrypoint(): string {
@@ -196,6 +244,65 @@ async function resolveControllerWorkerQuery(
   }
 }
 
+function encodeStaticSpatial(
+  source: ControllerPublicSpatialSource,
+  cacheKey: number,
+): WorkerStaticSpatialSnapshot {
+  const { map } = source;
+  const terrainCodes = new Uint8Array(map.cellCount);
+  const segmentIds = new Uint16Array(map.cellCount);
+  segmentIds.fill(NO_SEGMENT_ID);
+  const segments = map.segments;
+  const segmentCount = segments?.segmentCount ?? 0;
+  if (segmentCount >= NO_SEGMENT_ID) {
+    throw new Error("controller public Segment count exceeds Uint16 cache capacity");
+  }
+
+  for (let cellId = 0; cellId < map.cellCount; cellId += 1) {
+    const terrain = map.terrainAt(cellId);
+    terrainCodes[cellId] =
+      terrain === "TEST"
+        ? NO_PUBLIC_TERRAIN
+        : (PUBLIC_TERRAIN_CODE.get(terrain) ?? NO_PUBLIC_TERRAIN);
+    if (segments !== undefined) segmentIds[cellId] = segments.segmentIdOf(cellId);
+  }
+
+  return Object.freeze({
+    cacheKey,
+    width: map.width,
+    height: map.height,
+    cellCount: map.cellCount,
+    terrainCodes,
+    segmentIds,
+    segmentCount,
+  });
+}
+
+function encodeOwnership(
+  source: ControllerPublicSpatialSource,
+): WorkerOwnershipSnapshot {
+  const factionIds: string[] = [];
+  const codeByFactionId = new Map<string, number>();
+  const ownerCodes = new Uint32Array(source.ownership.length);
+
+  for (let cellId = 0; cellId < source.ownership.length; cellId += 1) {
+    const ownerId = source.ownership[cellId];
+    if (ownerId === null) continue;
+    let code = codeByFactionId.get(ownerId);
+    if (code === undefined) {
+      factionIds.push(ownerId);
+      code = factionIds.length;
+      codeByFactionId.set(ownerId, code);
+    }
+    ownerCodes[cellId] = code;
+  }
+
+  return Object.freeze({
+    factionIds: Object.freeze(factionIds),
+    ownerCodes,
+  });
+}
+
 function requirePositiveFinite(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive finite number`);
@@ -209,6 +316,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private readonly maxWorkerAgeMs: number;
   private readonly maxWorkerRssBytes: number;
   private readonly nowMs: () => number;
+  private readonly staticSpatialCache = new WeakMap<object, WorkerStaticSpatialSnapshot>();
+  private readonly staticSpatialKeys = new WeakMap<object, number>();
+  private nextStaticSpatialKey = 1;
   private nextRequestId = 1;
   private closing = false;
 
@@ -298,6 +408,39 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     return slot;
   }
 
+  private staticSpatialFor(
+    source: ControllerPublicSpatialSource,
+  ): WorkerStaticSpatialSnapshot {
+    const mapKey = source.map as object;
+    let cacheKey = this.staticSpatialKeys.get(mapKey);
+    if (cacheKey === undefined) {
+      cacheKey = this.nextStaticSpatialKey;
+      this.nextStaticSpatialKey += 1;
+      this.staticSpatialKeys.set(mapKey, cacheKey);
+    }
+    let cached = this.staticSpatialCache.get(mapKey);
+    if (cached === undefined) {
+      cached = encodeStaticSpatial(source, cacheKey);
+      this.staticSpatialCache.set(mapKey, cached);
+    }
+    return cached;
+  }
+
+  private publicSpatialUpdate(
+    slot: WorkerSlot,
+    source: ControllerPublicSpatialSource | undefined,
+  ): WorkerPublicSpatialUpdate | undefined {
+    if (source === undefined) return undefined;
+    const staticSpatial = this.staticSpatialFor(source);
+    const needsStatic = slot.publicSpatialCacheKey !== staticSpatial.cacheKey;
+    if (needsStatic) slot.publicSpatialCacheKey = staticSpatial.cacheKey;
+    return Object.freeze({
+      cacheKey: staticSpatial.cacheKey,
+      ...(needsStatic ? { static: staticSpatial } : {}),
+      ownership: encodeOwnership(source),
+    });
+  }
+
   private pump(): void {
     if (this.closing) return;
 
@@ -331,9 +474,21 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         seenQueryIds: new Set<number>(),
       });
 
+      let publicSpatial: WorkerPublicSpatialUpdate | undefined;
+      try {
+        publicSpatial = this.publicSpatialUpdate(
+          slot,
+          queued.querySession?.publicSpatial,
+        );
+      } catch {
+        this.markWorkerFailed(slot);
+        continue;
+      }
+
       const envelope: WorkerRequestEnvelope = Object.freeze({
         requestId,
         request: queued.request,
+        ...(publicSpatial === undefined ? {} : { publicSpatial }),
       });
 
       try {
