@@ -128,13 +128,9 @@ function buildArtifactFixture(): {
   readonly package: MapArtifactPackage;
   readonly resolver: MapArtifactResolver;
 } {
-  // Terrain codes follow MapArtifact.ts: PLAINS=0, SHALLOW_WATER=7, IMPASSABLE=9.
   const terrain = new Uint8Array(CELL_COUNT);
   terrain.fill(9);
 
-  // Three large legal land regions keep every exact seed locally fillable. The
-  // primary alpha region additionally surrounds its exact origin with Shallow
-  // Water so P48 must participate in the Spawn quota when that fixed start is used.
   paintRect(terrain, 80, 80, 80, 80, 0);
   paintRect(terrain, 80, 280, 80, 80, 0);
   paintRect(terrain, 900, 500, 80, 80, 0);
@@ -144,9 +140,6 @@ function buildArtifactFixture(): {
   const terrainCounts = new Uint32Array(10);
   for (const code of terrain) terrainCounts[code] = terrainCounts[code]! + 1;
 
-  // One full-raster Segment is intentionally legal: V1 has no hard maximum
-  // Segment size, only 4-connectivity/stable-ID/count invariants. This keeps the
-  // fixture production-shaped without rerunning the production compiler here.
   const membership = new Uint8Array(CELL_COUNT * 2);
   const metadataValues = [0, CELL_COUNT, ...terrainCounts];
   const metadata = encodeUint32(metadataValues);
@@ -439,7 +432,6 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
         contextForFaction: (factionId) => strategicBaseContext(preState, factionId),
       });
 
-      // Mode resolution is read-only: no provider may partially create start state.
       expect(preState.ownership.every((ownerId) => ownerId === null)).toBe(true);
       expect(preState.factions.every((faction) => faction.population.total === 0)).toBe(true);
       expect(preState.structures).toEqual([]);
@@ -465,7 +457,6 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
         exactOriginCount: 2,
         initialTerritoryPopulationBearingQuota: 1_150,
         footprintShapeProfile: "STAR",
-        startingPopulation: 575,
       });
       expect(alphaSpawn.origins.map((origin) => origin.resolvedExactOrigin)).toEqual([
         ALPHA_PRIMARY,
