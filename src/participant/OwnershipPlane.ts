@@ -1225,7 +1225,10 @@ export class OwnershipPlaneCache {
     }
 
     if (decoded.kind === "SNAPSHOT") {
-      if (decoded.revision !== this.revisionValue + 1) {
+      if (
+        this.codes !== undefined &&
+        decoded.revision !== this.revisionValue + 1
+      ) {
         this.requiresResync = true;
         return applyFailure("REVISION_MISMATCH");
       }
