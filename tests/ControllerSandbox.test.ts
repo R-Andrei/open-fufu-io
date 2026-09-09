@@ -283,6 +283,68 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("bounds getter-backed result materialization inside the callback timeout", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            return {
+              commands: [],
+              get log() {
+                while (true) {}
+              },
+            };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "TIMEOUT" },
+      });
+      expect(await healthyHost(pool, "after-getter-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-getter-timeout" },
+      });
+    });
+  });
+
+  it("rejects an oversized decision inside the worker before parent IPC", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const largeName = "x".repeat(2048);
+              return {
+                commands: [],
+                debug: Array.from({ length: 256 }, (_, index) => ({
+                  kind: "METRIC",
+                  name: largeName + String(index),
+                  value: index,
+                })),
+              };
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 20,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
+      expect(await healthyHost(pool, "after-oversized-output").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-oversized-output" },
+      });
+    });
+  });
+
   it("rejects module imports and malformed non-data output without exposing host references", async () => {
     await withPool(async (pool) => {
       const importing = new ProductionControllerHost(pool, {
