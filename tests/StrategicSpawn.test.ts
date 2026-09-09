@@ -73,6 +73,7 @@ const LIMITS: ControllerLimitsView = Object.freeze({
 const RULES_VIEW: RulesView = Object.freeze({ version: "test", values: Object.freeze({}) });
 const MECHANICS = Object.freeze({}) as MechanicsApi;
 const CELLS = Object.freeze({}) as StrategicSpawnBaseContextInput["cells"];
+const SEGMENTS = Object.freeze({}) as StrategicSpawnBaseContextInput["segments"];
 const RANDOM = Object.freeze({ next: () => 0.25, keyed: () => 0.5 });
 
 function rules(traits: readonly OriginTraitId[] = []) {
@@ -127,6 +128,7 @@ function baseContext(
     }),
     me: selfView(id),
     cells: CELLS,
+    segments: SEGMENTS,
     rules: RULES_VIEW,
     mechanics: MECHANICS,
     random: RANDOM,
@@ -303,6 +305,45 @@ describe("#107 Strategic Spawn coordinator", () => {
       ],
     });
   });
+
+  it.each([
+    {
+      label: "ordinary influence-slot geometry",
+      traits: [] as readonly OriginTraitId[],
+      profile: Object.freeze({
+        ...ORDINARY_PROFILE,
+        influenceSlotCount: 2,
+        influenceAreaCells: Object.freeze([160_000, 160_000]),
+      }),
+    },
+    {
+      label: "P39 split influence-area geometry",
+      traits: ["P39"] as readonly OriginTraitId[],
+      profile: Object.freeze({
+        ...P39_PROFILE,
+        influenceAreaCells: Object.freeze([160_000, 160_000]),
+      }),
+    },
+  ])(
+    "rejects $label that contradicts the effective Spawn profile before running hooks",
+    async ({ traits, profile }) => {
+      const state = spawnState({
+        seed: `strategic-profile-mismatch-${traits.join("-") || "ordinary"}`,
+        width: 800,
+        factions: [{ id: "alpha", traits }],
+      });
+
+      await expect(
+        resolveStrategicSpawn({
+          state,
+          host: new InProcessTestControllerHost({ alpha: {} }),
+          contextForFaction: (id) => baseContext(id, profile),
+        }),
+      ).rejects.toThrow(
+        /^Strategic Spawn public profile does not match effective rules for alpha$/,
+      );
+    },
+  );
 
   it.each([
     {
