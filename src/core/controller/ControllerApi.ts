@@ -1257,6 +1257,7 @@ export interface SpawnBaseContext<
   readonly game: GameView;
   readonly me: SelfFactionView;
   readonly cells: CellsApi;
+  readonly segments: SegmentsApi;
   readonly rules: RulesView;
   readonly mechanics: MechanicsApi;
   readonly random: RandomApi;
