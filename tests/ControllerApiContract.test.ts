@@ -81,6 +81,10 @@ export type Issue107SpawnParticipantOriginId =
   Issue107SpawnParticipantContract["origin"]["id"];
 export type Issue107SpawnParticipantExactOriginCount =
   Issue107SpawnParticipantContract["profile"]["exactOriginCount"];
+export type Issue107SpawnParticipantStartingPopulation =
+  Issue107SpawnParticipantContract["startingPopulation"];
+export type Issue107SpawnParticipantEffectiveModifiers =
+  Issue107SpawnParticipantContract["effectiveModifiers"]["values"];
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
