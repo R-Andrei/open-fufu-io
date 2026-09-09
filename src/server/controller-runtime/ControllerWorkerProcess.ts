@@ -408,7 +408,9 @@ async function executeRequest(
     if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
     return workerFault("RUNTIME_ERROR");
   } finally {
-    isolate?.dispose();
+    if (isolate !== undefined && !isolate.isDisposed) {
+      isolate.dispose();
+    }
   }
 }
 
