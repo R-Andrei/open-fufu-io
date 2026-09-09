@@ -19,6 +19,16 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
       { kind: "POPULATION_BEARING", value: true },
       context.profile.influenceSlotCount,
     );
+    const otherParticipant = context.participants.find(
+      (participant) => participant.id !== context.me.id,
+    );
+    if (otherParticipant !== undefined) {
+      const publicOriginId: string = otherParticipant.origin.id;
+      const publicExactOriginCount: number =
+        otherParticipant.profile.exactOriginCount;
+      void publicOriginId;
+      void publicExactOriginCount;
+    }
 
     return {
       centers: candidates.items.map((cell) => cell.id),
