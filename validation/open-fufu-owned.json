@@ -187,6 +187,12 @@
       ]
     },
     {
+      "path": "src/simulation/ControllerQueryProjection.ts",
+      "validators": [
+        "tests/ControllerRuntime.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
         "tests/LandCertification.test.ts",
