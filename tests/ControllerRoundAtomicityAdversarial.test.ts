@@ -76,6 +76,32 @@ describe("controller-round transaction adversarial behavior", () => {
     expect(match.acceptedInputs()).toEqual([]);
   });
 
+  it("rejects reentrant authoritative input admission from a synchronous controller host", () => {
+    const match = runtime();
+    let reentrantError: unknown;
+
+    match.runControllerRound(
+      hostWithInvoke((factionId) => {
+        if (factionId === "alpha") {
+          try {
+            match.acceptAction({
+              type: "SET_TEST_MARKER",
+              factionId: "beta",
+              value: 33,
+            });
+          } catch (error) {
+            reentrantError = error;
+          }
+        }
+        return Object.freeze({ ok: true as const });
+      }),
+    );
+
+    expect(reentrantError).toBeInstanceOf(Error);
+    expect(String(reentrantError)).toMatch(/controller round is in progress/i);
+    expect(match.acceptedInputs()).toEqual([]);
+  });
+
   it("does not partially admit earlier controller actions when a later commit action fails", () => {
     const match = runtime();
     const preexisting = match.acceptAction({
