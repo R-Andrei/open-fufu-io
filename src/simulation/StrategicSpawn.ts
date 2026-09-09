@@ -30,6 +30,8 @@ import {
 } from "./SpawnSemantics";
 
 const EMPTY_MEMORY = Object.freeze({}) as Readonly<ControllerMemory>;
+const ORDINARY_INFLUENCE_AREA_CELLS = 160_000;
+const SPLIT_TWO_INFLUENCE_AREA_CELLS = 80_000;
 
 export type StrategicSpawnBaseContextInput = Omit<
   SpawnBaseContext,
@@ -765,6 +767,19 @@ function resolveRequestedOrigins(
   return Object.freeze(resolved);
 }
 
+function expectedInfluenceAreaCells(exactOriginCount: number): readonly number[] {
+  if (exactOriginCount === 1) {
+    return Object.freeze([ORDINARY_INFLUENCE_AREA_CELLS]);
+  }
+  if (exactOriginCount === 2) {
+    return Object.freeze([
+      SPLIT_TWO_INFLUENCE_AREA_CELLS,
+      SPLIT_TWO_INFLUENCE_AREA_CELLS,
+    ]);
+  }
+  throw new Error(`Strategic Spawn unsupported effective origin count ${exactOriginCount}`);
+}
+
 function publicParticipants(
   state: MatchState,
   factions: readonly StrategicFactionContext[],
@@ -788,6 +803,16 @@ function publicParticipants(
           entry.base.profile.influenceSlotCount
       ) {
         throw new Error(`Strategic Spawn public influence profile is invalid for ${entry.factionId}`);
+      }
+      const expectedAreas = expectedInfluenceAreaCells(effective.exactOriginCount);
+      if (
+        entry.base.profile.influenceSlotCount !== effective.exactOriginCount ||
+        entry.base.profile.influenceAreaCells.length !== expectedAreas.length ||
+        entry.base.profile.influenceAreaCells.some(
+          (area, index) => area !== expectedAreas[index],
+        )
+      ) {
+        throw new Error(`Strategic Spawn public profile does not match effective rules for ${entry.factionId}`);
       }
       return Object.freeze({
         id: entry.factionId,
