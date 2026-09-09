@@ -6,6 +6,7 @@ import type {
   MechanicsApi,
   PopulationView,
   RelinquishQuote,
+  SpawnInfluenceContext,
 } from "../src/core/controller/ControllerApi";
 
 // Compile-time fixtures for #47's newly surfaced controller mechanics. This file
@@ -71,6 +72,20 @@ void issue47RelinquishQuote;
 const issue47RelinquishFromMechanics: ReturnType<MechanicsApi["relinquishQuote"]> =
   issue47RelinquishQuote;
 void issue47RelinquishFromMechanics;
+
+// Compile-time fixture for #107. Strategic Phase 1 must expose every player's
+// public Spawn information through the single ControllerApi context.
+export type Issue107SpawnParticipantContract =
+  SpawnInfluenceContext["participants"][number];
+export type Issue107SpawnParticipantOriginId =
+  Issue107SpawnParticipantContract["origin"]["id"];
+export type Issue107SpawnParticipantExactOriginCount =
+  Issue107SpawnParticipantContract["profile"]["exactOriginCount"];
+export type Issue107SpawnParticipantStartingPopulation =
+  Issue107SpawnParticipantContract["startingPopulation"];
+export type Issue107SpawnParticipantEffectiveModifiers =
+  Issue107SpawnParticipantContract["effectiveModifiers"]["values"];
+export type Issue107SpawnSegmentsContract = SpawnInfluenceContext["segments"];
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {

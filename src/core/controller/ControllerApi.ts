@@ -1209,6 +1209,15 @@ export interface SpawnProfileView {
   readonly footprintShape: "COMPACT" | "STAR";
 }
 
+export interface SpawnParticipantView {
+  readonly id: FactionId;
+  readonly displayName: string;
+  readonly origin: OriginView;
+  readonly profile: SpawnProfileView;
+  readonly startingPopulation: number;
+  readonly effectiveModifiers: EffectiveModifierSheet;
+}
+
 export interface SpawnFactionView {
   readonly id: FactionId;
   readonly displayName: string;
@@ -1251,11 +1260,13 @@ export interface SpawnBaseContext<
   readonly game: GameView;
   readonly me: SelfFactionView;
   readonly cells: CellsApi;
+  readonly segments: SegmentsApi;
   readonly rules: RulesView;
   readonly mechanics: MechanicsApi;
   readonly random: RandomApi;
   readonly limits: ControllerLimitsView;
   readonly memory: Readonly<M>;
+  readonly participants: readonly SpawnParticipantView[];
   readonly profile: SpawnProfileView;
 }
 
