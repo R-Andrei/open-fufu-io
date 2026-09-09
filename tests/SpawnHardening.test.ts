@@ -275,6 +275,43 @@ describe("reopened #104 Spawn hardening contracts", () => {
     expect(ownerCount(initialized.state, "alpha")).toBe(1_000);
   });
 
+  it("rejects an unknown Spawn mode even when malformed origins omit source provenance", () => {
+    const width = 100;
+    const state = spawnState({
+      seed: "invalid-spawn-mode",
+      width,
+      height: 100,
+    });
+    const malformed = Object.freeze({
+      spawnMode: "BROKEN",
+      spawnResolverVersion: "1",
+      factions: Object.freeze([
+        Object.freeze({
+          factionId: "alpha",
+          origins: Object.freeze([
+            Object.freeze({
+              originSlot: 0,
+              resolvedExactOrigin: cellId(width, 10, 10),
+            }),
+          ]),
+        }),
+        Object.freeze({
+          factionId: "beta",
+          origins: Object.freeze([
+            Object.freeze({
+              originSlot: 0,
+              resolvedExactOrigin: cellId(width, 90, 90),
+            }),
+          ]),
+        }),
+      ]),
+    }) as unknown as SpawnInitializationInput;
+
+    expect(() => materializeSpawnInitialization(state, malformed)).toThrow(
+      /unsupported Spawn mode/i,
+    );
+  });
+
   it("permits ordinary hostile action immediately after Spawn and exposes no Spawn-immunity state", () => {
     const width = 100;
     const input = fixedSpawnInput([
