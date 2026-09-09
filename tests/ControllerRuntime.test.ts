@@ -451,4 +451,91 @@ describe("controller runtime production-host foundation", () => {
     ).toEqual([4]);
     expect(session.usage()).toEqual({ queries: 12, materializedCells: 34 });
   });
+
+  it("enforces the exact 128-query per-decision ceiling", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-query-budget-red",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+    const selector = { kind: "CELLS", ids: [] } as const;
+
+    for (let index = 0; index < 127; index += 1) {
+      await session.cells.count(selector);
+    }
+    expect(session.usage()).toEqual({ queries: 127, materializedCells: 0 });
+
+    await session.cells.count(selector);
+    expect(session.usage()).toEqual({ queries: 128, materializedCells: 0 });
+
+    await expect(session.cells.count(selector)).rejects.toThrow(
+      /query budget exhausted/i,
+    );
+    expect(session.usage()).toEqual({ queries: 128, materializedCells: 0 });
+  });
+
+  it("enforces the exact 25,000-cell shared materialization ceiling", async () => {
+    const rules = emptyRules();
+    const cellIds = Array.from({ length: 25_001 }, (_, id) => id);
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-materialization-budget-red",
+        width: 25_001,
+        height: 1,
+        terrain: Array.from({ length: 25_001 }, () => "PLAINS"),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const state = runtime.snapshot();
+    const makeSession = () =>
+      createControllerQuerySession(state, "alpha", {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      });
+
+    const below = makeSession();
+    const belowPage = await below.cells.query({ kind: "CELLS", ids: cellIds.slice(0, 24_999) });
+    expect(belowPage.items).toHaveLength(24_999);
+    expect(belowPage.truncated).toBe(false);
+    expect(below.usage()).toEqual({ queries: 1, materializedCells: 24_999 });
+
+    const exact = makeSession();
+    const exactPage = await exact.cells.query({ kind: "CELLS", ids: cellIds.slice(0, 25_000) });
+    expect(exactPage.items).toHaveLength(25_000);
+    expect(exactPage.truncated).toBe(false);
+    expect(exact.usage()).toEqual({ queries: 1, materializedCells: 25_000 });
+
+    const above = makeSession();
+    const abovePage = await above.cells.query({ kind: "CELLS", ids: cellIds });
+    expect(abovePage.items).toHaveLength(25_000);
+    expect(abovePage.truncated).toBe(true);
+    expect(above.usage()).toEqual({ queries: 1, materializedCells: 25_000 });
+
+    const mixed = makeSession();
+    expect(await mixed.cells.get(0)).toBeDefined();
+    const remainder = await mixed.cells.query({
+      kind: "CELLS",
+      ids: cellIds.slice(1, 25_001),
+    });
+    expect(remainder.items).toHaveLength(24_999);
+    expect(remainder.truncated).toBe(true);
+    expect(mixed.usage()).toEqual({ queries: 2, materializedCells: 25_000 });
+    await expect(mixed.cells.get(0)).rejects.toThrow();
+    expect(mixed.usage()).toEqual({ queries: 3, materializedCells: 25_000 });
+  });
 });
