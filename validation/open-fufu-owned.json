@@ -38,7 +38,9 @@
     "tests/Segments.test.ts",
     "tests/SegmentsProduction.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
+    "tests/SpawnHardening.test.ts",
     "tests/SpawnInitialization.test.ts",
+    "tests/StartupInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
@@ -208,7 +210,8 @@
         "tests/LandCertification.test.ts",
         "tests/LandOperations.test.ts",
         "tests/LandRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts"
       ]
     },
     {
@@ -229,7 +232,9 @@
         "tests/MatchRuntime.test.ts",
         "tests/PopulationRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnInitialization.test.ts"
+        "tests/SpawnHardening.test.ts",
+        "tests/SpawnInitialization.test.ts",
+        "tests/StartupInitialization.test.ts"
       ]
     },
     {
@@ -241,7 +246,8 @@
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
         "tests/SimulationDependencyFirewall.test.ts",
-        "tests/SpawnInitialization.test.ts"
+        "tests/SpawnInitialization.test.ts",
+        "tests/StartupInitialization.test.ts"
       ]
     },
     {
@@ -264,7 +270,8 @@
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
-        "tests/SimulationDependencyFirewall.test.ts"
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/StartupInitialization.test.ts"
       ]
     },
     {
@@ -303,6 +310,15 @@
       "path": "src/simulation/SpawnInitialization.ts",
       "validators": [
         "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts",
+        "tests/SpawnInitialization.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/SpawnSemantics.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/SpawnHardening.test.ts",
         "tests/SpawnInitialization.test.ts"
       ]
     },
