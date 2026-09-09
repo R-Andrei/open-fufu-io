@@ -330,7 +330,7 @@ function createModuleCompletionProbe(): Readonly<{
 }> {
   const token = randomUUID();
   return Object.freeze({
-    exportName: `__openFufuModuleCompletion_${token.replaceAll("-", "_")}`,
+    exportName: `__openFufuModuleCompletion_${token.replace(/-/g, "_")}`,
     token,
   });
 }
