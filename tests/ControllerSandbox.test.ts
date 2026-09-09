@@ -196,7 +196,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await callbackTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "TIMEOUT" },
       });
 
       const moduleTimeout = new ProductionControllerHost(pool, {
@@ -207,7 +207,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await moduleTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "TIMEOUT" },
       });
 
       const healthy = healthyHost(pool);
@@ -228,7 +228,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await importing.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "SANDBOX_VIOLATION" },
       });
 
       const malformed = new ProductionControllerHost(pool, {
@@ -238,7 +238,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await malformed.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "INVALID_OUTPUT" },
+        fault: { code: "RUNTIME_ERROR" },
       });
     });
   });
