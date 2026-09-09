@@ -176,4 +176,76 @@ describe("controller structure-field projection", () => {
       Array.from({ length: 25 }, (_, id) => id),
     );
   });
+
+  it("makes a P49 blackout field public while suppressing remote observation through it", async () => {
+    const alphaRules = compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: [],
+    });
+    const betaP49Rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["P49"]),
+    );
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-p49-visibility-red",
+        width: 100,
+        height: 1,
+        terrain: Array.from({ length: 100 }, () => "PLAINS" as const),
+        initialOwners: [
+          "alpha",
+          ...Array.from({ length: 99 }, () => "beta" as const),
+        ],
+        factions: [
+          { id: "alpha", rules: alphaRules },
+          { id: "beta", rules: betaP49Rules },
+        ],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-observer",
+            ownerId: "alpha",
+            type: "OBSERVATION_POST",
+            cellId: 0,
+            level: 1,
+          },
+          {
+            structureId: "beta-fort",
+            ownerId: "beta",
+            type: "FORT",
+            cellId: 20,
+            level: 1,
+          },
+          {
+            structureId: "beta-blackout",
+            ownerId: "beta",
+            type: "OBSERVATION_POST",
+            cellId: 60,
+            level: 1,
+          },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+    const fortField = {
+      kind: "STRUCTURE_FIELD_INSTANCE",
+      structureId: "beta-fort",
+      field: "FORT",
+    } as const;
+    const publicBlackoutField = {
+      kind: "STRUCTURE_FIELD",
+      field: "OBSERVATION",
+      referenceFactionId: "beta",
+      affiliation: "SELF",
+    } as const;
+
+    expect(await session.cells.query(fortField)).toEqual({
+      items: [],
+      truncated: false,
+    });
+    expect(
+      (await session.cells.query(publicBlackoutField)).items.map((cell) => cell.id),
+    ).toEqual(Array.from({ length: 80 }, (_, offset) => offset + 20));
+  });
 });
