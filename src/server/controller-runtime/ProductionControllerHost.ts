@@ -118,7 +118,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return (
+    (prototype === Object.prototype || prototype === null) &&
+    Object.getOwnPropertySymbols(value).length === 0
+  );
 }
 
 function cloneFrozenTransportValue(
