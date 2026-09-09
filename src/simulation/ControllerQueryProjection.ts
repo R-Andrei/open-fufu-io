@@ -47,13 +47,6 @@ function orderedExplicitCellIds(
   );
 }
 
-function explicitCellIds(state: MatchState, selector: CellSelector): readonly CellId[] {
-  if (selector.kind !== "CELLS") {
-    throw new Error(`controller selector not implemented: ${selector.kind}`);
-  }
-  return orderedExplicitCellIds(state, selector);
-}
-
 function cellConditionApplies(
   conditions: readonly RuleCondition[],
   terrain: TerrainType,
@@ -158,16 +151,141 @@ function materializeCellView(
   });
 }
 
-function orderedBoundaryIds(
+type SelectorMatcher = (id: CellId) => boolean;
+
+function compileSelectorMatcher(
   state: MatchState,
-  selected: readonly CellId[],
+  selector: CellSelector,
+): SelectorMatcher {
+  switch (selector.kind) {
+    case "CELLS": {
+      const ids = new Set(orderedExplicitCellIds(state, selector));
+      return (id) => ids.has(id);
+    }
+    case "OWNER": {
+      const ownerId = selector.factionId ?? null;
+      return (id) => (state.ownership[id] ?? null) === ownerId;
+    }
+    case "TERRAIN":
+      return (id) => state.map.terrainAt(id) === selector.terrain;
+    case "FALLOUT":
+      return (id) => (state.fallout[id] ?? false) === selector.value;
+    case "POPULATION_BEARING":
+      return (id) => {
+        const terrain = state.map.terrainAt(id);
+        return effectivePopulationBearing(state, id, terrain) === selector.value;
+      };
+    case "CONQUERABLE":
+      return (id) =>
+        landTerrainBaseSpec(state.map.terrainAt(id)).conquerable === selector.value;
+    case "COAST":
+      return (id) => isCoast(state, id) === selector.value;
+    case "SHORELINE":
+      return (id) => isShoreline(state, id) === selector.value;
+    case "CIRCLE": {
+      const center = state.map.positionOf(selector.center);
+      const radiusSquared = selector.radius * selector.radius;
+      return (id) => {
+        const position = state.map.positionOf(id);
+        const dx = position.x - center.x;
+        const dy = position.y - center.y;
+        return dx * dx + dy * dy <= radiusSquared;
+      };
+    }
+    case "UNION": {
+      const children = selector.selectors.map((child) =>
+        compileSelectorMatcher(state, child),
+      );
+      return (id) => children.some((child) => child(id));
+    }
+    case "INTERSECTION": {
+      const children = selector.selectors.map((child) =>
+        compileSelectorMatcher(state, child),
+      );
+      return (id) => children.every((child) => child(id));
+    }
+    case "DIFFERENCE": {
+      const left = compileSelectorMatcher(state, selector.left);
+      const right = compileSelectorMatcher(state, selector.right);
+      return (id) => left(id) && !right(id);
+    }
+    case "SEGMENT":
+    case "STRUCTURE_FIELD":
+    case "STRUCTURE_FIELD_INSTANCE":
+      throw new Error(`controller selector not implemented: ${selector.kind}`);
+  }
+}
+
+function orderedSelectorCellIds(
+  state: MatchState,
+  selector: CellSelector,
 ): readonly CellId[] {
-  const membership = new Set(selected);
-  return Object.freeze(
-    selected.filter((id) =>
-      state.map.cardinalNeighbors(id).some((neighbor) => !membership.has(neighbor)),
-    ),
-  );
+  if (selector.kind === "CELLS") return orderedExplicitCellIds(state, selector);
+  const matches = compileSelectorMatcher(state, selector);
+  const ids: CellId[] = [];
+  for (let id = 0; id < state.map.cellCount; id += 1) {
+    if (matches(id)) ids.push(id);
+  }
+  return Object.freeze(ids);
+}
+
+function boundedOrderedSelectorCellIds(
+  state: MatchState,
+  selector: CellSelector,
+  maxMatches: number,
+): readonly CellId[] {
+  if (selector.kind === "CELLS") {
+    return Object.freeze(orderedExplicitCellIds(state, selector).slice(0, maxMatches));
+  }
+  const matches = compileSelectorMatcher(state, selector);
+  const ids: CellId[] = [];
+  for (let id = 0; id < state.map.cellCount && ids.length < maxMatches; id += 1) {
+    if (matches(id)) ids.push(id);
+  }
+  return Object.freeze(ids);
+}
+
+function countSelectorCells(state: MatchState, selector: CellSelector): number {
+  if (selector.kind === "CELLS") return orderedExplicitCellIds(state, selector).length;
+  const matches = compileSelectorMatcher(state, selector);
+  let count = 0;
+  for (let id = 0; id < state.map.cellCount; id += 1) {
+    if (matches(id)) count += 1;
+  }
+  return count;
+}
+
+function boundedOrderedBoundaryIds(
+  state: MatchState,
+  selector: CellSelector,
+  maxMatches: number,
+): readonly CellId[] {
+  const matches = compileSelectorMatcher(state, selector);
+  const candidates =
+    selector.kind === "CELLS"
+      ? orderedExplicitCellIds(state, selector)
+      : undefined;
+  const ids: CellId[] = [];
+  const consider = (id: CellId): void => {
+    if (
+      matches(id) &&
+      state.map.cardinalNeighbors(id).some((neighbor) => !matches(neighbor))
+    ) {
+      ids.push(id);
+    }
+  };
+
+  if (candidates !== undefined) {
+    for (const id of candidates) {
+      if (ids.length >= maxMatches) break;
+      consider(id);
+    }
+  } else {
+    for (let id = 0; id < state.map.cellCount && ids.length < maxMatches; id += 1) {
+      consider(id);
+    }
+  }
+  return Object.freeze(ids);
 }
 
 function orderedComponents(
@@ -217,14 +335,16 @@ export function createControllerQuerySession(
   const remainingMaterialization = (): number =>
     Math.max(0, limits.materializedCellsPerDecision - materializedCells);
 
+  const requestedMaterialization = (limit?: number): number =>
+    limit === undefined
+      ? remainingMaterialization()
+      : Math.min(limit, remainingMaterialization());
+
   const materializePage = (
     ids: readonly CellId[],
     limit?: number,
   ): QueryPage<CellView> => {
-    const requested =
-      limit === undefined
-        ? remainingMaterialization()
-        : Math.min(limit, remainingMaterialization());
+    const requested = requestedMaterialization(limit);
     const selected = ids.slice(0, requested);
     const items = Object.freeze(
       selected.map((id) => {
@@ -252,12 +372,16 @@ export function createControllerQuerySession(
     limit?: number,
   ): Promise<QueryPage<CellView>> => {
     beginQuery();
-    return materializePage(explicitCellIds(state, selector), limit);
+    const requested = requestedMaterialization(limit);
+    return materializePage(
+      boundedOrderedSelectorCellIds(state, selector, requested + 1),
+      requested,
+    );
   };
 
   const count = async (selector: CellSelector): Promise<number> => {
     beginQuery();
-    return explicitCellIds(state, selector).length;
+    return countSelectorCells(state, selector);
   };
 
   const neighbors = async (id: CellId): Promise<readonly CellId[]> => {
@@ -270,9 +394,10 @@ export function createControllerQuerySession(
     limit?: number,
   ): Promise<QueryPage<CellView>> => {
     beginQuery();
+    const requested = requestedMaterialization(limit);
     return materializePage(
-      orderedBoundaryIds(state, explicitCellIds(state, selector)),
-      limit,
+      boundedOrderedBoundaryIds(state, selector, requested + 1),
+      requested,
     );
   };
 
@@ -280,7 +405,7 @@ export function createControllerQuerySession(
     selector: CellSelector,
   ): Promise<QueryPage<CellSelector>> => {
     beginQuery();
-    const components = orderedComponents(state, explicitCellIds(state, selector));
+    const components = orderedComponents(state, orderedSelectorCellIds(state, selector));
     const items: CellSelector[] = [];
     let truncated = false;
     for (const ids of components) {
