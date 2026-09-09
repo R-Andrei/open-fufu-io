@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   OFFICIAL_AI_ORIGIN_COMBINATION_SUPPORT,
   OFFICIAL_AI_ORIGIN_SUPPORT_SUPPRESSIONS,
@@ -139,5 +141,24 @@ describe("Official AI code-readable configuration", () => {
         `${profile.id} fidelity custom checks`,
       );
     }
+  });
+
+  it("makes canonical Official-AI design configuration available before the production Docker build", () => {
+    const dockerfile = readFileSync(resolve(process.cwd(), "Dockerfile"), "utf8");
+    const buildStageStart = dockerfile.indexOf("FROM base AS build");
+    const prodDepsStageStart = dockerfile.indexOf("FROM base AS prod-deps");
+
+    expect(buildStageStart).toBeGreaterThanOrEqual(0);
+    expect(prodDepsStageStart).toBeGreaterThan(buildStageStart);
+
+    const buildStage = dockerfile.slice(buildStageStart, prodDepsStageStart);
+    const buildCommandIndex = buildStage.indexOf("RUN npm run build-prod");
+    const designCopyMatch = /^COPY\s+design\/?\s+\.\/design\/?\s*$/m.exec(
+      buildStage,
+    );
+
+    expect(buildCommandIndex).toBeGreaterThanOrEqual(0);
+    expect(designCopyMatch).not.toBeNull();
+    expect(designCopyMatch!.index).toBeLessThan(buildCommandIndex);
   });
 });
