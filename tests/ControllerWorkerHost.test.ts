@@ -165,7 +165,7 @@ describe("production controller worker host", () => {
     const tooManyQueries = await host.invoke("alpha", ordinaryObservation());
     const tooManyCells = await host.invoke("alpha", ordinaryObservation());
 
-    expect(oversized).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
+    expect(oversized).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(tooManyQueries).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(tooManyCells).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
@@ -253,7 +253,31 @@ describe("production controller worker host", () => {
     });
   });
 
-  it("normalizes worker rejection and worker-death responses without exposing process errors", async () => {
+  it("preserves public worker-fault categories while containing worker death", async () => {
+    const workerFaults: readonly [ControllerWorkerResponse, string][] = [
+      [{ ok: false, fault: "TIMEOUT" }, "TIMEOUT"],
+      [{ ok: false, fault: "MEMORY_LIMIT" }, "MEMORY_LIMIT"],
+      [{ ok: false, fault: "SANDBOX_VIOLATION" }, "SANDBOX_VIOLATION"],
+      [{ ok: false, fault: "INVALID_OUTPUT" }, "RUNTIME_ERROR"],
+      [{ ok: false, fault: "WORKER_DIED" }, "RUNTIME_ERROR"],
+      [{ ok: false, fault: "RUNTIME_ERROR" }, "RUNTIME_ERROR"],
+    ];
+    let cursor = 0;
+    const pool = new RecordingPool(() => workerFaults[cursor++]?.[0] ?? {
+      ok: false,
+      fault: "RUNTIME_ERROR",
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    for (const [, expectedCode] of workerFaults) {
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: expectedCode },
+      });
+    }
+  });
+
+  it("normalizes thrown worker transport failures and worker death to runtime error without exposing process details", async () => {
     let invocation = 0;
     const pool = new RecordingPool(() => {
       invocation += 1;
@@ -272,7 +296,129 @@ describe("production controller worker host", () => {
     });
   });
 
-  it("rejects malformed nested decisions rather than treating copied data as a typed decision", async () => {
+  it("maps malformed memory to runtime error and memory quota overflow to memory limit without committing either", async () => {
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: { commands: [], memory: { invalid: Number.NaN } },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      if (invocation === 2) {
+        return {
+          ok: true,
+          output: {
+            commands: [],
+            memory: {
+              oversized: "x".repeat(PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes),
+            },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "MEMORY_LIMIT" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
+  });
+
+  it("enforces the canonical TEAM_SIGNAL payload byte limit without charging key or channel bytes", async () => {
+    const payloads = [
+      "x".repeat(1021),
+      "x".repeat(1022),
+      "x".repeat(1023),
+      "é".repeat(511),
+      "é".repeat(512),
+    ];
+    let cursor = 0;
+    const pool = new RecordingPool(() => ({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[cursor++],
+          },
+        ],
+      },
+      usage: { queries: 0, materializedCells: 0 },
+    }));
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[0],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[1],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[3],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+  });
+
+  it("rejects malformed nested decisions as runtime faults rather than treating copied data as typed decisions", async () => {
     const malformedOutputs: readonly unknown[] = [
       { commands: [null] },
       { commands: [{ kind: "CAPITULATE" }] },
@@ -291,7 +437,7 @@ describe("production controller worker host", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "INVALID_OUTPUT" },
+        fault: { code: "RUNTIME_ERROR" },
       });
     }
   });
@@ -322,7 +468,7 @@ describe("production controller worker host", () => {
 
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: false,
-      fault: { code: "INVALID_OUTPUT" },
+      fault: { code: "RUNTIME_ERROR" },
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
@@ -369,7 +515,7 @@ describe("production controller worker host", () => {
       ),
     ).toEqual({
       ok: false,
-      fault: { code: "INVALID_OUTPUT" },
+      fault: { code: "RUNTIME_ERROR" },
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
