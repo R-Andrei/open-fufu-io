@@ -8,10 +8,24 @@ import type {
 } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
-import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
-import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
-import { createInitialMatchState } from "../src/simulation/MatchState";
+import {
+  originRuleProfileInput,
+  type OriginTraitId,
+} from "../src/core/rules/OriginRuleManifest";
+import {
+  InProcessTestControllerHost,
+  type ControllerHost,
+} from "../src/simulation/ControllerRuntime";
+import {
+  createInitialMatchState,
+  type MatchState,
+} from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { materializeSpawnInitialization } from "../src/simulation/SpawnInitialization";
+import {
+  SPAWN_STABLE_TIE32_ID,
+  stableTie32,
+} from "../src/simulation/SpawnSemantics";
 import {
   resolveStrategicSpawn,
   type StrategicSpawnBaseContextInput,
@@ -21,6 +35,14 @@ const ORDINARY_PROFILE: SpawnProfileView = Object.freeze({
   influenceSlotCount: 1,
   exactOriginCount: 1,
   influenceAreaCells: Object.freeze([160_000]),
+  initialTerritoryPopulationBearingCells: 1_000,
+  footprintShape: "COMPACT",
+});
+
+const P39_PROFILE: SpawnProfileView = Object.freeze({
+  influenceSlotCount: 2,
+  exactOriginCount: 2,
+  influenceAreaCells: Object.freeze([80_000, 80_000]),
   initialTerritoryPopulationBearingCells: 1_000,
   footprintShape: "COMPACT",
 });
@@ -44,8 +66,8 @@ const MECHANICS = Object.freeze({}) as MechanicsApi;
 const CELLS = Object.freeze({}) as StrategicSpawnBaseContextInput["cells"];
 const RANDOM = Object.freeze({ next: () => 0.25, keyed: () => 0.5 });
 
-function rules() {
-  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput([]));
+function rules(traits: readonly OriginTraitId[] = []) {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
 }
 
 function selfView(id: string): SelfFactionView {
@@ -77,7 +99,10 @@ function selfView(id: string): SelfFactionView {
   });
 }
 
-function baseContext(id: string): StrategicSpawnBaseContextInput {
+function baseContext(
+  id: string,
+  profile: SpawnProfileView = ORDINARY_PROFILE,
+): StrategicSpawnBaseContextInput {
   return Object.freeze({
     game: Object.freeze({
       matchId: "strategic-test",
@@ -97,23 +122,74 @@ function baseContext(id: string): StrategicSpawnBaseContextInput {
     mechanics: MECHANICS,
     random: RANDOM,
     limits: LIMITS,
-    profile: ORDINARY_PROFILE,
+    profile,
   });
+}
+
+function spawnState(options: {
+  readonly seed: string;
+  readonly width: number;
+  readonly height?: number;
+  readonly terrain?: readonly string[];
+  readonly factions: readonly {
+    readonly id: string;
+    readonly traits?: readonly OriginTraitId[];
+  }[];
+}): MatchState {
+  return createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: options.seed,
+      width: options.width,
+      height: options.height ?? 1,
+      ...(options.terrain === undefined ? {} : { terrain: options.terrain }),
+      factions: options.factions.map((faction) => ({
+        id: faction.id,
+        rules: rules(faction.traits),
+      })),
+    }),
+  );
+}
+
+function cellId(width: number, x: number, y: number): number {
+  return y * width + x;
+}
+
+function defaultInfluenceCenter(
+  seed: string,
+  factionId: string,
+  slot: number,
+  candidates: readonly number[],
+): number {
+  return [...candidates].sort((left, right) => {
+    const tie =
+      stableTie32("default-influence-center", "1", seed, factionId, slot, left) -
+      stableTie32("default-influence-center", "1", seed, factionId, slot, right);
+    return tie === 0 ? left - right : tie;
+  })[0]!;
+}
+
+function resolvedOrigins(
+  initialization: Awaited<ReturnType<typeof resolveStrategicSpawn>>["initialization"],
+): Record<string, readonly number[]> {
+  return Object.fromEntries(
+    initialization.factions.map((faction) => [
+      faction.factionId,
+      faction.origins.map((origin) => origin.resolvedExactOrigin),
+    ]),
+  );
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 describe("#107 Strategic Spawn coordinator", () => {
   it("runs the ordinary three hidden phases and emits the resolved shared handoff", async () => {
-    const state = createInitialMatchState(
-      createMicroSimulationSpec({
-        seed: "strategic-ordinary-three-phase",
-        width: 220,
-        height: 1,
-        factions: [
-          { id: "alpha", rules: rules() },
-          { id: "beta", rules: rules() },
-        ],
-      }),
-    );
+    const state = spawnState({
+      seed: "strategic-ordinary-three-phase",
+      width: 220,
+      factions: [{ id: "alpha" }, { id: "beta" }],
+    });
 
     const phase1Seen: Record<string, unknown> = {};
     const phase2Seen: Record<string, unknown> = {};
@@ -217,5 +293,301 @@ describe("#107 Strategic Spawn coordinator", () => {
         },
       ],
     });
+  });
+
+  it.each([
+    {
+      label: "missing",
+      expectedReason: "HOOK_MISSING",
+      host: () => new InProcessTestControllerHost({ alpha: {} }),
+    },
+    {
+      label: "runtime-faulting",
+      expectedReason: "HOOK_RUNTIME_FAULT",
+      host: () =>
+        new InProcessTestControllerHost({
+          alpha: {
+            chooseInfluence() {
+              throw new Error("phase1");
+            },
+            reconsiderInfluence() {
+              throw new Error("phase2");
+            },
+            chooseOrigins() {
+              throw new Error("phase3");
+            },
+          },
+        }),
+    },
+    {
+      label: "malformed",
+      expectedReason: "HOOK_MALFORMED",
+      host: () =>
+        new InProcessTestControllerHost({
+          alpha: {
+            chooseInfluence: () => ({ centers: [] }) as never,
+            reconsiderInfluence: () => ({ centers: [Number.NaN] }),
+            chooseOrigins: () => ({ origins: [] }) as never,
+          },
+        }),
+    },
+  ])("uses canonical whole-hook defaults for $label Spawn hooks", async ({ expectedReason, host }) => {
+    const seed = `strategic-default-${expectedReason}`;
+    const width = 121;
+    const legalSeeds = [10, 60, 110] as const;
+    const terrain = Array.from({ length: width }, () => "IMPASSABLE");
+    for (const candidate of legalSeeds) terrain[candidate] = "TEST";
+    const state = spawnState({
+      seed,
+      width,
+      terrain,
+      factions: [{ id: "alpha" }],
+    });
+    const expectedCenter = defaultInfluenceCenter(seed, "alpha", 0, legalSeeds);
+
+    const result = await resolveStrategicSpawn({
+      state,
+      host: host(),
+      contextForFaction: baseContext,
+    });
+
+    expect(resolvedOrigins(result.initialization)).toEqual({ alpha: [expectedCenter] });
+    expect(result.evidence).toMatchObject({
+      spawnResolverVersion: "1",
+      stableTie32Id: SPAWN_STABLE_TIE32_ID,
+      factions: [
+        {
+          factionId: "alpha",
+          phase1: {
+            resolvedInfluenceCenters: [expectedCenter],
+            fallbackReason: expectedReason,
+          },
+          phase2: {
+            resolvedInfluenceCenters: [expectedCenter],
+            fallbackReason: expectedReason,
+          },
+          phase3: {
+            resolvedRequestedOrigins: [expectedCenter],
+            fallbackReason: expectedReason,
+          },
+        },
+      ],
+    });
+  });
+
+  it("resolves simultaneous origin conflicts independently of faction enumeration and async completion order", async () => {
+    const makeRun = async (
+      factionOrder: readonly string[],
+      delays: Readonly<Record<string, number>>,
+    ) => {
+      const completedPhase1 = new Set<string>();
+      const completedPhase2 = new Set<string>();
+      const host: ControllerHost = {
+        invoke() {
+          return { ok: true };
+        },
+        async chooseInfluence(factionId) {
+          await delay(delays[factionId] ?? 0);
+          completedPhase1.add(factionId);
+          return { ok: true, output: { centers: [150] } };
+        },
+        async reconsiderInfluence(factionId) {
+          if (completedPhase1.size !== factionOrder.length) {
+            throw new Error("Phase 2 began before the complete Phase-1 barrier");
+          }
+          await delay(delays[factionId] ?? 0);
+          completedPhase2.add(factionId);
+          return { ok: true, output: { centers: [150] } };
+        },
+        async chooseOrigins(factionId) {
+          if (completedPhase2.size !== factionOrder.length) {
+            throw new Error("Phase 3 began before the complete Phase-2 barrier");
+          }
+          await delay(delays[factionId] ?? 0);
+          return { ok: true, output: { origins: [150] } };
+        },
+      };
+      return resolveStrategicSpawn({
+        state: spawnState({
+          seed: "strategic-global-priority",
+          width: 500,
+          factions: factionOrder.map((id) => ({ id })),
+        }),
+        host,
+        contextForFaction: baseContext,
+      });
+    };
+
+    const forward = await makeRun(["alpha", "beta", "gamma"], {
+      alpha: 12,
+      beta: 4,
+      gamma: 0,
+    });
+    const reversed = await makeRun(["gamma", "beta", "alpha"], {
+      alpha: 0,
+      beta: 4,
+      gamma: 12,
+    });
+
+    expect(reversed.initialization).toEqual(forward.initialization);
+    expect(reversed.evidence).toEqual(forward.evidence);
+
+    const priorityWinner = ["alpha", "beta", "gamma"].sort((left, right) => {
+      const delta =
+        stableTie32("exact-origin-priority", "1", "strategic-global-priority", left, 0) -
+        stableTie32("exact-origin-priority", "1", "strategic-global-priority", right, 0);
+      return delta === 0 ? left.localeCompare(right) : delta;
+    })[0]!;
+    const origins = resolvedOrigins(forward.initialization);
+    expect(origins[priorityWinner]).toEqual([150]);
+
+    const resolved = Object.values(origins).flat();
+    for (let left = 0; left < resolved.length; left += 1) {
+      for (let right = left + 1; right < resolved.length; right += 1) {
+        expect(Math.abs(resolved[left]! - resolved[right]!)).toBeGreaterThanOrEqual(50);
+      }
+    }
+  });
+
+  it("preserves a valid P39 sibling request while repairing only the semantic-invalid slot", async () => {
+    const state = spawnState({
+      seed: "strategic-p39-repair",
+      width: 800,
+      factions: [{ id: "alpha", traits: ["P39"] }],
+    });
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence: () => ({ centers: [100, 200] }),
+        reconsiderInfluence: () => ({ centers: [100, 200] }),
+        chooseOrigins(context) {
+          expect(context.spawn.validateOriginChoices([100, 700])).toEqual({
+            valid: false,
+            code: "OUTSIDE_INFLUENCE",
+            slotIndex: 1,
+          });
+          return { origins: [100, 700] };
+        },
+      },
+    });
+
+    const result = await resolveStrategicSpawn({
+      state,
+      host,
+      contextForFaction: (id) => baseContext(id, P39_PROFILE),
+    });
+    const alpha = result.initialization.factions[0]!;
+
+    expect(alpha.origins.map((origin) => origin.originSlot)).toEqual([0, 1]);
+    expect(alpha.origins[0]).toMatchObject({
+      originSlot: 0,
+      resolvedExactOrigin: 100,
+      source: "STRATEGIC_SUBMISSION",
+    });
+    expect(alpha.origins[1]).toMatchObject({
+      originSlot: 1,
+      source: "STRATEGIC_SUBMISSION",
+      resolutionReason: "ORIGIN_IN_REGION_FALLBACK",
+    });
+    expect(alpha.origins[1]?.resolvedExactOrigin).not.toBe(700);
+    expect((alpha.origins[1]?.resolvedExactOrigin ?? 0) - 200).toBeLessThanOrEqual(283);
+    expect(result.evidence.factions[0]?.phase3).toMatchObject({
+      submittedOrigins: [100, 700],
+      resolvedRequestedOrigins: [100, 700],
+    });
+    expect(result.evidence.factions[0]?.origins[1]?.diagnostics).toEqual(
+      expect.arrayContaining(["ORIGIN_OUTSIDE_INFLUENCE", "ORIGIN_IN_REGION_FALLBACK"]),
+    );
+  });
+
+  it("uses the canonical global emergency fallback and fails deterministically when no legal seed exists", async () => {
+    const width = 1_000;
+    const terrain = Array.from({ length: width }, () => "IMPASSABLE");
+    terrain[900] = "TEST";
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence: () => ({ centers: [0] }),
+        reconsiderInfluence: () => ({ centers: [0] }),
+        chooseOrigins: () => ({ origins: [0] }),
+      },
+    });
+    const state = spawnState({
+      seed: "strategic-global-fallback",
+      width,
+      terrain,
+      factions: [{ id: "alpha" }],
+    });
+
+    const result = await resolveStrategicSpawn({
+      state,
+      host,
+      contextForFaction: baseContext,
+    });
+    expect(result.initialization.factions[0]?.origins[0]).toMatchObject({
+      resolvedExactOrigin: 900,
+      resolutionReason: "ORIGIN_GLOBAL_FALLBACK",
+    });
+    expect(result.evidence.factions[0]?.origins[0]?.diagnostics).toEqual(
+      expect.arrayContaining(["ORIGIN_ILLEGAL_TERRAIN", "ORIGIN_GLOBAL_FALLBACK"]),
+    );
+
+    const impossible = spawnState({
+      seed: "strategic-global-unfillable",
+      width,
+      terrain: Array.from({ length: width }, () => "IMPASSABLE"),
+      factions: [{ id: "alpha" }],
+    });
+    await expect(
+      resolveStrategicSpawn({
+        state: impossible,
+        host,
+        contextForFaction: baseContext,
+      }),
+    ).rejects.toThrow(/^ORIGIN_GLOBAL_UNFILLABLE$/);
+  });
+
+  it("does not materialize start state before returning the shared Spawn handoff", async () => {
+    const width = 100;
+    const state = spawnState({
+      seed: "strategic-shared-handoff",
+      width,
+      height: 100,
+      factions: [{ id: "alpha" }, { id: "beta" }],
+    });
+    const alphaOrigin = cellId(width, 10, 10);
+    const betaOrigin = cellId(width, 90, 90);
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        chooseInfluence: () => ({ centers: [alphaOrigin] }),
+        reconsiderInfluence: () => ({ centers: [alphaOrigin] }),
+        chooseOrigins: () => ({ origins: [alphaOrigin] }),
+      },
+      beta: {
+        chooseInfluence: () => ({ centers: [betaOrigin] }),
+        reconsiderInfluence: () => ({ centers: [betaOrigin] }),
+        chooseOrigins: () => ({ origins: [betaOrigin] }),
+      },
+    });
+
+    const result = await resolveStrategicSpawn({
+      state,
+      host,
+      contextForFaction: baseContext,
+    });
+
+    expect(state.ownership.every((owner) => owner === null)).toBe(true);
+    expect(state.factions.every((faction) => faction.population.total === 0)).toBe(true);
+
+    const materialized = materializeSpawnInitialization(state, result.initialization);
+    expect(materialized.snapshot.spawnMode).toBe("STRATEGIC");
+    expect(
+      materialized.state.ownership.filter((owner) => owner === "alpha"),
+    ).toHaveLength(1_000);
+    expect(
+      materialized.state.ownership.filter((owner) => owner === "beta"),
+    ).toHaveLength(1_000);
+    expect(materialized.state.factions.map((faction) => faction.population.total)).toEqual([
+      500,
+      500,
+    ]);
   });
 });
