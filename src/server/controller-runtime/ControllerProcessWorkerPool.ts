@@ -2,6 +2,8 @@ import { fork, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { CellId, CellSelector, SegmentId } from "../../core/controller/ControllerApi";
+import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
 import type {
   ControllerWorkerPool,
   ControllerWorkerRequest,
@@ -19,9 +21,46 @@ export interface ControllerProcessWorkerPoolOptions {
   readonly nowMs?: () => number;
 }
 
+type ControllerWorkerQueryRequest =
+  | Readonly<{ operation: "CELLS_GET"; args: readonly [CellId] }>
+  | Readonly<{
+      operation: "CELLS_QUERY";
+      args: readonly [CellSelector, number?];
+    }>
+  | Readonly<{ operation: "CELLS_COUNT"; args: readonly [CellSelector] }>
+  | Readonly<{ operation: "CELLS_NEIGHBORS"; args: readonly [CellId] }>
+  | Readonly<{
+      operation: "CELLS_BOUNDARY";
+      args: readonly [CellSelector, number?];
+    }>
+  | Readonly<{
+      operation: "CELLS_CONNECTED_COMPONENTS";
+      args: readonly [CellSelector];
+    }>
+  | Readonly<{
+      operation: "CELLS_DISTANCE";
+      args: readonly [CellId, CellId];
+    }>
+  | Readonly<{ operation: "SEGMENTS_GET"; args: readonly [SegmentId] }>
+  | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>;
+
 type WorkerRequestEnvelope = Readonly<{
   requestId: number;
   request: ControllerWorkerRequest;
+}>;
+
+type WorkerQueryEnvelope = Readonly<{
+  requestId: number;
+  queryId: number;
+  query: ControllerWorkerQueryRequest;
+}>;
+
+type WorkerQueryResultEnvelope = Readonly<{
+  requestId: number;
+  queryId: number;
+  result:
+    | Readonly<{ ok: true; value?: unknown }>
+    | Readonly<{ ok: false }>;
 }>;
 
 type WorkerResponseEnvelope = Readonly<{
@@ -32,13 +71,16 @@ type WorkerResponseEnvelope = Readonly<{
 
 type QueuedInvocation = Readonly<{
   request: ControllerWorkerRequest;
+  querySession?: ControllerQuerySession;
   resolve: (response: ControllerWorkerResponse) => void;
 }>;
 
 type PendingInvocation = Readonly<{
   requestId: number;
+  querySession?: ControllerQuerySession;
   resolve: (response: ControllerWorkerResponse) => void;
   watchdog: NodeJS.Timeout;
+  seenQueryIds: Set<number>;
 }>;
 
 type WorkerSlot = {
@@ -64,19 +106,94 @@ const controllerWorkerFault = Object.freeze({
   fault: "WORKER_DIED" as const,
 });
 
-function isWorkerResponseEnvelope(value: unknown): value is WorkerResponseEnvelope {
-  if (value === null || typeof value !== "object") return false;
-  const record = value as Record<string, unknown>;
-  if (!Number.isInteger(record.requestId)) return false;
-  if (record.response === null || typeof record.response !== "object") return false;
-  if (typeof (record.response as Record<string, unknown>).ok !== "boolean") {
-    return false;
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isSelectorArgument(value: unknown): value is CellSelector {
+  return isPlainRecord(value) && typeof value.kind === "string";
+}
+
+function isControllerWorkerQueryRequest(
+  value: unknown,
+): value is ControllerWorkerQueryRequest {
+  if (!isPlainRecord(value) || !Array.isArray(value.args)) return false;
+  const args = value.args;
+
+  switch (value.operation) {
+    case "CELLS_GET":
+    case "CELLS_NEIGHBORS":
+    case "SEGMENTS_GET":
+      return args.length === 1 && typeof args[0] === "number";
+    case "CELLS_QUERY":
+    case "CELLS_BOUNDARY":
+      return (
+        (args.length === 1 || args.length === 2) &&
+        isSelectorArgument(args[0]) &&
+        (args.length === 1 || typeof args[1] === "number")
+      );
+    case "CELLS_COUNT":
+    case "CELLS_CONNECTED_COMPONENTS":
+      return args.length === 1 && isSelectorArgument(args[0]);
+    case "CELLS_DISTANCE":
+      return (
+        args.length === 2 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number"
+      );
+    case "SEGMENTS_LIST":
+      return args.length === 0;
+    default:
+      return false;
   }
+}
+
+function isWorkerQueryEnvelope(value: unknown): value is WorkerQueryEnvelope {
+  if (!isPlainRecord(value)) return false;
   return (
-    typeof record.rssBytes === "number" &&
-    Number.isFinite(record.rssBytes) &&
-    record.rssBytes >= 0
+    Number.isInteger(value.requestId) &&
+    Number.isInteger(value.queryId) &&
+    (value.queryId as number) > 0 &&
+    isControllerWorkerQueryRequest(value.query)
   );
+}
+
+function isWorkerResponseEnvelope(value: unknown): value is WorkerResponseEnvelope {
+  if (!isPlainRecord(value)) return false;
+  if (!Number.isInteger(value.requestId)) return false;
+  if (!isPlainRecord(value.response)) return false;
+  if (typeof value.response.ok !== "boolean") return false;
+  return (
+    typeof value.rssBytes === "number" &&
+    Number.isFinite(value.rssBytes) &&
+    value.rssBytes >= 0
+  );
+}
+
+async function resolveControllerWorkerQuery(
+  session: ControllerQuerySession,
+  query: ControllerWorkerQueryRequest,
+): Promise<unknown> {
+  switch (query.operation) {
+    case "CELLS_GET":
+      return session.cells.get(query.args[0]);
+    case "CELLS_QUERY":
+      return session.cells.query(query.args[0], query.args[1]);
+    case "CELLS_COUNT":
+      return session.cells.count(query.args[0]);
+    case "CELLS_NEIGHBORS":
+      return session.cells.neighbors(query.args[0]);
+    case "CELLS_BOUNDARY":
+      return session.cells.boundary(query.args[0], query.args[1]);
+    case "CELLS_CONNECTED_COMPONENTS":
+      return session.cells.connectedComponents(query.args[0]);
+    case "CELLS_DISTANCE":
+      return session.cells.distance(query.args[0], query.args[1]);
+    case "SEGMENTS_GET":
+      return session.segments.get(query.args[0]);
+    case "SEGMENTS_LIST":
+      return session.segments.list();
+  }
 }
 
 function requirePositiveFinite(value: number, name: string): number {
@@ -124,11 +241,14 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     );
   }
 
-  invoke(request: ControllerWorkerRequest): Promise<ControllerWorkerResponse> {
+  invoke(
+    request: ControllerWorkerRequest,
+    querySession?: ControllerQuerySession,
+  ): Promise<ControllerWorkerResponse> {
     if (this.closing) return Promise.resolve(controllerWorkerFault);
 
     return new Promise((resolve) => {
-      this.queue.push(Object.freeze({ request, resolve }));
+      this.queue.push(Object.freeze({ request, querySession, resolve }));
       this.pump();
     });
   }
@@ -205,8 +325,10 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
       slot.pending = Object.freeze({
         requestId,
+        querySession: queued.querySession,
         resolve: queued.resolve,
         watchdog,
+        seenQueryIds: new Set<number>(),
       });
 
       const envelope: WorkerRequestEnvelope = Object.freeze({
@@ -226,6 +348,12 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
   private handleMessage(slot: WorkerSlot, message: unknown): void {
     if (slot.failed || slot.pending === undefined) return;
+
+    if (isWorkerQueryEnvelope(message)) {
+      this.handleQueryMessage(slot, message);
+      return;
+    }
+
     if (!isWorkerResponseEnvelope(message)) {
       this.markWorkerFailed(slot);
       return;
@@ -238,7 +366,19 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     const pending = slot.pending;
     slot.pending = undefined;
     clearTimeout(pending.watchdog);
-    pending.resolve(message.response);
+
+    let response = message.response;
+    if (response.ok && pending.querySession !== undefined) {
+      const usage = pending.querySession.usage();
+      response = Object.freeze({
+        ...response,
+        usage: Object.freeze({
+          queries: usage.queries,
+          materializedCells: usage.materializedCells,
+        }),
+      });
+    }
+    pending.resolve(response);
 
     if (
       this.workerAgeMs(slot) >= this.maxWorkerAgeMs ||
@@ -249,6 +389,70 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     }
 
     this.pump();
+  }
+
+  private handleQueryMessage(
+    slot: WorkerSlot,
+    message: WorkerQueryEnvelope,
+  ): void {
+    const pending = slot.pending;
+    if (
+      pending === undefined ||
+      message.requestId !== pending.requestId ||
+      pending.seenQueryIds.has(message.queryId)
+    ) {
+      this.markWorkerFailed(slot);
+      return;
+    }
+    pending.seenQueryIds.add(message.queryId);
+
+    const session = pending.querySession;
+    if (session === undefined) {
+      this.sendQueryResult(slot, message.requestId, message.queryId, { ok: false });
+      return;
+    }
+
+    void resolveControllerWorkerQuery(session, message.query).then(
+      (value) => {
+        this.sendQueryResult(slot, message.requestId, message.queryId, {
+          ok: true,
+          value,
+        });
+      },
+      () => {
+        this.sendQueryResult(slot, message.requestId, message.queryId, {
+          ok: false,
+        });
+      },
+    );
+  }
+
+  private sendQueryResult(
+    slot: WorkerSlot,
+    requestId: number,
+    queryId: number,
+    result: WorkerQueryResultEnvelope["result"],
+  ): void {
+    if (
+      slot.failed ||
+      slot.pending === undefined ||
+      slot.pending.requestId !== requestId
+    ) {
+      return;
+    }
+
+    const envelope: WorkerQueryResultEnvelope = Object.freeze({
+      requestId,
+      queryId,
+      result: Object.freeze(result),
+    });
+    try {
+      slot.child.send(envelope, (error) => {
+        if (error !== null) this.markWorkerFailed(slot);
+      });
+    } catch {
+      this.markWorkerFailed(slot);
+    }
   }
 
   private workerAgeMs(slot: WorkerSlot): number {
