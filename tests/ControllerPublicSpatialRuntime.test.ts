@@ -100,6 +100,14 @@ function workerRequest(moduleSource: string): ControllerWorkerRequest {
   });
 }
 
+async function waitFor(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("timed out waiting for controller worker replacement");
+}
+
 describe("controller local public spatial runtime", () => {
   it("serves map, public ownership, and canonical Segment cells synchronously inside the isolate", async () => {
     const state = localSpatialState();
@@ -325,8 +333,18 @@ describe("controller local public spatial runtime", () => {
       });
       expect(terrainReads).toBe(cellCount);
       expect(replacementOwnershipReads).toBe(cellCount);
+
+      const replacedWorkerPid = pool.workerProcessIds()[0];
+      if (replacedWorkerPid === undefined) throw new Error("expected worker pid");
+      process.kill(replacedWorkerPid, "SIGKILL");
+      await waitFor(() => pool.workerProcessIds()[0] !== replacedWorkerPid);
+
+      const recovered = await pool.invoke(request, replacementSession);
+      expect(recovered).toEqual(replaced);
+      expect(terrainReads).toBe(cellCount);
+      expect(replacementOwnershipReads).toBe(cellCount);
     } finally {
       await pool.close();
     }
-  });
+  }, 20_000);
 });
