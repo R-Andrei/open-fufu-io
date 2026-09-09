@@ -35,14 +35,26 @@ function encodeVaruint(value: number): number[] {
   return bytes;
 }
 
+function canonicalPaletteBytes(count: number): number[] {
+  const encoder = new TextEncoder();
+  const bytes: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const owner = encoder.encode(`owner-${index.toString().padStart(3, "0")}`);
+    bytes.push(...encodeVaruint(owner.byteLength), ...owner);
+  }
+  return bytes;
+}
+
 function malformedHugeRleSnapshot(): Uint8Array {
+  const paletteCount = 256;
   return Uint8Array.from([
     ...OWNERSHIP_MAGIC,
     OWNERSHIP_PLANE_SCHEMA_VERSION,
     0,
     ...encodeVaruint(1),
     ...encodeVaruint(V1_CELL_COUNT),
-    ...encodeVaruint(0),
+    ...encodeVaruint(paletteCount),
+    ...canonicalPaletteBytes(paletteCount),
     1,
     ...encodeVaruint(1),
     ...encodeVaruint(1),
@@ -68,7 +80,7 @@ function malformedHugeSparseDelta(): Uint8Array {
 }
 
 function captureTypedArrayLengthAllocations(
-  key: "Uint8Array" | "Uint32Array",
+  key: "Uint16Array" | "Uint32Array",
   callback: () => void,
 ): readonly number[] {
   const globals = globalThis as unknown as Record<string, unknown>;
@@ -78,11 +90,6 @@ function captureTypedArrayLengthAllocations(
     construct(target, args) {
       if (typeof args[0] === "number") allocations.push(args[0]);
       return Reflect.construct(target, args, target);
-    },
-  });
-  Object.defineProperty(replacement, Symbol.hasInstance, {
-    value(value: unknown) {
-      return value instanceof (original as typeof Uint8Array);
     },
   });
   globals[key] = replacement;
@@ -357,7 +364,7 @@ describe("participant ownership-plane synchronization", () => {
 
   it("rejects attacker-declared decode sizes before allocating from those counts", () => {
     const snapshot = malformedHugeRleSnapshot();
-    const snapshotAllocations = captureTypedArrayLengthAllocations("Uint8Array", () => {
+    const snapshotAllocations = captureTypedArrayLengthAllocations("Uint16Array", () => {
       expect(() => decodeOwnershipFrame(snapshot)).toThrow();
     });
     expect(snapshotAllocations).not.toContain(V1_CELL_COUNT);
