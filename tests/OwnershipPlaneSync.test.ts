@@ -130,6 +130,10 @@ describe("participant ownership-plane synchronization", () => {
     expect(decoded.cellCount).toBe(V1_CELL_COUNT);
 
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-a", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "stream-a",
@@ -168,6 +172,10 @@ describe("participant ownership-plane synchronization", () => {
     );
 
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-a", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "stream-a",
@@ -229,6 +237,10 @@ describe("participant ownership-plane synchronization", () => {
     );
 
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-heavy", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "stream-heavy",
@@ -277,6 +289,10 @@ describe("participant ownership-plane synchronization", () => {
 
     expect(delta.kind).toBe("DELTA");
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-c", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "stream-c",
@@ -358,6 +374,10 @@ describe("participant ownership-plane synchronization", () => {
     expect(secondDelta.kind).toBe("DELTA");
 
     const sequenceGap = new OwnershipPlaneCache();
+    expect(sequenceGap.applyEnvelope(sequenceOnlyEnvelope("stream-gap", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       sequenceGap.applyEnvelope({
         streamId: "stream-gap",
@@ -386,6 +406,10 @@ describe("participant ownership-plane synchronization", () => {
     ).toEqual({ ok: false, reason: "RESYNC_REQUIRED", resyncRequired: true });
 
     const revisionGap = new OwnershipPlaneCache();
+    expect(revisionGap.applyEnvelope(sequenceOnlyEnvelope("stream-rev", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       revisionGap.applyEnvelope({
         streamId: "stream-rev",
@@ -504,6 +528,10 @@ describe("participant ownership-plane synchronization", () => {
 
     expect(delta.kind).toBe("DELTA");
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-malformed", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "stream-malformed",
@@ -588,6 +616,10 @@ describe("participant ownership-plane synchronization", () => {
     const fresh = publisher.currentSnapshot();
 
     const cache = new OwnershipPlaneCache();
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("old-stream", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "old-stream",
@@ -596,6 +628,10 @@ describe("participant ownership-plane synchronization", () => {
         bytes: baseline.bytes,
       }),
     ).toEqual({ ok: true, revision: 1 });
+    expect(cache.applyEnvelope(sequenceOnlyEnvelope("new-stream", 1))).toEqual({
+      ok: true,
+      revision: 0,
+    });
     expect(
       cache.applyEnvelope({
         streamId: "new-stream",

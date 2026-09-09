@@ -85,6 +85,19 @@ describe("ownership-plane adversarial certification", () => {
     ).toEqual({ ok: false, reason: "SEQUENCE_GAP", resyncRequired: true });
     expect(cache.revision()).toBe(0);
     expect(cache.cellCount()).toBe(0);
+
+    expect(cache.acceptResume("fresh-gap", 0)).toBe(true);
+    expect(
+      cache.applyEnvelope({ streamId: "fresh-gap", seq: 1, tick: 0 }),
+    ).toEqual({ ok: true, revision: 0 });
+    expect(
+      cache.applyEnvelope({
+        streamId: "fresh-gap",
+        seq: 2,
+        tick: baseline.tick,
+        bytes: baseline.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 1 });
   });
 
   it("binds a coalesced ownership publication to the authoritative tick of its final observation", () => {

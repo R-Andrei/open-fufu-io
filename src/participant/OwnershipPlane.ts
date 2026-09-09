@@ -1114,7 +1114,7 @@ export class OwnershipPlaneCache {
       typeof streamId !== "string" ||
       streamId.length === 0 ||
       !Number.isSafeInteger(afterSeq) ||
-      afterSeq <= 0 ||
+      afterSeq < 0 ||
       !this.requiresResync ||
       this.streamIdValue !== streamId ||
       this.lastSeq !== afterSeq
@@ -1144,6 +1144,17 @@ export class OwnershipPlaneCache {
     }
 
     const sameStream = this.streamIdValue === envelope.streamId;
+    if (!sameStream && envelope.seq !== 1) {
+      this.streamIdValue = envelope.streamId;
+      this.lastSeq = 0;
+      this.lastEnvelopeTick = undefined;
+      this.revisionValue = 0;
+      this.ownershipTickValue = undefined;
+      this.palette = Object.freeze([]);
+      this.codes = undefined;
+      this.requiresResync = true;
+      return applyFailure("SEQUENCE_GAP");
+    }
     if (sameStream && this.requiresResync) {
       return applyFailure("RESYNC_REQUIRED");
     }
