@@ -100,6 +100,53 @@ describe("ownership-plane adversarial certification", () => {
     ).toEqual({ ok: true, revision: 1 });
   });
 
+  it("rejects a complete ownership baseline whose cell count does not match the bound stream map", () => {
+    const wrongPublisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    wrongPublisher.observe(Object.freeze(new Array<string | null>(64).fill(null)), 0);
+    const wrongBaseline = requirePublication(wrongPublisher.flush());
+
+    const correctPublisher = new OwnershipPlanePublisher({ chunkSize: 32 });
+    const correctOwnership = new Array<string | null>(128).fill(null);
+    correctOwnership[127] = "alpha";
+    correctPublisher.observe(Object.freeze(correctOwnership), 0);
+    const correctBaseline = requirePublication(correctPublisher.flush());
+
+    const Cache = OwnershipPlaneCache as unknown as new (options: {
+      expectedCellCount: number;
+    }) => OwnershipPlaneCache;
+    const cache = new Cache({ expectedCellCount: 128 });
+
+    expect(cache.applyEnvelope({ streamId: "wrong-map", seq: 1, tick: 0 })).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "wrong-map",
+        seq: 2,
+        tick: wrongBaseline.tick,
+        bytes: wrongBaseline.bytes,
+      }),
+    ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
+    expect(cache.revision()).toBe(0);
+    expect(cache.cellCount()).toBe(0);
+
+    expect(cache.applyEnvelope({ streamId: "correct-map", seq: 1, tick: 0 })).toEqual({
+      ok: true,
+      revision: 0,
+    });
+    expect(
+      cache.applyEnvelope({
+        streamId: "correct-map",
+        seq: 2,
+        tick: correctBaseline.tick,
+        bytes: correctBaseline.bytes,
+      }),
+    ).toEqual({ ok: true, revision: 1 });
+    expect(cache.cellCount()).toBe(128);
+    expect(cache.ownerAt(127)).toBe("alpha");
+  });
+
   it("binds a coalesced ownership publication to the authoritative tick of its final observation", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
     const initial = Object.freeze(alternatingOwnership(128));
