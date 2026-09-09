@@ -35,6 +35,8 @@
     "tests/RuleNormalization.test.ts",
     "tests/RuleRationalMaterialization.test.ts",
     "tests/RuleValidationRegression.test.ts",
+    "tests/Segments.test.ts",
+    "tests/SegmentsProduction.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
     "tests/SpawnInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
@@ -213,6 +215,7 @@
       "path": "src/simulation/MapArtifact.ts",
       "validators": [
         "tests/MapArtifact.test.ts",
+        "tests/Segments.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
     },
@@ -280,10 +283,19 @@
       ]
     },
     {
+      "path": "src/simulation/Segments.ts",
+      "validators": [
+        "tests/Segments.test.ts",
+        "tests/SegmentsProduction.test.ts",
+        "tests/SimulationDependencyFirewall.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/SimulationMap.ts",
       "validators": [
         "tests/MapArtifact.test.ts",
         "tests/MatchRuntime.test.ts",
+        "tests/Segments.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
       ]
     },
