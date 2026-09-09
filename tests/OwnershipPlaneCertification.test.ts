@@ -69,6 +69,64 @@ function invertedOwnership(cellCount: number): (string | null)[] {
 }
 
 describe("ownership-plane adversarial certification", () => {
+  it("binds a coalesced ownership publication to the authoritative tick of its final observation", () => {
+    const publisher = new OwnershipPlanePublisher({ chunkSize: 32 }) as OwnershipPlanePublisher & {
+      observe(ownership: readonly (string | null)[], tick: number): void;
+    };
+    const initial = Object.freeze(alternatingOwnership(128));
+    publisher.observe(initial, 0);
+    const baseline = requirePublication(publisher.flush()) as OwnershipPublication & {
+      tick: number;
+    };
+    expect(baseline.tick).toBe(0);
+
+    const first = initial.slice();
+    first[2] = "beta";
+    publisher.observe(Object.freeze(first), 4);
+    const second = first.slice();
+    second[2] = null;
+    publisher.observe(Object.freeze(second), 4);
+    const final = second.slice();
+    final[2] = "beta";
+    publisher.observe(Object.freeze(final), 5);
+
+    const delta = requirePublication(publisher.flush()) as OwnershipPublication & {
+      tick: number;
+    };
+    expect(delta.tick).toBe(5);
+    expect(delta.revision).toBe(2);
+
+    const cache = new OwnershipPlaneCache() as OwnershipPlaneCache & {
+      tick(): number | undefined;
+    };
+    expect(
+      cache.applyEnvelope({ streamId: "tick-bound", seq: 1, tick: 0 } as never),
+    ).toEqual({ ok: true, revision: 0 });
+    expect(
+      cache.applyEnvelope({
+        streamId: "tick-bound",
+        seq: 2,
+        tick: baseline.tick,
+        bytes: baseline.bytes,
+      } as never),
+    ).toEqual({ ok: true, revision: 1 });
+    expect(cache.tick()).toBe(0);
+    expect(
+      cache.applyEnvelope({ streamId: "tick-bound", seq: 3, tick: 4 } as never),
+    ).toEqual({ ok: true, revision: 1 });
+    expect(cache.tick()).toBe(0);
+    expect(
+      cache.applyEnvelope({
+        streamId: "tick-bound",
+        seq: 4,
+        tick: delta.tick,
+        bytes: delta.bytes,
+      } as never),
+    ).toEqual({ ok: true, revision: 2 });
+    expect(cache.tick()).toBe(5);
+    expect(cache.ownerAt(2)).toBe("beta");
+  });
+
   it("encodes identical logical revisions byte-for-byte deterministically", () => {
     const initial = Object.freeze(
       Array.from({ length: 8_192 }, (_, cellId) =>
