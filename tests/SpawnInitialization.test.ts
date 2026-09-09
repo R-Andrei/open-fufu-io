@@ -72,7 +72,13 @@ function withSpawnInitialization(
   spec: MatchSpec,
   spawnInitialization: SpawnInitializationInput,
 ): MatchSpec {
-  return Object.freeze({ ...spec, spawnInitialization });
+  return Object.freeze({
+    ...spec,
+    initialization: Object.freeze({
+      kind: "SPAWN" as const,
+      input: spawnInitialization,
+    }),
+  });
 }
 
 function ownerCount(state: SpawnAwareMatchState, factionId: string): number {
@@ -97,7 +103,7 @@ function attackController() {
           set: [
             {
               kind: "LAND_OPERATION" as const,
-              key: "spawn-immunity-attack",
+              key: "opening-attack",
               operation: "ATTACK" as const,
               population: 10,
               targetFactionId: "beta",
@@ -146,7 +152,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       available: 500,
       peakTotal: 500,
     });
-    expect(state.spawnImmunityEndsAtTickExclusive).toBe(50);
+    expect("spawnImmunityEndsAtTickExclusive" in state).toBe(false);
     expect(state.spawnSnapshot).toMatchObject({
       spawnMode: "FIXED",
       spawnResolverVersion: "1",
@@ -171,12 +177,12 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
   });
 
-  it("blocks hostile targeting for five seconds of match time but permits it after immunity expires", () => {
+  it("permits hostile targeting immediately after Spawn", () => {
     const width = 100;
     const runtime = new MatchRuntime(
       withSpawnInitialization(
         createMicroSimulationSpec({
-          seed: "spawn-immunity",
+          seed: "spawn-immediate-hostility",
           width,
           height: 100,
           factions: [
@@ -191,15 +197,10 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       ),
     );
 
-    const blocked = runtime.runControllerRound(attackController());
-    expect(blocked.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(false);
-    expect(runtime.acceptedInputs()).toEqual([]);
-
-    for (let tick = 0; tick < 50; tick += 1) runtime.tick();
-    expect(runtime.snapshot().tick).toBe(50);
-
     const allowed = runtime.runControllerRound(attackController());
     expect(allowed.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(true);
+    expect(runtime.acceptedInputs()).toHaveLength(1);
+    expect("spawnImmunityEndsAtTickExclusive" in runtime.snapshot()).toBe(false);
   });
 
   it("composes P01, P39, P20, and P54 without duplicating the singular grant", () => {

@@ -3,6 +3,10 @@ import type {
   MapPoint,
   TerrainType,
 } from "../core/controller/ControllerApi";
+import {
+  segmentRuntimeIndexMatchesTerrain,
+  type SegmentRuntimeIndex,
+} from "./Segments";
 
 export type SimulationTerrain = TerrainType | "TEST";
 export type SimulationMapSource = "SYNTHETIC" | "ARTIFACT";
@@ -20,6 +24,7 @@ export interface SimulationMap {
   readonly mapId?: string;
   readonly mapVersion?: string;
   readonly mapHash?: string;
+  readonly segments?: SegmentRuntimeIndex;
 
   isValidCellId(cellId: CellId): boolean;
   cellIdAt(x: number, y: number): CellId | undefined;
@@ -39,6 +44,7 @@ export interface SimulationMapInput {
   readonly mapId?: string;
   readonly mapVersion?: string;
   readonly mapHash?: string;
+  readonly segments?: SegmentRuntimeIndex;
 }
 
 function assertPositiveSafeDimension(value: number, label: string): void {
@@ -73,6 +79,26 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
     input.initialFallout.length !== cellCount
   ) {
     throw new Error("map initialFallout length must equal width * height");
+  }
+  if (
+    input.segments !== undefined &&
+    (input.segments.width !== input.width ||
+      input.segments.height !== input.height ||
+      input.segments.cellCount !== cellCount)
+  ) {
+    throw new Error(
+      "Segment runtime index raster must match map width, height, and cell count",
+    );
+  }
+  if (
+    input.segments !== undefined &&
+    (input.terrain.some((terrain) => terrain === "TEST") ||
+      !segmentRuntimeIndexMatchesTerrain(
+        input.segments,
+        input.terrain as readonly TerrainType[],
+      ))
+  ) {
+    throw new Error("Segment runtime index terrain must match map base terrain");
   }
 
   const terrain = Object.freeze([...input.terrain]);
@@ -152,6 +178,9 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
     ...(input.mapHash === undefined
       ? {}
       : { mapHash: { value: input.mapHash, enumerable: false } }),
+    ...(input.segments === undefined
+      ? {}
+      : { segments: { value: input.segments, enumerable: false } }),
     isValidCellId: { value: isValidCellId, enumerable: false },
     cellIdAt: { value: cellIdAt, enumerable: false },
     positionOf: { value: positionOf, enumerable: false },

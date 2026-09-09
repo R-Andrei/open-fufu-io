@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This file is the **canonical owner for Strategic Spawn protocol, public spawn-profile behavior, influence/origin geometry, deterministic exact-origin resolution, Initial-Territory footprint construction, spawn-time singular-effect ordering, spawn immunity, diagnostics, replay representation, and Random/Fixed spawn-mode semantics**.
+This file is the **canonical owner for Strategic Spawn protocol, public spawn-profile behavior, influence/origin geometry, deterministic exact-origin resolution, Initial-Territory footprint construction, spawn-time singular-effect ordering, startup transition semantics, diagnostics, replay representation, and Random/Fixed spawn-mode semantics**.
 
 Origin trait identities/costs remain owned by [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). The public TypeScript hook shapes remain owned by [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts). Generic persistent-structure grant admission remains owned by [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). Game-wide Population semantics remain owned by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md).
 
@@ -51,12 +51,16 @@ Match initialization uses this order:
 3. establish political ownership
 4. resolve faction-singular start-state effects/grants
 5. freeze the authoritative spawn snapshot
-6. begin spawn immunity / ordinary match startup
+6. enter ordinary active match play
 ```
 
 A faction-singular start-state effect executes **once per faction** unless its own mechanic explicitly says `per origin` or `per footprint`. A multi-origin profile such as P39 never implicitly duplicates a singular effect.
 
 P20 therefore requests exactly one starting Missile Silo grant at `originSlot 0` after Initial-Territory ownership is established. P39 + P20 still requests one Silo, not one per core. Generic structure admission/materialization and persistent-Silo level/charge/readiness lifecycle are owned by `TERRAIN_AND_STRUCTURES.md`; strategic launch transactionality is owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+
+Production/artifact-backed runtime startup must use an explicit **Spawn initialization** path that consumes the already-resolved exact origins produced by the selected Spawn-mode provider. Omitting Spawn initialization must not silently construct an active production-shaped match.
+
+A separate explicit **synthetic-fixture** startup path may exist only for tests/micro-simulations that intentionally begin from pre-authored ownership or legacy starting grants. Those fixture shortcuts are not valid inputs to production Spawn initialization, and replay/regeneration must preserve the selected startup path rather than infer or switch it.
 
 ## 0.2 Strategic Spawn hooks
 
@@ -706,7 +710,7 @@ Thus the combination produces two independently deformable star-biased starts ra
 
 ---
 
-# 6. Singular start-state grants and spawn immunity
+# 6. Singular start-state grants and ordinary startup
 
 After all Initial-Territory footprints finish and political ownership is established, faction-singular start-state effects resolve once per faction in deterministic stable effect-ID order under the Section 3.1 canonical resolver tuple/string comparator unless a mechanic explicitly owns another order.
 
@@ -721,13 +725,9 @@ cardinality:         once per faction
 
 The request then uses generic structure admission. If generic admission rejects the exact-cell grant, the spawn/territory result is not rolled back and the Spawn subsystem does not search for another Silo cell. P20's trait owner may define only the grant request/result identity; generic placement/admission remains the structure owner's concern.
 
-After singular start-state grants finish resolving and the authoritative spawn snapshot is frozen, every faction receives **5 seconds** of ordinary spawn immunity.
+After singular start-state grants finish resolving and the authoritative spawn snapshot is frozen, the match enters ordinary active play immediately. Spawn provides **no automatic grace period, immunity, hostile-target exclusion, or delayed-PvP boundary**.
 
-During this window, hostile actions cannot successfully damage/capture the protected faction's starting state or use the protected faction as a legal hostile target. Neutral expansion, controller decisions, construction/economy setup, movement, and other non-hostile preparation may continue normally.
-
-The immunity duration is global match-time protection, not ten special controller turns; at the accepted 2 decisions/second controller cadence it happens to provide roughly ten ordinary decisions before hostile interaction may resolve.
-
-Minor-faction behavior obeys the same protection boundary and cannot bypass it merely because it is engine-owned.
+Any restriction on hostility after startup must come from a separately owned ordinary mechanic and must not be inferred from Spawn. This applies equally to player-controlled, AI-controlled, and engine-owned/minor-faction actions.
 
 ---
 
@@ -834,6 +834,9 @@ Determinism tests may independently regenerate the spawn from map + match seed +
 
 Before V1 release, deterministic/accelerated tests should cover at least:
 
+- artifact-backed/production-shaped runtime startup rejects omission of explicit Spawn initialization, while explicitly tagged synthetic fixtures remain available only for intentional test/micro-simulation state;
+- production Spawn initialization rejects coexistence with pre-authored synthetic ownership or legacy starting grants, and replay/regeneration preserves the selected startup path;
+- immediate ordinary hostile action after the authoritative Spawn snapshot is frozen is governed by ordinary mechanics with no Spawn-owned immunity window;
 - every Section 3.1 `stableTie32` golden vector reproduces the exact unsigned uint32 result, and the first vector reproduces the exact canonical serialized bytes;
 - `stableTie32` field-length endianness, integer canonicalization, UTF-8 handling, and low-32-bit multiplication semantics are identical across TypeScript/server/replay-verifier implementations;
 - forced-equal primary tie values exercise the Section 3.1 fallback comparator: ASCII ordering (`"A" < "B"`), prefix ordering (`"F" < "F-A"`), unsigned UTF-8 byte ordering (including a non-ASCII string), and numeric slot ordering (`0 < 1`) must reproduce identically across implementations without locale/default string comparison;

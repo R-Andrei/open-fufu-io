@@ -1,0 +1,261 @@
+import type { TerrainType } from "../src/core/controller/ControllerApi";
+import {
+  mapArtifactHash,
+  materializeMapArtifact,
+  type MapArtifactFile,
+  type MapArtifactPackage,
+} from "../src/simulation/MapArtifact";
+import {
+  SEGMENT_COUNT_LIMIT,
+  SEGMENT_GENERATOR_VERSION,
+  SEGMENT_TARGET_CELL_COUNT,
+  compileSegments,
+  createSegmentRuntimeIndex,
+  encodeCompiledSegments,
+} from "../src/simulation/Segments";
+import { createSimulationMap } from "../src/simulation/SimulationMap";
+
+const WIDTH = 2_400;
+const HEIGHT = 2_000;
+const CELL_COUNT = WIDTH * HEIGHT;
+const UTF8 = new TextEncoder();
+
+function canonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "string"
+  ) {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`)
+      .join(",")}}`;
+  }
+  throw new Error(`unsupported canonical test value: ${typeof value}`);
+}
+
+function filledTerrain(
+  width: number,
+  height: number,
+  terrain: TerrainType,
+): TerrainType[] {
+  return Array.from({ length: width * height }, () => terrain);
+}
+
+describe("production-scale Segment compiler validation", () => {
+  it(
+    "compiles and materializes all 4,800,000 cells without arbitrary size rejection",
+    () => {
+      const terrain = new Array<TerrainType>(CELL_COUNT).fill("PLAINS");
+      const compiled = compileSegments({ width: WIDTH, height: HEIGHT, terrain });
+
+      expect(compiled.segmentCount).toBe(
+        Math.round(CELL_COUNT / SEGMENT_TARGET_CELL_COUNT),
+      );
+      expect(compiled.segmentCount).toBeLessThan(SEGMENT_COUNT_LIMIT);
+      expect(compiled.metadata).toHaveLength(compiled.segmentCount);
+      expect(compiled.diagnostics.segmentCount).toBe(compiled.segmentCount);
+
+      let totalCells = 0;
+      let previousMinCellId = -1;
+      for (let segmentId = 0; segmentId < compiled.segmentCount; segmentId += 1) {
+        const metadata = compiled.metadata[segmentId]!;
+        expect(metadata.cellCount).toBeGreaterThan(0);
+        expect(metadata.minCellId).toBeGreaterThan(previousMinCellId);
+        expect(metadata.terrainCounts).toEqual({ PLAINS: metadata.cellCount });
+        totalCells += metadata.cellCount;
+        previousMinCellId = metadata.minCellId;
+      }
+      expect(totalCells).toBe(CELL_COUNT);
+      expect(compiled.segmentIdOf(0)).toBe(0);
+      expect(compiled.segmentIdOf(CELL_COUNT - 1)).toBeLessThan(compiled.segmentCount);
+
+      const firstCells = compiled.cells(0);
+      expect(firstCells).toHaveLength(compiled.metadata[0]!.cellCount);
+      expect(firstCells[0]).toBe(compiled.metadata[0]!.minCellId);
+
+      const segmentBytes = encodeCompiledSegments(compiled);
+      const manifest = {
+        format: "OPEN_FUFU_MAP",
+        formatVersion: 2,
+        mapId: "production-segments",
+        mapVersion: "1",
+        width: WIDTH,
+        height: HEIGHT,
+        segmentGeneratorVersion: SEGMENT_GENERATOR_VERSION,
+        segmentCount: compiled.segmentCount,
+        sections: [
+          { id: "terrain", encoding: "TERRAIN_U8_V1", path: "terrain.bin" },
+          {
+            id: "segmentMembership",
+            encoding: "SEGMENT_MEMBERSHIP_U16LE_V1",
+            path: "segments/membership.bin",
+          },
+          {
+            id: "segmentMetadata",
+            encoding: "SEGMENT_METADATA_U32LE_V1",
+            path: "segments/metadata.bin",
+          },
+          {
+            id: "segmentAdjacencyOffsets",
+            encoding: "SEGMENT_ADJACENCY_OFFSETS_U32LE_V1",
+            path: "segments/adjacency-offsets.bin",
+          },
+          {
+            id: "segmentAdjacency",
+            encoding: "SEGMENT_ADJACENCY_U16LE_V1",
+            path: "segments/adjacency.bin",
+          },
+        ],
+      } as const;
+      const files: readonly MapArtifactFile[] = [
+        { path: "manifest.json", bytes: UTF8.encode(canonicalJson(manifest)) },
+        { path: "terrain.bin", bytes: new Uint8Array(CELL_COUNT) },
+        { path: "segments/membership.bin", bytes: segmentBytes.membership },
+        { path: "segments/metadata.bin", bytes: segmentBytes.metadata },
+        {
+          path: "segments/adjacency-offsets.bin",
+          bytes: segmentBytes.adjacencyOffsets,
+        },
+        { path: "segments/adjacency.bin", bytes: segmentBytes.adjacency },
+      ];
+      const artifactPackage: MapArtifactPackage = { files };
+      const mapHash = mapArtifactHash(files);
+      const map = materializeMapArtifact(
+        {
+          mapId: "production-segments",
+          mapVersion: "1",
+          mapHash,
+        },
+        artifactPackage,
+      );
+
+      expect(map.formatVersion).toBe(2);
+      expect(map.mapHash).toBe(mapHash);
+      expect(map.segments?.segmentCount).toBe(compiled.segmentCount);
+      expect(map.segments?.segmentIdOf(0)).toBe(compiled.segmentIdOf(0));
+      expect(map.segments?.segmentIdOf(CELL_COUNT - 1)).toBe(
+        compiled.segmentIdOf(CELL_COUNT - 1),
+      );
+      expect(map.segments?.metadata(0)).toEqual(compiled.metadata[0]);
+      expect(map.segments?.adjacentSegmentIds(0)).toEqual(
+        compiled.adjacentSegmentIds(0),
+      );
+      const materializedFirst = map.segments!.cells(0);
+      expect(materializedFirst.length).toBe(firstCells.length);
+      expect(materializedFirst.at(0)).toBe(firstCells[0]);
+      expect(materializedFirst.at(materializedFirst.length - 1)).toBe(
+        firstCells[firstCells.length - 1],
+      );
+    },
+    60_000,
+  );
+
+  it(
+    "accepts 65,535 Segments and rejects counts at and above 65,536",
+    () => {
+      const terrainForSegmentCount = (segmentCount: number): TerrainType[] =>
+        Array.from({ length: segmentCount * 2 }, (_, cellId) =>
+          Math.floor(cellId / 2) % 2 === 0 ? "DEEP_WATER" : "SHALLOW_WATER",
+        );
+
+      const acceptedCount = SEGMENT_COUNT_LIMIT - 1;
+      const acceptedTerrain = terrainForSegmentCount(acceptedCount);
+      const accepted = compileSegments({
+        width: acceptedTerrain.length,
+        height: 1,
+        terrain: acceptedTerrain,
+      });
+
+      expect(accepted.segmentCount).toBe(65_535);
+      expect(accepted.segmentIdOf(0)).toBe(0);
+      expect(accepted.segmentIdOf(acceptedTerrain.length - 1)).toBe(65_534);
+
+      for (const rejectedCount of [
+        SEGMENT_COUNT_LIMIT,
+        SEGMENT_COUNT_LIMIT + 1,
+      ]) {
+        const terrain = terrainForSegmentCount(rejectedCount);
+        expect(() =>
+          compileSegments({ width: terrain.length, height: 1, terrain }),
+        ).toThrow(/invalid Segment count.*V1 requires 1\.\.65535/i);
+      }
+    },
+    60_000,
+  );
+});
+
+describe("Segment geography and substrate coherence regressions", () => {
+  it("keeps coastline raster noise with ordinary land instead of absorbing it into water", () => {
+    const width = 5;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    for (let y = 1; y <= 3; y += 1) {
+      for (let x = 1; x <= 3; x += 1) terrain[y * width + x] = "PLAINS";
+    }
+    const forestCell = 10;
+    terrain[forestCell] = "FOREST";
+
+    const compiled = compileSegments({ width, height, terrain });
+    const landId = compiled.segmentIdOf(12);
+
+    expect(compiled.segmentIdOf(forestCell)).toBe(landId);
+    expect(compiled.segmentIdOf(forestCell)).not.toBe(compiled.segmentIdOf(0));
+    expect(compiled.metadata[landId]?.terrainCounts).toMatchObject({
+      PLAINS: 9,
+      FOREST: 1,
+    });
+  });
+
+  it("preserves a tiny coherent mixed-terrain island instead of merging its land into water", () => {
+    const width = 5;
+    const height = 5;
+    const terrain = filledTerrain(width, height, "DEEP_WATER");
+    terrain[12] = "PLAINS";
+    terrain[13] = "FOREST";
+
+    const compiled = compileSegments({ width, height, terrain });
+    const islandId = compiled.segmentIdOf(12);
+
+    expect(compiled.segmentIdOf(13)).toBe(islandId);
+    expect(islandId).not.toBe(compiled.segmentIdOf(0));
+    expect(compiled.metadata[islandId]?.terrainCounts).toEqual({
+      PLAINS: 1,
+      FOREST: 1,
+    });
+  });
+
+  it("rejects Segment indexes compiled for a different raster shape or cell count", () => {
+    const oneCellIndex = createSegmentRuntimeIndex(
+      compileSegments({ width: 1, height: 1, terrain: ["PLAINS"] }),
+    );
+    expect(() =>
+      createSimulationMap({
+        source: "SYNTHETIC",
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        segments: oneCellIndex,
+      }),
+    ).toThrow(/Segment.*(raster|width|height|cell)|raster.*Segment/i);
+
+    const twoByOneIndex = createSegmentRuntimeIndex(
+      compileSegments({ width: 2, height: 1, terrain: ["PLAINS", "PLAINS"] }),
+    );
+    expect(() =>
+      createSimulationMap({
+        source: "SYNTHETIC",
+        width: 1,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS"],
+        segments: twoByOneIndex,
+      }),
+    ).toThrow(/Segment.*(raster|width|height|cell)|raster.*Segment/i);
+  });
+});

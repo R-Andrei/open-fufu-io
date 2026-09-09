@@ -55,14 +55,29 @@ export interface SpawnInitializationInput {
   readonly factions: readonly ResolvedSpawnFactionInput[];
 }
 
-export interface MatchSpec {
-  readonly seed: string;
-  readonly map: MatchMapSpec;
-  readonly factions: readonly MatchFactionSpec[];
-  readonly initialStructureGrants?: readonly StructureGrantRequest[];
+export interface SpawnMatchInitialization {
+  readonly kind: "SPAWN";
   /**
    * Mode-independent pre-resolved Spawn handoff. Origin selection/repair remains
    * owned by the mode-specific provider; MatchRuntime only materializes start state.
    */
-  readonly spawnInitialization?: SpawnInitializationInput;
+  readonly input: SpawnInitializationInput;
+}
+
+export interface SyntheticFixtureMatchInitialization {
+  /** Explicit opt-in for synthetic test/micro-simulation pre-authored start state. */
+  readonly kind: "SYNTHETIC_FIXTURE";
+}
+
+export type MatchInitialization =
+  | SpawnMatchInitialization
+  | SyntheticFixtureMatchInitialization;
+
+export interface MatchSpec {
+  readonly seed: string;
+  readonly map: MatchMapSpec;
+  readonly factions: readonly MatchFactionSpec[];
+  readonly initialization: MatchInitialization;
+  /** Legacy pre-authored grants are legal only for SYNTHETIC_FIXTURE startup. */
+  readonly initialStructureGrants?: readonly StructureGrantRequest[];
 }

@@ -4,16 +4,23 @@ Repository guidance for Claude Code and similar coding agents.
 
 ## Mandatory repository policy
 
-Read and follow [`AGENTS.md`](./AGENTS.md) before work, including its claim/branch discipline, current-main reconciliation requirements, canonical-authority synchronization protocol, and validation/audit requirements.
+Read and follow [`AGENTS.md`](./AGENTS.md) before repository work. Its trigger table determines which detailed canonical process protocols must be freshly read before each governed action; do not treat this file as a substitute for those policies.
 
-For design or mechanics questions, use [`docs/README.md`](./docs/README.md) to locate the single canonical owner. Do not treat inherited OpenFront documentation, current implementation behavior, this file, or a GitHub issue as a substitute mechanics authority.
+Key process entry points:
 
-Key entry points:
+- issue specification/readiness and adversarial certification: [`docs/ISSUE_WORK_PROTOCOL.md`](./docs/ISSUE_WORK_PROTOCOL.md);
+- claim/session ownership, branches, PR mutation, current-main merge reconciliation, and cleanup: [`docs/REPOSITORY_OWNERSHIP_PROTOCOL.md`](./docs/REPOSITORY_OWNERSHIP_PROTOCOL.md);
+- documentation/configuration canonical-authority policy: [`docs/DOCUMENTATION_AUTHORITY_POLICY.md`](./docs/DOCUMENTATION_AUTHORITY_POLICY.md);
+- repository validation/test ownership: [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md);
+- Game/Origin/Character-AI coupled audit: [`docs/official-ai/README.md`](./docs/official-ai/README.md);
+- complete canonical-owner map: [`docs/README.md`](./docs/README.md).
+
+For design or mechanics questions, use `docs/README.md` to locate the single canonical owner. Do not treat inherited OpenFront documentation, current implementation behavior, this file, or a GitHub issue as a substitute mechanics authority.
+
+Additional design entry points:
 
 - high-level Open Fufu target: [`docs/OPEN_FUFU_DESIGN.md`](./docs/OPEN_FUFU_DESIGN.md);
-- OpenFront → Open Fufu migration/runtime architecture: [`docs/OPENFRONT_INTEGRATION_PLAN.md`](./docs/OPENFRONT_INTEGRATION_PLAN.md);
-- repository validation/test ownership: [`docs/VALIDATION_POLICY.md`](./docs/VALIDATION_POLICY.md);
-- complete canonical-owner map: [`docs/README.md`](./docs/README.md).
+- OpenFront → Open Fufu migration/runtime architecture: [`docs/OPENFRONT_INTEGRATION_PLAN.md`](./docs/OPENFRONT_INTEGRATION_PLAN.md).
 
 ## Commands
 
@@ -64,8 +71,9 @@ When adapting an inherited subsystem:
 1. locate its target owner in `docs/README.md`;
 2. use `OPENFRONT_INTEGRATION_PLAN.md` for migration/source-traceability boundaries;
 3. preserve useful implementation machinery only where it conforms to the target owner;
-4. update all synchronized owners/configuration/code comments required by `AGENTS.md` rather than creating a second semantic copy;
-5. follow `VALIDATION_POLICY.md` so executable adoption and appropriate focused validation happen together.
+4. follow `docs/DOCUMENTATION_AUTHORITY_POLICY.md` for synchronized canonical-owner/config/comment changes and stale-reference cleanup;
+5. follow `docs/official-ai/README.md` when the coupled Game/Origin/Character-AI audit is triggered;
+6. follow `docs/VALIDATION_POLICY.md` so executable adoption and appropriate focused validation happen together.
 
 ## UI text / i18n
 

@@ -1,16 +1,21 @@
 # Open Fufu documentation map
 
-Use this file to find the canonical owner of a concern. It is navigation only; it does not restate subsystem rules. Repository-wide ownership policy is defined in [`../AGENTS.md`](../AGENTS.md).
+Use this file to find the canonical owner of a concern. It is navigation only; it does not restate subsystem rules. Automated-agent bootstrap/routing is defined in [`../AGENTS.md`](../AGENTS.md); detailed repository-process policies are registered below.
 
 ## Canonical target owners
 
 | Concern | Canonical owner |
 | --- | --- |
-| High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
+| Automated-agent bootstrap, universal communication/assumption/RED-first invariants, and mandatory protocol routing | [`../AGENTS.md`](../AGENTS.md) |
+| Repository claim/session ownership, issue/branch/PR mutation authority, current-main branch reconciliation, and remote cleanup | [`REPOSITORY_OWNERSHIP_PROTOCOL.md`](./REPOSITORY_OWNERSHIP_PROTOCOL.md) |
+| Documentation/configuration canonical-authority governance, duplicate/stale authority prevention, splitting, gateways, and canonical-overlap reconciliation | [`DOCUMENTATION_AUTHORITY_POLICY.md`](./DOCUMENTATION_AUTHORITY_POLICY.md) |
 | Repository validation scope, test ownership, and executable-code adoption | [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md) |
+| Issue-work specification/readiness gates, implementation-GREEN lifecycle, adversarial certification, and requirement-level completion evidence | [`ISSUE_WORK_PROTOCOL.md`](./ISSUE_WORK_PROTOCOL.md) |
+| Game/Origin/Character-AI coupled-change audit and task-routing procedure | [`official-ai/README.md`](./official-ai/README.md) |
+| High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
 | Game-wide effective-rule composition, rule-axis taxonomy, modifier algebra, normalization, and static composition validation | [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md) |
 | OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
-| Exact V1 production map-artifact package schema, canonical serialization/content identity, terrain-code encoding, and artifact validation | [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts) |
+| Exact production map-artifact package/manifest schemas, canonical serialization/content identity, terrain-code encoding, and artifact validation | [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts) |
 | HTTP/control-plane service API | [`service/SERVICE_API.md`](./service/SERVICE_API.md) |
 | Live participant/spectator stream protocol | [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) |
 | Combat/capture/counter-response tuning | [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
@@ -18,7 +23,8 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Warships, Transports, and strategic weapons | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
 | FFY economy, Factory Trains, Trade Ships, and piracy | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
 | Strategic Spawn | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
-| Segments | [`SEGMENTS.md`](./SEGMENTS.md) |
+| Segment concept, generation priorities/invariants, membership semantics, stable IDs, and validation contract | [`SEGMENTS.md`](./SEGMENTS.md) |
+| Exact executable Segment generator profiles, compiled Segment binary payloads, and runtime Segment indexing | [`../src/simulation/Segments.ts`](../src/simulation/Segments.ts) |
 | Controller persistent memory | [`CONTROLLER_MEMORY.md`](./CONTROLLER_MEMORY.md) |
 | Controller public TypeScript surface | [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts) |
 | Authentication, identity, sessions, and provisioning | [`AUTH_AND_IDENTITY.md`](./AUTH_AND_IDENTITY.md) |
