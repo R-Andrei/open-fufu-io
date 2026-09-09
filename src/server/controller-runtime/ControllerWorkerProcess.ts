@@ -59,6 +59,39 @@ const invokeEntrypointSource = `
     return Object.freeze(value);
   };
 
+  const materialize = (value, ancestors = new Set()) => {
+    if (value === null) return null;
+    if (typeof value === "boolean" || typeof value === "string") return value;
+    if (typeof value === "number") {
+      if (!Number.isFinite(value)) throw new TypeError("non-finite result number");
+      return Object.is(value, -0) ? 0 : value;
+    }
+    if (typeof value !== "object") throw new TypeError("non-data result value");
+    if (ancestors.has(value)) throw new TypeError("cyclic result value");
+    ancestors.add(value);
+
+    try {
+      if (Array.isArray(value)) {
+        const copy = [];
+        for (let index = 0; index < value.length; index += 1) {
+          if (!Object.prototype.hasOwnProperty.call(value, index)) {
+            throw new TypeError("sparse result array");
+          }
+          copy.push(materialize(value[index], ancestors));
+        }
+        return copy;
+      }
+
+      const copy = {};
+      for (const key of Object.keys(value)) {
+        copy[key] = materialize(value[key], ancestors);
+      }
+      return copy;
+    } finally {
+      ancestors.delete(value);
+    }
+  };
+
   const input = deepFreeze(globalThis.__openFufuInput);
   let output;
   try {
@@ -67,9 +100,12 @@ const invokeEntrypointSource = `
     return { status: "RUNTIME_ERROR" };
   }
 
-  return output === undefined
-    ? { status: "OK" }
-    : { status: "OK", output };
+  if (output === undefined) return { status: "OK" };
+  try {
+    return { status: "OK", output: materialize(output) };
+  } catch {
+    return { status: "INVALID_OUTPUT" };
+  }
 `;
 
 class ModuleInitializationTimeoutError extends Error {
@@ -283,6 +319,9 @@ async function executeRequest(
     const invocationRecord = invocationResult as Record<string, unknown>;
     if (invocationRecord.status === "RUNTIME_ERROR") {
       return workerFault("RUNTIME_ERROR");
+    }
+    if (invocationRecord.status === "INVALID_OUTPUT") {
+      return workerFault("INVALID_OUTPUT");
     }
     if (invocationRecord.status !== "OK") {
       return workerFault("RUNTIME_ERROR");
