@@ -49,3 +49,82 @@ jobs:
           docker run --rm --entrypoint node "$image" \
             --no-node-snapshot \
             -e "import('isolated-vm').then(() => console.log('isolated-vm native runtime ok')).catch((error) => { console.error(error); process.exit(1); })"
+      - name: Validate final production controller worker
+        shell: bash
+        run: |
+          image="open-fufu-production:${GITHUB_SHA}"
+          docker build -t "$image" .
+          docker run --rm -i --entrypoint node "$image" \
+            --no-node-snapshot \
+            --import tsx \
+            --input-type=module \
+            - <<'NODE'
+          import { ControllerProcessWorkerPool } from "./src/server/controller-runtime/ControllerProcessWorkerPool.ts";
+          import { ProductionControllerHost } from "./src/server/controller-runtime/ProductionControllerHost.ts";
+
+          const pool = new ControllerProcessWorkerPool({ size: 1 });
+          const workerPid = pool.workerProcessIds()[0];
+          if (workerPid === undefined || workerPid === process.pid) {
+            await pool.close();
+            throw new Error("final image did not launch a dedicated controller worker process");
+          }
+
+          try {
+            const host = new ProductionControllerHost(pool, {
+              alpha: {
+                moduleSource: `
+                  export function decide(context) {
+                    return { commands: [], log: "final-image:" + String(context.tick) };
+                  }
+                `,
+                entrypoints: { decide: "decide" },
+              },
+            });
+            const result = await host.invoke("alpha", {
+              tick: 7,
+              decisionNumber: 1,
+              me: {
+                id: "alpha",
+                status: "ACTIVE",
+                population: {
+                  total: 1,
+                  available: 1,
+                  committedOffense: 0,
+                  committedCounterResponse: 0,
+                  aboardTransports: 0,
+                  neutralSettlementHalfResidual: 0,
+                },
+              },
+              factions: [{ id: "alpha", status: "ACTIVE" }],
+              cells: [],
+            });
+
+            const expected = {
+              ok: true,
+              output: { commands: [], log: "final-image:7" },
+            };
+            if (JSON.stringify(result) !== JSON.stringify(expected)) {
+              throw new Error(
+                `unexpected final-image controller result: ${JSON.stringify(result)}`,
+              );
+            }
+          } finally {
+            await pool.close();
+          }
+
+          let workerStopped = false;
+          try {
+            process.kill(workerPid, 0);
+          } catch (error) {
+            if (error?.code === "ESRCH") {
+              workerStopped = true;
+            } else {
+              throw error;
+            }
+          }
+          if (!workerStopped) {
+            throw new Error("final-image controller worker remained alive after pool.close()");
+          }
+
+          console.log("final production controller worker smoke ok");
+          NODE
