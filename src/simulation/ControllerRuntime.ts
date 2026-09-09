@@ -29,6 +29,8 @@ const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
 
+type ControllerHostFaultClassification = "INVALID_OUTPUT";
+
 export interface LawfulFactionObservation {
   readonly id: string;
   readonly status: FactionStatus;
@@ -374,10 +376,24 @@ function hostSuccess<T>(
     : Object.freeze({ ok: true as const, output });
 }
 
-function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationResult<T> {
+function hostFault<T>(
+  code: ControllerHostFaultCode,
+  classification?: ControllerHostFaultClassification,
+): ControllerHostInvocationResult<T> {
+  const fault = { code } as ControllerHostFault & {
+    readonly classification?: ControllerHostFaultClassification;
+  };
+  if (classification !== undefined) {
+    Object.defineProperty(fault, "classification", {
+      value: classification,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
   return Object.freeze({
     ok: false as const,
-    fault: Object.freeze({ code }),
+    fault: Object.freeze(fault),
   });
 }
 
@@ -492,7 +508,9 @@ export class InProcessTestControllerHost implements ControllerHost {
     }
 
     if (output === undefined) return hostSuccess();
-    if (!isPlainRecord(output)) return hostFault("RUNTIME_ERROR");
+    if (!isPlainRecord(output)) {
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+    }
 
     try {
       const materialized = materializeControllerValue(
@@ -500,7 +518,7 @@ export class InProcessTestControllerHost implements ControllerHost {
         new Set<object>(),
       ) as T;
       if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
-        return hostFault("RUNTIME_ERROR");
+        return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
       }
 
       let nextMemory: string | undefined;
@@ -513,11 +531,9 @@ export class InProcessTestControllerHost implements ControllerHost {
       }
       return hostSuccess(materialized);
     } catch (error) {
-      return hostFault(
-        error instanceof ControllerMemoryLimitError
-          ? "MEMORY_LIMIT"
-          : "RUNTIME_ERROR",
-      );
+      return error instanceof ControllerMemoryLimitError
+        ? hostFault("MEMORY_LIMIT")
+        : hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
     }
   }
 }

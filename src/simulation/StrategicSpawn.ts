@@ -133,6 +133,12 @@ function hookFallbackReason<T>(
   result: ControllerHostInvocationResult<T>,
 ): StrategicHookFallbackReason | undefined {
   if (!result.ok) {
+    const classification = (
+      result.fault as typeof result.fault & {
+        readonly classification?: "INVALID_OUTPUT";
+      }
+    ).classification;
+    if (classification === "INVALID_OUTPUT") return "HOOK_MALFORMED";
     return result.fault.code === "RUNTIME_ERROR"
       ? "HOOK_RUNTIME_FAULT"
       : "HOOK_MALFORMED";

@@ -13,6 +13,7 @@ import {
   CONTROLLER_MEMORY_MAX_BYTES,
   ControllerMemoryLimitError,
   type ControllerHost,
+  type ControllerHostFault,
   type ControllerHostFaultCode,
   type ControllerHostInvocationResult,
   type LawfulControllerObservation,
@@ -97,6 +98,7 @@ type ControllerOutputWithMemory = Readonly<{
 }>;
 
 type OutputRecord = Record<string, unknown> & ControllerOutputWithMemory;
+type ControllerHostFaultClassification = "INVALID_OUTPUT";
 
 export type ProductionControllerOutputValidationResult =
   | Readonly<{
@@ -252,10 +254,24 @@ function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
     : Object.freeze({ ok: true as const, output });
 }
 
-function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationResult<T> {
+function hostFault<T>(
+  code: ControllerHostFaultCode,
+  classification?: ControllerHostFaultClassification,
+): ControllerHostInvocationResult<T> {
+  const fault = { code } as ControllerHostFault & {
+    readonly classification?: ControllerHostFaultClassification;
+  };
+  if (classification !== undefined) {
+    Object.defineProperty(fault, "classification", {
+      value: classification,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
   return Object.freeze({
     ok: false as const,
-    fault: Object.freeze({ code }),
+    fault: Object.freeze(fault),
   });
 }
 
@@ -268,6 +284,7 @@ function normalizeWorkerFault<T>(fault: ControllerWorkerFault): ControllerHostIn
     case "SANDBOX_VIOLATION":
       return hostFault("SANDBOX_VIOLATION");
     case "INVALID_OUTPUT":
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
     case "WORKER_DIED":
     case "RUNTIME_ERROR":
       return hostFault("RUNTIME_ERROR");
