@@ -19,10 +19,6 @@ type ControllerWorkerQueryRequest =
       args: readonly [CellSelector, number?];
     }>
   | Readonly<{
-      operation: "CELLS_CONNECTED_COMPONENTS";
-      args: readonly [CellSelector];
-    }>
-  | Readonly<{
       operation: "CELLS_DISTANCE";
       args: readonly [CellId, CellId];
     }>
@@ -208,8 +204,6 @@ const invokeEntrypointSource = `
         limit === undefined
           ? hostQuery("CELLS_BOUNDARY", [selector])
           : hostQuery("CELLS_BOUNDARY", [selector, limit]),
-      connectedComponents: (selector) =>
-        hostQuery("CELLS_CONNECTED_COMPONENTS", [selector]),
       distance: (a, b) => hostQuery("CELLS_DISTANCE", [a, b])
     },
     segments: {
@@ -290,7 +284,6 @@ function isControllerWorkerQueryRequest(
         (args.length === 1 || typeof args[1] === "number")
       );
     case "CELLS_COUNT":
-    case "CELLS_CONNECTED_COMPONENTS":
       return args.length === 1 && isSelectorArgument(args[0]);
     case "CELLS_DISTANCE":
       return (

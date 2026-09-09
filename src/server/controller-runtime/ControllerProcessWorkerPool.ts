@@ -59,10 +59,6 @@ type ControllerWorkerQueryRequest =
       args: readonly [CellSelector, number?];
     }>
   | Readonly<{
-      operation: "CELLS_CONNECTED_COMPONENTS";
-      args: readonly [CellSelector];
-    }>
-  | Readonly<{
       operation: "CELLS_DISTANCE";
       args: readonly [CellId, CellId];
     }>
@@ -181,7 +177,6 @@ function isControllerWorkerQueryRequest(
         (args.length === 1 || typeof args[1] === "number")
       );
     case "CELLS_COUNT":
-    case "CELLS_CONNECTED_COMPONENTS":
       return args.length === 1 && isSelectorArgument(args[0]);
     case "CELLS_DISTANCE":
       return (
@@ -233,8 +228,6 @@ async function resolveControllerWorkerQuery(
       return session.cells.neighbors(query.args[0]);
     case "CELLS_BOUNDARY":
       return session.cells.boundary(query.args[0], query.args[1]);
-    case "CELLS_CONNECTED_COMPONENTS":
-      return session.cells.connectedComponents(query.args[0]);
     case "CELLS_DISTANCE":
       return session.cells.distance(query.args[0], query.args[1]);
     case "SEGMENTS_GET":
