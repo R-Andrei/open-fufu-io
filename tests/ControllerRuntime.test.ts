@@ -320,4 +320,59 @@ describe("controller runtime production-host foundation", () => {
     expect(distance).toBeCloseTo(Math.SQRT2);
     expect(session.usage()).toEqual({ queries: 3, materializedCells: 1 });
   });
+
+  it("projects deterministic CellView queries, counts, boundaries, and connected components", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-spatial-query-red",
+        width: 5,
+        height: 5,
+        terrain: Array.from({ length: 25 }, () => "PLAINS"),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const selector = { kind: "CELLS", ids: [24, 12, 0, 1] } as const;
+    const page = await session.cells.query(selector, 3);
+    const count = await session.cells.count(selector);
+    const boundary = await session.cells.boundary({
+      kind: "CELLS",
+      ids: [6, 7, 8, 11, 12, 13, 16, 17, 18],
+    });
+    const components = await session.cells.connectedComponents({
+      kind: "CELLS",
+      ids: [24, 5, 1, 0],
+    });
+
+    expect(page.items.map((cell) => cell.id)).toEqual([0, 1, 12]);
+    expect(page.items[0]).toMatchObject({
+      position: { x: 0, y: 0 },
+      terrain: "PLAINS",
+      conquerable: true,
+      populationBearing: true,
+    });
+    expect(page.truncated).toBe(true);
+    expect(Object.isFrozen(page.items[0])).toBe(true);
+    expect(count).toBe(4);
+    expect(boundary.items.map((cell) => cell.id)).toEqual([
+      6, 7, 8, 11, 13, 16, 17, 18,
+    ]);
+    expect(boundary.truncated).toBe(false);
+    expect(components).toEqual({
+      items: [
+        { kind: "CELLS", ids: [0, 1, 5] },
+        { kind: "CELLS", ids: [24] },
+      ],
+      truncated: false,
+    });
+    expect(session.usage()).toEqual({ queries: 4, materializedCells: 15 });
+  });
 });
