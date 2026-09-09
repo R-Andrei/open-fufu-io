@@ -200,10 +200,10 @@ async function executeRequest(
       timeout: request.moduleEvaluationTimeoutMs,
     });
 
+    const completion = createModuleCompletionProbe();
     const moduleInitializationDeadline = createModuleInitializationDeadline(
       request.moduleEvaluationTimeoutMs,
     );
-    const completion = createModuleCompletionProbe();
 
     const module = await withinModuleInitializationDeadline(
       moduleInitializationDeadline,
