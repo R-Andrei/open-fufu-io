@@ -442,17 +442,21 @@ describe("production controller sandbox process", () => {
           artifact: artifact(`
             export function decide() {
               const retained = [];
-              for (let index = 0; index < 64; index += 1) {
-                retained.push(new Array(1_000_000).fill(index));
+              const twoMegabytes = 2 * 1024 * 1024;
+              while (true) {
+                const array = new Uint8Array(twoMegabytes);
+                for (let offset = 0; offset < twoMegabytes; offset += 4096) {
+                  array[offset] = 1;
+                }
+                retained.push(array);
               }
-              return { commands: [], log: String(retained.length) };
             }
           `),
           hook: "DECIDE" as const,
           entrypoint: "decide",
           context: ordinaryObservation(),
           memoryJson: "{}",
-          timeoutMs: 1_000,
+          timeoutMs: 2_000,
           moduleEvaluationTimeoutMs: 100,
           isolateMemoryMb: 32,
         }),
