@@ -146,4 +146,67 @@ describe("production controller sandbox adversarial capabilities", () => {
       });
     });
   });
+
+  it("cannot swallow a genuine isolate ArrayBuffer allocator refusal", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              try {
+                new Uint8Array(256 * 1024 * 1024);
+              } catch {}
+              return { commands: [] };
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 2_000,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
+
+      const healthy = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            return { commands: [], log: "after-caught-memory-limit" };
+          }
+        `),
+      });
+      expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-caught-memory-limit" },
+      });
+    });
+  });
+
+  it("does not let a guest-spoofed allocator RangeError become a memory-limit fault", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              throw new RangeError("Array buffer allocation failed");
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 20,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "RUNTIME_ERROR" });
+    });
+  });
 });
