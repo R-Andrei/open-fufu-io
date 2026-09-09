@@ -156,6 +156,39 @@ describe("production-scale Segment compiler validation", () => {
     },
     60_000,
   );
+
+  it(
+    "accepts 65,535 Segments and rejects counts at and above 65,536",
+    () => {
+      const terrainForSegmentCount = (segmentCount: number): TerrainType[] =>
+        Array.from({ length: segmentCount * 2 }, (_, cellId) =>
+          Math.floor(cellId / 2) % 2 === 0 ? "DEEP_WATER" : "SHALLOW_WATER",
+        );
+
+      const acceptedCount = SEGMENT_COUNT_LIMIT - 1;
+      const acceptedTerrain = terrainForSegmentCount(acceptedCount);
+      const accepted = compileSegments({
+        width: acceptedTerrain.length,
+        height: 1,
+        terrain: acceptedTerrain,
+      });
+
+      expect(accepted.segmentCount).toBe(65_535);
+      expect(accepted.segmentIdOf(0)).toBe(0);
+      expect(accepted.segmentIdOf(acceptedTerrain.length - 1)).toBe(65_534);
+
+      for (const rejectedCount of [
+        SEGMENT_COUNT_LIMIT,
+        SEGMENT_COUNT_LIMIT + 1,
+      ]) {
+        const terrain = terrainForSegmentCount(rejectedCount);
+        expect(() =>
+          compileSegments({ width: terrain.length, height: 1, terrain }),
+        ).toThrow(/invalid Segment count.*V1 requires 1\.\.65535/i);
+      }
+    },
+    60_000,
+  );
 });
 
 describe("Segment geography and substrate coherence regressions", () => {
