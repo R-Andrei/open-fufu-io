@@ -547,11 +547,23 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
       expect(
         receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted,
       ).toBe(true);
-      expect(fixed.snapshot().operations).toEqual([
+      expect(fixed.acceptedInputs()).toEqual([
         expect.objectContaining({
-          kind: "NEUTRAL_EXPANSION",
-          ownerId: "alpha",
-          committedPopulation: 10,
+          tick: 1,
+          action: expect.objectContaining({
+            type: "APPLY_PERSISTENT_DIRECTIVES",
+            factionId: "alpha",
+            changes: expect.objectContaining({
+              set: [
+                expect.objectContaining({
+                  kind: "LAND_OPERATION",
+                  key: "opening-expansion",
+                  operation: "NEUTRAL_EXPANSION",
+                  population: 10,
+                }),
+              ],
+            }),
+          }),
         }),
       ]);
 
