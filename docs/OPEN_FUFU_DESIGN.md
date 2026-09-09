@@ -110,6 +110,20 @@ Player controller code is untrusted and executes behind an isolation boundary. O
 
 Implementation/process topology belongs to the migration/architecture plan rather than this design contract.
 
+## 3.1 Logical ownership versus rendered appearance
+
+The browser's accepted logical political-ownership state and its rendered political-map appearance are separate. Once a complete lawful ownership update or replacement baseline has been accepted, that logical state is current immediately. The renderer may visually converge toward the latest logical state rather than requiring every affected cell to snap to its new appearance in one frame.
+
+Political-ownership presentation is **latest-target presentation**, not queued revision playback. If a newer accepted logical ownership state arrives before the current visual transition completes, presentation retargets from its current appearance toward the newest target and discards superseded visual targets. Installing a replacement ownership baseline, including after resynchronization, establishes the new target directly rather than requiring discarded presentation history to be replayed. Discrete transport batching alone must not produce presentation flicker.
+
+For very large ownership changes, presentation may use deterministic spatial staggering or coarse-region variation where useful. Such staggering is presentation only: it does not represent authoritative capture order, simulation timing, or an intermediate ownership state.
+
+Visual lag must remain bounded under sustained ownership churn. Presentation must be able to catch up rather than accumulate an unbounded animation backlog.
+
+Rendered transitional appearance has no game-semantic authority. Gameplay, controller or AI decisions, targeting truth, inspection, selection, tooltips, diagnostics, validation, and other stateful surfaces consume accepted logical state rather than transitional rendered appearance. Presentation consumes only the lawful browser state supplied through the applicable projection/stream boundary and must not bypass visibility or authorization rules.
+
+The exact easing function, transition duration, stagger function, catch-up or visual-lag threshold, GPU/CPU representation, and other visual tuning values remain implementation and visual-testing concerns rather than V1 game semantics.
+
 ---
 
 # 4. Determinism, versioning, and replayability
@@ -117,7 +131,6 @@ Implementation/process topology belongs to the migration/architecture plan rathe
 Historical matches must remain reproducible.
 
 A match must bind every rule-bearing input needed to define what that match meant, including identities equivalent to:
-
 - match seed;
 - map identity/version/hash;
 - simulation ruleset version;
@@ -248,7 +261,6 @@ Segments are immutable deterministic map-compiled strategic regions used for que
 **OperationalContact** is broader runtime interaction/visibility state created by territorial contact, combat, naval encounters, amphibious arrival, or other operational interaction.
 
 ## 6.4 Fronts
-
 There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility.
 
 ## 6.5 Physical navigation
@@ -398,7 +410,6 @@ Normalize recursively before serialization:
 - `DIFFERENCE`: recursively normalize both operands while preserving left/right order.
 - scalar selector variants (`OWNER`, `SEGMENT`, `TERRAIN`, `FALLOUT`, `POPULATION_BEARING`, `CONQUERABLE`, `COAST`, `SHORELINE`, `CIRCLE`, `STRUCTURE_FIELD`, `STRUCTURE_FIELD_INSTANCE`) preserve their selector kind and values; fields serialize in the fixed public-contract order for that variant. `STRUCTURE_FIELD` serializes `field`, `referenceFactionId`, then `affiliation`; `STRUCTURE_FIELD_INSTANCE` serializes its public fields in their declared contract order.
 - stable IDs and finite numeric values use their canonical deterministic scalar encoding; strings use the canonical UTF-8/string encoding.
-
 The serialized form is the selector-kind tag followed by its normalized fields/children in that order. Source spellings covered by the normalization above therefore produce the same key. Distinct normalized syntax trees may still happen to select the same runtime cell set; V1 does not solve general selector-algebra equivalence for this ordering key.
 
 When two operations have byte-identical canonical target and source selector keys, the stable controller-authored directive key is the final projection-only tie-break. It must never affect faction-wide pressure, ownership, Total/Available/aggregate committed Population, residual state, or casualty totals; changing only that key may change which otherwise selector-equivalent operation object reflects a local decrement, but not any faction-level mechanical result. Operation ID, creation time, controller command ordering, and object-registration order are never tie-breakers.
@@ -548,7 +559,6 @@ HostilitySide(faction)
 = fixed team identity, when the faction belongs to a fixed team
 = faction identity, otherwise
 ```
-
 For any two distinct active factions, the game-wide diplomatic relation is derived only from those immutable sides: members of the same `HostilitySide` are **allies**, and members of different `HostilitySide`s are **enemies**. V1 has no neutral or third diplomatic relation, and this ally/enemy relation does not change during the match. It is independent of `atWar`.
 
 An unteamed Minor Faction is therefore its own hostility side. Members of the same hostility side can never be `atWar` with one another.
@@ -697,7 +707,6 @@ Origin mechanics must be surfaced through effective rules/mechanics so both play
 # 16. Echoes
 
 Echoes are collectible generated-name mechanical modifiers used primarily for build specialization rather than Origin-scale rule transformation.
-
 Standard PvE may equip an Echo loadout according to the Echo subsystem's rules. Echo identity, acquisition, rolled magnitudes, duplicate handling, reward settlement, naming, collection behavior, persistence boundaries, and Gacha are owned only by [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
 The design invariant retained here is simply that Echoes remain a specialization/progression axis distinct from controller skill and Origin identity.
@@ -717,7 +726,6 @@ Echo reward consequences of defeating AI are owned by `ECHO_CATALOGUE.md`, not b
 # 18. Observability and debugging
 
 The game should support structured diagnostics for controller development, certification, replay analysis, and authoritative runtime failures.
-
 Player-facing/controller-facing debug information must respect the same visibility/security boundaries as ordinary observations. Debugging must not become a side channel for hidden state.
 
 The browser may visualize controller-authored annotations and server diagnostics, but debug surfaces are non-authoritative.
