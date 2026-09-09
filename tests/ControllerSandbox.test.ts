@@ -434,7 +434,39 @@ describe("production controller sandbox process", () => {
     }
   });
 
-  it("normalizes worker death, replaces the failed process, and resumes service", async () => {
+  it("contains actual isolate memory exhaustion and leaves the worker pool usable", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const retained = [];
+              for (let index = 0; index < 64; index += 1) {
+                retained.push(new Array(1_000_000).fill(index));
+              }
+              return { commands: [], log: String(retained.length) };
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 1_000,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
+      expect(await healthyHost(pool, "after-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-memory-limit" },
+      });
+    });
+  });
+
+  it("normalizes catastrophic worker abort, replaces the failed process, and resumes service", async () => {
     await withPool(async (pool) => {
       const originalPid = pool.workerProcessIds()[0];
       if (originalPid === undefined) throw new Error("expected worker pid");
@@ -448,7 +480,7 @@ describe("production controller sandbox process", () => {
       });
       const pending = stuck.invoke("alpha", ordinaryObservation());
       await new Promise((resolve) => setTimeout(resolve, 10));
-      process.kill(originalPid, "SIGKILL");
+      process.kill(originalPid, "SIGABRT");
 
       expect(await pending).toEqual({
         ok: false,
