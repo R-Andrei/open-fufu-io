@@ -2,6 +2,9 @@ import type { ControllerDecision } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
+  createControllerQuerySession,
+} from "../src/simulation/ControllerQueryProjection";
+import {
   InProcessTestControllerHost,
   type ControllerHost,
   type ControllerHostInvocationResult,
@@ -243,5 +246,34 @@ describe("controller runtime production-host foundation", () => {
       faultCount: 0,
       faulted: false,
     });
+  });
+
+  it("projects bounded CELLS queries deterministically and accounts exact usage", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-query-red",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const page = await session.cells.query(
+      { kind: "CELLS", ids: [3, 1, 2] },
+      2,
+    );
+
+    expect(page.items.map((cell) => cell.id)).toEqual([1, 2]);
+    expect(page.truncated).toBe(true);
+    expect(session.usage()).toEqual({ queries: 1, materializedCells: 2 });
   });
 });
