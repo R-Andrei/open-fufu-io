@@ -362,8 +362,13 @@ export function createControllerQuerySession(
 
   const get = async (id: CellId): Promise<CellView | undefined> => {
     beginQuery();
+    if (!state.map.isValidCellId(id)) return undefined;
+    if (remainingMaterialization() === 0) {
+      throw new Error("controller materialization budget exhausted");
+    }
     const cell = materializeCellView(state, id);
-    if (cell !== undefined) materializedCells += 1;
+    if (cell === undefined) throw new Error(`invalid materialized cell ${id}`);
+    materializedCells += 1;
     return cell;
   };
 
