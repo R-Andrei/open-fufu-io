@@ -10,6 +10,7 @@ import {
   createSegmentRuntimeIndex,
 } from "../src/simulation/Segments";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
+import { TickEngine } from "../src/simulation/TickEngine";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
@@ -208,6 +209,14 @@ describe("controller local public spatial runtime", () => {
     } finally {
       await pool.close();
     }
+  });
+
+  it("preserves the immutable ownership revision across a tick with no ownership change", () => {
+    const state = localSpatialState();
+    const advanced = new TickEngine().advance(state, []);
+
+    expect(advanced.ownership).toBe(state.ownership);
+    expect(advanced.ownership).toEqual(state.ownership);
   });
 
   it("reuses a production-shaped public spatial revision and replaces extreme ownership churn coherently", async () => {
