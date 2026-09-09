@@ -70,7 +70,11 @@ export interface HostedLawfulControllerObservation
   readonly memory: Readonly<ControllerMemory>;
 }
 
-export type ControllerHostFaultCode = "RUNTIME_ERROR" | "INVALID_OUTPUT";
+export type ControllerHostFaultCode =
+  | "RUNTIME_ERROR"
+  | "TIMEOUT"
+  | "MEMORY_LIMIT"
+  | "SANDBOX_VIOLATION";
 
 export interface ControllerHostFault {
   readonly code: ControllerHostFaultCode;
@@ -131,6 +135,7 @@ type ControllerOutputWithMemory = Readonly<{
 }>;
 
 class InvalidControllerValueError extends Error {}
+class ControllerMemoryLimitError extends InvalidControllerValueError {}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -208,7 +213,7 @@ function canonicalizeControllerMemory(value: unknown): string {
 
   const serialized = canonicalizeMemoryValue(value, new Set<object>());
   if (utf8Encoder.encode(serialized).byteLength > MAX_CONTROLLER_MEMORY_BYTES) {
-    throw new InvalidControllerValueError("controller memory exceeds quota");
+    throw new ControllerMemoryLimitError("controller memory exceeds quota");
   }
   return serialized;
 }
@@ -479,7 +484,7 @@ export class InProcessTestControllerHost implements ControllerHost {
     }
 
     if (output === undefined) return hostSuccess();
-    if (!isPlainRecord(output)) return hostFault("INVALID_OUTPUT");
+    if (!isPlainRecord(output)) return hostFault("RUNTIME_ERROR");
 
     try {
       const materialized = materializeControllerValue(
@@ -487,7 +492,7 @@ export class InProcessTestControllerHost implements ControllerHost {
         new Set<object>(),
       ) as T;
       if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
-        return hostFault("INVALID_OUTPUT");
+        return hostFault("RUNTIME_ERROR");
       }
 
       let nextMemory: string | undefined;
@@ -499,8 +504,12 @@ export class InProcessTestControllerHost implements ControllerHost {
         this.memoryByFaction.set(factionId, nextMemory);
       }
       return hostSuccess(materialized);
-    } catch {
-      return hostFault("INVALID_OUTPUT");
+    } catch (error) {
+      return hostFault(
+        error instanceof ControllerMemoryLimitError
+          ? "MEMORY_LIMIT"
+          : "RUNTIME_ERROR",
+      );
     }
   }
 }
@@ -744,7 +753,7 @@ function finalizeControllerRound(
     }
 
     const invocation = outcome.invocation;
-    if (outcome.threw === true || invocation === undefined || !invocation.ok) {
+    if (outcome.threw === true || invocation === undefined) {
       recordNormalRuntimeFault(
         outcome.factionId,
         faultCounts,
@@ -754,6 +763,19 @@ function finalizeControllerRound(
       invocationFailures.set(
         outcome.factionId,
         Object.freeze({ code: "RUNTIME_ERROR" }),
+      );
+      continue;
+    }
+    if (!invocation.ok) {
+      recordNormalRuntimeFault(
+        outcome.factionId,
+        faultCounts,
+        consecutiveFaultCounts,
+        faultedFactionIds,
+      );
+      invocationFailures.set(
+        outcome.factionId,
+        Object.freeze({ code: invocation.fault.code }),
       );
       continue;
     }
