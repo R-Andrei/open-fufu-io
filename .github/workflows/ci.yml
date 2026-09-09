@@ -6,9 +6,7 @@ on:
       - checks_requested
   pull_request:
   push:
-    branches:
-      - main
-      - issue-134-official-ai-docker-context-OF-ISSUE134-20260909-BLD8F2
+    branches: [main]
 
 permissions:
   contents: read
@@ -51,7 +49,3 @@ jobs:
           docker run --rm --entrypoint node "$image" \
             --no-node-snapshot \
             -e "import('isolated-vm').then(() => console.log('isolated-vm native runtime ok')).catch((error) => { console.error(error); process.exit(1); })"
-      - name: Probe #134 production Docker build
-        if: github.event_name == 'push' && github.ref == 'refs/heads/issue-134-official-ai-docker-context-OF-ISSUE134-20260909-BLD8F2'
-        shell: bash
-        run: docker build --target build -t "open-fufu-issue134-build:${GITHUB_SHA}" .
