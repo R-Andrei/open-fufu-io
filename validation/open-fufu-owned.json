@@ -44,7 +44,8 @@
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
-    "tests/ValidationBoundaryPolicy.test.ts"
+    "tests/ValidationBoundaryPolicy.test.ts",
+    "tests/contracts/controller-api.typecheck.ts"
   ],
   "ownedSources": [
     {
