@@ -8,15 +8,18 @@ import type {
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
-import type {
-  ControllerHost,
-  ControllerHostFaultCode,
-  ControllerHostInvocationResult,
-  LawfulControllerObservation,
+import {
+  canonicalizeControllerMemory,
+  CONTROLLER_MEMORY_MAX_BYTES,
+  ControllerMemoryLimitError,
+  type ControllerHost,
+  type ControllerHostFaultCode,
+  type ControllerHostInvocationResult,
+  type LawfulControllerObservation,
 } from "../../simulation/ControllerRuntime";
 
 export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
-  persistentMemoryBytes: 131_072,
+  persistentMemoryBytes: CONTROLLER_MEMORY_MAX_BYTES,
   isolateMemoryMb: 32,
   decideTimeoutMs: 20,
   spawnHookTimeoutMs: 50,
@@ -107,7 +110,6 @@ export type ProductionControllerOutputValidationResult =
     }>;
 
 class InvalidTransportValueError extends Error {}
-class ControllerMemoryLimitError extends InvalidTransportValueError {}
 
 const utf8Encoder = new TextEncoder();
 
@@ -239,23 +241,6 @@ function canonicalizeJsonValue(
   } finally {
     ancestors.delete(value);
   }
-}
-
-function canonicalizeControllerMemory(value: unknown): string {
-  if (!isPlainRecord(value)) {
-    throw new InvalidTransportValueError(
-      "controller memory root must be a plain object",
-    );
-  }
-
-  const serialized = canonicalizeJsonValue(value, new Set<object>());
-  if (
-    utf8Encoder.encode(serialized).byteLength >
-    PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes
-  ) {
-    throw new ControllerMemoryLimitError("controller memory exceeds quota");
-  }
-  return serialized;
 }
 
 function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
