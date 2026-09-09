@@ -254,6 +254,8 @@ export function expectedSpawnOriginSource(mode: SpawnMode): SpawnOriginSource {
       return "RANDOM_RESOLUTION";
     case "FIXED":
       return "FIXED_CONFIGURATION";
+    default:
+      throw new Error(`unsupported Spawn mode ${String(mode)}`);
   }
 }
 
