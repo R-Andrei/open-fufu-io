@@ -482,6 +482,10 @@ const RULE_UNIT_SET = new Set<string>(RULE_UNITS);
 const RULE_CAPABILITY_ID_SET = new Set<string>(RULE_CAPABILITY_IDS);
 const RULE_COMPONENT_ID_SET = new Set<string>(RULE_COMPONENT_IDS);
 
+export function isTerrainScopeId(value: unknown): value is TerrainScopeId {
+  return typeof value === "string" && TERRAIN_SCOPE_ID_SET.has(value);
+}
+
 const CONTRIBUTION_REQUIRED_KEYS = [
   "axis",
   "scope",
