@@ -41,6 +41,7 @@
     "tests/SpawnHardening.test.ts",
     "tests/SpawnInitialization.test.ts",
     "tests/SpawnModeResolution.test.ts",
+    "tests/StrategicSpawn.test.ts",
     "tests/StartupInitialization.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
