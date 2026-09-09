@@ -148,4 +148,49 @@ describe("controller local public spatial runtime", () => {
       await pool.close();
     }
   });
+
+  it("does not retain removed connectedComponents as a hidden production isolate capability", async () => {
+    const state = localSpatialState();
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export async function decide(context) {
+            await context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
+            return {
+              commands: [
+                { kind: "CAPITULATE", key: "removed-components-capability" },
+              ],
+            };
+          }
+        `),
+        beta: artifact("export function decide() { return { commands: [] }; }"),
+      });
+
+      const evaluated = await Promise.resolve(
+        evaluateControllerRound(
+          state,
+          host,
+          5,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Set(),
+        ),
+      );
+
+      expect(evaluated.actions).toEqual([]);
+      expect(
+        evaluated.receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toEqual({
+        decisionNumber: 5,
+        accepted: false,
+        failure: { code: "RUNTIME_ERROR" },
+        faultCount: 1,
+        faulted: false,
+      });
+    } finally {
+      await pool.close();
+    }
+  });
 });
