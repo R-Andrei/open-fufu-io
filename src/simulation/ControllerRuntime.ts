@@ -13,6 +13,10 @@ import type {
   SpawnReconsiderContext,
 } from "../core/controller/ControllerApi";
 import {
+  createControllerQuerySession,
+  type ControllerQuerySession,
+} from "./ControllerQueryProjection";
+import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
@@ -24,6 +28,11 @@ const MAX_CONTROLLER_MEMORY_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
+
+export const CONTROLLER_QUERY_LIMITS = Object.freeze({
+  queriesPerDecision: 128,
+  materializedCellsPerDecision: 25_000,
+});
 
 export interface LawfulFactionObservation {
   readonly id: string;
@@ -57,7 +66,8 @@ export interface LawfulControllerObservation {
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
-  readonly cells: readonly LawfulLandCellObservation[];
+  /** Legacy synthetic-fixture convenience only; normal runtime uses CellsApi queries. */
+  readonly cells?: readonly LawfulLandCellObservation[];
   readonly lastDecision?: DecisionReceipt;
 }
 
@@ -84,6 +94,7 @@ export interface ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
+    querySession?: ControllerQuerySession,
   ): ControllerHostInvocation<ControllerDecision>;
   chooseInfluence(
     factionId: string,
@@ -393,6 +404,7 @@ export class InProcessTestControllerHost implements ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
+    _querySession?: ControllerQuerySession,
   ): ControllerHostInvocationResult<ControllerDecision> {
     const registration = this.controllers[factionId];
     if (registration === undefined) return hostSuccess();
@@ -589,13 +601,17 @@ export function projectLawfulControllerObservation(
       .sort((left, right) => compareIds(left.id, right.id))
       .map((faction) => freezeFactionObservation(faction.id, faction.status)),
   );
+  const syntheticCells =
+    state.map.source === "SYNTHETIC"
+      ? freezeLandCellObservations(state)
+      : undefined;
 
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
     me: freezeSelfFactionObservation(me.id, me.status, me.population),
     factions,
-    cells: freezeLandCellObservations(state),
+    ...(syntheticCells === undefined ? {} : { cells: syntheticCells }),
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
@@ -826,9 +842,14 @@ export function evaluateControllerRound(
       decisionNumber,
       previousReceipts.get(factionId),
     );
+    const querySession = createControllerQuerySession(
+      state,
+      factionId,
+      CONTROLLER_QUERY_LIMITS,
+    );
 
     try {
-      const invocation = host.invoke(factionId, observation);
+      const invocation = host.invoke(factionId, observation, querySession);
       if (isPromiseLike(invocation)) {
         hasAsyncInvocation = true;
         outcomes.push(

@@ -388,6 +388,20 @@ The simulation must not care whether the implementation is:
 
 An `InProcessTestControllerHost` or equivalent is the normal foundation/micro-simulation tool. The production isolated host must satisfy the same applicable decision/projection contract tests plus its own sandbox/resource/fault tests.
 
+### 5.1.1 Controller public-spatial cache and authoritative-query split
+
+The public-versus-requester-relative information boundary is owned by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md), and the exact public TypeScript surface is owned by [`ControllerApi.ts`](../src/core/controller/ControllerApi.ts). The production isolated host implements those contracts through two runtime tiers rather than treating every Cell lookup as a match-process query.
+
+The **local public-spatial tier** is a compact process-local cache. Static map information needed for ordinary controller lookups—map dimensions, compact base-terrain data, and canonical compiled Segment membership/index data—may be encoded once for an immutable map substrate and reused across controller decisions. Current public political ownership is represented as one immutable ownership revision corresponding to the invocation's authoritative decision snapshot. An unchanged immutable revision may be reused without rescanning or retransmitting the ownership raster to a worker that already holds that exact revision; a changed revision may be installed as one compact replacement, including when millions of cells changed. This tier must not depend on ownership deltas being small.
+
+A worker process may retain encoded static/ownership cache entries across sequential invocations, but the cache is operational acceleration only. No mutable `MatchState` object, ownership array, map object, or other authoritative host reference crosses into untrusted controller code. A new/restarted worker, changed map, missing revision, or incompatible cache key must reinstall the required compact state before the invocation rather than silently using stale state. Each invocation exposes one coherent ownership revision for its entire execution.
+
+Ordinary local map, political-ownership, and canonical Segment-CellId reads execute synchronously inside the controller worker/isolate from that installed public cache. They do not consume the authoritative query-per-decision budget or detailed-cell materialization budget.
+
+The **authoritative derived-query tier** remains asynchronous across worker IPC. Detailed, derived, or requester-relative query operations are evaluated in the authoritative match process against the same decision snapshot. The match process owns selector evaluation, tactical-visibility enforcement, query/materialization accounting, and returns only copied immutable results to the worker/isolate.
+
+Exact cache keys, compact encodings, replacement payload layout, and IPC message representation are internal runtime details. They may change without altering controller semantics so long as cache reuse, coherent revision replacement, restart/recovery, isolation, deterministic behavior, authoritative query accounting, and server-side command validation remain intact.
+
 ## 5.2 V1 runtime limits
 
 | Limit | V1 default |

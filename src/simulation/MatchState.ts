@@ -110,8 +110,17 @@ function compareIds(left: string, right: string): number {
 
 function freezeOwnership(
   ownership: readonly (string | null)[],
+  previous?: readonly (string | null)[],
 ): readonly (string | null)[] {
-  return Object.freeze([...ownership]);
+  const materialized = [...ownership];
+  if (
+    previous !== undefined &&
+    previous.length === materialized.length &&
+    materialized.every((ownerId, index) => ownerId === previous[index])
+  ) {
+    return previous;
+  }
+  return Object.freeze(materialized);
 }
 
 function freezeFallout(fallout: readonly boolean[]): readonly boolean[] {
@@ -184,7 +193,7 @@ function createState(
     seed: previous.seed,
     tick,
     map: previous.map,
-    ownership: freezeOwnership(ownership),
+    ownership: freezeOwnership(ownership, previous.ownership),
     fallout: freezeFallout(fallout),
     factions: freezeFactions(update.factions ?? previous.factions),
     structures: materializePersistentStructures(

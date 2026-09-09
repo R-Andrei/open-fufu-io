@@ -7,11 +7,13 @@ import type {
   SpawnOriginDecision,
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
-import type {
-  ControllerHost,
-  ControllerHostFaultCode,
-  ControllerHostInvocationResult,
-  LawfulControllerObservation,
+import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
+import {
+  CONTROLLER_QUERY_LIMITS,
+  type ControllerHost,
+  type ControllerHostFaultCode,
+  type ControllerHostInvocationResult,
+  type LawfulControllerObservation,
 } from "../../simulation/ControllerRuntime";
 
 export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
@@ -21,8 +23,9 @@ export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
   spawnHookTimeoutMs: 50,
   moduleEvaluationTimeoutMs: 100,
   serializedDecisionBytes: 256 * 1024,
-  queriesPerDecision: 128,
-  materializedCellsPerDecision: 25_000,
+  queriesPerDecision: CONTROLLER_QUERY_LIMITS.queriesPerDecision,
+  materializedCellsPerDecision:
+    CONTROLLER_QUERY_LIMITS.materializedCellsPerDecision,
   directiveUpdatesPerDecision: 128,
   commandsPerDecision: 64,
   policyRulesPerDecision: 256,
@@ -85,7 +88,10 @@ export type ControllerWorkerResponse =
     }>;
 
 export interface ControllerWorkerPool {
-  invoke(request: ControllerWorkerRequest): Promise<ControllerWorkerResponse>;
+  invoke(
+    request: ControllerWorkerRequest,
+    querySession?: ControllerQuerySession,
+  ): Promise<ControllerWorkerResponse>;
 }
 
 type ControllerOutputWithMemory = Readonly<{
@@ -308,7 +314,9 @@ function outputWithinResourceCeilings(output: OutputRecord): boolean {
     const end = output.directives.end;
     if (set !== undefined && !Array.isArray(set)) return false;
     if (end !== undefined && !Array.isArray(end)) return false;
-    const updates = (Array.isArray(set) ? set.length : 0) + (Array.isArray(end) ? end.length : 0);
+    const updates =
+      (Array.isArray(set) ? set.length : 0) +
+      (Array.isArray(end) ? end.length : 0);
     if (updates > PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision) {
       return false;
     }
@@ -355,6 +363,7 @@ export class ProductionControllerHost implements ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
+    querySession?: ControllerQuerySession,
   ): Promise<ControllerHostInvocationResult<ControllerDecision>> {
     return this.invokeHook(
       factionId,
@@ -362,6 +371,7 @@ export class ProductionControllerHost implements ControllerHost {
       observation,
       "decide",
       PRODUCTION_CONTROLLER_LIMITS.decideTimeoutMs,
+      querySession,
     );
   }
 
@@ -427,6 +437,7 @@ export class ProductionControllerHost implements ControllerHost {
     context: object,
     entrypointKey: keyof ControllerRuntimeArtifact["entrypoints"],
     timeoutMs: number,
+    querySession?: ControllerQuerySession,
   ): Promise<ControllerHostInvocationResult<T>> {
     const artifact = this.artifacts[factionId];
     if (artifact === undefined) return Promise.resolve(hostFault("RUNTIME_ERROR"));
@@ -439,6 +450,7 @@ export class ProductionControllerHost implements ControllerHost {
       entrypoint,
       context,
       timeoutMs,
+      querySession,
     );
   }
 
@@ -449,6 +461,7 @@ export class ProductionControllerHost implements ControllerHost {
     entrypoint: string,
     context: object,
     timeoutMs: number,
+    querySession?: ControllerQuerySession,
   ): Promise<ControllerHostInvocationResult<T>> {
     let requestContext: Readonly<Record<string, unknown>>;
     try {
@@ -472,6 +485,7 @@ export class ProductionControllerHost implements ControllerHost {
             PRODUCTION_CONTROLLER_LIMITS.moduleEvaluationTimeoutMs,
           isolateMemoryMb: PRODUCTION_CONTROLLER_LIMITS.isolateMemoryMb,
         }),
+        querySession,
       );
     } catch {
       return hostFault("RUNTIME_ERROR");
