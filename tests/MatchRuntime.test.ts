@@ -580,7 +580,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
           spawn: {},
         } as unknown as SpawnOriginContext,
       ),
-    ).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
+    ).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
 
     expect(host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
