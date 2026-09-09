@@ -105,7 +105,6 @@ describe("Open Fufu Controller API contract", () => {
     const options = compilerOptions();
     const fixturePaths = [
       path.resolve("tests/ControllerApiContract.test.ts"),
-      path.resolve("tests/contracts/controller-api.typecheck.ts"),
       path.resolve("tests/types/ControllerApiTypes.ts"),
     ];
     const program = ts.createProgram({
@@ -302,5 +301,129 @@ void destruction.creditedPopulationTransfer?.destination;
         .map((sourceFile) => path.relative(process.cwd(), sourceFile.fileName))
         .filter((fileName) => !fileName.startsWith("node_modules")),
     ).toContain(path.normalize("src/core/controller/ControllerApi.ts"));
+  });
+
+  it("requires asynchronous Cells/Segments queries and Promise-capable callbacks", () => {
+    const options = compilerOptions();
+    const virtualFixturePath = path.resolve(
+      "tests/contracts/issue105-async-controller-api.virtual.ts",
+    );
+    const virtualFixtureSource = `
+import type {
+  CellSelector,
+  CellView,
+  ControllerMemory,
+  OpenFufuController,
+  QueryPage,
+  SegmentView,
+} from "../../src/core/controller/ControllerApi";
+
+type FixtureMemory = ControllerMemory & { readonly marker: number };
+type DecisionContext = Parameters<OpenFufuController<FixtureMemory>["decide"]>[0];
+
+declare const context: DecisionContext;
+const getResult: Promise<CellView | undefined> = context.cells.get(0);
+const queryResult: Promise<QueryPage<CellView>> = context.cells.query({ kind: "CELLS", ids: [0] });
+const countResult: Promise<number> = context.cells.count({ kind: "CELLS", ids: [0] });
+const neighborsResult: Promise<readonly number[]> = context.cells.neighbors(0);
+const boundaryResult: Promise<QueryPage<CellView>> = context.cells.boundary({ kind: "CELLS", ids: [0] });
+const componentsResult: Promise<QueryPage<CellSelector>> = context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
+const distanceResult: Promise<number> = context.cells.distance(0, 1);
+const segmentGetResult: Promise<SegmentView | undefined> = context.segments.get(0);
+const segmentListResult: Promise<readonly SegmentView[]> = context.segments.list();
+const segmentSelector: CellSelector = context.segments.cells(0);
+
+const controller: OpenFufuController<FixtureMemory> = {
+  async chooseInfluence(context) {
+    const candidates = await context.cells.query(
+      { kind: "POPULATION_BEARING", value: true },
+      context.profile.influenceSlotCount,
+    );
+    return {
+      centers: candidates.items.map((cell) => cell.id),
+      memory: { ...context.memory, marker: context.game.decisionNumber },
+    };
+  },
+  async reconsiderInfluence(context) {
+    await context.cells.get(context.currentInfluenceCenters[0] ?? -1);
+    return {
+      centers: context.currentInfluenceCenters,
+      memory: { ...context.memory, marker: context.game.decisionNumber },
+    };
+  },
+  async chooseOrigins(context) {
+    await context.cells.count({ kind: "POPULATION_BEARING", value: true });
+    return {
+      origins: context.influenceCenters.slice(0, context.profile.exactOriginCount),
+      memory: { ...context.memory, marker: context.game.decisionNumber },
+    };
+  },
+  async decide(context) {
+    await context.segments.list();
+    return {
+      memory: { ...context.memory, marker: context.game.decisionNumber },
+      commands: [],
+    };
+  },
+};
+
+void getResult;
+void queryResult;
+void countResult;
+void neighborsResult;
+void boundaryResult;
+void componentsResult;
+void distanceResult;
+void segmentGetResult;
+void segmentListResult;
+void segmentSelector;
+void controller;
+`;
+
+    const baseHost = ts.createCompilerHost(options);
+    const isVirtualFixture = (fileName: string): boolean =>
+      path.resolve(fileName) === virtualFixturePath;
+    const host: ts.CompilerHost = {
+      ...baseHost,
+      fileExists(fileName) {
+        return isVirtualFixture(fileName) || baseHost.fileExists(fileName);
+      },
+      readFile(fileName) {
+        return isVirtualFixture(fileName)
+          ? virtualFixtureSource
+          : baseHost.readFile(fileName);
+      },
+      getSourceFile(
+        fileName,
+        languageVersion,
+        onError,
+        shouldCreateNewSourceFile,
+      ) {
+        if (isVirtualFixture(fileName)) {
+          return ts.createSourceFile(
+            fileName,
+            virtualFixtureSource,
+            languageVersion,
+            true,
+          );
+        }
+        return baseHost.getSourceFile(
+          fileName,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+      },
+    };
+
+    const program = ts.createProgram({
+      rootNames: [virtualFixturePath],
+      options,
+      host,
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+
+    expect(formatDiagnostics(diagnostics)).toBe("");
+    expect(program.getSourceFile(virtualFixturePath)).toBeDefined();
   });
 });
