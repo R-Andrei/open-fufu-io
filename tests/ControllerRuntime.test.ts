@@ -1,10 +1,15 @@
 import type {
   ControllerDecision,
+  ControllerMemory,
   SpawnInfluenceDecision,
 } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
+  canonicalizeControllerMemory,
+  CONTROLLER_MEMORY_MAX_BYTES,
+  ControllerMemoryLimitError,
+  decodeControllerMemory,
   InProcessTestControllerHost,
   type ControllerHost,
   type ControllerHostInvocationResult,
@@ -416,5 +421,110 @@ describe("controller runtime production-host foundation", () => {
       output: { commands: [] },
     });
     expect(seenMemory).toEqual([{}, {}, {}]);
+  });
+});
+
+describe("canonical controller-memory codec", () => {
+  it("canonicalizes insertion order, nested keys, arrays, Unicode, and negative zero deterministically", () => {
+    const first = {
+      "é": "雪",
+      z: -0,
+      a: {
+        β: "é",
+        a: [3, 2, 1],
+      },
+    } as ControllerMemory;
+    const second = {
+      a: {
+        a: [3, 2, 1],
+        β: "é",
+      },
+      z: -0,
+      "é": "雪",
+    } as ControllerMemory;
+    const expected = '{"a":{"a":[3,2,1],"β":"é"},"z":0,"é":"雪"}';
+
+    expect(canonicalizeControllerMemory(first)).toBe(expected);
+    expect(canonicalizeControllerMemory(second)).toBe(expected);
+
+    const decoded = decodeControllerMemory(expected);
+    expect(decoded).toEqual({
+      a: { a: [3, 2, 1], β: "é" },
+      z: 0,
+      "é": "雪",
+    });
+    expect(Object.isFrozen(decoded)).toBe(true);
+    expect(Object.isFrozen(decoded.a)).toBe(true);
+    expect(Object.isFrozen((decoded.a as { a: unknown[] }).a)).toBe(true);
+  });
+
+  it("accepts deterministic finite-number edge cases", () => {
+    const serialized = canonicalizeControllerMemory({
+      max: Number.MAX_VALUE,
+      min: Number.MIN_VALUE,
+      safe: Number.MAX_SAFE_INTEGER,
+      negative: -Number.MAX_VALUE,
+    });
+
+    expect(decodeControllerMemory(serialized)).toEqual({
+      max: Number.MAX_VALUE,
+      min: Number.MIN_VALUE,
+      negative: -Number.MAX_VALUE,
+      safe: Number.MAX_SAFE_INTEGER,
+    });
+  });
+
+  it("rejects non-JSON values, exotic containers, cycles, and sparse arrays", () => {
+    class MemoryClass {
+      readonly value = 1;
+    }
+
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const sparse: unknown[] = [];
+    sparse.length = 2;
+    sparse[1] = "present";
+
+    const invalidMemories: unknown[] = [
+      null,
+      [],
+      { bad: undefined },
+      { bad: Number.NaN },
+      { bad: Number.POSITIVE_INFINITY },
+      { bad: Number.NEGATIVE_INFINITY },
+      { bad: 1n },
+      { bad: Symbol("bad") },
+      { bad: () => 1 },
+      { bad: new MemoryClass() },
+      { bad: new Date(0) },
+      { bad: new Map([["x", 1]]) },
+      { bad: new Set([1]) },
+      { bad: /x/ },
+      { bad: new Uint8Array([1]) },
+      cyclic,
+      { bad: sparse },
+    ];
+
+    for (const memory of invalidMemories) {
+      expect(() => canonicalizeControllerMemory(memory)).toThrow();
+    }
+  });
+
+  it("accepts exactly 131072 canonical UTF-8 bytes and rejects one byte over", () => {
+    const encoder = new TextEncoder();
+    const emptySerialized = '{"x":""}';
+    const overhead = encoder.encode(emptySerialized).byteLength;
+    const exactMemory = {
+      x: "x".repeat(CONTROLLER_MEMORY_MAX_BYTES - overhead),
+    };
+    const overMemory = {
+      x: "x".repeat(CONTROLLER_MEMORY_MAX_BYTES - overhead + 1),
+    };
+
+    const exact = canonicalizeControllerMemory(exactMemory);
+    expect(encoder.encode(exact).byteLength).toBe(CONTROLLER_MEMORY_MAX_BYTES);
+    expect(() => canonicalizeControllerMemory(overMemory)).toThrow(
+      ControllerMemoryLimitError,
+    );
   });
 });
