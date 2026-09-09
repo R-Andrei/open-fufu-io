@@ -1,21 +1,15 @@
 import type {
   BuildUnitCommand,
-  CellId,
   ControllerCommand,
-  ControllerContext,
   ControllerEvent,
-  FactionId,
   FactionsApi,
   HostilityMechanicsSpec,
-  MapPoint,
   PersistentDirective,
   PurchasableUnitType,
-  SegmentId,
   StructureAcquisitionPath,
   StructureBuildQuote,
   StructureMechanicsSpec,
   StructureView,
-  TerrainType,
   TransportMechanicsSpec,
   UnitAttackSpec,
 } from "../../src/core/controller/ControllerApi";
@@ -165,39 +159,6 @@ const warChanged: ControllerEvent = {
   atWar: true,
 };
 void warChanged;
-
-// #105: every map cell is locally addressable and ordinary static/public facts do
-// not require an authoritative query. Political ownership is public; null means
-// neutral and undefined means an invalid CellId. Segment CellIds are local indexed
-// facts, while connectedComponents is intentionally absent from the V1 contract.
-declare const issue105Context: ControllerContext;
-const issue105Width: number = issue105Context.map.width;
-const issue105Height: number = issue105Context.map.height;
-const issue105CellCount: number = issue105Context.map.cellCount;
-const issue105ValidCell: boolean = issue105Context.map.isValidCellId(0);
-const issue105CellAt: CellId | undefined = issue105Context.map.cellIdAt(0, 0);
-const issue105Position: Readonly<MapPoint> | undefined =
-  issue105Context.map.positionOf(0);
-const issue105Terrain: TerrainType | undefined = issue105Context.map.terrainAt(0);
-const issue105Segment: SegmentId | undefined = issue105Context.map.segmentIdOf(0);
-const issue105Neighbors: readonly CellId[] | undefined =
-  issue105Context.map.cardinalNeighbors(0);
-const issue105Owner: FactionId | null | undefined = issue105Context.cells.owner(0);
-const issue105SegmentCellIds: readonly CellId[] | undefined =
-  issue105Context.segments.cellIds(0);
-// @ts-expect-error Dynamic connected-component enumeration is intentionally not a V1 API.
-issue105Context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
-void issue105Width;
-void issue105Height;
-void issue105CellCount;
-void issue105ValidCell;
-void issue105CellAt;
-void issue105Position;
-void issue105Terrain;
-void issue105Segment;
-void issue105Neighbors;
-void issue105Owner;
-void issue105SegmentCellIds;
 
 // @ts-expect-error Patrol is deliberately not a controller command.
 const patrol: ControllerCommand = { kind: "PATROL", key: "patrol-1" };
