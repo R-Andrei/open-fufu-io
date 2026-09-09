@@ -570,6 +570,21 @@ function freezeSelfFactionObservation(
   });
 }
 
+function freezeLandCellObservations(
+  state: MatchState,
+): readonly LawfulLandCellObservation[] {
+  return Object.freeze(
+    state.map.terrain.map((terrain, id) => {
+      const ownerId = state.ownership[id] ?? null;
+      return Object.freeze({
+        id,
+        terrain: terrain as LawfulLandCellObservation["terrain"],
+        ...(ownerId === null ? {} : { ownerId }),
+      });
+    }),
+  );
+}
+
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
@@ -586,12 +601,17 @@ export function projectLawfulControllerObservation(
       .sort((left, right) => compareIds(left.id, right.id))
       .map((faction) => freezeFactionObservation(faction.id, faction.status)),
   );
+  const syntheticCells =
+    state.map.source === "SYNTHETIC"
+      ? freezeLandCellObservations(state)
+      : undefined;
 
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
     me: freezeSelfFactionObservation(me.id, me.status, me.population),
     factions,
+    ...(syntheticCells === undefined ? {} : { cells: syntheticCells }),
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
