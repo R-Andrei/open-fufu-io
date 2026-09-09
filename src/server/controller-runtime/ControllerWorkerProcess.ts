@@ -21,6 +21,32 @@ type WorkerResponseEnvelope = Readonly<{
 
 const hardenGlobalSource = `
   "use strict";
+
+  const __openFufuSetHas = Function.prototype.call.bind(Set.prototype.has);
+  const __openFufuSetAdd = Function.prototype.call.bind(Set.prototype.add);
+  const __openFufuSetDelete = Function.prototype.call.bind(Set.prototype.delete);
+  const __openFufuHasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+  const __openFufuPrimordials = Object.freeze({
+    freeze: Object.freeze,
+    keys: Object.keys,
+    is: Object.is,
+    isArray: Array.isArray,
+    numberIsFinite: Number.isFinite,
+    reflectOwnKeys: Reflect.ownKeys,
+    hasOwn: __openFufuHasOwn,
+    SetCtor: Set,
+    setHas: __openFufuSetHas,
+    setAdd: __openFufuSetAdd,
+    setDelete: __openFufuSetDelete
+  });
+
+  Object.defineProperty(globalThis, "__openFufuPrimordials", {
+    value: __openFufuPrimordials,
+    writable: false,
+    configurable: false,
+    enumerable: false
+  });
+
   for (const name of [
     "process",
     "require",
@@ -29,7 +55,9 @@ const hardenGlobalSource = `
     "WebSocket",
     "Date",
     "performance",
-    "crypto"
+    "crypto",
+    "WeakRef",
+    "FinalizationRegistry"
   ]) {
     Object.defineProperty(globalThis, name, {
       value: undefined,
@@ -38,6 +66,16 @@ const hardenGlobalSource = `
       enumerable: false
     });
   }
+
+  if (typeof Intl === "object" && Intl !== null) {
+    Object.defineProperty(Intl, "DateTimeFormat", {
+      value: undefined,
+      writable: false,
+      configurable: false,
+      enumerable: false
+    });
+  }
+
   Object.defineProperty(Math, "random", {
     value: undefined,
     writable: false,
@@ -47,34 +85,36 @@ const hardenGlobalSource = `
 `;
 
 const invokeEntrypointSource = `
-  const deepFreeze = (value, seen = new Set()) => {
+  const primordials = globalThis.__openFufuPrimordials;
+
+  const deepFreeze = (value, seen = new primordials.SetCtor()) => {
     if (value === null || (typeof value !== "object" && typeof value !== "function")) {
       return value;
     }
-    if (seen.has(value)) return value;
-    seen.add(value);
-    for (const key of Reflect.ownKeys(value)) {
+    if (primordials.setHas(seen, value)) return value;
+    primordials.setAdd(seen, value);
+    for (const key of primordials.reflectOwnKeys(value)) {
       deepFreeze(value[key], seen);
     }
-    return Object.freeze(value);
+    return primordials.freeze(value);
   };
 
-  const materialize = (value, ancestors = new Set()) => {
+  const materialize = (value, ancestors = new primordials.SetCtor()) => {
     if (value === null) return null;
     if (typeof value === "boolean" || typeof value === "string") return value;
     if (typeof value === "number") {
-      if (!Number.isFinite(value)) throw new TypeError("non-finite result number");
-      return Object.is(value, -0) ? 0 : value;
+      if (!primordials.numberIsFinite(value)) throw new TypeError("non-finite result number");
+      return primordials.is(value, -0) ? 0 : value;
     }
     if (typeof value !== "object") throw new TypeError("non-data result value");
-    if (ancestors.has(value)) throw new TypeError("cyclic result value");
-    ancestors.add(value);
+    if (primordials.setHas(ancestors, value)) throw new TypeError("cyclic result value");
+    primordials.setAdd(ancestors, value);
 
     try {
-      if (Array.isArray(value)) {
+      if (primordials.isArray(value)) {
         const copy = [];
         for (let index = 0; index < value.length; index += 1) {
-          if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          if (!primordials.hasOwn(value, index)) {
             throw new TypeError("sparse result array");
           }
           copy.push(materialize(value[index], ancestors));
@@ -83,12 +123,12 @@ const invokeEntrypointSource = `
       }
 
       const copy = {};
-      for (const key of Object.keys(value)) {
+      for (const key of primordials.keys(value)) {
         copy[key] = materialize(value[key], ancestors);
       }
       return copy;
     } finally {
-      ancestors.delete(value);
+      primordials.setDelete(ancestors, value);
     }
   };
 
