@@ -25,66 +25,149 @@ const CATASTROPHIC_FAULT_FD = 4;
 const hardenGlobalSource = `
   "use strict";
 
-  const __openFufuSetHas = Function.prototype.call.bind(Set.prototype.has);
-  const __openFufuSetAdd = Function.prototype.call.bind(Set.prototype.add);
-  const __openFufuSetDelete = Function.prototype.call.bind(Set.prototype.delete);
-  const __openFufuHasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
-  const __openFufuPrimordials = Object.freeze({
-    freeze: Object.freeze,
-    keys: Object.keys,
-    is: Object.is,
-    isArray: Array.isArray,
-    numberIsFinite: Number.isFinite,
-    reflectOwnKeys: Reflect.ownKeys,
-    hasOwn: __openFufuHasOwn,
-    SetCtor: Set,
-    setHas: __openFufuSetHas,
-    setAdd: __openFufuSetAdd,
-    setDelete: __openFufuSetDelete
-  });
+  (() => {
+    const __openFufuSetHas = Function.prototype.call.bind(Set.prototype.has);
+    const __openFufuSetAdd = Function.prototype.call.bind(Set.prototype.add);
+    const __openFufuSetDelete = Function.prototype.call.bind(Set.prototype.delete);
+    const __openFufuHasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+    const __openFufuDefineProperty = Object.defineProperty;
+    const __openFufuGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    const __openFufuReflectConstruct = Reflect.construct;
+    const __openFufuNumberIsFinite = Number.isFinite;
+    let __openFufuAllocatorFaulted = false;
 
-  Object.defineProperty(globalThis, "__openFufuPrimordials", {
-    value: __openFufuPrimordials,
-    writable: false,
-    configurable: false,
-    enumerable: false
-  });
+    const __openFufuIsAllocatorFailure = (error) =>
+      error !== null &&
+      typeof error === "object" &&
+      error.message === "Array buffer allocation failed";
 
-  for (const name of [
-    "process",
-    "require",
-    "Buffer",
-    "fetch",
-    "WebSocket",
-    "Date",
-    "performance",
-    "crypto",
-    "WeakRef",
-    "FinalizationRegistry"
-  ]) {
-    Object.defineProperty(globalThis, name, {
+    const __openFufuWrapAllocatorConstructor = (name) => {
+      const NativeConstructor = globalThis[name];
+      if (typeof NativeConstructor !== "function") return;
+
+      const WrappedConstructor = new Proxy(NativeConstructor, {
+        construct(target, args, newTarget) {
+          try {
+            return __openFufuReflectConstruct(target, args, newTarget);
+          } catch (error) {
+            if (
+              newTarget === WrappedConstructor &&
+              args.length === 1 &&
+              typeof args[0] === "number" &&
+              __openFufuNumberIsFinite(args[0]) &&
+              args[0] >= 0 &&
+              __openFufuIsAllocatorFailure(error)
+            ) {
+              __openFufuAllocatorFaulted = true;
+            }
+            throw error;
+          }
+        }
+      });
+
+      __openFufuDefineProperty(globalThis, name, {
+        value: WrappedConstructor,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+
+      const prototype = NativeConstructor.prototype;
+      if (prototype !== undefined && prototype !== null) {
+        const constructorDescriptor = __openFufuGetOwnPropertyDescriptor(
+          prototype,
+          "constructor"
+        );
+        if (
+          constructorDescriptor !== undefined &&
+          constructorDescriptor.configurable
+        ) {
+          __openFufuDefineProperty(prototype, "constructor", {
+            ...constructorDescriptor,
+            value: WrappedConstructor
+          });
+        }
+      }
+    };
+
+    for (const name of [
+      "ArrayBuffer",
+      "SharedArrayBuffer",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float16Array",
+      "Float32Array",
+      "Float64Array",
+      "BigInt64Array",
+      "BigUint64Array"
+    ]) {
+      __openFufuWrapAllocatorConstructor(name);
+    }
+
+    const __openFufuPrimordials = Object.freeze({
+      freeze: Object.freeze,
+      keys: Object.keys,
+      is: Object.is,
+      isArray: Array.isArray,
+      numberIsFinite: __openFufuNumberIsFinite,
+      reflectOwnKeys: Reflect.ownKeys,
+      hasOwn: __openFufuHasOwn,
+      SetCtor: Set,
+      setHas: __openFufuSetHas,
+      setAdd: __openFufuSetAdd,
+      setDelete: __openFufuSetDelete
+    });
+
+    __openFufuDefineProperty(globalThis, "__openFufuPrimordials", {
+      value: __openFufuPrimordials,
+      writable: false,
+      configurable: false,
+      enumerable: false
+    });
+
+    for (const name of [
+      "process",
+      "require",
+      "Buffer",
+      "fetch",
+      "WebSocket",
+      "Date",
+      "performance",
+      "crypto",
+      "WeakRef",
+      "FinalizationRegistry"
+    ]) {
+      __openFufuDefineProperty(globalThis, name, {
+        value: undefined,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+    }
+
+    if (typeof Intl === "object" && Intl !== null) {
+      __openFufuDefineProperty(Intl, "DateTimeFormat", {
+        value: undefined,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+    }
+
+    __openFufuDefineProperty(Math, "random", {
       value: undefined,
       writable: false,
       configurable: false,
       enumerable: false
     });
-  }
 
-  if (typeof Intl === "object" && Intl !== null) {
-    Object.defineProperty(Intl, "DateTimeFormat", {
-      value: undefined,
-      writable: false,
-      configurable: false,
-      enumerable: false
-    });
-  }
-
-  Object.defineProperty(Math, "random", {
-    value: undefined,
-    writable: false,
-    configurable: false,
-    enumerable: false
-  });
+    return () => __openFufuAllocatorFaulted;
+  })();
 `;
 
 const invokeEntrypointSource = `
@@ -174,6 +257,16 @@ function isMemoryLimitMessage(message: string): boolean {
 
 function isMemoryLimitError(error: unknown): boolean {
   return error instanceof Error && isMemoryLimitMessage(error.message);
+}
+
+async function hasAllocatorMemoryFault(
+  probe: ivm.Reference<() => boolean>,
+): Promise<boolean> {
+  return (
+    (await probe.apply(undefined, [], {
+      result: { copy: true },
+    })) === true
+  );
 }
 
 function reportCatastrophicMemoryLimit(): void {
@@ -285,9 +378,17 @@ async function executeRequest(
     const context = await isolate.createContext();
 
     const hardenScript = await isolate.compileScript(hardenGlobalSource);
-    await hardenScript.run(context, {
+    const hardenResult = await hardenScript.run(context, {
       timeout: request.moduleEvaluationTimeoutMs,
+      reference: true,
     });
+    if (
+      !(hardenResult instanceof ivm.Reference) ||
+      hardenResult.typeof !== "function"
+    ) {
+      return workerFault("RUNTIME_ERROR");
+    }
+    const allocatorFaultProbe = hardenResult as ivm.Reference<() => boolean>;
 
     const completion = createModuleCompletionProbe();
     const moduleInitializationDeadline = createModuleInitializationDeadline(
@@ -326,7 +427,14 @@ async function executeRequest(
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
+      if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+        return workerFault("MEMORY_LIMIT");
+      }
       return workerFault("RUNTIME_ERROR");
+    }
+
+    if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+      return workerFault("MEMORY_LIMIT");
     }
 
     const entrypoint = await module.namespace.get(request.entrypoint, {
@@ -365,7 +473,14 @@ async function executeRequest(
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
+      if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+        return workerFault("MEMORY_LIMIT");
+      }
       return workerFault("INVALID_OUTPUT");
+    }
+
+    if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+      return workerFault("MEMORY_LIMIT");
     }
 
     if (
