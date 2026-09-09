@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import ivm from "isolated-vm";
 
-import type {
-  ControllerWorkerRequest,
-  ControllerWorkerResponse,
+import {
+  validateProductionControllerOutput,
+  type ControllerWorkerRequest,
+  type ControllerWorkerResponse,
 } from "./ProductionControllerHost";
 
 type WorkerRequestEnvelope = Readonly<{
@@ -63,20 +64,12 @@ const invokeEntrypointSource = `
   try {
     output = $0(input);
   } catch {
-    return "RUNTIME_ERROR";
+    return { status: "RUNTIME_ERROR" };
   }
 
-  try {
-    Object.defineProperty(globalThis, "__openFufuResult", {
-      value: output,
-      writable: false,
-      configurable: true,
-      enumerable: false
-    });
-  } catch {
-    return "RUNTIME_ERROR";
-  }
-  return "OK";
+  return output === undefined
+    ? { status: "OK" }
+    : { status: "OK", output };
 `;
 
 class ModuleInitializationTimeoutError extends Error {
@@ -263,33 +256,49 @@ async function executeRequest(
       return workerFault("RUNTIME_ERROR");
     }
 
-    let invocationStatus: unknown;
+    let invocationResult: unknown;
     try {
-      invocationStatus = await context.evalClosure(
+      invocationResult = await context.evalClosure(
         invokeEntrypointSource,
         [entrypoint.derefInto()],
-        { timeout: request.timeoutMs },
+        {
+          timeout: request.timeoutMs,
+          result: { copy: true },
+        },
       );
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
-      return workerFault("RUNTIME_ERROR");
-    }
-
-    if (invocationStatus !== "OK") {
-      return workerFault("RUNTIME_ERROR");
-    }
-
-    let output: unknown;
-    try {
-      output = await context.global.get("__openFufuResult", { copy: true });
-    } catch {
       return workerFault("INVALID_OUTPUT");
+    }
+
+    if (
+      invocationResult === null ||
+      typeof invocationResult !== "object" ||
+      Array.isArray(invocationResult)
+    ) {
+      return workerFault("RUNTIME_ERROR");
+    }
+
+    const invocationRecord = invocationResult as Record<string, unknown>;
+    if (invocationRecord.status === "RUNTIME_ERROR") {
+      return workerFault("RUNTIME_ERROR");
+    }
+    if (invocationRecord.status !== "OK") {
+      return workerFault("RUNTIME_ERROR");
+    }
+
+    const validated = validateProductionControllerOutput(
+      request.hook,
+      invocationRecord.output,
+    );
+    if (!validated.ok) {
+      return workerFault(validated.fault);
     }
 
     return Object.freeze({
       ok: true as const,
-      output,
+      output: validated.output,
       usage: Object.freeze({
         queries: 0,
         materializedCells: 0,

@@ -95,6 +95,17 @@ type ControllerOutputWithMemory = Readonly<{
 
 type OutputRecord = Record<string, unknown> & ControllerOutputWithMemory;
 
+export type ProductionControllerOutputValidationResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly output?: unknown;
+      readonly nextMemory?: string;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly fault: "INVALID_OUTPUT" | "MEMORY_LIMIT";
+    }>;
+
 class InvalidTransportValueError extends Error {}
 class ControllerMemoryLimitError extends InvalidTransportValueError {}
 
@@ -372,6 +383,61 @@ function outputWithinResourceCeilings(output: OutputRecord): boolean {
   return true;
 }
 
+export function validateProductionControllerOutput(
+  hook: ControllerWorkerHook,
+  value: unknown,
+): ProductionControllerOutputValidationResult {
+  if (value === undefined) {
+    return Object.freeze({ ok: true as const });
+  }
+
+  let materialized: unknown;
+  try {
+    materialized = cloneFrozenTransportValue(value);
+  } catch {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+  if (!isPlainRecord(materialized)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  const serialized = JSON.stringify(materialized);
+  if (
+    utf8Encoder.encode(serialized).byteLength >
+    PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
+  ) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  const output = materialized as OutputRecord;
+  if (!controllerOutputHasExpectedStructure(hook, output)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  let nextMemory: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(output, "memory")) {
+    try {
+      nextMemory = canonicalizeControllerMemory(output.memory);
+    } catch (error) {
+      return Object.freeze({
+        ok: false as const,
+        fault:
+          error instanceof ControllerMemoryLimitError
+            ? ("MEMORY_LIMIT" as const)
+            : ("INVALID_OUTPUT" as const),
+      });
+    }
+  }
+
+  if (!outputWithinResourceCeilings(output)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  return nextMemory === undefined
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, nextMemory });
+}
+
 export class ProductionControllerHost implements ControllerHost {
   private readonly memoryByFaction = new Map<string, string>();
 
@@ -516,50 +582,14 @@ export class ProductionControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
-    if (response.output === undefined) return hostSuccess();
+    const validated = validateProductionControllerOutput(hook, response.output);
+    if (!validated.ok) return normalizeWorkerFault(validated.fault);
+    if (validated.output === undefined) return hostSuccess();
 
-    let materialized: unknown;
-    try {
-      materialized = cloneFrozenTransportValue(response.output);
-    } catch {
-      return hostFault("RUNTIME_ERROR");
-    }
-    if (!isPlainRecord(materialized)) return hostFault("RUNTIME_ERROR");
-
-    const serialized = JSON.stringify(materialized);
-    if (
-      utf8Encoder.encode(serialized).byteLength >
-      PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
-    ) {
-      return hostFault("RUNTIME_ERROR");
+    if (validated.nextMemory !== undefined) {
+      this.memoryByFaction.set(factionId, validated.nextMemory);
     }
 
-    const output = materialized as OutputRecord;
-    if (!controllerOutputHasExpectedStructure(hook, output)) {
-      return hostFault("RUNTIME_ERROR");
-    }
-
-    let nextMemory: string | undefined;
-    if (Object.prototype.hasOwnProperty.call(output, "memory")) {
-      try {
-        nextMemory = canonicalizeControllerMemory(output.memory);
-      } catch (error) {
-        return hostFault(
-          error instanceof ControllerMemoryLimitError
-            ? "MEMORY_LIMIT"
-            : "RUNTIME_ERROR",
-        );
-      }
-    }
-
-    if (!outputWithinResourceCeilings(output)) {
-      return hostFault("RUNTIME_ERROR");
-    }
-
-    if (nextMemory !== undefined) {
-      this.memoryByFaction.set(factionId, nextMemory);
-    }
-
-    return hostSuccess(output as T);
+    return hostSuccess(validated.output as T);
   }
 }
