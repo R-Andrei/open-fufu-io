@@ -42,8 +42,9 @@ type WorkerOwnershipSnapshot = Readonly<{
 
 type WorkerPublicSpatialUpdate = Readonly<{
   cacheKey: number;
+  ownershipCacheKey: number;
   static?: WorkerStaticSpatialSnapshot;
-  ownership: WorkerOwnershipSnapshot;
+  ownership?: WorkerOwnershipSnapshot;
 }>;
 
 type WorkerRequestEnvelope = Readonly<{
@@ -79,6 +80,7 @@ type PendingQuery = Readonly<{
 
 type WorkerPublicSpatialCache = Readonly<{
   cacheKey: number;
+  ownershipCacheKey: number;
   width: number;
   height: number;
   cellCount: number;
@@ -394,6 +396,12 @@ function installPublicSpatialUpdate(
   if (!Number.isSafeInteger(update.cacheKey) || update.cacheKey <= 0) {
     throw new Error("controller public spatial cache key is invalid");
   }
+  if (
+    !Number.isSafeInteger(update.ownershipCacheKey) ||
+    update.ownershipCacheKey <= 0
+  ) {
+    throw new Error("controller public ownership cache key is invalid");
+  }
 
   if (update.static !== undefined) {
     const incoming = update.static;
@@ -434,6 +442,7 @@ function installPublicSpatialUpdate(
     );
     publicSpatialCache = Object.freeze({
       cacheKey: update.cacheKey,
+      ownershipCacheKey: 0,
       width: incoming.width,
       height: incoming.height,
       cellCount: incoming.cellCount,
@@ -451,26 +460,33 @@ function installPublicSpatialUpdate(
   if (cache === undefined || cache.cacheKey !== update.cacheKey) {
     throw new Error("controller public spatial cache is unavailable for this request");
   }
-  const ownership = update.ownership;
-  if (
-    !Array.isArray(ownership.factionIds) ||
-    ownership.factionIds.some((id) => typeof id !== "string") ||
-    !(ownership.ownerCodes instanceof Uint32Array) ||
-    ownership.ownerCodes.length !== cache.cellCount
-  ) {
-    throw new Error("controller public ownership snapshot is invalid");
-  }
-  for (let cellId = 0; cellId < ownership.ownerCodes.length; cellId += 1) {
-    if (ownership.ownerCodes[cellId]! > ownership.factionIds.length) {
-      throw new Error("controller public ownership code is invalid");
+
+  if (update.ownership !== undefined) {
+    const ownership = update.ownership;
+    if (
+      !Array.isArray(ownership.factionIds) ||
+      ownership.factionIds.some((id) => typeof id !== "string") ||
+      !(ownership.ownerCodes instanceof Uint32Array) ||
+      ownership.ownerCodes.length !== cache.cellCount
+    ) {
+      throw new Error("controller public ownership snapshot is invalid");
     }
+    for (let cellId = 0; cellId < ownership.ownerCodes.length; cellId += 1) {
+      if (ownership.ownerCodes[cellId]! > ownership.factionIds.length) {
+        throw new Error("controller public ownership code is invalid");
+      }
+    }
+
+    publicSpatialCache = Object.freeze({
+      ...cache,
+      ownershipCacheKey: update.ownershipCacheKey,
+      factionIds: Object.freeze([...ownership.factionIds]),
+      ownerCodes: ownership.ownerCodes,
+    });
+  } else if (cache.ownershipCacheKey !== update.ownershipCacheKey) {
+    throw new Error("controller public ownership cache is unavailable for this request");
   }
 
-  publicSpatialCache = Object.freeze({
-    ...cache,
-    factionIds: Object.freeze([...ownership.factionIds]),
-    ownerCodes: ownership.ownerCodes,
-  });
   return update.cacheKey;
 }
 
