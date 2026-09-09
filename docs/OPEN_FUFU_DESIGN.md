@@ -180,7 +180,15 @@ The conceptual action surface includes lawful primitives for:
 
 There is no controller primitive for manually assigning passive defensive Population quantities across owned cells. Passive defensive quantity is automatic; the controller may influence priority only.
 
-### 5.1.1 Tactical visibility projection
+### 5.1.1 Public spatial information
+
+Every valid V1 map `CellId` is globally addressable by player controllers and Official AI. Cell existence and identity, coordinates, base terrain, canonical compiled Segment membership, and current political ownership are ordinary public strategic information. Political ownership remains public even when tactical operational contents of the same cell are concealed.
+
+Controllers may use a compact immutable local decision snapshot or mirror of those public facts. That state is advisory decision input only: it cannot mutate canonical ownership or make a proposed command legal. Commands and directives remain proposals validated against the authoritative simulation state.
+
+Faction-owned areas, Segments, and intentional exact `CellId` sets remain compact strategic address spaces. Controllers may derive larger abstractions from the public cell, Segment, and ownership surface; V1 does not define a persistent Territory or connected-component entity merely to expose such regions.
+
+### 5.1.2 Tactical visibility projection
 
 Tactical operational visibility is **requester-relative**. A viewer always knows its own operational state. For every other unit, persistent structure, manifested operation, and derived operational fact, the authoritative simulation applies one lawful visibility projection before any player controller, Official AI, player/controller-facing debug surface, event/contact projection, mechanics lookup, or entity-addressed convenience API is materialized.
 
@@ -767,3 +775,4 @@ The following are the game-wide invariants this document owns:
 13. Focused subsystem documents own their detailed mechanics; this contract does not shadow-copy them.
 14. `atWar` is symmetric team-normalized recent controller-directed hostility with a ruleset-bound 600-tick post-hostility grace; autonomous unit violence does not itself create or refresh it.
 15. Tactical operational visibility is requester-relative and uses one authoritative projection with explicit-public/direct-reveal/concealment/remote-observation precedence; player controllers, Official AI, derived/debug surfaces, and ID-addressable helpers receive no hidden-state bypass.
+16. Cell identity, coordinates, base terrain, canonical Segment membership, and political ownership are public controller information across the map; tactical operational contents remain governed by requester-relative visibility.
