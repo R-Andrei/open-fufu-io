@@ -8,6 +8,7 @@
   ],
   "ownedTests": [
     "tests/ControllerApiContract.test.ts",
+    "tests/ControllerMemoryConformance.test.ts",
     "tests/ControllerRoundAtomicityAdversarial.test.ts",
     "tests/ControllerRuntime.test.ts",
     "tests/ControllerSandbox.test.ts",
@@ -194,12 +195,14 @@
     {
       "path": "src/server/controller-runtime/ProductionControllerHost.ts",
       "validators": [
+        "tests/ControllerMemoryConformance.test.ts",
         "tests/ControllerWorkerHost.test.ts"
       ]
     },
     {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
+        "tests/ControllerMemoryConformance.test.ts",
         "tests/ControllerRuntime.test.ts",
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
@@ -237,6 +240,7 @@
     {
       "path": "src/simulation/MatchRuntime.ts",
       "validators": [
+        "tests/ControllerMemoryConformance.test.ts",
         "tests/ControllerRoundAtomicityAdversarial.test.ts",
         "tests/LandAuditRegression.test.ts",
         "tests/LandCertification.test.ts",
