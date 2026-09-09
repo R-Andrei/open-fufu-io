@@ -15,6 +15,14 @@ function requirePublication<T>(value: T | null | undefined): T {
   return value;
 }
 
+function alternatingOwnership(cellCount: number): (string | null)[] {
+  const ownership = new Array<string | null>(cellCount);
+  for (let cellId = 0; cellId < cellCount; cellId += 1) {
+    ownership[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
+  }
+  return ownership;
+}
+
 describe("participant ownership-plane synchronization", () => {
   it("reconstructs an exact 4.8M-cell complete baseline without rich per-cell records", () => {
     const ownership = new Array<string | null>(V1_CELL_COUNT).fill(null);
@@ -48,15 +56,13 @@ describe("participant ownership-plane synchronization", () => {
   }, 20_000);
 
   it("uses a compact sparse chunk update for low churn and reconstructs exactly", () => {
-    const initialMutable = new Array<string | null>(8_192).fill("alpha");
-    initialMutable[8_191] = "beta";
-    const initial = Object.freeze(initialMutable);
+    const initial = Object.freeze(alternatingOwnership(8_192));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 1_024 });
     publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
     const next = initial.slice();
-    next[17] = "beta";
+    next[18] = "beta";
     next[2_050] = null;
     next[8_190] = "beta";
     publisher.observe(Object.freeze(next));
@@ -77,16 +83,15 @@ describe("participant ownership-plane synchronization", () => {
     expect(
       cache.applyEnvelope({ streamId: "stream-a", seq: 3, bytes: delta.bytes }),
     ).toEqual({ ok: true, revision: 2 });
-    expect(cache.ownerAt(16)).toBe("alpha");
     expect(cache.ownerAt(17)).toBe("beta");
+    expect(cache.ownerAt(18)).toBe("beta");
     expect(cache.ownerAt(2_050)).toBeNull();
     expect(cache.ownerAt(8_190)).toBe("beta");
-    expect(cache.ownerAt(8_191)).toBe("beta");
   });
 
   it("uses run encoding for a large contiguous change", () => {
-    const initialMutable = new Array<string | null>(16_384).fill("alpha");
-    initialMutable[16_383] = "beta";
+    const initialMutable = alternatingOwnership(16_384);
+    initialMutable.fill("alpha", 4_096, 8_192);
     const initial = Object.freeze(initialMutable);
     const publisher = new OwnershipPlanePublisher({ chunkSize: 4_096 });
     publisher.observe(initial);
@@ -112,10 +117,7 @@ describe("participant ownership-plane synchronization", () => {
     publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
-    const next = new Array<string | null>(V1_CELL_COUNT);
-    for (let cellId = 0; cellId < V1_CELL_COUNT; cellId += 1) {
-      next[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
-    }
+    const next = alternatingOwnership(V1_CELL_COUNT);
     publisher.observe(Object.freeze(next));
     const replacement = requirePublication(publisher.flush());
 
@@ -150,15 +152,23 @@ describe("participant ownership-plane synchronization", () => {
   }, 20_000);
 
   it("coalesces multiple observed internal transitions to the final published owner", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", "alpha", null, "beta"]));
+    publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
-    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
-    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
+    const first = initial.slice();
+    first[2] = "beta";
+    publisher.observe(Object.freeze(first));
+    const second = first.slice();
+    second[2] = null;
+    publisher.observe(Object.freeze(second));
+    const final = second.slice();
+    final[2] = "beta";
+    publisher.observe(Object.freeze(final));
     const delta = requirePublication(publisher.flush());
 
+    expect(delta.kind).toBe("DELTA");
     const cache = new OwnershipPlaneCache();
     expect(
       cache.applyEnvelope({ streamId: "stream-c", seq: 2, bytes: baseline.bytes }),
@@ -166,19 +176,27 @@ describe("participant ownership-plane synchronization", () => {
     expect(
       cache.applyEnvelope({ streamId: "stream-c", seq: 3, bytes: delta.bytes }),
     ).toEqual({ ok: true, revision: 2 });
-    expect(cache.ownerAt(1)).toBe("beta");
+    expect(cache.ownerAt(2)).toBe("beta");
     expect(publisher.flush()).toBeNull();
   });
 
   it("fails closed across sequence and ownership-revision gaps without partial mutation", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", "alpha", "alpha", "beta"]));
+    publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["alpha", "beta", "alpha", "beta"]));
+    const first = initial.slice();
+    first[2] = "beta";
+    publisher.observe(Object.freeze(first));
     const firstDelta = requirePublication(publisher.flush());
-    publisher.observe(Object.freeze(["alpha", "beta", "beta", "beta"]));
+    const second = first.slice();
+    second[4] = "beta";
+    publisher.observe(Object.freeze(second));
     const secondDelta = requirePublication(publisher.flush());
+
+    expect(firstDelta.kind).toBe("DELTA");
+    expect(secondDelta.kind).toBe("DELTA");
 
     const sequenceGap = new OwnershipPlaneCache();
     expect(
@@ -192,7 +210,7 @@ describe("participant ownership-plane synchronization", () => {
       }),
     ).toEqual({ ok: false, reason: "SEQUENCE_GAP", resyncRequired: true });
     expect(sequenceGap.revision()).toBe(1);
-    expect(sequenceGap.ownerAt(1)).toBe("alpha");
+    expect(sequenceGap.ownerAt(2)).toBe("alpha");
     expect(
       sequenceGap.applyEnvelope({
         streamId: "stream-gap",
@@ -217,16 +235,20 @@ describe("participant ownership-plane synchronization", () => {
       resyncRequired: true,
     });
     expect(revisionGap.revision()).toBe(1);
-    expect(revisionGap.ownerAt(2)).toBe("alpha");
+    expect(revisionGap.ownerAt(4)).toBe("alpha");
   });
 
   it("rejects truncated ownership data before mutating the installed logical plane", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
+    publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
-    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
+    const next = initial.slice();
+    next[2] = "beta";
+    publisher.observe(Object.freeze(next));
     const delta = requirePublication(publisher.flush());
 
+    expect(delta.kind).toBe("DELTA");
     const cache = new OwnershipPlaneCache();
     expect(
       cache.applyEnvelope({ streamId: "stream-malformed", seq: 2, bytes: baseline.bytes }),
@@ -241,15 +263,19 @@ describe("participant ownership-plane synchronization", () => {
       }),
     ).toEqual({ ok: false, reason: "INVALID_PAYLOAD", resyncRequired: true });
     expect(cache.revision()).toBe(1);
-    expect(cache.ownerAt(1)).toBeNull();
+    expect(cache.ownerAt(2)).toBe("alpha");
   });
 
   it("installs a fresh replacement stream after a resync without replaying match history", () => {
+    const initial = Object.freeze(alternatingOwnership(128));
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
+    publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["beta", "beta", null, "beta"]));
+    const next = initial.slice();
+    next[0] = "beta";
+    next[2] = "beta";
+    publisher.observe(Object.freeze(next));
     requirePublication(publisher.flush());
     const fresh = publisher.currentSnapshot();
 
@@ -261,7 +287,7 @@ describe("participant ownership-plane synchronization", () => {
       cache.applyEnvelope({ streamId: "new-stream", seq: 2, bytes: fresh.bytes }),
     ).toEqual({ ok: true, revision: 2 });
     expect(cache.ownerAt(0)).toBe("beta");
-    expect(cache.ownerAt(1)).toBe("beta");
+    expect(cache.ownerAt(2)).toBe("beta");
   });
 
   it("fans one public ownership publication out identically and forces slow viewers to resync synchronously", () => {
