@@ -1,5 +1,12 @@
 import type { LawfulControllerObservation } from "../src/simulation/ControllerRuntime";
-import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import {
+  createControllerQuerySession,
+  type ControllerQuerySession,
+} from "../src/simulation/ControllerQueryProjection";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
@@ -74,6 +81,43 @@ async function withPool(
   } finally {
     await pool.close();
   }
+}
+
+function authoritativeQuerySession(): ControllerQuerySession {
+  const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+  const runtime = new MatchRuntime(
+    createMicroSimulationSpec({
+      seed: "controller-sandbox-query-certification",
+      width: 1,
+      height: 1,
+      terrain: ["PLAINS"],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    }),
+  );
+  return createControllerQuerySession(runtime.snapshot(), "alpha", {
+    queriesPerDecision: 128,
+    materializedCellsPerDecision: 25_000,
+  });
+}
+
+function workerQueryRequest(
+  moduleSource: string,
+  timeoutMs = 500,
+): ControllerWorkerRequest {
+  return Object.freeze({
+    factionId: "alpha",
+    artifact: artifact(moduleSource),
+    hook: "DECIDE",
+    entrypoint: "decide",
+    context: Object.freeze({ tick: 7 }),
+    memoryJson: "{}",
+    timeoutMs,
+    moduleEvaluationTimeoutMs: 100,
+    isolateMemoryMb: 32,
+  });
 }
 
 describe("production controller sandbox process", () => {
@@ -197,6 +241,88 @@ describe("production controller sandbox process", () => {
         },
       ]);
       expect(sourceCell.ownerId).toBe("alpha");
+    });
+  });
+
+  it("contains malformed nested query selectors without killing the worker query channel", async () => {
+    await withPool(async (pool) => {
+      const malformedSession = authoritativeQuerySession();
+      const malformed = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            await context.cells.query({
+              kind: "UNION",
+              selectors: [null],
+            });
+            return { commands: [] };
+          }
+        `),
+        malformedSession,
+      );
+
+      expect(malformed).toEqual({ ok: false, fault: "RUNTIME_ERROR" });
+      expect(malformedSession.usage()).toEqual({
+        queries: 1,
+        materializedCells: 0,
+      });
+
+      const recoverySession = authoritativeQuerySession();
+      const recovered = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            const count = await context.cells.count({ kind: "CELLS", ids: [] });
+            return { commands: [], log: String(count) };
+          }
+        `),
+        recoverySession,
+      );
+      expect(recovered).toEqual({
+        ok: true,
+        output: { commands: [], log: "0" },
+        usage: { queries: 1, materializedCells: 0 },
+      });
+    });
+  });
+
+  it("contains authoritative 129th-query rejection and keeps the worker pool reusable", async () => {
+    await withPool(async (pool) => {
+      const exhaustedSession = authoritativeQuerySession();
+      const exhausted = await pool.invoke(
+        workerQueryRequest(
+          `
+            export async function decide(context) {
+              for (let index = 0; index < 129; index += 1) {
+                await context.cells.count({ kind: "CELLS", ids: [] });
+              }
+              return { commands: [] };
+            }
+          `,
+          2_000,
+        ),
+        exhaustedSession,
+      );
+
+      expect(exhausted).toEqual({ ok: false, fault: "RUNTIME_ERROR" });
+      expect(exhaustedSession.usage()).toEqual({
+        queries: 128,
+        materializedCells: 0,
+      });
+
+      const recoverySession = authoritativeQuerySession();
+      const recovered = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            const count = await context.cells.count({ kind: "CELLS", ids: [] });
+            return { commands: [], log: String(count) };
+          }
+        `),
+        recoverySession,
+      );
+      expect(recovered).toEqual({
+        ok: true,
+        output: { commands: [], log: "0" },
+        usage: { queries: 1, materializedCells: 0 },
+      });
     });
   });
 
