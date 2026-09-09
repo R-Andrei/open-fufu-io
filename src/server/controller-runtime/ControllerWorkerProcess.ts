@@ -77,6 +77,13 @@ const invokeEntrypointSource = `
   return "OK";
 `;
 
+class ModuleInitializationTimeoutError extends Error {
+  constructor() {
+    super("controller module initialization timed out");
+    this.name = "ModuleInitializationTimeoutError";
+  }
+}
+
 function workerFault(
   fault: Extract<ControllerWorkerResponse, { ok: false }>["fault"],
 ): ControllerWorkerResponse {
@@ -101,6 +108,43 @@ function isWorkerRequestEnvelope(value: unknown): value is WorkerRequestEnvelope
   );
 }
 
+function createModuleInitializationDeadline(timeoutMs: number): bigint {
+  return process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n;
+}
+
+function remainingModuleInitializationMs(deadline: bigint): number {
+  const remainingNs = deadline - process.hrtime.bigint();
+  if (remainingNs <= 0n) {
+    throw new ModuleInitializationTimeoutError();
+  }
+  return Math.max(1, Math.ceil(Number(remainingNs) / 1_000_000));
+}
+
+async function withinModuleInitializationDeadline<T>(
+  deadline: bigint,
+  operation: (remainingMs: number) => Promise<T>,
+): Promise<T> {
+  const remainingMs = remainingModuleInitializationMs(deadline);
+
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new ModuleInitializationTimeoutError()),
+      remainingMs,
+    );
+
+    operation(remainingMs).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
 async function executeRequest(
   request: ControllerWorkerRequest,
 ): Promise<ControllerWorkerResponse> {
@@ -118,22 +162,39 @@ async function executeRequest(
       timeout: request.moduleEvaluationTimeoutMs,
     });
 
-    const module = await isolate.compileModule(request.artifact.moduleSource, {
-      filename: `open-fufu-controller:${request.factionId}`,
-    });
+    const moduleInitializationDeadline = createModuleInitializationDeadline(
+      request.moduleEvaluationTimeoutMs,
+    );
+
+    const module = await withinModuleInitializationDeadline(
+      moduleInitializationDeadline,
+      () =>
+        isolate!.compileModule(request.artifact.moduleSource, {
+          filename: `open-fufu-controller:${request.factionId}`,
+        }),
+    );
 
     if (module.dependencySpecifiers.length !== 0) {
       return workerFault("SANDBOX_VIOLATION");
     }
 
-    await module.instantiate(context, () => {
-      throw new Error("controller module imports are forbidden");
-    });
+    await withinModuleInitializationDeadline(
+      moduleInitializationDeadline,
+      () =>
+        module.instantiate(context, () => {
+          throw new Error("controller module imports are forbidden");
+        }),
+    );
 
     try {
-      await module.evaluate({
-        timeout: request.moduleEvaluationTimeoutMs,
-      });
+      await withinModuleInitializationDeadline(
+        moduleInitializationDeadline,
+        (remainingMs) =>
+          module.evaluate({
+            timeout: remainingMs,
+            promise: true,
+          }),
+      );
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
