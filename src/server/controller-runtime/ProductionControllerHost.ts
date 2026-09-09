@@ -7,6 +7,7 @@ import type {
   SpawnOriginDecision,
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
+import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
 import type {
   ControllerHost,
   ControllerHostFaultCode,
@@ -95,6 +96,7 @@ type ControllerOutputWithMemory = Readonly<{
 type OutputRecord = Record<string, unknown> & ControllerOutputWithMemory;
 
 class InvalidTransportValueError extends Error {}
+class ControllerMemoryLimitError extends InvalidTransportValueError {}
 
 const utf8Encoder = new TextEncoder();
 
@@ -104,233 +106,6 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-}
-
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
-function hasOptionalString(record: Record<string, unknown>, key: string): boolean {
-  return record[key] === undefined || typeof record[key] === "string";
-}
-
-function hasOptionalNumber(record: Record<string, unknown>, key: string): boolean {
-  return record[key] === undefined || isFiniteNumber(record[key]);
-}
-
-function isJsonValue(value: unknown): boolean {
-  if (value === null || typeof value === "boolean" || typeof value === "string") {
-    return true;
-  }
-  if (isFiniteNumber(value)) return true;
-  if (Array.isArray(value)) return value.every(isJsonValue);
-  if (!isPlainRecord(value)) return false;
-  return Object.values(value).every(isJsonValue);
-}
-
-function isCellSelector(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string") return false;
-
-  switch (value.kind) {
-    case "CELLS":
-      return Array.isArray(value.ids) && value.ids.every(isFiniteNumber);
-    case "OWNER":
-      return hasOptionalString(value, "factionId");
-    case "SEGMENT":
-      return isFiniteNumber(value.segmentId);
-    case "TERRAIN":
-      return typeof value.terrain === "string";
-    case "FALLOUT":
-    case "POPULATION_BEARING":
-    case "CONQUERABLE":
-    case "COAST":
-    case "SHORELINE":
-      return typeof value.value === "boolean";
-    case "CIRCLE":
-      return isFiniteNumber(value.center) && isFiniteNumber(value.radius);
-    case "STRUCTURE_FIELD":
-      return (
-        typeof value.field === "string" &&
-        typeof value.referenceFactionId === "string" &&
-        typeof value.affiliation === "string"
-      );
-    case "STRUCTURE_FIELD_INSTANCE":
-      return typeof value.structureId === "string" && typeof value.field === "string";
-    case "UNION":
-    case "INTERSECTION":
-      return Array.isArray(value.selectors) && value.selectors.every(isCellSelector);
-    case "DIFFERENCE":
-      return isCellSelector(value.left) && isCellSelector(value.right);
-    default:
-      return false;
-  }
-}
-
-function isSpatialPolicy(value: unknown): boolean {
-  if (!isPlainRecord(value) || !hasOptionalNumber(value, "defaultWeight")) {
-    return false;
-  }
-  if (value.rules === undefined) return true;
-  if (!Array.isArray(value.rules)) return false;
-  return value.rules.every(
-    (rule) =>
-      isPlainRecord(rule) &&
-      isCellSelector(rule.selector) &&
-      isFiniteNumber(rule.weight),
-  );
-}
-
-function isPersistentDirective(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string" || typeof value.key !== "string") {
-    return false;
-  }
-
-  switch (value.kind) {
-    case "LAND_OPERATION":
-      return (
-        (value.operation === "ATTACK" || value.operation === "NEUTRAL_EXPANSION") &&
-        isFiniteNumber(value.population) &&
-        hasOptionalString(value, "targetFactionId") &&
-        isCellSelector(value.source) &&
-        isCellSelector(value.target) &&
-        (value.engagementPriority === undefined || isSpatialPolicy(value.engagementPriority)) &&
-        (value.pressureWeight === undefined || isSpatialPolicy(value.pressureWeight))
-      );
-    case "DEFENSE_PRIORITY":
-      return isSpatialPolicy(value.priority);
-    case "COUNTER_RESPONSE":
-      return typeof value.incomingOperationId === "string" && isFiniteNumber(value.population);
-    default:
-      return false;
-  }
-}
-
-function isDebugSubject(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string") return false;
-  if (value.kind === "CELL") return isFiniteNumber(value.id);
-  return (
-    (value.kind === "FACTION" ||
-      value.kind === "SEGMENT" ||
-      value.kind === "OPERATION" ||
-      value.kind === "UNIT" ||
-      value.kind === "STRUCTURE") &&
-    typeof value.id === "string"
-  );
-}
-
-function isDebugValue(value: unknown): boolean {
-  return (
-    value === undefined ||
-    typeof value === "string" ||
-    typeof value === "boolean" ||
-    isFiniteNumber(value)
-  );
-}
-
-function isDebugItem(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string") return false;
-
-  switch (value.kind) {
-    case "POINT":
-      return isFiniteNumber(value.cellId) && hasOptionalString(value, "label");
-    case "LINE":
-      return (
-        isFiniteNumber(value.from) &&
-        isFiniteNumber(value.to) &&
-        hasOptionalString(value, "label")
-      );
-    case "REGION":
-      return isCellSelector(value.selector) && hasOptionalString(value, "label");
-    case "METRIC":
-      return typeof value.name === "string" && isDebugValue(value.value) && value.value !== undefined;
-    case "ANNOTATION":
-      return (
-        isDebugSubject(value.subject) &&
-        typeof value.label === "string" &&
-        isDebugValue(value.value)
-      );
-    default:
-      return false;
-  }
-}
-
-function isControllerCommand(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string" || typeof value.key !== "string") {
-    return false;
-  }
-
-  switch (value.kind) {
-    case "BUILD_STRUCTURE":
-      return typeof value.structure === "string" && isFiniteNumber(value.cellId);
-    case "UPGRADE_STRUCTURE":
-      return typeof value.structureId === "string";
-    case "BUILD_UNIT":
-      return typeof value.unit === "string" && typeof value.producerId === "string";
-    case "MOVE_UNIT":
-      return typeof value.unitId === "string" && isFiniteNumber(value.destination);
-    case "EMBARK_TRANSPORT":
-      return (
-        isFiniteNumber(value.sourceCellId) &&
-        isFiniteNumber(value.targetCellId) &&
-        isFiniteNumber(value.population)
-      );
-    case "RETURN_TRANSPORT":
-      return typeof value.unitId === "string";
-    case "LAUNCH_WEAPON":
-      return (
-        typeof value.launcherId === "string" &&
-        typeof value.weapon === "string" &&
-        isFiniteNumber(value.targetCellId) &&
-        hasOptionalString(value, "targetFactionId")
-      );
-    case "RELINQUISH":
-      return isCellSelector(value.cells);
-    case "TEAM_SIGNAL":
-      return typeof value.channel === "string" && isJsonValue(value.payload);
-    case "CAPITULATE":
-      return true;
-    default:
-      return false;
-  }
-}
-
-function hasValidDiagnostics(output: Record<string, unknown>): boolean {
-  if (output.debug !== undefined) {
-    if (!Array.isArray(output.debug) || !output.debug.every(isDebugItem)) return false;
-  }
-  return output.log === undefined || typeof output.log === "string";
-}
-
-function hasValidDirectiveChanges(output: Record<string, unknown>): boolean {
-  if (output.directives === undefined) return true;
-  if (!isPlainRecord(output.directives)) return false;
-  const set = output.directives.set;
-  const end = output.directives.end;
-  return (
-    (set === undefined || (Array.isArray(set) && set.every(isPersistentDirective))) &&
-    (end === undefined || (Array.isArray(end) && end.every((key) => typeof key === "string")))
-  );
-}
-
-function outputHasExpectedStructure(
-  hook: ControllerWorkerHook,
-  output: Record<string, unknown>,
-): boolean {
-  if (!hasValidDiagnostics(output)) return false;
-
-  switch (hook) {
-    case "DECIDE":
-      return (
-        hasValidDirectiveChanges(output) &&
-        (output.commands === undefined ||
-          (Array.isArray(output.commands) && output.commands.every(isControllerCommand)))
-      );
-    case "CHOOSE_INFLUENCE":
-    case "RECONSIDER_INFLUENCE":
-      return Array.isArray(output.centers) && output.centers.every(isFiniteNumber);
-    case "CHOOSE_ORIGINS":
-      return Array.isArray(output.origins) && output.origins.every(isFiniteNumber);
-  }
 }
 
 function cloneFrozenTransportValue(
@@ -400,7 +175,7 @@ function cloneWorkerContext(context: object): Readonly<Record<string, unknown>> 
   return Object.freeze(clone);
 }
 
-function canonicalizeMemoryValue(
+function canonicalizeJsonValue(
   value: unknown,
   ancestors: Set<object>,
 ): string {
@@ -411,7 +186,7 @@ function canonicalizeMemoryValue(
       return value ? "true" : "false";
     case "number":
       if (!Number.isFinite(value)) {
-        throw new InvalidTransportValueError("controller memory number must be finite");
+        throw new InvalidTransportValueError("JSON number must be finite");
       }
       return JSON.stringify(Object.is(value, -0) ? 0 : value);
     case "string":
@@ -419,11 +194,11 @@ function canonicalizeMemoryValue(
     case "object":
       break;
     default:
-      throw new InvalidTransportValueError("controller memory is not JSON-shaped");
+      throw new InvalidTransportValueError("value is not JSON-shaped");
   }
 
   if (ancestors.has(value)) {
-    throw new InvalidTransportValueError("controller memory must be acyclic");
+    throw new InvalidTransportValueError("JSON value must be acyclic");
   }
   ancestors.add(value);
 
@@ -432,26 +207,22 @@ function canonicalizeMemoryValue(
       const entries: string[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw new InvalidTransportValueError(
-            "controller memory arrays must not be sparse",
-          );
+          throw new InvalidTransportValueError("JSON arrays must not be sparse");
         }
-        entries.push(canonicalizeMemoryValue(value[index], ancestors));
+        entries.push(canonicalizeJsonValue(value[index], ancestors));
       }
       return `[${entries.join(",")}]`;
     }
 
     if (!isPlainRecord(value)) {
-      throw new InvalidTransportValueError(
-        "controller memory objects must be plain records",
-      );
+      throw new InvalidTransportValueError("JSON objects must be plain records");
     }
 
     const entries = Object.keys(value)
       .sort()
       .map(
         (key) =>
-          `${JSON.stringify(key)}:${canonicalizeMemoryValue(value[key], ancestors)}`,
+          `${JSON.stringify(key)}:${canonicalizeJsonValue(value[key], ancestors)}`,
       );
     return `{${entries.join(",")}}`;
   } finally {
@@ -466,12 +237,12 @@ function canonicalizeControllerMemory(value: unknown): string {
     );
   }
 
-  const serialized = canonicalizeMemoryValue(value, new Set<object>());
+  const serialized = canonicalizeJsonValue(value, new Set<object>());
   if (
     utf8Encoder.encode(serialized).byteLength >
     PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes
   ) {
-    throw new InvalidTransportValueError("controller memory exceeds quota");
+    throw new ControllerMemoryLimitError("controller memory exceeds quota");
   }
   return serialized;
 }
@@ -490,7 +261,18 @@ function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationRe
 }
 
 function normalizeWorkerFault<T>(fault: ControllerWorkerFault): ControllerHostInvocationResult<T> {
-  return hostFault(fault === "INVALID_OUTPUT" ? "INVALID_OUTPUT" : "RUNTIME_ERROR");
+  switch (fault) {
+    case "TIMEOUT":
+      return hostFault("TIMEOUT");
+    case "MEMORY_LIMIT":
+      return hostFault("MEMORY_LIMIT");
+    case "SANDBOX_VIOLATION":
+      return hostFault("SANDBOX_VIOLATION");
+    case "INVALID_OUTPUT":
+    case "WORKER_DIED":
+    case "RUNTIME_ERROR":
+      return hostFault("RUNTIME_ERROR");
+  }
 }
 
 function validUsage(usage: ControllerResourceUsage): boolean {
@@ -521,12 +303,29 @@ function directivePolicyRuleCount(value: unknown): number {
   return 0;
 }
 
+function teamSignalPayloadWithinLimit(command: unknown): boolean {
+  if (!isPlainRecord(command) || command.kind !== "TEAM_SIGNAL") return true;
+  try {
+    const canonicalPayload = canonicalizeJsonValue(
+      command.payload,
+      new Set<object>(),
+    );
+    return (
+      utf8Encoder.encode(canonicalPayload).byteLength <=
+      PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes
+    );
+  } catch {
+    return false;
+  }
+}
+
 function outputWithinResourceCeilings(output: OutputRecord): boolean {
   if (Object.prototype.hasOwnProperty.call(output, "commands")) {
     if (!Array.isArray(output.commands)) return false;
     if (output.commands.length > PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision) {
       return false;
     }
+    if (!output.commands.every(teamSignalPayloadWithinLimit)) return false;
   }
 
   if (Object.prototype.hasOwnProperty.call(output, "directives")) {
@@ -535,7 +334,9 @@ function outputWithinResourceCeilings(output: OutputRecord): boolean {
     const end = output.directives.end;
     if (set !== undefined && !Array.isArray(set)) return false;
     if (end !== undefined && !Array.isArray(end)) return false;
-    const updates = (Array.isArray(set) ? set.length : 0) + (Array.isArray(end) ? end.length : 0);
+    const updates =
+      (Array.isArray(set) ? set.length : 0) +
+      (Array.isArray(end) ? end.length : 0);
     if (updates > PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision) {
       return false;
     }
@@ -721,29 +522,33 @@ export class ProductionControllerHost implements ControllerHost {
     try {
       materialized = cloneFrozenTransportValue(response.output);
     } catch {
-      return hostFault("INVALID_OUTPUT");
+      return hostFault("RUNTIME_ERROR");
     }
-    if (!isPlainRecord(materialized)) return hostFault("INVALID_OUTPUT");
+    if (!isPlainRecord(materialized)) return hostFault("RUNTIME_ERROR");
 
     const serialized = JSON.stringify(materialized);
     if (
       utf8Encoder.encode(serialized).byteLength >
       PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
     ) {
-      return hostFault("INVALID_OUTPUT");
+      return hostFault("RUNTIME_ERROR");
     }
 
     const output = materialized as OutputRecord;
-    if (!outputHasExpectedStructure(hook, output)) {
-      return hostFault("INVALID_OUTPUT");
+    if (!controllerOutputHasExpectedStructure(hook, output)) {
+      return hostFault("RUNTIME_ERROR");
     }
 
     let nextMemory: string | undefined;
     if (Object.prototype.hasOwnProperty.call(output, "memory")) {
       try {
         nextMemory = canonicalizeControllerMemory(output.memory);
-      } catch {
-        return hostFault("INVALID_OUTPUT");
+      } catch (error) {
+        return hostFault(
+          error instanceof ControllerMemoryLimitError
+            ? "MEMORY_LIMIT"
+            : "RUNTIME_ERROR",
+        );
       }
     }
 
