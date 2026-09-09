@@ -201,9 +201,7 @@ function defaultInfluenceCenters(
         return tie === 0 ? left - right : tie;
       })[0];
     if (candidate === undefined) {
-      throw new Error(
-        `ORIGIN_GLOBAL_UNFILLABLE:${faction.factionId}/${influenceSlot}`,
-      );
+      throw new Error("ORIGIN_GLOBAL_UNFILLABLE");
     }
     used.add(candidate);
     result.push(candidate);
@@ -748,9 +746,7 @@ function resolveRequestedOrigins(
       )[0];
 
     if (global === undefined) {
-      throw new Error(
-        `ORIGIN_GLOBAL_UNFILLABLE:${slot.faction.factionId}/${slot.originSlot}`,
-      );
+      throw new Error("ORIGIN_GLOBAL_UNFILLABLE");
     }
     const result = Object.freeze({
       factionId: slot.faction.factionId,
