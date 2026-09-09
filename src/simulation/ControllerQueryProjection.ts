@@ -3,6 +3,8 @@ import type {
   CellSelector,
   CellView,
   QueryPage,
+  SegmentId,
+  SegmentView,
   TerrainType,
 } from "../core/controller/ControllerApi";
 import {
@@ -32,6 +34,11 @@ export interface ControllerQuerySession {
     boundary(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
     connectedComponents(selector: CellSelector): Promise<QueryPage<CellSelector>>;
     distance(a: CellId, b: CellId): Promise<number>;
+  }>;
+  readonly segments: Readonly<{
+    get(id: SegmentId): Promise<SegmentView | undefined>;
+    list(): Promise<readonly SegmentView[]>;
+    cells(id: SegmentId): CellSelector;
   }>;
   usage(): ControllerQueryUsage;
 }
@@ -151,6 +158,54 @@ function materializeCellView(
   });
 }
 
+function materializeSegmentView(
+  state: MatchState,
+  id: SegmentId,
+): SegmentView | undefined {
+  const segments = state.map.segments;
+  if (
+    segments === undefined ||
+    !Number.isSafeInteger(id) ||
+    id < 0 ||
+    id >= segments.segmentCount
+  ) {
+    return undefined;
+  }
+
+  const span = segments.cells(id);
+  let populationBearingCellCount = 0;
+  const ownerCounts: Record<string, number> = {};
+  const terrainCounts: Partial<Record<TerrainType, number>> = {};
+
+  for (let index = 0; index < span.length; index += 1) {
+    const cellId = span.at(index);
+    const terrain = state.map.terrainAt(cellId);
+    if (terrain === "TEST") {
+      throw new Error("Segment runtime cannot summarize TEST terrain");
+    }
+    terrainCounts[terrain] = (terrainCounts[terrain] ?? 0) + 1;
+    if (effectivePopulationBearing(state, cellId, terrain)) {
+      populationBearingCellCount += 1;
+    }
+    const ownerId = state.ownership[cellId] ?? null;
+    if (ownerId !== null) ownerCounts[ownerId] = (ownerCounts[ownerId] ?? 0) + 1;
+  }
+
+  const ownerShares: Record<string, number> = {};
+  for (const ownerId of Object.keys(ownerCounts).sort()) {
+    ownerShares[ownerId] = ownerCounts[ownerId]! / span.length;
+  }
+
+  return Object.freeze({
+    id,
+    cellCount: span.length,
+    populationBearingCellCount,
+    ownerShares: Object.freeze(ownerShares),
+    adjacentSegmentIds: Object.freeze([...segments.adjacentSegmentIds(id)]),
+    terrainCounts: Object.freeze(terrainCounts),
+  });
+}
+
 type SelectorMatcher = (id: CellId) => boolean;
 
 function compileSelectorMatcher(
@@ -165,6 +220,11 @@ function compileSelectorMatcher(
     case "OWNER": {
       const ownerId = selector.factionId ?? null;
       return (id) => (state.ownership[id] ?? null) === ownerId;
+    }
+    case "SEGMENT": {
+      const segments = state.map.segments;
+      if (segments === undefined) return () => false;
+      return (id) => segments.segmentIdOf(id) === selector.segmentId;
     }
     case "TERRAIN":
       return (id) => state.map.terrainAt(id) === selector.terrain;
@@ -209,7 +269,6 @@ function compileSelectorMatcher(
       const right = compileSelectorMatcher(state, selector.right);
       return (id) => left(id) && !right(id);
     }
-    case "SEGMENT":
     case "STRUCTURE_FIELD":
     case "STRUCTURE_FIELD_INSTANCE":
       throw new Error(`controller selector not implemented: ${selector.kind}`);
@@ -431,6 +490,29 @@ export function createControllerQuerySession(
     return Math.hypot(left.x - right.x, left.y - right.y);
   };
 
+  const getSegment = async (
+    id: SegmentId,
+  ): Promise<SegmentView | undefined> => {
+    beginQuery();
+    return materializeSegmentView(state, id);
+  };
+
+  const listSegments = async (): Promise<readonly SegmentView[]> => {
+    beginQuery();
+    const segments = state.map.segments;
+    if (segments === undefined) return Object.freeze([]);
+    return Object.freeze(
+      Array.from({ length: segments.segmentCount }, (_, id) => {
+        const view = materializeSegmentView(state, id);
+        if (view === undefined) throw new Error(`invalid SegmentId ${id}`);
+        return view;
+      }),
+    );
+  };
+
+  const segmentCells = (id: SegmentId): CellSelector =>
+    Object.freeze({ kind: "SEGMENT" as const, segmentId: id });
+
   return Object.freeze({
     cells: Object.freeze({
       get,
@@ -440,6 +522,11 @@ export function createControllerQuerySession(
       boundary,
       connectedComponents,
       distance,
+    }),
+    segments: Object.freeze({
+      get: getSegment,
+      list: listSegments,
+      cells: segmentCells,
     }),
     usage: () => Object.freeze({ queries, materializedCells }),
   });
