@@ -276,4 +276,48 @@ describe("controller runtime production-host foundation", () => {
     expect(page.truncated).toBe(true);
     expect(session.usage()).toEqual({ queries: 1, materializedCells: 2 });
   });
+
+  it("projects immutable full CellView data and canonical local geometry", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-cell-view-red",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", null, null, null],
+        initialFallout: [true, false, false, false],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const cell = await session.cells.get(0);
+    const neighbors = await session.cells.neighbors(0);
+    const distance = await session.cells.distance(0, 3);
+
+    expect(cell).toEqual({
+      id: 0,
+      position: { x: 0, y: 0 },
+      terrain: "PLAINS",
+      hasFallout: true,
+      conquerable: true,
+      populationBearing: true,
+      ownerId: "alpha",
+      isCoast: false,
+      isShoreline: false,
+    });
+    expect(Object.isFrozen(cell)).toBe(true);
+    expect(Object.isFrozen(cell?.position)).toBe(true);
+    expect(neighbors).toEqual([1, 2]);
+    expect(Object.isFrozen(neighbors)).toBe(true);
+    expect(distance).toBeCloseTo(Math.SQRT2);
+    expect(session.usage()).toEqual({ queries: 3, materializedCells: 1 });
+  });
 });
