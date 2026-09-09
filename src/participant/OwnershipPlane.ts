@@ -156,6 +156,10 @@ class ByteReader {
     return this.bytesValue.byteLength - this.offset;
   }
 
+  get position(): number {
+    return this.offset;
+  }
+
   byte(): number {
     this.requireAvailable(1);
     const value = this.bytesValue[this.offset];
@@ -195,6 +199,14 @@ class ByteReader {
     const b2 = this.byte();
     const b3 = this.byte();
     return b0 + b1 * 0x100 + b2 * 0x10000 + b3 * 0x1000000;
+  }
+
+  rewind(position: number): void {
+    requireNonNegativeSafeInteger(position, "reader position");
+    if (position > this.bytesValue.byteLength) {
+      throw new RangeError("reader position exceeds payload");
+    }
+    this.offset = position;
   }
 
   done(): boolean {
@@ -558,6 +570,9 @@ function readMagic(reader: ByteReader): void {
 function readPalette(reader: ByteReader, cellCount: number): readonly string[] {
   const count = reader.varuint();
   if (count > cellCount) throw new Error("ownership palette exceeds cell count");
+  if (count > reader.remaining) {
+    throw new Error("truncated ownership palette");
+  }
   const palette: string[] = [];
   const seen = new Set<string>();
   let previousEncoded: Uint8Array | undefined;
@@ -591,7 +606,6 @@ function readSnapshotCodes(
   paletteLength: number,
 ): OwnerCodePlane {
   const mode = reader.byte();
-  const codes = allocateOwnerCodePlane(cellCount, paletteLength);
   if (mode === SNAPSHOT_RAW) {
     const width = reader.byte();
     const expectedWidth = ownerCodeWidth(paletteLength);
@@ -602,6 +616,7 @@ function readSnapshotCodes(
     if (!Number.isSafeInteger(required) || reader.remaining < required) {
       throw new Error("truncated ownership raw plane");
     }
+    const codes = allocateOwnerCodePlane(cellCount, paletteLength);
     for (let cellId = 0; cellId < cellCount; cellId += 1) {
       const code = reader.ownerCode(expectedWidth);
       validateCode(code, paletteLength);
@@ -612,9 +627,14 @@ function readSnapshotCodes(
   if (mode !== SNAPSHOT_RLE) {
     throw new Error("unknown ownership snapshot mode");
   }
+
+  const runCountPosition = reader.position;
   const runCount = reader.varuint();
   if (runCount > cellCount) {
     throw new Error("ownership run count exceeds cell count");
+  }
+  if (runCount > Math.floor(reader.remaining / 2)) {
+    throw new Error("truncated ownership RLE");
   }
   let cellId = 0;
   for (let runIndex = 0; runIndex < runCount; runIndex += 1) {
@@ -624,11 +644,25 @@ function readSnapshotCodes(
       throw new Error("invalid ownership run length");
     }
     validateCode(code, paletteLength);
-    codes.fill(code, cellId, cellId + length);
     cellId += length;
   }
   if (cellId !== cellCount) {
     throw new Error("ownership RLE does not cover the plane");
+  }
+  const validatedEnd = reader.position;
+
+  reader.rewind(runCountPosition);
+  const confirmedRunCount = reader.varuint();
+  const codes = allocateOwnerCodePlane(cellCount, paletteLength);
+  cellId = 0;
+  for (let runIndex = 0; runIndex < confirmedRunCount; runIndex += 1) {
+    const length = reader.varuint();
+    const code = reader.varuint();
+    codes.fill(code, cellId, cellId + length);
+    cellId += length;
+  }
+  if (reader.position !== validatedEnd) {
+    throw new Error("ownership RLE validation cursor mismatch");
   }
   return codes;
 }
@@ -639,12 +673,14 @@ function readSparseChunk(
   chunkCellCount: number,
   paletteLength: number,
 ): DecodedSparseChunk {
+  const countPosition = reader.position;
   const count = reader.varuint();
   if (count > chunkCellCount) {
     throw new Error("sparse ownership patch exceeds chunk");
   }
-  const offsets = new Uint32Array(count);
-  const codes = new Uint32Array(count);
+  if (count > Math.floor(reader.remaining / 2)) {
+    throw new Error("truncated sparse ownership patch");
+  }
   let previousOffset = -1;
   for (let index = 0; index < count; index += 1) {
     const offset = reader.varuint();
@@ -653,9 +689,20 @@ function readSparseChunk(
       throw new Error("sparse ownership offsets must be ordered and unique");
     }
     validateCode(code, paletteLength);
-    offsets[index] = offset;
-    codes[index] = code;
     previousOffset = offset;
+  }
+  const validatedEnd = reader.position;
+
+  reader.rewind(countPosition);
+  const confirmedCount = reader.varuint();
+  const offsets = new Uint32Array(confirmedCount);
+  const codes = new Uint32Array(confirmedCount);
+  for (let index = 0; index < confirmedCount; index += 1) {
+    offsets[index] = reader.varuint();
+    codes[index] = reader.varuint();
+  }
+  if (reader.position !== validatedEnd) {
+    throw new Error("sparse ownership validation cursor mismatch");
   }
   return Object.freeze({ chunkIndex, mode: "SPARSE", offsets, codes });
 }
@@ -666,11 +713,14 @@ function readRunChunk(
   chunkCellCount: number,
   paletteLength: number,
 ): DecodedRunChunk {
+  const countPosition = reader.position;
   const count = reader.varuint();
   if (count > chunkCellCount) {
     throw new Error("ownership run patch exceeds chunk");
   }
-  const runs = new Uint32Array(count * 3);
+  if (count > Math.floor(reader.remaining / 3)) {
+    throw new Error("truncated ownership run patch");
+  }
   let previousEnd = 0;
   for (let index = 0; index < count; index += 1) {
     const offset = reader.varuint();
@@ -684,11 +734,21 @@ function readRunChunk(
       throw new Error("ownership runs overlap or exceed chunk");
     }
     validateCode(code, paletteLength);
-    const base = index * 3;
-    runs[base] = offset;
-    runs[base + 1] = length;
-    runs[base + 2] = code;
     previousEnd = offset + length;
+  }
+  const validatedEnd = reader.position;
+
+  reader.rewind(countPosition);
+  const confirmedCount = reader.varuint();
+  const runs = new Uint32Array(confirmedCount * 3);
+  for (let index = 0; index < confirmedCount; index += 1) {
+    const base = index * 3;
+    runs[base] = reader.varuint();
+    runs[base + 1] = reader.varuint();
+    runs[base + 2] = reader.varuint();
+  }
+  if (reader.position !== validatedEnd) {
+    throw new Error("ownership run validation cursor mismatch");
   }
   return Object.freeze({ chunkIndex, mode: "RUN", runs });
 }
@@ -971,7 +1031,7 @@ export class OwnershipPlanePublisher {
 type ApplyEnvelope = Readonly<{
   streamId: string;
   seq: number;
-  bytes: Uint8Array;
+  bytes?: Uint8Array;
 }>;
 
 type ApplyResult =
@@ -985,6 +1045,12 @@ type ApplyResult =
         | "RESYNC_REQUIRED";
       resyncRequired: true;
     }>;
+
+function applyFailure(
+  reason: "INVALID_PAYLOAD" | "SEQUENCE_GAP" | "REVISION_MISMATCH" | "RESYNC_REQUIRED",
+): ApplyResult {
+  return Object.freeze({ ok: false, reason, resyncRequired: true });
+}
 
 export class OwnershipPlaneCache {
   private streamIdValue?: string;
@@ -1016,27 +1082,24 @@ export class OwnershipPlaneCache {
   }
 
   applyEnvelope(envelope: ApplyEnvelope): ApplyResult {
+    if (typeof envelope !== "object" || envelope === null) {
+      this.requiresResync = true;
+      return applyFailure("INVALID_PAYLOAD");
+    }
     if (
       typeof envelope.streamId !== "string" ||
+      envelope.streamId.length === 0 ||
       !Number.isSafeInteger(envelope.seq) ||
       envelope.seq <= 0 ||
-      !(envelope.bytes instanceof Uint8Array)
+      (envelope.bytes !== undefined && !(envelope.bytes instanceof Uint8Array))
     ) {
       this.requiresResync = true;
-      return Object.freeze({
-        ok: false,
-        reason: "INVALID_PAYLOAD",
-        resyncRequired: true,
-      });
+      return applyFailure("INVALID_PAYLOAD");
     }
 
     const sameStream = this.streamIdValue === envelope.streamId;
     if (sameStream && this.requiresResync) {
-      return Object.freeze({
-        ok: false,
-        reason: "RESYNC_REQUIRED",
-        resyncRequired: true,
-      });
+      return applyFailure("RESYNC_REQUIRED");
     }
     if (
       sameStream &&
@@ -1044,33 +1107,41 @@ export class OwnershipPlaneCache {
       envelope.seq !== this.lastSeq + 1
     ) {
       this.requiresResync = true;
-      return Object.freeze({
-        ok: false,
-        reason: "SEQUENCE_GAP",
-        resyncRequired: true,
-      });
+      return applyFailure("SEQUENCE_GAP");
+    }
+
+    if (envelope.bytes === undefined) {
+      if (!sameStream) {
+        this.streamIdValue = envelope.streamId;
+        this.lastSeq = envelope.seq;
+        this.revisionValue = 0;
+        this.palette = Object.freeze([]);
+        this.codes = undefined;
+        this.requiresResync = false;
+        return Object.freeze({ ok: true, revision: 0 });
+      }
+      this.lastSeq = envelope.seq;
+      return Object.freeze({ ok: true, revision: this.revisionValue });
     }
 
     let decoded: DecodedOwnershipFrame;
     try {
       decoded = decodeOwnershipFrame(envelope.bytes);
     } catch {
+      if (!sameStream) {
+        this.streamIdValue = envelope.streamId;
+        this.lastSeq = envelope.seq;
+      }
       this.requiresResync = true;
-      return Object.freeze({
-        ok: false,
-        reason: "INVALID_PAYLOAD",
-        resyncRequired: true,
-      });
+      return applyFailure("INVALID_PAYLOAD");
     }
 
     if (!sameStream) {
       if (decoded.kind !== "SNAPSHOT") {
+        this.streamIdValue = envelope.streamId;
+        this.lastSeq = envelope.seq;
         this.requiresResync = true;
-        return Object.freeze({
-          ok: false,
-          reason: "RESYNC_REQUIRED",
-          resyncRequired: true,
-        });
+        return applyFailure("RESYNC_REQUIRED");
       }
       this.streamIdValue = envelope.streamId;
       this.lastSeq = envelope.seq;
@@ -1084,11 +1155,7 @@ export class OwnershipPlaneCache {
     if (decoded.kind === "SNAPSHOT") {
       if (decoded.revision !== this.revisionValue + 1) {
         this.requiresResync = true;
-        return Object.freeze({
-          ok: false,
-          reason: "REVISION_MISMATCH",
-          resyncRequired: true,
-        });
+        return applyFailure("REVISION_MISMATCH");
       }
       this.lastSeq = envelope.seq;
       this.revisionValue = decoded.revision;
@@ -1104,11 +1171,7 @@ export class OwnershipPlaneCache {
       !palettesEqual(decoded.palette, this.palette)
     ) {
       this.requiresResync = true;
-      return Object.freeze({
-        ok: false,
-        reason: "REVISION_MISMATCH",
-        resyncRequired: true,
-      });
+      return applyFailure("REVISION_MISMATCH");
     }
 
     for (const chunk of decoded.chunks) {
