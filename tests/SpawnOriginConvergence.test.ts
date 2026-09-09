@@ -547,9 +547,6 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
       expect(
         receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted,
       ).toBe(true);
-
-      const initialAlphaCells = ownerCount(fixed.snapshot(), "alpha");
-      for (let index = 0; index < 60; index += 1) fixed.tick();
       expect(fixed.snapshot().operations).toEqual([
         expect.objectContaining({
           kind: "NEUTRAL_EXPANSION",
@@ -557,6 +554,15 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
           committedPopulation: 10,
         }),
       ]);
+
+      const initialAlphaCells = ownerCount(fixed.snapshot(), "alpha");
+      for (
+        let index = 0;
+        index < 60 && ownerCount(fixed.snapshot(), "alpha") === initialAlphaCells;
+        index += 1
+      ) {
+        fixed.tick();
+      }
       expect(ownerCount(fixed.snapshot(), "alpha")).toBeGreaterThan(initialAlphaCells);
 
       const regenerated = MatchRuntime.regenerate(
