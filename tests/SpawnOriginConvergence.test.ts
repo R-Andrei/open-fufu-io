@@ -499,17 +499,24 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
             { kind: "OWNER", factionId: "alpha" },
             1,
           );
-          const neutralTarget = {
+          const sourceCell = own.items[0]!;
+          const adjacentNeutral = {
             kind: "INTERSECTION" as const,
             selectors: Object.freeze([
+              Object.freeze({
+                kind: "CIRCLE" as const,
+                center: sourceCell.id,
+                radius: 1,
+              }),
               Object.freeze({ kind: "OWNER" as const }),
               Object.freeze({ kind: "CONQUERABLE" as const, value: true }),
             ]),
           };
-          const neutral = await querySession!.cells.query(neutralTarget, 1);
+          const neutral = await querySession!.cells.query(adjacentNeutral, 1);
+          const targetCell = neutral.items[0]!;
           const segment = await querySession!.segments.get(0);
-          expect(own.items[0]).toMatchObject({ ownerId: "alpha", segmentId: 0 });
-          expect(neutral.items[0]).toMatchObject({ segmentId: 0 });
+          expect(sourceCell).toMatchObject({ ownerId: "alpha", segmentId: 0 });
+          expect(targetCell).toMatchObject({ segmentId: 0 });
           expect(segment).toMatchObject({ id: 0, cellCount: CELL_COUNT });
           firstQueryObserved = true;
 
@@ -523,8 +530,14 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
                     key: "opening-expansion",
                     operation: "NEUTRAL_EXPANSION" as const,
                     population: 10,
-                    source: Object.freeze({ kind: "OWNER" as const, factionId: "alpha" }),
-                    target: neutralTarget,
+                    source: Object.freeze({
+                      kind: "CELLS" as const,
+                      ids: Object.freeze([sourceCell.id]),
+                    }),
+                    target: Object.freeze({
+                      kind: "CELLS" as const,
+                      ids: Object.freeze([targetCell.id]),
+                    }),
                   }),
                 ]),
               }),
