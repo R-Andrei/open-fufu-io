@@ -163,6 +163,42 @@ describe("controller runtime production-host foundation", () => {
     expect(() => runtime.runControllerRound(host)).toThrow(/already executed/i);
   });
 
+  it("preserves specific normal-runtime fault categories in the public DecisionReceipt", async () => {
+    const faultCodes = [
+      "TIMEOUT",
+      "MEMORY_LIMIT",
+      "SANDBOX_VIOLATION",
+      "RUNTIME_ERROR",
+    ] as const;
+
+    for (const code of faultCodes) {
+      const runtime = twoFactionRuntime(`controller-fault-category-${code}`);
+      const host = {
+        invoke(factionId: string) {
+          return factionId === "alpha"
+            ? { ok: false as const, fault: { code } }
+            : { ok: true as const };
+        },
+        chooseInfluence() {
+          return { ok: true as const };
+        },
+        reconsiderInfluence() {
+          return { ok: true as const };
+        },
+        chooseOrigins() {
+          return { ok: true as const };
+        },
+      } as unknown as ControllerHost;
+
+      expect(alphaReceipt(await runtime.runControllerRound(host))).toMatchObject({
+        accepted: false,
+        failure: { code },
+        faultCount: 1,
+        faulted: false,
+      });
+    }
+  });
+
   it("faults a controller on the fifth consecutive normal-runtime fault and skips later invocation", async () => {
     const runtime = twoFactionRuntime("controller-circuit-consecutive");
     let alphaInvocations = 0;
@@ -272,7 +308,7 @@ describe("controller runtime production-host foundation", () => {
     });
   });
 
-  it("rejects structurally malformed in-process normal output before committing proposed memory", () => {
+  it("rejects structurally malformed in-process normal output as a runtime error before committing proposed memory", () => {
     const seenMemory: unknown[] = [];
     let invocation = 0;
     const host = new InProcessTestControllerHost({
@@ -293,7 +329,7 @@ describe("controller runtime production-host foundation", () => {
 
     expect(host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: false,
-      fault: { code: "INVALID_OUTPUT" },
+      fault: { code: "RUNTIME_ERROR" },
     });
     expect(host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
@@ -302,7 +338,7 @@ describe("controller runtime production-host foundation", () => {
     expect(seenMemory).toEqual([{}, {}]);
   });
 
-  it("rejects structurally malformed in-process Spawn output before committing proposed memory", () => {
+  it("rejects structurally malformed in-process Spawn output as a runtime error before committing proposed memory", () => {
     const seenMemory: unknown[] = [];
     let invocation = 0;
     const host = new InProcessTestControllerHost({
@@ -331,7 +367,7 @@ describe("controller runtime production-host foundation", () => {
       ),
     ).toEqual({
       ok: false,
-      fault: { code: "INVALID_OUTPUT" },
+      fault: { code: "RUNTIME_ERROR" },
     });
     expect(
       host.chooseInfluence(
@@ -340,5 +376,45 @@ describe("controller runtime production-host foundation", () => {
       ),
     ).toEqual({ ok: true, output: { centers: [1] } });
     expect(seenMemory).toEqual([{}, {}]);
+  });
+
+  it("distinguishes malformed in-process memory from memory-quota overflow and commits neither", () => {
+    const seenMemory: unknown[] = [];
+    let invocation = 0;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        decide(observation) {
+          seenMemory.push({ ...observation.memory });
+          invocation += 1;
+          if (invocation === 1) {
+            return {
+              commands: [],
+              memory: { invalid: Number.NaN },
+            } as unknown as ControllerDecision;
+          }
+          if (invocation === 2) {
+            return {
+              commands: [],
+              memory: { oversized: "x".repeat(131_072) },
+            };
+          }
+          return { commands: [] };
+        },
+      },
+    });
+
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "MEMORY_LIMIT" },
+    });
+    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemory).toEqual([{}, {}, {}]);
   });
 });
