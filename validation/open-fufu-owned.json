@@ -192,6 +192,7 @@
     {
       "path": "src/simulation/ControllerRuntime.ts",
       "validators": [
+        "tests/ControllerRuntime.test.ts",
         "tests/LandCertification.test.ts",
         "tests/LandRuntime.test.ts",
         "tests/MatchRuntime.test.ts",
