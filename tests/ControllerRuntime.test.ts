@@ -375,4 +375,80 @@ describe("controller runtime production-host foundation", () => {
     });
     expect(session.usage()).toEqual({ queries: 4, materializedCells: 15 });
   });
+
+  it("projects established non-structure selectors and set composition", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-selector-red",
+        width: 3,
+        height: 3,
+        terrain: [
+          "PLAINS",
+          "FOREST",
+          "DEEP_WATER",
+          "TUNDRA",
+          "SHALLOW_WATER",
+          "MOUNTAIN",
+          "IMPASSABLE",
+          "MARSH",
+          "PLAINS",
+        ],
+        initialOwners: ["alpha", "beta", null, null, "alpha", "beta", null, null, "alpha"],
+        initialFallout: [false, false, false, true, false, false, false, false, false],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+    const ids = async (
+      selector: Parameters<typeof session.cells.query>[0],
+    ): Promise<number[]> =>
+      (await session.cells.query(selector)).items.map((cell) => cell.id);
+
+    expect(await ids({ kind: "OWNER", factionId: "alpha" })).toEqual([0, 4, 8]);
+    expect(await ids({ kind: "OWNER" })).toEqual([2, 3, 6, 7]);
+    expect(await ids({ kind: "TERRAIN", terrain: "PLAINS" })).toEqual([0, 8]);
+    expect(await ids({ kind: "FALLOUT", value: true })).toEqual([3]);
+    expect(await ids({ kind: "POPULATION_BEARING", value: true })).toEqual([
+      0, 1, 5, 7, 8,
+    ]);
+    expect(await ids({ kind: "CONQUERABLE", value: false })).toEqual([2, 6]);
+    expect(await ids({ kind: "COAST", value: true })).toEqual([1, 3, 5, 7]);
+    expect(await ids({ kind: "SHORELINE", value: true })).toEqual([2, 4]);
+    expect(await ids({ kind: "CIRCLE", center: 4, radius: 1 })).toEqual([
+      1, 3, 4, 5, 7,
+    ]);
+    expect(
+      await ids({
+        kind: "UNION",
+        selectors: [
+          { kind: "TERRAIN", terrain: "PLAINS" },
+          { kind: "FALLOUT", value: true },
+        ],
+      }),
+    ).toEqual([0, 3, 8]);
+    expect(
+      await ids({
+        kind: "INTERSECTION",
+        selectors: [
+          { kind: "OWNER", factionId: "alpha" },
+          { kind: "POPULATION_BEARING", value: true },
+        ],
+      }),
+    ).toEqual([0, 8]);
+    expect(
+      await ids({
+        kind: "DIFFERENCE",
+        left: { kind: "OWNER", factionId: "alpha" },
+        right: { kind: "TERRAIN", terrain: "PLAINS" },
+      }),
+    ).toEqual([4]);
+    expect(session.usage()).toEqual({ queries: 12, materializedCells: 34 });
+  });
 });
