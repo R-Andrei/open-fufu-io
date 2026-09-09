@@ -402,6 +402,9 @@ export class MatchRuntime {
   }
 
   acceptAction(action: SimulationAction): AcceptedSimulationInput {
+    if (this.controllerRoundInFlightTick !== undefined) {
+      throw new Error("controller round is in progress for this simulation tick");
+    }
     validateAction(this.validationState(), action);
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
@@ -414,12 +417,36 @@ export class MatchRuntime {
     return accepted;
   }
 
+  private acceptControllerActionsAtomically(
+    actions: readonly SimulationAction[],
+  ): void {
+    const acceptedBatch: AcceptedSimulationInput[] = [];
+
+    for (const action of actions) {
+      const priorInputs = [...this.pendingInputs, ...acceptedBatch];
+      const validationState =
+        priorInputs.length === 0
+          ? this.state
+          : this.engine.applyAcceptedInputs(this.state, priorInputs);
+      validateAction(validationState, action);
+      acceptedBatch.push(
+        freezeAcceptedInput({
+          tick: this.state.tick + 1,
+          sequence: this.nextSequence + acceptedBatch.length,
+          action,
+        }),
+      );
+    }
+
+    this.nextSequence += acceptedBatch.length;
+    this.pendingInputs.push(...acceptedBatch);
+    this.acceptedInputLog.push(...acceptedBatch);
+  }
+
   private commitControllerRound(
     evaluated: ControllerRoundEvaluation,
   ): readonly ControllerRoundReceipt[] {
-    for (const action of evaluated.actions) {
-      this.acceptAction(action);
-    }
+    this.acceptControllerActionsAtomically(evaluated.actions);
 
     const receipts = Object.freeze([...evaluated.receipts]);
     for (const entry of receipts) {
@@ -446,21 +473,32 @@ export class MatchRuntime {
     }
 
     const roundTick = this.state.tick;
-    const evaluated = evaluateControllerRound(
-      this.state,
-      host,
-      this.nextControllerDecisionNumber,
-      this.controllerReceipts,
-      this.controllerFaultCounts,
-      this.controllerConsecutiveFaultCounts,
-      this.controllerFaultedFactionIds,
-    );
+    this.controllerRoundInFlightTick = roundTick;
 
-    if (!isPromiseLike(evaluated)) {
-      return this.commitControllerRound(evaluated);
+    let evaluated: ControllerRoundEvaluation | Promise<ControllerRoundEvaluation>;
+    try {
+      evaluated = evaluateControllerRound(
+        this.state,
+        host,
+        this.nextControllerDecisionNumber,
+        this.controllerReceipts,
+        this.controllerFaultCounts,
+        this.controllerConsecutiveFaultCounts,
+        this.controllerFaultedFactionIds,
+      );
+    } catch (error) {
+      this.controllerRoundInFlightTick = undefined;
+      throw error;
     }
 
-    this.controllerRoundInFlightTick = roundTick;
+    if (!isPromiseLike(evaluated)) {
+      try {
+        return this.commitControllerRound(evaluated);
+      } finally {
+        this.controllerRoundInFlightTick = undefined;
+      }
+    }
+
     return Promise.resolve(evaluated)
       .then((resolved) => {
         if (this.state.tick !== roundTick) {
