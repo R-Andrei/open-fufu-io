@@ -10,6 +10,8 @@ Every repository-work communication (human chat, GitHub comments/reviews, commit
 
 Never assume an unestablished truth. If user instructions plus current canonical authority do not determine a mechanic, semantic, intended behavior/value/order, theoretical premise, or other material unknown, STOP and ask. Only mechanically unambiguous corrections established by context may be inferred.
 
+Do not create GitHub issues unless explicitly requested by the human or required by an approved repository workflow. If an issue is created accidentally, immediately mark it as accidental and close it as not planned.
+
 Testable behavior-changing implementation/bug-fix work MUST be RED-first: add/strengthen a focused test and prove it fails for the intended reason -> smallest GREEN production correction -> relevant broader owned validation. Production-first/backfilled proof is forbidden unless genuinely non-testable/emergency and explicitly justified.
 
 `IMPLEMENTATION GREEN != CERTIFIED != COMPLETED`. Substantive issue work MUST follow [`docs/ISSUE_WORK_PROTOCOL.md`](docs/ISSUE_WORK_PROTOCOL.md).
