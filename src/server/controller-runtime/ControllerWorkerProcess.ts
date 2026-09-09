@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { writeSync } from "node:fs";
 
 import ivm from "isolated-vm";
 
@@ -18,6 +19,8 @@ type WorkerResponseEnvelope = Readonly<{
   response: ControllerWorkerResponse;
   rssBytes: number;
 }>;
+
+const CATASTROPHIC_FAULT_FD = 4;
 
 const hardenGlobalSource = `
   "use strict";
@@ -165,8 +168,20 @@ function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && /timed out/i.test(error.message);
 }
 
+function isMemoryLimitMessage(message: string): boolean {
+  return /memory limit|out of memory/i.test(message);
+}
+
 function isMemoryLimitError(error: unknown): boolean {
-  return error instanceof Error && /memory limit|out of memory/i.test(error.message);
+  return error instanceof Error && isMemoryLimitMessage(error.message);
+}
+
+function reportCatastrophicMemoryLimit(): void {
+  try {
+    writeSync(CATASTROPHIC_FAULT_FD, "1");
+  } catch {
+    // The worker still aborts; the parent will fall back to WORKER_DIED.
+  }
 }
 
 function isWorkerRequestEnvelope(value: unknown): value is WorkerRequestEnvelope {
@@ -260,7 +275,12 @@ async function executeRequest(
   try {
     isolate = new ivm.Isolate({
       memoryLimit: request.isolateMemoryMb,
-      onCatastrophicError: () => process.abort(),
+      onCatastrophicError: (message) => {
+        if (isMemoryLimitMessage(message)) {
+          reportCatastrophicMemoryLimit();
+        }
+        process.abort();
+      },
     });
     const context = await isolate.createContext();
 
