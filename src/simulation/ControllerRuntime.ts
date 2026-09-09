@@ -24,7 +24,7 @@ import type { MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
-const MAX_CONTROLLER_MEMORY_BYTES = 131_072;
+export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
@@ -135,7 +135,7 @@ type ControllerOutputWithMemory = Readonly<{
 }>;
 
 class InvalidControllerValueError extends Error {}
-class ControllerMemoryLimitError extends InvalidControllerValueError {}
+export class ControllerMemoryLimitError extends InvalidControllerValueError {}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -204,7 +204,7 @@ function canonicalizeMemoryValue(
   }
 }
 
-function canonicalizeControllerMemory(value: unknown): string {
+export function canonicalizeControllerMemory(value: unknown): string {
   if (!isPlainRecord(value)) {
     throw new InvalidControllerValueError(
       "controller memory root must be a plain object",
@@ -212,7 +212,7 @@ function canonicalizeControllerMemory(value: unknown): string {
   }
 
   const serialized = canonicalizeMemoryValue(value, new Set<object>());
-  if (utf8Encoder.encode(serialized).byteLength > MAX_CONTROLLER_MEMORY_BYTES) {
+  if (utf8Encoder.encode(serialized).byteLength > CONTROLLER_MEMORY_MAX_BYTES) {
     throw new ControllerMemoryLimitError("controller memory exceeds quota");
   }
   return serialized;
@@ -237,6 +237,12 @@ function deepFreezePlainValue<T>(value: T, seen = new Set<object>()): T {
   }
 
   return value;
+}
+
+export function decodeControllerMemory(
+  serialized: string,
+): Readonly<ControllerMemory> {
+  return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
 }
 
 function cloneLegalValue<T>(value: T, seen = new WeakMap<object, unknown>()): T {
@@ -467,8 +473,7 @@ export class InProcessTestControllerHost implements ControllerHost {
   }
 
   private controllerMemory(factionId: string): Readonly<ControllerMemory> {
-    const serialized = this.memoryByFaction.get(factionId) ?? "{}";
-    return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
+    return decodeControllerMemory(this.memoryByFaction.get(factionId) ?? "{}");
   }
 
   private executeInvocation<T extends ControllerOutputWithMemory>(
