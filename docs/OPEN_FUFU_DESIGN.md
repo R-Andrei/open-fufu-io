@@ -131,6 +131,7 @@ The exact easing function, transition duration, stagger function, catch-up or vi
 Historical matches must remain reproducible.
 
 A match must bind every rule-bearing input needed to define what that match meant, including identities equivalent to:
+
 - match seed;
 - map identity/version/hash;
 - simulation ruleset version;
@@ -261,6 +262,7 @@ Segments are immutable deterministic map-compiled strategic regions used for que
 **OperationalContact** is broader runtime interaction/visibility state created by territorial contact, combat, naval encounters, amphibious arrival, or other operational interaction.
 
 ## 6.4 Fronts
+
 There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility.
 
 ## 6.5 Physical navigation
@@ -410,6 +412,7 @@ Normalize recursively before serialization:
 - `DIFFERENCE`: recursively normalize both operands while preserving left/right order.
 - scalar selector variants (`OWNER`, `SEGMENT`, `TERRAIN`, `FALLOUT`, `POPULATION_BEARING`, `CONQUERABLE`, `COAST`, `SHORELINE`, `CIRCLE`, `STRUCTURE_FIELD`, `STRUCTURE_FIELD_INSTANCE`) preserve their selector kind and values; fields serialize in the fixed public-contract order for that variant. `STRUCTURE_FIELD` serializes `field`, `referenceFactionId`, then `affiliation`; `STRUCTURE_FIELD_INSTANCE` serializes its public fields in their declared contract order.
 - stable IDs and finite numeric values use their canonical deterministic scalar encoding; strings use the canonical UTF-8/string encoding.
+
 The serialized form is the selector-kind tag followed by its normalized fields/children in that order. Source spellings covered by the normalization above therefore produce the same key. Distinct normalized syntax trees may still happen to select the same runtime cell set; V1 does not solve general selector-algebra equivalence for this ordering key.
 
 When two operations have byte-identical canonical target and source selector keys, the stable controller-authored directive key is the final projection-only tie-break. It must never affect faction-wide pressure, ownership, Total/Available/aggregate committed Population, residual state, or casualty totals; changing only that key may change which otherwise selector-equivalent operation object reflects a local decrement, but not any faction-level mechanical result. Operation ID, creation time, controller command ordering, and object-registration order are never tie-breakers.
@@ -559,6 +562,7 @@ HostilitySide(faction)
 = fixed team identity, when the faction belongs to a fixed team
 = faction identity, otherwise
 ```
+
 For any two distinct active factions, the game-wide diplomatic relation is derived only from those immutable sides: members of the same `HostilitySide` are **allies**, and members of different `HostilitySide`s are **enemies**. V1 has no neutral or third diplomatic relation, and this ally/enemy relation does not change during the match. It is independent of `atWar`.
 
 An unteamed Minor Faction is therefore its own hostility side. Members of the same hostility side can never be `atWar` with one another.
@@ -707,6 +711,7 @@ Origin mechanics must be surfaced through effective rules/mechanics so both play
 # 16. Echoes
 
 Echoes are collectible generated-name mechanical modifiers used primarily for build specialization rather than Origin-scale rule transformation.
+
 Standard PvE may equip an Echo loadout according to the Echo subsystem's rules. Echo identity, acquisition, rolled magnitudes, duplicate handling, reward settlement, naming, collection behavior, persistence boundaries, and Gacha are owned only by [`ECHO_CATALOGUE.md`](./ECHO_CATALOGUE.md).
 
 The design invariant retained here is simply that Echoes remain a specialization/progression axis distinct from controller skill and Origin identity.
@@ -726,6 +731,7 @@ Echo reward consequences of defeating AI are owned by `ECHO_CATALOGUE.md`, not b
 # 18. Observability and debugging
 
 The game should support structured diagnostics for controller development, certification, replay analysis, and authoritative runtime failures.
+
 Player-facing/controller-facing debug information must respect the same visibility/security boundaries as ordinary observations. Debugging must not become a side channel for hidden state.
 
 The browser may visualize controller-authored annotations and server diagnostics, but debug surfaces are non-authoritative.
