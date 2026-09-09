@@ -408,6 +408,10 @@ An `InProcessTestControllerHost` or equivalent is the normal foundation/micro-si
 | Observable events delivered | **512 per decision** |
 | Team-signal payload | **1 KiB** |
 
+The **100 ms initial-module budget** covers the entire untrusted player-module `compile -> instantiate -> evaluate` pipeline, including settlement of top-level `await`. The budget starts when compilation of the player module begins. Trusted isolate/context construction and sandbox-hardening setup are outside this player-module budget.
+
+The **1 KiB team-signal limit** measures only the `TEAM_SIGNAL.payload` value. Its size is the UTF-8 byte length of deterministic canonical compact JSON using the controller-memory JSON canonicalization rules: object keys are recursively sorted, array order is preserved, numbers must be finite, and `-0` canonicalizes to `0`. Payloads of at most **1,024 bytes** are accepted; larger payloads are runtime faults. The command `key`, `channel`, and surrounding command bytes do not count toward this limit.
+
 These are versioned runtime defaults and may be retuned only through an explicit runtime-contract change.
 
 ## 5.3 Runtime faults
@@ -421,6 +425,16 @@ Runtime faults include:
 - malformed whole output;
 - isolate/controller memory-limit violation;
 - sandbox violation.
+
+Public controller-host/runtime fault mapping is:
+
+- execution timeout -> `TIMEOUT`;
+- controller/isolate memory-limit violation and controller-memory quota overflow -> `MEMORY_LIMIT`;
+- sandbox/capability violation -> `SANDBOX_VIOLATION`;
+- uncaught controller exception, worker death, and otherwise uncategorized runtime failure -> `RUNTIME_ERROR`;
+- structurally malformed whole output, including malformed memory -> `RUNTIME_ERROR`.
+
+`INVALID_COMMAND` and `INVALID_DIRECTIVE` remain ordinary game-facing legality failures rather than runtime faults.
 
 A runtime fault discards temporary output/memory from that invocation and preserves the previous committed controller state/directives.
 
