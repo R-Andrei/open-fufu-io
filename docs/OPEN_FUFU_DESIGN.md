@@ -116,11 +116,11 @@ The browser's accepted logical political-ownership state and its rendered politi
 
 Political-ownership presentation is **latest-target presentation**, not queued revision playback. If a newer accepted logical ownership state arrives before the current visual transition completes, presentation retargets from its current appearance toward the newest target and discards superseded visual targets. Installing a replacement ownership baseline, including after resynchronization, establishes the new target directly rather than requiring discarded presentation history to be replayed. Discrete transport batching alone must not produce presentation flicker.
 
-For very large ownership changes, presentation may use deterministic spatial staggering or coarse-region variation where useful. Such staggering is presentation only: it does not represent authoritative capture order, simulation timing, or an intermediate ownership state.
+For very large ownership changes, presentation may use deterministic spatial staggering or deterministic coarse-region variation where useful. Such variation is presentation only: it does not represent authoritative capture order, simulation timing, or an intermediate ownership state.
 
 Visual lag must remain bounded under sustained ownership churn. Presentation must be able to catch up rather than accumulate an unbounded animation backlog.
 
-Rendered transitional appearance has no game-semantic authority. Gameplay, controller or AI decisions, targeting truth, inspection, selection, tooltips, diagnostics, validation, and other stateful surfaces consume accepted logical state rather than transitional rendered appearance. Presentation consumes only the lawful browser state supplied through the applicable projection/stream boundary and must not bypass visibility or authorization rules.
+Rendered transitional appearance has no game-semantic authority. It must never be used as an input to gameplay, controller or AI decisions, targeting, inspection, selection, tooltips, diagnostics, authoritative validation, or any other stateful surface. Those surfaces continue to use their canonically owned logical state or observation source; browser presentation consumes only the lawful browser state supplied through the applicable projection/stream boundary and must not bypass visibility or authorization rules.
 
 The exact easing function, transition duration, stagger function, catch-up or visual-lag threshold, GPU/CPU representation, and other visual tuning values remain implementation and visual-testing concerns rather than V1 game semantics.
 
