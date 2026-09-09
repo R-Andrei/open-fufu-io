@@ -48,7 +48,9 @@ describe("participant ownership-plane synchronization", () => {
   }, 20_000);
 
   it("uses a compact sparse chunk update for low churn and reconstructs exactly", () => {
-    const initial = Object.freeze(new Array<string | null>(8_192).fill("alpha"));
+    const initialMutable = new Array<string | null>(8_192).fill("alpha");
+    initialMutable[8_191] = "beta";
+    const initial = Object.freeze(initialMutable);
     const publisher = new OwnershipPlanePublisher({ chunkSize: 1_024 });
     publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
@@ -56,7 +58,7 @@ describe("participant ownership-plane synchronization", () => {
     const next = initial.slice();
     next[17] = "beta";
     next[2_050] = null;
-    next[8_191] = "beta";
+    next[8_190] = "beta";
     publisher.observe(Object.freeze(next));
     const delta = requirePublication(publisher.flush());
 
@@ -78,11 +80,14 @@ describe("participant ownership-plane synchronization", () => {
     expect(cache.ownerAt(16)).toBe("alpha");
     expect(cache.ownerAt(17)).toBe("beta");
     expect(cache.ownerAt(2_050)).toBeNull();
+    expect(cache.ownerAt(8_190)).toBe("beta");
     expect(cache.ownerAt(8_191)).toBe("beta");
   });
 
   it("uses run encoding for a large contiguous change", () => {
-    const initial = Object.freeze(new Array<string | null>(16_384).fill("alpha"));
+    const initialMutable = new Array<string | null>(16_384).fill("alpha");
+    initialMutable[16_383] = "beta";
+    const initial = Object.freeze(initialMutable);
     const publisher = new OwnershipPlanePublisher({ chunkSize: 4_096 });
     publisher.observe(initial);
     requirePublication(publisher.flush());
@@ -100,14 +105,16 @@ describe("participant ownership-plane synchronization", () => {
   });
 
   it("falls back to a complete replacement when near-global churn is cheaper", () => {
-    const initial = Object.freeze(new Array<string | null>(V1_CELL_COUNT).fill("alpha"));
+    const initialMutable = new Array<string | null>(V1_CELL_COUNT).fill("alpha");
+    initialMutable[V1_CELL_COUNT - 1] = "beta";
+    const initial = Object.freeze(initialMutable);
     const publisher = new OwnershipPlanePublisher();
     publisher.observe(initial);
     const baseline = requirePublication(publisher.flush());
 
     const next = new Array<string | null>(V1_CELL_COUNT);
     for (let cellId = 0; cellId < V1_CELL_COUNT; cellId += 1) {
-      next[cellId] = cellId % 2 === 0 ? "beta" : null;
+      next[cellId] = cellId % 2 === 0 ? "alpha" : "beta";
     }
     publisher.observe(Object.freeze(next));
     const replacement = requirePublication(publisher.flush());
@@ -129,9 +136,9 @@ describe("participant ownership-plane synchronization", () => {
         bytes: replacement.bytes,
       }),
     ).toEqual({ ok: true, revision: 2 });
-    expect(cache.ownerAt(0)).toBe("beta");
-    expect(cache.ownerAt(1)).toBeNull();
-    expect(cache.ownerAt(V1_CELL_COUNT - 1)).toBeNull();
+    expect(cache.ownerAt(0)).toBe("alpha");
+    expect(cache.ownerAt(1)).toBe("beta");
+    expect(cache.ownerAt(V1_CELL_COUNT - 1)).toBe("beta");
 
     console.info(
       "ownership-sync benchmark",
@@ -144,12 +151,12 @@ describe("participant ownership-plane synchronization", () => {
 
   it("coalesces multiple observed internal transitions to the final published owner", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", "alpha", null, null]));
+    publisher.observe(Object.freeze(["alpha", "alpha", null, "beta"]));
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["alpha", "beta", null, null]));
-    publisher.observe(Object.freeze(["alpha", null, null, null]));
-    publisher.observe(Object.freeze(["alpha", "beta", null, null]));
+    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
+    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
+    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
     const delta = requirePublication(publisher.flush());
 
     const cache = new OwnershipPlaneCache();
@@ -165,12 +172,12 @@ describe("participant ownership-plane synchronization", () => {
 
   it("fails closed across sequence and ownership-revision gaps without partial mutation", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", "alpha", "alpha", "alpha"]));
+    publisher.observe(Object.freeze(["alpha", "alpha", "alpha", "beta"]));
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["alpha", "beta", "alpha", "alpha"]));
+    publisher.observe(Object.freeze(["alpha", "beta", "alpha", "beta"]));
     const firstDelta = requirePublication(publisher.flush());
-    publisher.observe(Object.freeze(["alpha", "beta", "beta", "alpha"]));
+    publisher.observe(Object.freeze(["alpha", "beta", "beta", "beta"]));
     const secondDelta = requirePublication(publisher.flush());
 
     const sequenceGap = new OwnershipPlaneCache();
@@ -215,9 +222,9 @@ describe("participant ownership-plane synchronization", () => {
 
   it("rejects truncated ownership data before mutating the installed logical plane", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", null, null, null]));
+    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
     const baseline = requirePublication(publisher.flush());
-    publisher.observe(Object.freeze(["alpha", "beta", null, null]));
+    publisher.observe(Object.freeze(["alpha", "beta", null, "beta"]));
     const delta = requirePublication(publisher.flush());
 
     const cache = new OwnershipPlaneCache();
@@ -239,10 +246,10 @@ describe("participant ownership-plane synchronization", () => {
 
   it("installs a fresh replacement stream after a resync without replaying match history", () => {
     const publisher = new OwnershipPlanePublisher({ chunkSize: 32 });
-    publisher.observe(Object.freeze(["alpha", null, null, null]));
+    publisher.observe(Object.freeze(["alpha", null, null, "beta"]));
     const baseline = requirePublication(publisher.flush());
 
-    publisher.observe(Object.freeze(["beta", "beta", null, null]));
+    publisher.observe(Object.freeze(["beta", "beta", null, "beta"]));
     requirePublication(publisher.flush());
     const fresh = publisher.currentSnapshot();
 
