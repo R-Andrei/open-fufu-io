@@ -169,7 +169,7 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 function isMemoryLimitMessage(message: string): boolean {
-  return /memory limit|out of memory/i.test(message);
+  return /memory limit|out[- ]of[- ]memory/i.test(message);
 }
 
 function isMemoryLimitError(error: unknown): boolean {
