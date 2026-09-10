@@ -94,6 +94,8 @@ Finalization is deterministic by economic class:
 - an affordability-gated FFY cost is calculated through its owning cost rules first, then any positive exact cost is **ceiled once** to whole FFY before affordability and payment; an exact zero remains zero;
 - an explicit signed FFY consequence remains exact through same-fact and same-tick aggregation, then the final same-tick signed delta is **truncated toward zero once** to whole FFY before the non-negative balance floor is applied.
 
+Each distinct positive FFY earning source/event is its own finalization unit. Its complete applicable calculation is finalized once; distinct positive earnings are not pooled merely to recover fractional remainders that would otherwise be discarded.
+
 There is no authoritative fractional balance, FFY subunit, residual/carry state, or cross-tick fractional accumulator. A fractional remainder discarded at one finalization boundary never contributes to a later tick/event/transaction. For example, an exact passive result of `0.75 FFY` for one tick awards `0 FFY` for that tick; the discarded `0.75` is not carried forward.
 
 FFY balances are canonically **non-negative**. Explicit signed FFY consequences use a deterministic two-level aggregation rather than applying a balance floor to each debit/credit in incidental execution order.
@@ -477,4 +479,4 @@ Ordinary faction defeat gives:
 0 universal FFY
 ```
 
-Capitulation or defeat stops subsequent passive FFY accrual under §1.1 but does not erase or reset the faction's existing authoritative FFY balance. Remaining unspent FFY is not awarded through a universal last-hit bounty. Explicit scenario/objective rewards may define their own events.
+Capitulation or defeat stops subsequent passive FFY accrual under §1.1 but does not erase or reset the faction's existing authoritative FFY balance. A later status transition does not retroactively cancel any already-valid same-tick economic fact unless that fact's owning mechanic explicitly specifies cancellation. Remaining unspent FFY is not awarded through a universal last-hit bounty. Explicit scenario/objective rewards may define their own events.
