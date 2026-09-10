@@ -10,6 +10,7 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   InProcessTestControllerHost,
   type LawfulControllerObservation,
+  type LawfulInProcessControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import {
@@ -54,7 +55,6 @@ function ordinaryObservation(): LawfulControllerObservation {
       }),
     }),
     factions: Object.freeze([{ id: "alpha", status: "ACTIVE" as const }]),
-    cells: Object.freeze([]),
   });
 }
 
@@ -147,7 +147,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     });
     runtime.tick();
 
-    let alphaObservation: LawfulControllerObservation | undefined;
+    let alphaObservation: LawfulInProcessControllerObservation | undefined;
     runtime.runControllerRound(
       new InProcessTestControllerHost({
         alpha(observation) {
@@ -156,7 +156,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       }),
     );
 
-    expect(alphaObservation).toEqual({
+    expect(alphaObservation).toMatchObject({
       tick: 1,
       decisionNumber: 0,
       me: {
@@ -175,20 +175,18 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         { id: "alpha", status: "ACTIVE" },
         { id: "beta", status: "ACTIVE" },
       ],
-      cells: [
-        { id: 0, terrain: "TEST" },
-        { id: 1, terrain: "TEST" },
-        { id: 2, terrain: "TEST" },
-        { id: 3, terrain: "TEST" },
-      ],
     });
+    expect(alphaObservation?.map?.cellCount).toBe(4);
+    expect(alphaObservation?.cells?.owner(0)).toBeNull();
+    expect(alphaObservation?.segments?.cellIds(0)).toBeUndefined();
     expect(Object.isFrozen(alphaObservation)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.me)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.me.population)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.factions)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.factions[0])).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.map)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.cells)).toBe(true);
-    expect(Object.isFrozen(alphaObservation?.cells[0])).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.segments)).toBe(true);
     expect(JSON.stringify(alphaObservation)).not.toContain("testMarker");
     expect(JSON.stringify(alphaObservation)).not.toContain("canonicalSerialization");
     expect(JSON.stringify(alphaObservation)).not.toContain("rules");
