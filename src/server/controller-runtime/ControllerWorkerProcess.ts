@@ -250,6 +250,17 @@ const hardenGlobalSource = `
       });
     }
 
+    if (typeof Atomics === "object" && Atomics !== null) {
+      for (const name of ["wait", "waitAsync"]) {
+        __openFufuDefineProperty(Atomics, name, {
+          value: undefined,
+          writable: false,
+          configurable: false,
+          enumerable: false
+        });
+      }
+    }
+
     __openFufuDefineProperty(Math, "random", {
       value: undefined,
       writable: false,
@@ -517,7 +528,6 @@ function requestHostQuery(
     queryId,
     query,
   });
-
   return new Promise((resolve, reject) => {
     pendingQueries.set(queryId, Object.freeze({ resolve, reject }));
     try {
