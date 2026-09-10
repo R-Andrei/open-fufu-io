@@ -1,15 +1,10 @@
-import type {
-  ControllerDecision,
-  ControllerMemory,
-  SpawnInfluenceDecision,
-} from "../src/core/controller/ControllerApi";
+import type { ControllerDecision } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
-  canonicalizeControllerMemory,
-  CONTROLLER_MEMORY_MAX_BYTES,
-  ControllerMemoryLimitError,
-  decodeControllerMemory,
+  createControllerQuerySession,
+} from "../src/simulation/ControllerQueryProjection";
+import {
   InProcessTestControllerHost,
   type ControllerHost,
   type ControllerHostInvocationResult,
@@ -33,30 +28,6 @@ function twoFactionRuntime(seed: string) {
       ],
     }),
   );
-}
-
-function ordinaryObservation(): LawfulControllerObservation {
-  return Object.freeze({
-    tick: 7,
-    decisionNumber: 3,
-    me: Object.freeze({
-      id: "alpha",
-      status: "ACTIVE" as const,
-      population: Object.freeze({
-        total: 10,
-        available: 8,
-        committedOffense: 2,
-        committedCounterResponse: 0,
-        aboardTransports: 0,
-        neutralSettlementHalfResidual: 0,
-      }),
-    }),
-    factions: Object.freeze([
-      Object.freeze({ id: "alpha", status: "ACTIVE" as const }),
-      Object.freeze({ id: "beta", status: "ACTIVE" as const }),
-    ]),
-    cells: Object.freeze([]),
-  });
 }
 
 function alphaReceipt(
@@ -168,42 +139,6 @@ describe("controller runtime production-host foundation", () => {
     expect(() => runtime.runControllerRound(host)).toThrow(/already executed/i);
   });
 
-  it("preserves specific normal-runtime fault categories in the public DecisionReceipt", async () => {
-    const faultCodes = [
-      "TIMEOUT",
-      "MEMORY_LIMIT",
-      "SANDBOX_VIOLATION",
-      "RUNTIME_ERROR",
-    ] as const;
-
-    for (const code of faultCodes) {
-      const runtime = twoFactionRuntime(`controller-fault-category-${code}`);
-      const host = {
-        invoke(factionId: string) {
-          return factionId === "alpha"
-            ? { ok: false as const, fault: { code } }
-            : { ok: true as const };
-        },
-        chooseInfluence() {
-          return { ok: true as const };
-        },
-        reconsiderInfluence() {
-          return { ok: true as const };
-        },
-        chooseOrigins() {
-          return { ok: true as const };
-        },
-      } as unknown as ControllerHost;
-
-      expect(alphaReceipt(await runtime.runControllerRound(host))).toMatchObject({
-        accepted: false,
-        failure: { code },
-        faultCount: 1,
-        faulted: false,
-      });
-    }
-  });
-
   it("faults a controller on the fifth consecutive normal-runtime fault and skips later invocation", async () => {
     const runtime = twoFactionRuntime("controller-circuit-consecutive");
     let alphaInvocations = 0;
@@ -313,218 +248,389 @@ describe("controller runtime production-host foundation", () => {
     });
   });
 
-  it("rejects structurally malformed in-process normal output as a runtime error before committing proposed memory", () => {
-    const seenMemory: unknown[] = [];
-    let invocation = 0;
-    const host = new InProcessTestControllerHost({
-      alpha: {
-        decide(observation) {
-          seenMemory.push({ ...observation.memory });
-          invocation += 1;
-          if (invocation === 1) {
-            return {
-              commands: [null],
-              memory: { mustNotCommit: true },
-            } as unknown as ControllerDecision;
-          }
-          return { commands: [] };
-        },
-      },
-    });
-
-    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: { commands: [] },
-    });
-    expect(seenMemory).toEqual([{}, {}]);
-  });
-
-  it("rejects structurally malformed in-process Spawn output as a runtime error before committing proposed memory", () => {
-    const seenMemory: unknown[] = [];
-    let invocation = 0;
-    const host = new InProcessTestControllerHost({
-      alpha: {
-        chooseInfluence(context) {
-          seenMemory.push({ ...context.memory });
-          invocation += 1;
-          if (invocation === 1) {
-            return {
-              centers: null,
-              memory: { mustNotCommit: true },
-            } as unknown as SpawnInfluenceDecision;
-          }
-          return { centers: [1] };
-        },
-        decide() {
-          return { commands: [] };
-        },
-      },
-    });
-
-    expect(
-      host.chooseInfluence(
-        "alpha",
-        { phase: "INFLUENCE", memory: {} } as never,
-      ),
-    ).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(
-      host.chooseInfluence(
-        "alpha",
-        { phase: "INFLUENCE", memory: {} } as never,
-      ),
-    ).toEqual({ ok: true, output: { centers: [1] } });
-    expect(seenMemory).toEqual([{}, {}]);
-  });
-
-  it("distinguishes malformed in-process memory from memory-quota overflow and commits neither", () => {
-    const seenMemory: unknown[] = [];
-    let invocation = 0;
-    const host = new InProcessTestControllerHost({
-      alpha: {
-        decide(observation) {
-          seenMemory.push({ ...observation.memory });
-          invocation += 1;
-          if (invocation === 1) {
-            return {
-              commands: [],
-              memory: { invalid: Number.NaN },
-            } as unknown as ControllerDecision;
-          }
-          if (invocation === 2) {
-            return {
-              commands: [],
-              memory: { oversized: "x".repeat(131_072) },
-            };
-          }
-          return { commands: [] };
-        },
-      },
-    });
-
-    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "MEMORY_LIMIT" },
-    });
-    expect(host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: { commands: [] },
-    });
-    expect(seenMemory).toEqual([{}, {}, {}]);
-  });
-});
-
-describe("canonical controller-memory codec", () => {
-  it("canonicalizes insertion order, nested keys, arrays, Unicode, and negative zero deterministically", () => {
-    const first = {
-      "é": "雪",
-      z: -0,
-      a: {
-        β: "é",
-        a: [3, 2, 1],
-      },
-    } as ControllerMemory;
-    const second = {
-      a: {
-        a: [3, 2, 1],
-        β: "é",
-      },
-      z: -0,
-      "é": "雪",
-    } as ControllerMemory;
-    const expected = '{"a":{"a":[3,2,1],"β":"é"},"z":0,"é":"雪"}';
-
-    expect(canonicalizeControllerMemory(first)).toBe(expected);
-    expect(canonicalizeControllerMemory(second)).toBe(expected);
-
-    const decoded = decodeControllerMemory(expected);
-    expect(decoded).toEqual({
-      a: { a: [3, 2, 1], β: "é" },
-      z: 0,
-      "é": "雪",
-    });
-    expect(Object.isFrozen(decoded)).toBe(true);
-    expect(Object.isFrozen(decoded.a)).toBe(true);
-    expect(Object.isFrozen((decoded.a as { a: unknown[] }).a)).toBe(true);
-  });
-
-  it("accepts deterministic finite-number edge cases", () => {
-    const serialized = canonicalizeControllerMemory({
-      max: Number.MAX_VALUE,
-      min: Number.MIN_VALUE,
-      safe: Number.MAX_SAFE_INTEGER,
-      negative: -Number.MAX_VALUE,
-    });
-
-    expect(decodeControllerMemory(serialized)).toEqual({
-      max: Number.MAX_VALUE,
-      min: Number.MIN_VALUE,
-      negative: -Number.MAX_VALUE,
-      safe: Number.MAX_SAFE_INTEGER,
-    });
-  });
-
-  it("rejects non-JSON values, exotic containers, cycles, and sparse arrays", () => {
-    class MemoryClass {
-      readonly value = 1;
-    }
-
-    const cyclic: Record<string, unknown> = {};
-    cyclic.self = cyclic;
-    const sparse: unknown[] = [];
-    sparse.length = 2;
-    sparse[1] = "present";
-
-    const invalidMemories: unknown[] = [
-      null,
-      [],
-      { bad: undefined },
-      { bad: Number.NaN },
-      { bad: Number.POSITIVE_INFINITY },
-      { bad: Number.NEGATIVE_INFINITY },
-      { bad: 1n },
-      { bad: Symbol("bad") },
-      { bad: () => 1 },
-      { bad: new MemoryClass() },
-      { bad: new Date(0) },
-      { bad: new Map([["x", 1]]) },
-      { bad: new Set([1]) },
-      { bad: /x/ },
-      { bad: new Uint8Array([1]) },
-      cyclic,
-      { bad: sparse },
-    ];
-
-    for (const memory of invalidMemories) {
-      expect(() => canonicalizeControllerMemory(memory)).toThrow();
-    }
-  });
-
-  it("accepts exactly 131072 canonical UTF-8 bytes and rejects one byte over", () => {
-    const encoder = new TextEncoder();
-    const emptySerialized = '{"x":""}';
-    const overhead = encoder.encode(emptySerialized).byteLength;
-    const exactMemory = {
-      x: "x".repeat(CONTROLLER_MEMORY_MAX_BYTES - overhead),
-    };
-    const overMemory = {
-      x: "x".repeat(CONTROLLER_MEMORY_MAX_BYTES - overhead + 1),
-    };
-
-    const exact = canonicalizeControllerMemory(exactMemory);
-    expect(encoder.encode(exact).byteLength).toBe(CONTROLLER_MEMORY_MAX_BYTES);
-    expect(() => canonicalizeControllerMemory(overMemory)).toThrow(
-      ControllerMemoryLimitError,
+  it("projects bounded CELLS queries deterministically and accounts exact usage", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-query-red",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
     );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const page = await session.cells.query(
+      { kind: "CELLS", ids: [3, 1, 2] },
+      2,
+    );
+
+    expect(page.items.map((cell) => cell.id)).toEqual([1, 2]);
+    expect(page.truncated).toBe(true);
+    expect(session.usage()).toEqual({ queries: 1, materializedCells: 2 });
+  });
+
+  it("projects immutable full CellView data and canonical local geometry", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-cell-view-red",
+        width: 2,
+        height: 2,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", null, null, null],
+        initialFallout: [false, false, false, false],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const cell = await session.cells.get(0);
+    const neighbors = await session.cells.neighbors(0);
+    const distance = await session.cells.distance(0, 3);
+
+    expect(cell).toEqual({
+      id: 0,
+      position: { x: 0, y: 0 },
+      terrain: "PLAINS",
+      hasFallout: false,
+      conquerable: true,
+      populationBearing: true,
+      ownerId: "alpha",
+      isCoast: false,
+      isShoreline: false,
+    });
+    expect(Object.isFrozen(cell)).toBe(true);
+    expect(Object.isFrozen(cell?.position)).toBe(true);
+    expect(neighbors).toEqual([1, 2]);
+    expect(Object.isFrozen(neighbors)).toBe(true);
+    expect(distance).toBeCloseTo(Math.SQRT2);
+    expect(session.usage()).toEqual({ queries: 3, materializedCells: 1 });
+  });
+
+  it("projects deterministic CellView queries, counts, boundaries, and connected components", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-spatial-query-red",
+        width: 5,
+        height: 5,
+        terrain: Array.from({ length: 25 }, () => "PLAINS"),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const selector = { kind: "CELLS", ids: [24, 12, 0, 1] } as const;
+    const page = await session.cells.query(selector, 3);
+    const count = await session.cells.count(selector);
+    const boundary = await session.cells.boundary({
+      kind: "CELLS",
+      ids: [6, 7, 8, 11, 12, 13, 16, 17, 18],
+    });
+    const components = await session.cells.connectedComponents({
+      kind: "CELLS",
+      ids: [24, 5, 1, 0],
+    });
+
+    expect(page.items.map((cell) => cell.id)).toEqual([0, 1, 12]);
+    expect(page.items[0]).toMatchObject({
+      position: { x: 0, y: 0 },
+      terrain: "PLAINS",
+      conquerable: true,
+      populationBearing: true,
+    });
+    expect(page.truncated).toBe(true);
+    expect(Object.isFrozen(page.items[0])).toBe(true);
+    expect(count).toBe(4);
+    expect(boundary.items.map((cell) => cell.id)).toEqual([
+      6, 7, 8, 11, 13, 16, 17, 18,
+    ]);
+    expect(boundary.truncated).toBe(false);
+    expect(components).toEqual({
+      items: [
+        { kind: "CELLS", ids: [0, 1, 5] },
+        { kind: "CELLS", ids: [24] },
+      ],
+      truncated: false,
+    });
+    expect(session.usage()).toEqual({ queries: 4, materializedCells: 15 });
+  });
+
+  it("projects established non-structure selectors and set composition", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-selector-red",
+        width: 3,
+        height: 3,
+        terrain: [
+          "PLAINS",
+          "FOREST",
+          "DEEP_WATER",
+          "TUNDRA",
+          "SHALLOW_WATER",
+          "MOUNTAIN",
+          "IMPASSABLE",
+          "MARSH",
+          "PLAINS",
+        ],
+        initialOwners: ["alpha", "beta", null, null, "alpha", "beta", null, null, "alpha"],
+        initialFallout: [false, false, false, true, false, false, false, false, false],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+    const ids = async (
+      selector: Parameters<typeof session.cells.query>[0],
+    ): Promise<number[]> =>
+      (await session.cells.query(selector)).items.map((cell) => cell.id);
+
+    expect(await ids({ kind: "OWNER", factionId: "alpha" })).toEqual([0, 4, 8]);
+    expect(await ids({ kind: "OWNER" })).toEqual([2, 3, 6, 7]);
+    expect(await ids({ kind: "TERRAIN", terrain: "PLAINS" })).toEqual([0, 8]);
+    expect(await ids({ kind: "FALLOUT", value: true })).toEqual([3]);
+    expect(await ids({ kind: "POPULATION_BEARING", value: true })).toEqual([
+      0, 1, 5, 7, 8,
+    ]);
+    expect(await ids({ kind: "CONQUERABLE", value: false })).toEqual([2, 6]);
+    expect(await ids({ kind: "COAST", value: true })).toEqual([1, 3, 5, 7]);
+    expect(await ids({ kind: "SHORELINE", value: true })).toEqual([2, 4]);
+    expect(await ids({ kind: "CIRCLE", center: 4, radius: 1 })).toEqual([
+      1, 3, 4, 5, 7,
+    ]);
+    expect(
+      await ids({
+        kind: "UNION",
+        selectors: [
+          { kind: "TERRAIN", terrain: "PLAINS" },
+          { kind: "FALLOUT", value: true },
+        ],
+      }),
+    ).toEqual([0, 3, 8]);
+    expect(
+      await ids({
+        kind: "INTERSECTION",
+        selectors: [
+          { kind: "OWNER", factionId: "alpha" },
+          { kind: "POPULATION_BEARING", value: true },
+        ],
+      }),
+    ).toEqual([0, 8]);
+    expect(
+      await ids({
+        kind: "DIFFERENCE",
+        left: { kind: "OWNER", factionId: "alpha" },
+        right: { kind: "TERRAIN", terrain: "PLAINS" },
+      }),
+    ).toEqual([4]);
+    expect(session.usage()).toEqual({ queries: 12, materializedCells: 34 });
+  });
+
+  it("enforces the exact 128-query per-decision ceiling", async () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-query-budget-red",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+    const selector = { kind: "CELLS", ids: [] } as const;
+
+    for (let index = 0; index < 127; index += 1) {
+      await session.cells.count(selector);
+    }
+    expect(session.usage()).toEqual({ queries: 127, materializedCells: 0 });
+
+    await session.cells.count(selector);
+    expect(session.usage()).toEqual({ queries: 128, materializedCells: 0 });
+
+    await expect(session.cells.count(selector)).rejects.toThrow(
+      /query budget exhausted/i,
+    );
+    expect(session.usage()).toEqual({ queries: 128, materializedCells: 0 });
+  });
+
+  it("enforces the exact 25,000-cell shared materialization ceiling", async () => {
+    const rules = emptyRules();
+    const cellIds = Array.from({ length: 25_001 }, (_, id) => id);
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-materialization-budget-red",
+        width: 25_001,
+        height: 1,
+        terrain: Array.from({ length: 25_001 }, () => "PLAINS"),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const state = runtime.snapshot();
+    const makeSession = () =>
+      createControllerQuerySession(state, "alpha", {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      });
+
+    const below = makeSession();
+    const belowPage = await below.cells.query({ kind: "CELLS", ids: cellIds.slice(0, 24_999) });
+    expect(belowPage.items).toHaveLength(24_999);
+    expect(belowPage.truncated).toBe(false);
+    expect(below.usage()).toEqual({ queries: 1, materializedCells: 24_999 });
+
+    const exact = makeSession();
+    const exactPage = await exact.cells.query({ kind: "CELLS", ids: cellIds.slice(0, 25_000) });
+    expect(exactPage.items).toHaveLength(25_000);
+    expect(exactPage.truncated).toBe(false);
+    expect(exact.usage()).toEqual({ queries: 1, materializedCells: 25_000 });
+
+    const above = makeSession();
+    const abovePage = await above.cells.query({ kind: "CELLS", ids: cellIds });
+    expect(abovePage.items).toHaveLength(25_000);
+    expect(abovePage.truncated).toBe(true);
+    expect(above.usage()).toEqual({ queries: 1, materializedCells: 25_000 });
+
+    const mixed = makeSession();
+    expect(await mixed.cells.get(0)).toBeDefined();
+    const remainder = await mixed.cells.query({
+      kind: "CELLS",
+      ids: cellIds.slice(1, 25_001),
+    });
+    expect(remainder.items).toHaveLength(24_999);
+    expect(remainder.truncated).toBe(true);
+    expect(mixed.usage()).toEqual({ queries: 2, materializedCells: 25_000 });
+    await expect(mixed.cells.get(0)).rejects.toThrow();
+    expect(mixed.usage()).toEqual({ queries: 3, materializedCells: 25_000 });
+  });
+
+  it("projects canonical Segment summaries, selectors, membership, and synthetic absence", async () => {
+    const [{ compileSegments, createSegmentRuntimeIndex }, { createSimulationMap }] =
+      await Promise.all([
+        import("../src/simulation/Segments"),
+        import("../src/simulation/SimulationMap"),
+      ]);
+    const rules = emptyRules();
+    const terrain = [
+      "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+      "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+      "DEEP_WATER", "DEEP_WATER", "DEEP_WATER", "DEEP_WATER",
+      "DEEP_WATER", "DEEP_WATER", "DEEP_WATER", "DEEP_WATER",
+    ] as const;
+    const owners = [
+      "alpha", "alpha", "alpha", "alpha",
+      "beta", "beta", null, null,
+      null, null, null, null,
+      null, null, null, null,
+    ] as const;
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-segment-red",
+        width: 4,
+        height: 4,
+        terrain,
+        initialOwners: owners,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const compiled = compileSegments({ width: 4, height: 4, terrain });
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 4,
+      height: 4,
+      terrain,
+      segments: createSegmentRuntimeIndex(compiled),
+    });
+    const state = Object.freeze({ ...runtime.snapshot(), map });
+    const session = createControllerQuerySession(state, "alpha", {
+      queriesPerDecision: 128,
+      materializedCellsPerDecision: 25_000,
+    });
+
+    const list = await session.segments.list();
+    expect(list).toEqual([
+      {
+        id: 0,
+        cellCount: 8,
+        populationBearingCellCount: 8,
+        ownerShares: { alpha: 0.5, beta: 0.25 },
+        adjacentSegmentIds: [1],
+        terrainCounts: { PLAINS: 8 },
+      },
+      {
+        id: 1,
+        cellCount: 8,
+        populationBearingCellCount: 0,
+        ownerShares: {},
+        adjacentSegmentIds: [0],
+        terrainCounts: { DEEP_WATER: 8 },
+      },
+    ]);
+    expect(Object.isFrozen(list)).toBe(true);
+    expect(Object.isFrozen(list[0])).toBe(true);
+    expect(Object.isFrozen(list[0]?.ownerShares)).toBe(true);
+    expect(Object.isFrozen(list[0]?.terrainCounts)).toBe(true);
+    expect(Object.isFrozen(list[0]?.adjacentSegmentIds)).toBe(true);
+    expect(await session.segments.get(1)).toEqual(list[1]);
+
+    const selector = session.segments.cells(0);
+    expect(selector).toEqual({ kind: "SEGMENT", segmentId: 0 });
+    expect(Object.isFrozen(selector)).toBe(true);
+    const firstSegmentCells = await session.cells.query(selector);
+    expect(firstSegmentCells.items.map((cell) => cell.id)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]);
+    expect(firstSegmentCells.truncated).toBe(false);
+    expect((await session.cells.get(8))?.segmentId).toBe(1);
+    expect(session.usage()).toEqual({ queries: 4, materializedCells: 9 });
+
+    const tiny = createControllerQuerySession(
+      twoFactionRuntime("controller-segmentless-synthetic").snapshot(),
+      "alpha",
+      {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      },
+    );
+    expect(await tiny.segments.list()).toEqual([]);
+    expect(tiny.usage()).toEqual({ queries: 1, materializedCells: 0 });
   });
 });

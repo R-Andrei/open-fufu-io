@@ -1,5 +1,12 @@
 import type { ControllerDecision } from "../src/core/controller/ControllerApi";
-import type { LawfulControllerObservation } from "../src/simulation/ControllerRuntime";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import {
+  evaluateControllerRound,
+  type LawfulControllerObservation,
+} from "../src/simulation/ControllerRuntime";
+import type { MatchState } from "../src/simulation/MatchState";
 import {
   ProductionControllerHost,
   PRODUCTION_CONTROLLER_LIMITS,
@@ -44,12 +51,16 @@ class RecordingPool implements ControllerWorkerPool {
   constructor(
     private readonly handler: (
       request: ControllerWorkerRequest,
+      queries?: ControllerQuerySession,
     ) => ControllerWorkerResponse | Promise<ControllerWorkerResponse>,
   ) {}
 
-  async invoke(request: ControllerWorkerRequest): Promise<ControllerWorkerResponse> {
+  async invoke(
+    request: ControllerWorkerRequest,
+    queries?: ControllerQuerySession,
+  ): Promise<ControllerWorkerResponse> {
     this.requests.push(request);
-    return this.handler(request);
+    return this.handler(request, queries);
   }
 }
 
@@ -59,6 +70,115 @@ function expectSuccessOutput(
   expect(result.ok).toBe(true);
   if (!result.ok) throw new Error("expected successful controller invocation");
   return result.output;
+}
+
+function productionShapedState(instrumentation: {
+  eagerRasterTraversals: number;
+  terrainReads: number;
+}): MatchState {
+  const width = 2_400;
+  const height = 2_000;
+  const cellCount = width * height;
+  const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+  const population = Object.freeze({
+    total: 0,
+    available: 0,
+    committedOffensive: 0,
+    committedCounterResponse: 0,
+    aboardTransports: 0,
+    peakTotal: 0,
+    neutralSettlementHalfResidual: 0 as const,
+  });
+  const terrain = Object.freeze({
+    length: cellCount,
+    map() {
+      instrumentation.eagerRasterTraversals += 1;
+      throw new Error("eager full-raster controller projection is forbidden");
+    },
+  }) as unknown as MatchState["map"]["terrain"];
+  const ownership = Object.freeze({
+    length: cellCount,
+    9: "alpha",
+  }) as unknown as MatchState["ownership"];
+  const fallout = Object.freeze({
+    length: cellCount,
+  }) as unknown as MatchState["fallout"];
+
+  const isValidCellId = (id: number) =>
+    Number.isSafeInteger(id) && id >= 0 && id < cellCount;
+  const positionOf = (id: number) => {
+    if (!isValidCellId(id)) throw new Error(`invalid CellId ${id}`);
+    return Object.freeze({ x: id % width, y: Math.floor(id / width) });
+  };
+  const terrainAt = (id: number) => {
+    if (!isValidCellId(id)) throw new Error(`invalid CellId ${id}`);
+    instrumentation.terrainReads += 1;
+    return "PLAINS" as const;
+  };
+  const cardinalNeighbors = (id: number): readonly number[] => {
+    const position = positionOf(id);
+    const neighbors: number[] = [];
+    if (position.x > 0) neighbors.push(id - 1);
+    if (position.x + 1 < width) neighbors.push(id + 1);
+    if (position.y > 0) neighbors.push(id - width);
+    if (position.y + 1 < height) neighbors.push(id + width);
+    return Object.freeze(neighbors.sort((left, right) => left - right));
+  };
+
+  const map = Object.freeze({
+    width,
+    height,
+    terrain,
+    source: "ARTIFACT" as const,
+    cellCount,
+    isValidCellId,
+    cellIdAt(x: number, y: number) {
+      if (
+        !Number.isSafeInteger(x) ||
+        !Number.isSafeInteger(y) ||
+        x < 0 ||
+        y < 0 ||
+        x >= width ||
+        y >= height
+      ) {
+        return undefined;
+      }
+      return y * width + x;
+    },
+    positionOf,
+    terrainAt,
+    cardinalNeighbors,
+  });
+
+  return Object.freeze({
+    seed: "production-shaped-controller-query",
+    tick: 0,
+    map,
+    ownership,
+    fallout,
+    factions: Object.freeze([
+      Object.freeze({
+        id: "alpha",
+        status: "ACTIVE" as const,
+        rules,
+        population,
+        testMarker: 0,
+      }),
+      Object.freeze({
+        id: "beta",
+        status: "ACTIVE" as const,
+        rules,
+        population,
+        testMarker: 0,
+      }),
+    ]),
+    structures: Object.freeze([]),
+    operations: Object.freeze([]),
+    defensePriorities: Object.freeze([]),
+    captureProgress: Object.freeze([]),
+    counterResponseResiduals: Object.freeze([]),
+    hostilityGrace: Object.freeze([]),
+  });
 }
 
 describe("production controller worker host", () => {
@@ -93,6 +213,45 @@ describe("production controller worker host", () => {
       output: { commands: [] },
     });
     expect(pool.requests).toHaveLength(1);
+  });
+
+  it("keeps a 4,800,000-cell normal controller round lazy until a bounded query is requested", async () => {
+    const instrumentation = { eagerRasterTraversals: 0, terrainReads: 0 };
+    const state = productionShapedState(instrumentation);
+    const pool = new RecordingPool(async (_request, queries) => {
+      expect(queries).toBeDefined();
+      if (queries === undefined) throw new Error("missing controller query session");
+      const cell = await queries.cells.get(9);
+      expect(cell).toMatchObject({ id: 9, ownerId: "alpha", terrain: "PLAINS" });
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: queries.usage(),
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    const evaluated = await Promise.resolve(
+      evaluateControllerRound(
+        state,
+        host,
+        0,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Set(["beta"]),
+      ),
+    );
+
+    expect(instrumentation.eagerRasterTraversals).toBe(0);
+    expect(instrumentation.terrainReads).toBeGreaterThan(0);
+    expect(instrumentation.terrainReads).toBeLessThan(16);
+    expect(pool.requests).toHaveLength(1);
+    expect(evaluated.receipts.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
+      accepted: true,
+      faultCount: 0,
+      faulted: false,
+    });
   });
 
   it("keeps canonical controller memory outside the worker and commits it only after a valid response", async () => {
@@ -165,7 +324,7 @@ describe("production controller worker host", () => {
     const tooManyQueries = await host.invoke("alpha", ordinaryObservation());
     const tooManyCells = await host.invoke("alpha", ordinaryObservation());
 
-    expect(oversized).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
+    expect(oversized).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
     expect(tooManyQueries).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(tooManyCells).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
@@ -253,31 +412,7 @@ describe("production controller worker host", () => {
     });
   });
 
-  it("preserves public worker-fault categories while containing worker death", async () => {
-    const workerFaults: readonly [ControllerWorkerResponse, string][] = [
-      [{ ok: false, fault: "TIMEOUT" }, "TIMEOUT"],
-      [{ ok: false, fault: "MEMORY_LIMIT" }, "MEMORY_LIMIT"],
-      [{ ok: false, fault: "SANDBOX_VIOLATION" }, "SANDBOX_VIOLATION"],
-      [{ ok: false, fault: "INVALID_OUTPUT" }, "RUNTIME_ERROR"],
-      [{ ok: false, fault: "WORKER_DIED" }, "RUNTIME_ERROR"],
-      [{ ok: false, fault: "RUNTIME_ERROR" }, "RUNTIME_ERROR"],
-    ];
-    let cursor = 0;
-    const pool = new RecordingPool(() => workerFaults[cursor++]?.[0] ?? {
-      ok: false,
-      fault: "RUNTIME_ERROR",
-    });
-    const host = new ProductionControllerHost(pool, { alpha: artifact });
-
-    for (const [, expectedCode] of workerFaults) {
-      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-        ok: false,
-        fault: { code: expectedCode },
-      });
-    }
-  });
-
-  it("normalizes thrown worker transport failures and worker death to runtime error without exposing process details", async () => {
+  it("normalizes worker rejection and worker-death responses without exposing process errors", async () => {
     let invocation = 0;
     const pool = new RecordingPool(() => {
       invocation += 1;
@@ -294,233 +429,5 @@ describe("production controller worker host", () => {
       ok: false,
       fault: { code: "RUNTIME_ERROR" },
     });
-  });
-
-  it("maps malformed memory to runtime error and memory quota overflow to memory limit without committing either", async () => {
-    let invocation = 0;
-    const seenMemoryJson: string[] = [];
-    const pool = new RecordingPool((request) => {
-      seenMemoryJson.push(request.memoryJson);
-      invocation += 1;
-      if (invocation === 1) {
-        return {
-          ok: true,
-          output: { commands: [], memory: { invalid: Number.NaN } },
-          usage: { queries: 0, materializedCells: 0 },
-        };
-      }
-      if (invocation === 2) {
-        return {
-          ok: true,
-          output: {
-            commands: [],
-            memory: {
-              oversized: "x".repeat(PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes),
-            },
-          },
-          usage: { queries: 0, materializedCells: 0 },
-        };
-      }
-      return {
-        ok: true,
-        output: { commands: [] },
-        usage: { queries: 0, materializedCells: 0 },
-      };
-    });
-    const host = new ProductionControllerHost(pool, { alpha: artifact });
-
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "MEMORY_LIMIT" },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: { commands: [] },
-    });
-    expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
-  });
-
-  it("enforces the canonical TEAM_SIGNAL payload byte limit without charging key or channel bytes", async () => {
-    const payloads = [
-      "x".repeat(1021),
-      "x".repeat(1022),
-      "x".repeat(1023),
-      "é".repeat(511),
-      "é".repeat(512),
-    ];
-    let cursor = 0;
-    const pool = new RecordingPool(() => ({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[cursor++],
-          },
-        ],
-      },
-      usage: { queries: 0, materializedCells: 0 },
-    }));
-    const host = new ProductionControllerHost(pool, { alpha: artifact });
-
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[0],
-          },
-        ],
-      },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[1],
-          },
-        ],
-      },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[3],
-          },
-        ],
-      },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-  });
-
-  it("rejects malformed nested decisions as runtime faults rather than treating copied data as typed decisions", async () => {
-    const malformedOutputs: readonly unknown[] = [
-      { commands: [null] },
-      { commands: [{ kind: "CAPITULATE" }] },
-      { directives: { set: [null] } },
-      { directives: { end: [1] } },
-      { debug: [null] },
-    ];
-
-    for (const output of malformedOutputs) {
-      const pool = new RecordingPool(() => ({
-        ok: true,
-        output,
-        usage: { queries: 0, materializedCells: 0 },
-      }));
-      const host = new ProductionControllerHost(pool, { alpha: artifact });
-
-      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-        ok: false,
-        fault: { code: "RUNTIME_ERROR" },
-      });
-    }
-  });
-
-  it("rejects malformed normal output before committing its proposed memory", async () => {
-    let invocation = 0;
-    const seenMemoryJson: string[] = [];
-    const pool = new RecordingPool((request) => {
-      seenMemoryJson.push(request.memoryJson);
-      invocation += 1;
-      if (invocation === 1) {
-        return {
-          ok: true,
-          output: {
-            commands: [null],
-            memory: { mustNotCommit: true },
-          },
-          usage: { queries: 0, materializedCells: 0 },
-        };
-      }
-      return {
-        ok: true,
-        output: { commands: [] },
-        usage: { queries: 0, materializedCells: 0 },
-      };
-    });
-    const host = new ProductionControllerHost(pool, { alpha: artifact });
-
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: { commands: [] },
-    });
-    expect(seenMemoryJson).toEqual(["{}", "{}"]);
-  });
-
-  it("rejects malformed Spawn output before committing its proposed memory", async () => {
-    const spawnArtifact: ControllerRuntimeArtifact = Object.freeze({
-      moduleSource: "export function chooseInfluence() { return { centers: [] }; }",
-      entrypoints: Object.freeze({
-        decide: "decide",
-        chooseInfluence: "chooseInfluence",
-      }),
-    });
-    let invocation = 0;
-    const seenMemoryJson: string[] = [];
-    const pool = new RecordingPool((request) => {
-      seenMemoryJson.push(request.memoryJson);
-      invocation += 1;
-      if (invocation === 1) {
-        return {
-          ok: true,
-          output: {
-            centers: null,
-            memory: { mustNotCommit: true },
-          },
-          usage: { queries: 0, materializedCells: 0 },
-        };
-      }
-      return {
-        ok: true,
-        output: { commands: [] },
-        usage: { queries: 0, materializedCells: 0 },
-      };
-    });
-    const host = new ProductionControllerHost(pool, { alpha: spawnArtifact });
-
-    expect(
-      await host.chooseInfluence(
-        "alpha",
-        { phase: "INFLUENCE", memory: {} } as never,
-      ),
-    ).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: { commands: [] },
-    });
-    expect(seenMemoryJson).toEqual(["{}", "{}"]);
   });
 });

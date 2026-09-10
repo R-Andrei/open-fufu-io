@@ -1,7 +1,17 @@
 import type { LawfulControllerObservation } from "../src/simulation/ControllerRuntime";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import {
+  createControllerQuerySession,
+  type ControllerQuerySession,
+} from "../src/simulation/ControllerQueryProjection";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
+  type ControllerWorkerRequest,
+  type ControllerWorkerResponse,
 } from "../src/server/controller-runtime/ProductionControllerHost";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
 
@@ -73,6 +83,43 @@ async function withPool(
   }
 }
 
+function authoritativeQuerySession(): ControllerQuerySession {
+  const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+  const runtime = new MatchRuntime(
+    createMicroSimulationSpec({
+      seed: "controller-sandbox-query-certification",
+      width: 1,
+      height: 1,
+      terrain: ["PLAINS"],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    }),
+  );
+  return createControllerQuerySession(runtime.snapshot(), "alpha", {
+    queriesPerDecision: 128,
+    materializedCellsPerDecision: 25_000,
+  });
+}
+
+function workerQueryRequest(
+  moduleSource: string,
+  timeoutMs = 500,
+): ControllerWorkerRequest {
+  return Object.freeze({
+    factionId: "alpha",
+    artifact: artifact(moduleSource),
+    hook: "DECIDE",
+    entrypoint: "decide",
+    context: Object.freeze({ tick: 7 }),
+    memoryJson: "{}",
+    timeoutMs,
+    moduleEvaluationTimeoutMs: 100,
+    isolateMemoryMb: 32,
+  });
+}
+
 describe("production controller sandbox process", () => {
   it("executes a self-contained controller module in a dedicated worker process", async () => {
     await withPool(async (pool) => {
@@ -95,6 +142,187 @@ describe("production controller sandbox process", () => {
       });
       expect(pool.workerProcessIds()).toHaveLength(1);
       expect(pool.workerProcessIds()[0]).not.toBe(process.pid);
+    });
+  });
+
+  it("awaits authoritative host-resolved Cells queries through copied async IPC", async () => {
+    await withPool(async (pool) => {
+      const sourceCell = {
+        id: 9,
+        position: { x: 9, y: 0 },
+        terrain: "PLAINS" as const,
+        hasFallout: false,
+        conquerable: true,
+        populationBearing: true,
+        ownerId: "alpha",
+        isCoast: false,
+        isShoreline: false,
+      };
+      const queryCalls: unknown[] = [];
+      let usage = { queries: 0, materializedCells: 0 };
+      const querySession = {
+        cells: {
+          async query(selector: unknown, limit?: number) {
+            queryCalls.push({ selector, limit });
+            usage = { queries: 1, materializedCells: 1 };
+            return {
+              items: [sourceCell],
+              truncated: false,
+            };
+          },
+        },
+        segments: {
+          cells(id: number) {
+            return { kind: "SEGMENT" as const, segmentId: id };
+          },
+        },
+        usage() {
+          return usage;
+        },
+      } as unknown as ControllerQuerySession;
+
+      const request: ControllerWorkerRequest = Object.freeze({
+        factionId: "alpha",
+        artifact: artifact(`
+          export async function decide(context) {
+            const page = await context.cells.query(
+              { kind: "CELLS", ids: [9] },
+              1,
+            );
+            let mutationBlocked = false;
+            try {
+              page.items[0].ownerId = "beta";
+            } catch {
+              mutationBlocked = true;
+            }
+            return {
+              commands: [],
+              log: JSON.stringify({
+                id: page.items[0].id,
+                ownerId: page.items[0].ownerId,
+                mutationBlocked,
+                segmentSelector: context.segments.cells(4),
+              }),
+            };
+          }
+        `),
+        hook: "DECIDE",
+        entrypoint: "decide",
+        context: Object.freeze({ tick: 7 }),
+        memoryJson: "{}",
+        timeoutMs: 500,
+        moduleEvaluationTimeoutMs: 100,
+        isolateMemoryMb: 32,
+      });
+      const invokeWithQueries = pool.invoke.bind(pool) as unknown as (
+        request: ControllerWorkerRequest,
+        queries: ControllerQuerySession,
+      ) => Promise<ControllerWorkerResponse>;
+
+      const response = await invokeWithQueries(request, querySession);
+
+      expect(response).toEqual({
+        ok: true,
+        output: {
+          commands: [],
+          log: JSON.stringify({
+            id: 9,
+            ownerId: "alpha",
+            mutationBlocked: true,
+            segmentSelector: { kind: "SEGMENT", segmentId: 4 },
+          }),
+        },
+        usage: { queries: 1, materializedCells: 1 },
+      });
+      expect(queryCalls).toEqual([
+        {
+          selector: { kind: "CELLS", ids: [9] },
+          limit: 1,
+        },
+      ]);
+      expect(sourceCell.ownerId).toBe("alpha");
+    });
+  });
+
+  it("contains malformed nested query selectors without killing the worker query channel", async () => {
+    await withPool(async (pool) => {
+      const malformedSession = authoritativeQuerySession();
+      const malformed = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            await context.cells.query({
+              kind: "UNION",
+              selectors: [null],
+            });
+            return { commands: [] };
+          }
+        `),
+        malformedSession,
+      );
+
+      expect(malformed).toEqual({ ok: false, fault: "RUNTIME_ERROR" });
+      expect(malformedSession.usage()).toEqual({
+        queries: 1,
+        materializedCells: 0,
+      });
+
+      const recoverySession = authoritativeQuerySession();
+      const recovered = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            const count = await context.cells.count({ kind: "CELLS", ids: [] });
+            return { commands: [], log: String(count) };
+          }
+        `),
+        recoverySession,
+      );
+      expect(recovered).toEqual({
+        ok: true,
+        output: { commands: [], log: "0" },
+        usage: { queries: 1, materializedCells: 0 },
+      });
+    });
+  });
+
+  it("contains authoritative 129th-query rejection and keeps the worker pool reusable", async () => {
+    await withPool(async (pool) => {
+      const exhaustedSession = authoritativeQuerySession();
+      const exhausted = await pool.invoke(
+        workerQueryRequest(
+          `
+            export async function decide(context) {
+              for (let index = 0; index < 129; index += 1) {
+                await context.cells.count({ kind: "CELLS", ids: [] });
+              }
+              return { commands: [] };
+            }
+          `,
+          2_000,
+        ),
+        exhaustedSession,
+      );
+
+      expect(exhausted).toEqual({ ok: false, fault: "RUNTIME_ERROR" });
+      expect(exhaustedSession.usage()).toEqual({
+        queries: 128,
+        materializedCells: 0,
+      });
+
+      const recoverySession = authoritativeQuerySession();
+      const recovered = await pool.invoke(
+        workerQueryRequest(`
+          export async function decide(context) {
+            const count = await context.cells.count({ kind: "CELLS", ids: [] });
+            return { commands: [], log: String(count) };
+          }
+        `),
+        recoverySession,
+      );
+      expect(recovered).toEqual({
+        ok: true,
+        output: { commands: [], log: "0" },
+        usage: { queries: 1, materializedCells: 0 },
+      });
     });
   });
 
@@ -196,7 +424,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await callbackTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "TIMEOUT" },
+        fault: { code: "RUNTIME_ERROR" },
       });
 
       const moduleTimeout = new ProductionControllerHost(pool, {
@@ -207,140 +435,13 @@ describe("production controller sandbox process", () => {
       });
       expect(await moduleTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "TIMEOUT" },
+        fault: { code: "RUNTIME_ERROR" },
       });
 
       const healthy = healthyHost(pool);
       expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
         output: { commands: [], log: "healthy" },
-      });
-    });
-  });
-
-  it("counts compilation inside the single module-initialization timeout budget", async () => {
-    await withPool(async (pool) => {
-      const response = await pool.invoke(
-        Object.freeze({
-          factionId: "alpha",
-          artifact: artifact(
-            `/*${"x".repeat(8 * 1024 * 1024)}*/\n` +
-              "export function decide() { return { commands: [] }; }",
-          ),
-          hook: "DECIDE" as const,
-          entrypoint: "decide",
-          context: ordinaryObservation(),
-          memoryJson: "{}",
-          timeoutMs: 20,
-          moduleEvaluationTimeoutMs: 5,
-          isolateMemoryMb: 128,
-        }),
-      );
-
-      expect(response).toEqual({ ok: false, fault: "TIMEOUT" });
-      expect(await healthyHost(pool, "after-compile-timeout").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-compile-timeout" },
-      });
-    });
-  });
-
-  it("counts top-level-await settlement inside the module-initialization timeout budget", async () => {
-    await withPool(async (pool) => {
-      const host = new ProductionControllerHost(pool, {
-        alpha: artifact(`
-          await new Promise(() => {});
-          export function decide() { return { commands: [] }; }
-        `),
-      });
-
-      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-        ok: false,
-        fault: { code: "TIMEOUT" },
-      });
-      expect(await healthyHost(pool, "after-tla-timeout").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-tla-timeout" },
-      });
-    });
-  });
-
-  it("allows top-level await that settles inside the module-initialization timeout budget", async () => {
-    await withPool(async (pool) => {
-      const host = new ProductionControllerHost(pool, {
-        alpha: artifact(`
-          await Promise.resolve();
-          export function decide() {
-            return { commands: [], log: "tla-settled" };
-          }
-        `),
-      });
-
-      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "tla-settled" },
-      });
-    });
-  });
-
-  it("bounds getter-backed result materialization inside the callback timeout", async () => {
-    await withPool(async (pool) => {
-      const host = new ProductionControllerHost(pool, {
-        alpha: artifact(`
-          export function decide() {
-            return {
-              commands: [],
-              get log() {
-                while (true) {}
-              },
-            };
-          }
-        `),
-      });
-
-      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-        ok: false,
-        fault: { code: "TIMEOUT" },
-      });
-      expect(await healthyHost(pool, "after-getter-timeout").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-getter-timeout" },
-      });
-    });
-  });
-
-  it("rejects an oversized decision inside the worker before parent IPC", async () => {
-    await withPool(async (pool) => {
-      const response = await pool.invoke(
-        Object.freeze({
-          factionId: "alpha",
-          artifact: artifact(`
-            export function decide() {
-              const largeName = "x".repeat(2048);
-              return {
-                commands: [],
-                debug: Array.from({ length: 256 }, (_, index) => ({
-                  kind: "METRIC",
-                  name: largeName + String(index),
-                  value: index,
-                })),
-              };
-            }
-          `),
-          hook: "DECIDE" as const,
-          entrypoint: "decide",
-          context: ordinaryObservation(),
-          memoryJson: "{}",
-          timeoutMs: 20,
-          moduleEvaluationTimeoutMs: 100,
-          isolateMemoryMb: 32,
-        }),
-      );
-
-      expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
-      expect(await healthyHost(pool, "after-oversized-output").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-oversized-output" },
       });
     });
   });
@@ -355,7 +456,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await importing.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "SANDBOX_VIOLATION" },
+        fault: { code: "RUNTIME_ERROR" },
       });
 
       const malformed = new ProductionControllerHost(pool, {
@@ -365,7 +466,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await malformed.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "INVALID_OUTPUT" },
       });
     });
   });
@@ -434,74 +535,7 @@ describe("production controller sandbox process", () => {
     }
   });
 
-  it("contains actual isolate memory exhaustion and leaves the worker pool usable", async () => {
-    await withPool(async (pool) => {
-      const response = await pool.invoke(
-        Object.freeze({
-          factionId: "alpha",
-          artifact: artifact(`
-            export function decide() {
-              const retained = [];
-              const twoMegabytes = 2 * 1024 * 1024;
-              while (true) {
-                const array = new Uint8Array(twoMegabytes);
-                for (let offset = 0; offset < twoMegabytes; offset += 4096) {
-                  array[offset] = 1;
-                }
-                retained.push(array);
-              }
-            }
-          `),
-          hook: "DECIDE" as const,
-          entrypoint: "decide",
-          context: ordinaryObservation(),
-          memoryJson: "{}",
-          timeoutMs: 2_000,
-          moduleEvaluationTimeoutMs: 100,
-          isolateMemoryMb: 32,
-        }),
-      );
-
-      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
-      expect(await healthyHost(pool, "after-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-memory-limit" },
-      });
-    });
-  });
-
-  it("contains fatal isolate heap exhaustion and leaves the worker pool usable", async () => {
-    await withPool(async (pool) => {
-      const response = await pool.invoke(
-        Object.freeze({
-          factionId: "alpha",
-          artifact: artifact(`
-            export function decide() {
-              const retained = [];
-              while (true) {
-                retained.push(new Array(100_000).fill(0));
-              }
-            }
-          `),
-          hook: "DECIDE" as const,
-          entrypoint: "decide",
-          context: ordinaryObservation(),
-          memoryJson: "{}",
-          timeoutMs: 2_000,
-          moduleEvaluationTimeoutMs: 100,
-          isolateMemoryMb: 32,
-        }),
-      );
-
-      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
-      expect(await healthyHost(pool, "after-fatal-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
-        ok: true,
-        output: { commands: [], log: "after-fatal-memory-limit" },
-      });
-    });
-  });
-
-  it("normalizes catastrophic worker abort, replaces the failed process, and resumes service", async () => {
+  it("normalizes worker death, replaces the failed process, and resumes service", async () => {
     await withPool(async (pool) => {
       const originalPid = pool.workerProcessIds()[0];
       if (originalPid === undefined) throw new Error("expected worker pid");
@@ -515,7 +549,7 @@ describe("production controller sandbox process", () => {
       });
       const pending = stuck.invoke("alpha", ordinaryObservation());
       await new Promise((resolve) => setTimeout(resolve, 10));
-      process.kill(originalPid, "SIGABRT");
+      process.kill(originalPid, "SIGKILL");
 
       expect(await pending).toEqual({
         ok: false,

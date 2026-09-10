@@ -147,6 +147,124 @@ A client never infers canonical state from missing fields in a delta; omitted st
 
 Transient presentation-only hints may be separate events, but a reconnect/resync must not depend on receiving them to reconstruct canonical current state.
 
+## 5.1 Public political ownership plane
+
+Current political ownership is common public state, not requester-relative operational projection. For a given authoritative ownership revision, participant and spectator viewers receive the same logical `CellId -> owner` plane; requester-relative units, structures, operations, Contacts, diagnostics, and other tactical state remain independently projected.
+
+The browser maintains ownership only as a non-authoritative logical mirror. Rendering may consume that mirror but does not participate in ownership synchronization or authority.
+
+### 5.1.1 Tick, stream-sequence, and ownership-revision binding
+
+A complete ownership baseline or ownership update is carried as part of an ordered `STATE_SNAPSHOT` or `STATE_DELTA` envelope. The envelope's `tick` is therefore the authoritative tick associated with that ownership publication; the ownership binary frame does not carry a second independent tick.
+
+Ownership has its own positive monotonic publication revision in addition to the outer stream `seq`:
+
+- a fresh stream's complete ownership baseline installs its current ownership revision `R`;
+- an incremental ownership update declares `base_revision = R` and `revision = R + 1`;
+- a same-stream complete ownership replacement also advances to the next ownership revision;
+- an ordered envelope that contains no ownership component leaves the ownership revision unchanged even though outer `seq` still advances;
+- a fresh resync stream may install the current complete ownership revision directly without replaying ownership history.
+
+The two orderings protect different boundaries: outer `seq` protects the complete participant projection stream, while `base_revision` protects ownership-plane composition. A client applies an incremental ownership update only when the outer stream envelope is contiguous and its currently installed ownership revision exactly equals `base_revision`.
+
+After a known outer-sequence or ownership-revision gap, later ownership state is not guessed or skipped. `RESUME_ACCEPTED` may unlock replay of the original retained same-stream envelopes beginning at the exact last applied `seq`; the control reply itself changes neither outer `seq` nor ownership revision. Otherwise the client waits for the fresh stream and complete replacement baseline defined by §§7–8.
+
+The ownership `cell_count` must equal the raster cell count bound by the stream's map identity. Ordinary V1 maps contain exactly 4,800,000 cells. Cell position in the dense ownership plane is the canonical `CellId`.
+
+### 5.1.2 Owner-index semantics
+
+Ownership is represented as a dense owner-code plane plus a deterministic non-neutral owner palette:
+
+- owner code `0` means neutral/unowned;
+- owner codes `1..N` address palette entries `0..N-1`;
+- every code must be within the current palette;
+- palette entries are unique UTF-8 strings in strict lexicographic order of their encoded UTF-8 bytes.
+
+The owner-code storage width is the smallest canonical width that can represent the palette: one byte through 255 palette entries, two bytes through 65,535 entries, otherwise four bytes. Fixed-width owner codes use little-endian byte order.
+
+### 5.1.3 Ownership binary schema version 1
+
+V1 ownership frames use:
+
+```text
+ownership_plane_schema_version = 1
+```
+
+The binary frame begins with this common header:
+
+```text
+"OFOP"                         4 ASCII bytes
+schema_version                 u8 = 1
+frame_kind                     u8: 0 = complete, 1 = delta
+revision                       varuint
+cell_count                     varuint
+palette_count                  varuint
+palette[palette_count]         varuint UTF-8-byte-length + UTF-8 bytes
+```
+
+`varuint` is unsigned base-128 with the least-significant seven-bit group first and bit `0x80` indicating continuation.
+
+A **complete** frame then uses one of:
+
+```text
+raw:
+  mode                         u8 = 0
+  owner_code_width             u8 = 1 | 2 | 4
+  codes[cell_count]            fixed-width owner codes
+
+RLE:
+  mode                         u8 = 1
+  run_count                    varuint
+  runs[run_count]              (length varuint, owner_code varuint)
+```
+
+An RLE frame must cover exactly `cell_count` cells in order. A later complete frame may be used as a whole-plane replacement; `frame_kind = complete` does not require the outer participant envelope itself to be an initial `STATE_SNAPSHOT`.
+
+A **delta** frame continues after the common header with:
+
+```text
+base_revision                  varuint
+chunk_size                     varuint
+changed_chunk_count            varuint
+changed_chunks[...]            ordered by chunk_index
+```
+
+Chunk `i` covers the deterministic linear `CellId` range beginning at `i * chunk_size`, truncated only at the end of the plane. Changed chunk indices are strictly increasing and unique. Each changed chunk begins with `chunk_index varuint` and one of:
+
+```text
+sparse patch:
+  mode                         u8 = 0
+  entry_count                  varuint
+  entries[entry_count]         (offset varuint, owner_code varuint)
+
+run patch:
+  mode                         u8 = 1
+  run_count                    varuint
+  runs[run_count]              (offset varuint, length varuint, owner_code varuint)
+
+whole-chunk replacement:
+  mode                         u8 = 2
+  owner_code_width             u8 = 1 | 2 | 4
+  encoded_cell_count           varuint
+  codes[encoded_cell_count]    fixed-width owner codes
+```
+
+Sparse offsets are strictly increasing and unique. Runs are ordered, non-overlapping, positive-length, and bounded by the chunk. Whole-chunk replacement contains exactly that chunk's cell count.
+
+The producer may deterministically choose sparse, run, or whole-chunk replacement independently for each changed chunk, and may choose a complete ownership replacement when the aggregate incremental representation is no longer cheaper/useful. Exact chunk size, publication cadence, transport compression, and patch-versus-replacement thresholds are implementation/performance parameters rather than gameplay semantics; they must remain empirically justified. `chunk_size` is carried by each delta so it is not a hidden client assumption.
+
+A V1 sender emits ownership schema version 1 and a receiver rejects unsupported ownership schema versions. A future representation-only binary revision requires explicit compatible schema handling; any change to ownership field/event semantics remains subject to the participant-protocol version rule in §2.
+
+### 5.1.4 Validation and atomic application
+
+Before changing the installed logical ownership mirror, the receiver validates the complete ownership frame, including schema version, map/cell-count binding, palette uniqueness/order, owner-code bounds, canonical width, revision relationship, chunk order/bounds, sparse/run ordering, exact replacement lengths, truncation, and trailing data.
+
+Encoded counts and lengths must be bounded against the remaining frame and V1 plane limits before count-driven allocations cross the browser resource boundary. A malformed frame cannot partially mutate the installed logical plane or advance its ownership revision.
+
+Incremental application may mutate the installed dense plane only after the entire frame is structurally valid and the exact `base_revision` check succeeds. A complete replacement is decoded and validated as a complete plane before it becomes the installed logical baseline.
+
+Multiple authoritative ownership transitions between publications may be coalesced; the transmitted state is the final ownership required by the published revision, not a replay of intermediate captures.
+
 ---
 
 # 6. Events
@@ -322,7 +440,14 @@ The replay viewer may reuse the same browser rendering/update adapters after rec
 Protocol tests must cover at minimum:
 
 - initial HELLO → `STREAM_READY(seq=1)` → snapshot → deltas;
-- contiguous sequence enforcement;
+- contiguous sequence enforcement, including ordered envelopes with no ownership component;
+- complete 4,800,000-cell ownership baseline reconstruction;
+- sparse, run, whole-chunk-replacement, and complete-replacement ownership equivalence;
+- deterministic ownership encoding and ownership-revision composition;
+- ownership schema rejection, malformed/truncated frame rejection, and no partial logical mutation;
+- retained same-stream ownership recovery after `RESUME_ACCEPTED` and fresh ownership baseline after `RESYNC_REQUIRED`;
+- production-scale ownership raw/encoded size, encode/decode cost, and logical/decode-memory evidence for sparse, contiguous, and multi-million-cell churn;
+- identical public ownership publication across viewers while requester-relative operational projection remains independent;
 - resume/resync control replies do not consume ordered stream sequence numbers;
 - reconnect with retained resume success and original sequence replay;
 - reconnect after retention expiry → fresh stream at `seq = 1`;
