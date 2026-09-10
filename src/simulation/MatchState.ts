@@ -1,5 +1,6 @@
 import type { FactionStatus } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
   canonicalHostilitySideKey,
   materializeHostilityGraceState,
@@ -45,6 +46,7 @@ export interface MatchFactionState {
   readonly status: FactionStatus;
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
+  readonly ffy: number;
   readonly testMarker: number;
   readonly fixedTeamId?: string;
 }
@@ -101,6 +103,7 @@ function freezeFactions(
         status: faction.status,
         rules: faction.rules,
         population: createPopulationState(faction.population),
+        ffy: materializeFfyBalance(faction.ffy),
         testMarker: faction.testMarker,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -281,6 +284,7 @@ function createEmptyInitialMatchState(
         status: "ACTIVE",
         rules: faction.rules,
         population: createEmptyPopulationState(),
+        ffy: STARTING_FFY,
         testMarker: 0,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -380,6 +384,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         neutralSettlementHalfResidual:
           faction.population.neutralSettlementHalfResidual,
       },
+      ffy: faction.ffy,
       testMarker: faction.testMarker,
       rules: {
         version: faction.rules.version,
