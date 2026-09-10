@@ -412,6 +412,167 @@ describe("production controller worker host", () => {
     });
   });
 
+  it("proves literal lower, exact, and upper boundaries for deterministic production ceilings", async () => {
+    type Usage = { queries: number; materializedCells: number };
+    const encoder = new TextEncoder();
+    const zeroUsage: Usage = { queries: 0, materializedCells: 0 };
+
+    const invoke = async (
+      output: ControllerDecision,
+      usage: Usage = zeroUsage,
+    ) => {
+      const pool = new RecordingPool(() => ({ ok: true, output, usage }));
+      const host = new ProductionControllerHost(pool, { alpha: artifact });
+      return host.invoke("alpha", ordinaryObservation());
+    };
+
+    const expectRuntimeBoundary = async (
+      limit: number,
+      build: (value: number) => { output: ControllerDecision; usage?: Usage },
+    ) => {
+      for (const [delta, accepted] of [
+        [-1, true],
+        [0, true],
+        [1, false],
+      ] as const) {
+        const testCase = build(limit + delta);
+        const result = await invoke(testCase.output, testCase.usage ?? zeroUsage);
+        if (accepted) {
+          expect(result.ok).toBe(true);
+        } else {
+          expect(result).toEqual({
+            ok: false,
+            fault: { code: "RUNTIME_ERROR" },
+          });
+        }
+      }
+    };
+
+    const utf8Payload = (bytes: number): string =>
+      "é".repeat(Math.floor(bytes / 2)) + (bytes % 2 === 0 ? "" : "x");
+
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
+      (queries) => ({
+        output: { commands: [] },
+        usage: { queries, materializedCells: 0 },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.materializedCellsPerDecision,
+      (materializedCells) => ({
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision,
+      (count) => ({
+        output: {
+          commands: Array.from({ length: count }, (_, index) => ({
+            kind: "CAPITULATE" as const,
+            key: `command-boundary-${index}`,
+          })),
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision,
+      (count) => ({
+        output: {
+          directives: {
+            end: Array.from(
+              { length: count },
+              (_, index) => `directive-boundary-${index}`,
+            ),
+          },
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.policyRulesPerDecision,
+      (count) => ({
+        output: {
+          directives: {
+            set: [
+              {
+                kind: "DEFENSE_PRIORITY" as const,
+                key: "policy-boundary",
+                priority: {
+                  rules: Array.from({ length: count }, (_, index) => ({
+                    selector: {
+                      kind: "OWNER" as const,
+                      factionId: index % 2 === 0 ? "alpha" : "beta",
+                    },
+                    weight: index + 1,
+                  })),
+                },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.debugItemsPerDecision,
+      (count) => ({
+        output: {
+          debug: Array.from({ length: count }, (_, index) => ({
+            kind: "METRIC" as const,
+            name: `debug-boundary-${index}`,
+            value: index,
+          })),
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.logBytesPerDecision,
+      (bytes) => {
+        const log = utf8Payload(bytes);
+        expect(encoder.encode(log).byteLength).toBe(bytes);
+        return { output: { log } };
+      },
+    );
+
+    const serializedTemplate: ControllerDecision = {
+      debug: [{ kind: "METRIC", name: "", value: 0 }],
+    };
+    const serializedOverhead = encoder.encode(
+      JSON.stringify(serializedTemplate),
+    ).byteLength;
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes,
+      (bytes) => {
+        const name = utf8Payload(bytes - serializedOverhead);
+        const output: ControllerDecision = {
+          debug: [{ kind: "METRIC", name, value: 0 }],
+        };
+        expect(encoder.encode(JSON.stringify(output)).byteLength).toBe(bytes);
+        return { output };
+      },
+    );
+
+    const memoryOverhead = encoder.encode(JSON.stringify({ x: "" })).byteLength;
+    for (const [delta, accepted] of [
+      [-1, true],
+      [0, true],
+      [1, false],
+    ] as const) {
+      const bytes = PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes + delta;
+      const memory = { x: utf8Payload(bytes - memoryOverhead) };
+      expect(encoder.encode(JSON.stringify(memory)).byteLength).toBe(bytes);
+      const result = await invoke({ commands: [], memory });
+      if (accepted) {
+        expect(result.ok).toBe(true);
+      } else {
+        expect(result).toEqual({
+          ok: false,
+          fault: { code: "MEMORY_LIMIT" },
+        });
+      }
+    }
+  });
+
   it("preserves public worker-fault categories while containing worker death", async () => {
     const workerFaults: readonly [ControllerWorkerResponse, string][] = [
       [{ ok: false, fault: "TIMEOUT" }, "TIMEOUT"],
