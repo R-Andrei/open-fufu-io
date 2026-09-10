@@ -21,6 +21,7 @@ interface ExactInput {
 interface PositiveEventInput {
   readonly id: string;
   readonly family: "ALL" | "MILITARY_CONQUEST" | "NAVAL_TRADE" | "INDUSTRIAL";
+  readonly specialization?: "PIRACY";
   readonly baseValue: ExactInput;
   readonly structuralMultiplier?: ExactInput;
   readonly conditionApplies?: (condition: RuleCondition) => boolean;
@@ -166,6 +167,37 @@ describe("authoritative FFY event, signed-consequence, and payment substrate", (
       { id: "capture:7", family: "MILITARY_CONQUEST", award: 151 },
     ]);
     expect(result.balance).toBe(251);
+  });
+
+  it("composes Naval/trade piracy events from All + Naval/trade + PIRACY yield scopes", () => {
+    const rules = rulesWith(["P30"], [
+      echoRuleContribution("ffy.all", "BENEFICIAL", 2_000, "echo:all"),
+      echoRuleContribution(
+        "ffy.naval_trade",
+        "BENEFICIAL",
+        3_000,
+        "echo:naval",
+      ),
+    ]);
+
+    const result = resolveStage({
+      balance: 0,
+      rules,
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [
+        {
+          id: "captured-cargo:7",
+          family: "NAVAL_TRADE",
+          specialization: "PIRACY",
+          baseValue: exact(100),
+        },
+      ],
+      signedFacts: [],
+    });
+
+    // (100 × (1 + 0.20 + 0.30)) × 3.0 = 450.
+    expect(result.positiveEvents[0]?.award).toBe(450);
+    expect(result.balance).toBe(450);
   });
 
   it("keeps structural/event arithmetic exact until all ordinary percentages have been added", () => {
