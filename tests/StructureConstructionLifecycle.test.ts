@@ -489,6 +489,21 @@ describe("persistent structure construction lifecycle", () => {
     ).toThrow(/next level/i);
   });
 
+  it("rejects inactive upgrade state before it can enter authoritative state", () => {
+    expect(() =>
+      materializePersistentStructureState({
+        id: "inactive-upgrade",
+        ownerId: "alpha",
+        type: "CITY",
+        cellId: 0,
+        completedLevel: 1,
+        active: false,
+        construction: { targetLevel: 2, remainingTicks: 10 },
+        acquisitionPath: "PURCHASE_BUILD",
+      }),
+    ).toThrow(/active/i);
+  });
+
   it("admits an exact-cell Port only with a cardinal Deep-Water interface", () => {
     const deepCoast = stateForTerrain(["PLAINS", "DEEP_WATER"]);
     const deepAdmission = evaluateStructureAcquisitionAdmission(deepCoast, {
