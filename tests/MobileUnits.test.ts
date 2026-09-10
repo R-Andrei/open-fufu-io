@@ -231,6 +231,50 @@ describe("target mobile-unit runtime foundation", () => {
     ).toThrow(/progress/i);
   });
 
+  it("rejects sparse unit collections and strips undeclared frozen authoritative state", () => {
+    const map = syntheticMap(3, 1);
+    const owners = ["alpha"] as const;
+    const created = createMobileUnit(map, owners, emptyCollection(), {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
+
+    const sparseUnits = new Array<MobileUnitState>(1);
+    expect(() =>
+      materializeMobileUnitCollection(map, owners, {
+        mobileUnits: sparseUnits,
+        nextMobileUnitOrdinal: 1,
+      }),
+    ).toThrow(/mobileUnits|sparse|dense/i);
+
+    const routed = assignMobileUnitRoute(map, created.unit, {
+      cells: [0, 1, 2],
+      edgeWeights: [10, 10],
+    });
+    const pollutedRoute = Object.freeze({
+      ...routed.route!,
+      shadowProgress: 999,
+    });
+    const pollutedUnit = Object.freeze({
+      ...routed,
+      route: pollutedRoute,
+      hiddenHealth: 999,
+    }) as MobileUnitState;
+
+    const normalized = materializeMobileUnitCollection(map, owners, {
+      mobileUnits: [pollutedUnit],
+      nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+    });
+    const normalizedUnit = normalized.mobileUnits[0]!;
+
+    expect(normalizedUnit).not.toBe(pollutedUnit);
+    expect("hiddenHealth" in normalizedUnit).toBe(false);
+    expect(normalizedUnit.route).not.toBe(pollutedRoute);
+    expect("shadowProgress" in normalizedUnit.route!).toBe(false);
+  });
+
   it("advances exact integer fixed-point work through fractional and multi-edge movement without float accumulation", () => {
     const map = syntheticMap(4, 1);
     const created = createMobileUnit(map, ["alpha"], emptyCollection(), {
