@@ -22,13 +22,16 @@ export const OPEN_FUFU_MAP_FORMAT = "OPEN_FUFU_MAP" as const;
 export const OPEN_FUFU_MAP_FORMAT_VERSION = 1 as const;
 export const OPEN_FUFU_MAP_FORMAT_VERSION_V1 = 1 as const;
 export const OPEN_FUFU_MAP_FORMAT_VERSION_V2 = 2 as const;
+export const OPEN_FUFU_MAP_FORMAT_VERSION_V3 = 3 as const;
 export const OPEN_FUFU_MAP_CELL_COUNT = 4_800_000 as const;
 export const OPEN_FUFU_TERRAIN_ENCODING = "TERRAIN_U8_V1" as const;
+export const OPEN_FUFU_RAIL_TOPOLOGY_ENCODING = "RAIL_TOPOLOGY_U8_V1" as const;
 export const SEGMENT_MEMBERSHIP_PATH = "segments/membership.bin" as const;
 export const SEGMENT_METADATA_PATH = "segments/metadata.bin" as const;
 export const SEGMENT_ADJACENCY_OFFSETS_PATH =
   "segments/adjacency-offsets.bin" as const;
 export const SEGMENT_ADJACENCY_PATH = "segments/adjacency.bin" as const;
+export const RAIL_TOPOLOGY_PATH = "rail/topology.bin" as const;
 
 export interface MapArtifactBinding {
   readonly mapId: string;
@@ -79,6 +82,12 @@ export interface OpenFufuSegmentAdjacencySectionV1 {
   readonly path: typeof SEGMENT_ADJACENCY_PATH;
 }
 
+export interface OpenFufuRailTopologySectionV1 {
+  readonly id: "railTopology";
+  readonly encoding: typeof OPEN_FUFU_RAIL_TOPOLOGY_ENCODING;
+  readonly path: typeof RAIL_TOPOLOGY_PATH;
+}
+
 export interface OpenFufuMapManifestV1 {
   readonly format: typeof OPEN_FUFU_MAP_FORMAT;
   readonly formatVersion: typeof OPEN_FUFU_MAP_FORMAT_VERSION_V1;
@@ -107,7 +116,29 @@ export interface OpenFufuMapManifestV2 {
   ];
 }
 
-export type OpenFufuMapManifest = OpenFufuMapManifestV1 | OpenFufuMapManifestV2;
+export interface OpenFufuMapManifestV3 {
+  readonly format: typeof OPEN_FUFU_MAP_FORMAT;
+  readonly formatVersion: typeof OPEN_FUFU_MAP_FORMAT_VERSION_V3;
+  readonly mapId: string;
+  readonly mapVersion: string;
+  readonly width: number;
+  readonly height: number;
+  readonly segmentGeneratorVersion: typeof SEGMENT_GENERATOR_VERSION;
+  readonly segmentCount: number;
+  readonly sections: readonly [
+    OpenFufuMapSectionV1,
+    OpenFufuSegmentMembershipSectionV1,
+    OpenFufuSegmentMetadataSectionV1,
+    OpenFufuSegmentAdjacencyOffsetsSectionV1,
+    OpenFufuSegmentAdjacencySectionV1,
+    OpenFufuRailTopologySectionV1,
+  ];
+}
+
+export type OpenFufuMapManifest =
+  | OpenFufuMapManifestV1
+  | OpenFufuMapManifestV2
+  | OpenFufuMapManifestV3;
 
 const TERRAIN_BY_CODE = Object.freeze([
   "PLAINS",
@@ -154,7 +185,11 @@ const REQUIRED_V2_FILE_PATHS = [
   SEGMENT_ADJACENCY_OFFSETS_PATH,
   SEGMENT_ADJACENCY_PATH,
 ] as const;
-const KNOWN_FILE_PATHS = new Set<string>(REQUIRED_V2_FILE_PATHS);
+const REQUIRED_V3_FILE_PATHS = [
+  ...REQUIRED_V2_FILE_PATHS,
+  RAIL_TOPOLOGY_PATH,
+] as const;
+const KNOWN_FILE_PATHS = new Set<string>(REQUIRED_V3_FILE_PATHS);
 const MAP_HASH_PATTERN = /^[0-9a-f]{64}$/;
 const UTF8_ENCODER = new TextEncoder();
 const UTF8_DECODER = new TextDecoder("utf-8", { fatal: true });
@@ -505,6 +540,57 @@ function terrainSection(): OpenFufuMapSectionV1 {
   });
 }
 
+const SEGMENT_SECTIONS = Object.freeze([
+  Object.freeze({
+    id: "segmentMembership",
+    encoding: SEGMENT_MEMBERSHIP_ENCODING,
+    path: SEGMENT_MEMBERSHIP_PATH,
+  }),
+  Object.freeze({
+    id: "segmentMetadata",
+    encoding: SEGMENT_METADATA_ENCODING,
+    path: SEGMENT_METADATA_PATH,
+  }),
+  Object.freeze({
+    id: "segmentAdjacencyOffsets",
+    encoding: SEGMENT_ADJACENCY_OFFSETS_ENCODING,
+    path: SEGMENT_ADJACENCY_OFFSETS_PATH,
+  }),
+  Object.freeze({
+    id: "segmentAdjacency",
+    encoding: SEGMENT_ADJACENCY_ENCODING,
+    path: SEGMENT_ADJACENCY_PATH,
+  }),
+] as const);
+
+const RAIL_SECTION = Object.freeze({
+  id: "railTopology",
+  encoding: OPEN_FUFU_RAIL_TOPOLOGY_ENCODING,
+  path: RAIL_TOPOLOGY_PATH,
+} as const);
+
+function validateSegmentManifestFields(raw: Record<string, unknown>): {
+  readonly segmentGeneratorVersion: typeof SEGMENT_GENERATOR_VERSION;
+  readonly segmentCount: number;
+} {
+  if (raw.segmentGeneratorVersion !== SEGMENT_GENERATOR_VERSION) {
+    throw new Error(
+      `map artifact manifest segmentGeneratorVersion ${String(raw.segmentGeneratorVersion)} is unsupported`,
+    );
+  }
+  if (
+    !Number.isSafeInteger(raw.segmentCount) ||
+    (raw.segmentCount as number) <= 0 ||
+    (raw.segmentCount as number) >= SEGMENT_COUNT_LIMIT
+  ) {
+    throw new Error("map artifact manifest segmentCount must be a positive integer below 65,536");
+  }
+  return {
+    segmentGeneratorVersion: SEGMENT_GENERATOR_VERSION,
+    segmentCount: raw.segmentCount as number,
+  };
+}
+
 function validateManifestV1(raw: Record<string, unknown>): OpenFufuMapManifestV1 {
   if (!hasExactKeys(raw, MANIFEST_V1_KEYS)) {
     throw new Error("map artifact manifest must contain exactly the V1 manifest keys");
@@ -539,18 +625,7 @@ function validateManifestV2(raw: Record<string, unknown>): OpenFufuMapManifestV2
     );
   }
   const common = validateCommonManifestFields(raw);
-  if (raw.segmentGeneratorVersion !== SEGMENT_GENERATOR_VERSION) {
-    throw new Error(
-      `map artifact manifest segmentGeneratorVersion ${String(raw.segmentGeneratorVersion)} is unsupported`,
-    );
-  }
-  if (
-    !Number.isSafeInteger(raw.segmentCount) ||
-    (raw.segmentCount as number) <= 0 ||
-    (raw.segmentCount as number) >= SEGMENT_COUNT_LIMIT
-  ) {
-    throw new Error("map artifact manifest segmentCount must be a positive integer below 65,536");
-  }
+  const segment = validateSegmentManifestFields(raw);
   if (!Array.isArray(raw.sections)) {
     throw new Error("map artifact manifest sections must be an array");
   }
@@ -560,26 +635,7 @@ function validateManifestV2(raw: Record<string, unknown>): OpenFufuMapManifestV2
 
   const expectedSections = [
     { id: "terrain", encoding: OPEN_FUFU_TERRAIN_ENCODING, path: "terrain.bin" },
-    {
-      id: "segmentMembership",
-      encoding: SEGMENT_MEMBERSHIP_ENCODING,
-      path: SEGMENT_MEMBERSHIP_PATH,
-    },
-    {
-      id: "segmentMetadata",
-      encoding: SEGMENT_METADATA_ENCODING,
-      path: SEGMENT_METADATA_PATH,
-    },
-    {
-      id: "segmentAdjacencyOffsets",
-      encoding: SEGMENT_ADJACENCY_OFFSETS_ENCODING,
-      path: SEGMENT_ADJACENCY_OFFSETS_PATH,
-    },
-    {
-      id: "segmentAdjacency",
-      encoding: SEGMENT_ADJACENCY_ENCODING,
-      path: SEGMENT_ADJACENCY_PATH,
-    },
+    ...SEGMENT_SECTIONS,
   ] as const;
   for (let index = 0; index < expectedSections.length; index += 1) {
     validateSection(raw.sections[index], expectedSections[index]!, expectedSections[index]!.id);
@@ -587,18 +643,53 @@ function validateManifestV2(raw: Record<string, unknown>): OpenFufuMapManifestV2
 
   const sections = Object.freeze([
     terrainSection(),
-    Object.freeze(expectedSections[1]),
-    Object.freeze(expectedSections[2]),
-    Object.freeze(expectedSections[3]),
-    Object.freeze(expectedSections[4]),
+    ...SEGMENT_SECTIONS,
   ]) as OpenFufuMapManifestV2["sections"];
 
   return Object.freeze({
     format: OPEN_FUFU_MAP_FORMAT,
     formatVersion: OPEN_FUFU_MAP_FORMAT_VERSION_V2,
     ...common,
-    segmentGeneratorVersion: SEGMENT_GENERATOR_VERSION,
-    segmentCount: raw.segmentCount as number,
+    ...segment,
+    sections,
+  });
+}
+
+function validateManifestV3(raw: Record<string, unknown>): OpenFufuMapManifestV3 {
+  if (!hasExactKeys(raw, MANIFEST_V2_KEYS)) {
+    throw new Error(
+      "map artifact manifest formatVersion 3 is unsupported without the complete V3 Segment/rail manifest keys",
+    );
+  }
+  const common = validateCommonManifestFields(raw);
+  const segment = validateSegmentManifestFields(raw);
+  if (!Array.isArray(raw.sections)) {
+    throw new Error("map artifact manifest sections must be an array");
+  }
+  if (raw.sections.length !== 6) {
+    throw new Error("map artifact manifest sections for V3 must contain exactly six typed sections");
+  }
+
+  const expectedSections = [
+    { id: "terrain", encoding: OPEN_FUFU_TERRAIN_ENCODING, path: "terrain.bin" },
+    ...SEGMENT_SECTIONS,
+    RAIL_SECTION,
+  ] as const;
+  for (let index = 0; index < expectedSections.length; index += 1) {
+    validateSection(raw.sections[index], expectedSections[index]!, expectedSections[index]!.id);
+  }
+
+  const sections = Object.freeze([
+    terrainSection(),
+    ...SEGMENT_SECTIONS,
+    RAIL_SECTION,
+  ]) as OpenFufuMapManifestV3["sections"];
+
+  return Object.freeze({
+    format: OPEN_FUFU_MAP_FORMAT,
+    formatVersion: OPEN_FUFU_MAP_FORMAT_VERSION_V3,
+    ...common,
+    ...segment,
     sections,
   });
 }
@@ -612,6 +703,9 @@ function validateManifest(raw: unknown): OpenFufuMapManifest {
   }
   if (raw.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V2) {
     return validateManifestV2(raw);
+  }
+  if (raw.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V3) {
+    return validateManifestV3(raw);
   }
   throw new Error(
     `map artifact manifest formatVersion ${String(raw.formatVersion)} is unsupported`,
@@ -660,8 +754,10 @@ export function materializeMapArtifact(
   );
   if (manifest.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V1) {
     validateExactFileSet(files, REQUIRED_V1_FILE_PATHS, "V1");
-  } else {
+  } else if (manifest.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V2) {
     validateExactFileSet(files, REQUIRED_V2_FILE_PATHS, "V2");
+  } else {
+    validateExactFileSet(files, REQUIRED_V3_FILE_PATHS, "V3");
   }
   if (manifest.mapId !== binding.mapId) {
     throw new Error(
@@ -676,7 +772,7 @@ export function materializeMapArtifact(
 
   const terrain = terrainFromBytes(fileBytes(files, "terrain.bin"));
   const segments =
-    manifest.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V2
+    manifest.formatVersion !== OPEN_FUFU_MAP_FORMAT_VERSION_V1
       ? materializeSegmentArtifact({
           generatorVersion: manifest.segmentGeneratorVersion,
           segmentCount: manifest.segmentCount,
@@ -689,6 +785,10 @@ export function materializeMapArtifact(
           adjacencyBytes: fileBytes(files, SEGMENT_ADJACENCY_PATH),
         })
       : undefined;
+  const railTopology =
+    manifest.formatVersion === OPEN_FUFU_MAP_FORMAT_VERSION_V3
+      ? fileBytes(files, RAIL_TOPOLOGY_PATH)
+      : undefined;
 
   return createSimulationMap({
     source: "ARTIFACT",
@@ -700,5 +800,6 @@ export function materializeMapArtifact(
     height: manifest.height,
     terrain,
     segments,
+    railTopology,
   });
 }
