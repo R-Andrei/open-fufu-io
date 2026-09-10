@@ -1,8 +1,81 @@
+import type {
+  ControllerStructureFieldId,
+  PurchasableUnitType,
+  StrategicWeaponType,
+  StructureFieldAffiliation,
+  StructureFieldId,
+  StructureType,
+  TerrainType,
+} from "./ControllerApi";
+
 export type ControllerOutputKind =
   | "DECIDE"
   | "CHOOSE_INFLUENCE"
   | "RECONSIDER_INFLUENCE"
   | "CHOOSE_ORIGINS";
+
+const TERRAIN_TYPES = {
+  PLAINS: true,
+  HIGHLAND: true,
+  MOUNTAIN: true,
+  DESERT: true,
+  FOREST: true,
+  TUNDRA: true,
+  MARSH: true,
+  SHALLOW_WATER: true,
+  DEEP_WATER: true,
+  IMPASSABLE: true,
+} as const satisfies Readonly<Record<TerrainType, true>>;
+
+const STRUCTURE_TYPES = {
+  CITY: true,
+  FORT: true,
+  PORT: true,
+  FACTORY: true,
+  MISSILE_SILO: true,
+  SAM_LAUNCHER: true,
+  OBSERVATION_POST: true,
+  COMMAND_POST: true,
+} as const satisfies Readonly<Record<StructureType, true>>;
+
+const PURCHASABLE_UNIT_TYPES = {
+  TANK: true,
+  WARSHIP: true,
+} as const satisfies Readonly<Record<PurchasableUnitType, true>>;
+
+const STRATEGIC_WEAPON_TYPES = {
+  ATOM_BOMB: true,
+  HYDROGEN_BOMB: true,
+  MIRV: true,
+} as const satisfies Readonly<Record<StrategicWeaponType, true>>;
+
+const CONTROLLER_STRUCTURE_FIELD_IDS = {
+  FORT: true,
+  SAM_LAUNCHER: true,
+  COMMAND_POST: true,
+  OBSERVATION: true,
+} as const satisfies Readonly<Record<ControllerStructureFieldId, true>>;
+
+const STRUCTURE_FIELD_IDS = {
+  FORT: true,
+  SAM_LAUNCHER: true,
+  COMMAND_POST: true,
+} as const satisfies Readonly<Record<StructureFieldId, true>>;
+
+const STRUCTURE_FIELD_AFFILIATIONS = {
+  SELF: true,
+  SELF_OR_FIXED_TEAMMATE: true,
+} as const satisfies Readonly<Record<StructureFieldAffiliation, true>>;
+
+function isVocabularyValue(
+  vocabulary: Readonly<Record<string, true>>,
+  value: unknown,
+): boolean {
+  return (
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(vocabulary, value)
+  );
+}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -45,7 +118,7 @@ function isCellSelector(value: unknown): boolean {
     case "SEGMENT":
       return isFiniteNumber(value.segmentId);
     case "TERRAIN":
-      return typeof value.terrain === "string";
+      return isVocabularyValue(TERRAIN_TYPES, value.terrain);
     case "FALLOUT":
     case "POPULATION_BEARING":
     case "CONQUERABLE":
@@ -56,12 +129,15 @@ function isCellSelector(value: unknown): boolean {
       return isFiniteNumber(value.center) && isFiniteNumber(value.radius);
     case "STRUCTURE_FIELD":
       return (
-        typeof value.field === "string" &&
+        isVocabularyValue(CONTROLLER_STRUCTURE_FIELD_IDS, value.field) &&
         typeof value.referenceFactionId === "string" &&
-        typeof value.affiliation === "string"
+        isVocabularyValue(STRUCTURE_FIELD_AFFILIATIONS, value.affiliation)
       );
     case "STRUCTURE_FIELD_INSTANCE":
-      return typeof value.structureId === "string" && typeof value.field === "string";
+      return (
+        typeof value.structureId === "string" &&
+        isVocabularyValue(STRUCTURE_FIELD_IDS, value.field)
+      );
     case "UNION":
     case "INTERSECTION":
       return Array.isArray(value.selectors) && value.selectors.every(isCellSelector);
@@ -113,15 +189,19 @@ function isPersistentDirective(value: unknown): boolean {
 
 function isDebugSubject(value: unknown): boolean {
   if (!isPlainRecord(value) || typeof value.kind !== "string") return false;
-  if (value.kind === "CELL") return isFiniteNumber(value.id);
-  return (
-    (value.kind === "FACTION" ||
-      value.kind === "SEGMENT" ||
-      value.kind === "OPERATION" ||
-      value.kind === "UNIT" ||
-      value.kind === "STRUCTURE") &&
-    typeof value.id === "string"
-  );
+
+  switch (value.kind) {
+    case "CELL":
+    case "SEGMENT":
+      return isFiniteNumber(value.id);
+    case "FACTION":
+    case "OPERATION":
+    case "UNIT":
+    case "STRUCTURE":
+      return typeof value.id === "string";
+    default:
+      return false;
+  }
 }
 
 function isDebugValue(value: unknown): boolean {
@@ -167,11 +247,17 @@ function isControllerCommand(value: unknown): boolean {
 
   switch (value.kind) {
     case "BUILD_STRUCTURE":
-      return typeof value.structure === "string" && isFiniteNumber(value.cellId);
+      return (
+        isVocabularyValue(STRUCTURE_TYPES, value.structure) &&
+        isFiniteNumber(value.cellId)
+      );
     case "UPGRADE_STRUCTURE":
       return typeof value.structureId === "string";
     case "BUILD_UNIT":
-      return typeof value.unit === "string" && typeof value.producerId === "string";
+      return (
+        isVocabularyValue(PURCHASABLE_UNIT_TYPES, value.unit) &&
+        typeof value.producerId === "string"
+      );
     case "MOVE_UNIT":
       return typeof value.unitId === "string" && isFiniteNumber(value.destination);
     case "EMBARK_TRANSPORT":
@@ -185,7 +271,7 @@ function isControllerCommand(value: unknown): boolean {
     case "LAUNCH_WEAPON":
       return (
         typeof value.launcherId === "string" &&
-        typeof value.weapon === "string" &&
+        isVocabularyValue(STRATEGIC_WEAPON_TYPES, value.weapon) &&
         isFiniteNumber(value.targetCellId) &&
         hasOptionalString(value, "targetFactionId")
       );
