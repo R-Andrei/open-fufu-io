@@ -26,9 +26,28 @@ Starting FFY = 25,000
 Baseline passive FFY income = 1,000 FFY / second
 ```
 
-The passive source is flat and non-spatial. It does not scale with Population, Capacity, territory, structures, units, or controller allocation.
+The passive source is flat and non-spatial. It does not intrinsically scale with Population, Capacity, territory, structures, units, or controller allocation.
 
-It is an **All FFY** source. More specific Industrial, Naval/trade, Military/conquest, or spatial modifiers do not apply unless an explicit rule says otherwise.
+It is an **All FFY** source. Ordinary faction-wide All-FFY modifiers remain eligible when their defining rule applies to this source. More specific Industrial, Naval/trade, or Military/conquest modifiers do not apply, and a non-spatial passive source cannot satisfy a modifier that requires an event location, unless an explicit rule establishes otherwise.
+
+## 1.1 Passive tick resolution
+
+Passive FFY resolves once per authoritative simulation tick. The simulation cadence itself is owned by [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md); at the current `10 Hz` cadence, the baseline `1,000 FFY / second` is a nominal `100 FFY / tick` before eligible earning-side modifiers and the whole-FFY finalization in §3.
+
+For simulation tick `T`, passive earning uses one deterministic faction earning-state snapshot:
+
+```text
+1. apply accepted deterministic inputs scheduled for T
+2. freeze the passive earning-state snapshot for T
+3. resolve every passive source and eligible earning-side modifier from that same snapshot
+4. only then run autonomous tick systems that may mutate earning-relevant state
+```
+
+Population, Capacity, territory, structures/charge state, faction status, or other earning-side state changed by autonomous resolution after that snapshot cannot retroactively change passive FFY for `T`; it first affects passive earning on `T + 1`.
+
+Only a faction whose status is `ACTIVE` in the passive earning-state snapshot earns passive FFY. `CAPITULATED` and `DEFEATED` factions earn zero passive FFY. An accepted capitulation applied before the snapshot therefore suppresses passive earning on that same tick. A faction that becomes defeated only during later autonomous resolution has already resolved that tick's passive earning and stops receiving passive FFY from the next tick onward. Changing status does not by itself erase or reset an existing FFY balance.
+
+Every source explicitly classified by its defining owner as a global/general passive FFY source uses this same passive snapshot and ordinary All-FFY earning path. The source-specific formula remains owned by the rule that defines that source. The baseline source being flat/non-spatial means only that it has no intrinsic Population/Capacity/territory/structure scaling and no event location; it does **not** exempt the source from explicit faction-wide All-FFY modifiers. Conversely, location-conditioned earning modifiers that require an event location cannot apply to a non-spatial passive source.
 
 ---
 
@@ -59,36 +78,56 @@ For an ordinary positive FFY event:
 5. apply the resulting yield multiplier
 6. clamp ordinary positive-event yield at >= 0
 7. apply explicit hard-zero rules
+8. floor the finalized award once to whole FFY
 ```
 
 FFY-yield modifiers affect positive income events. They do not automatically modify purchase prices, Transport embarkation costs, explicit losses/penalties, or other negative currency transactions.
 
+### Whole-FFY numeric finalization
+
+Authoritative FFY is a **whole-unit integer currency**. Authoritative balances, finalized positive awards, stored finalized FFY reference values, and finalized affordability-gated costs contain no fractional FFY.
+
+All arithmetic within one FFY calculation remains exact through the owning rule/effective-rule pipeline until the single finalization boundary. Implementations must not round after individual modifiers or make the canonical whole-FFY result depend on an approximate floating-point intermediate when exact rule operands are available.
+
+Finalization is deterministic by economic class:
+
+- an ordinary positive FFY award is **floored once** to whole FFY after all structural transformations, eligible yield composition, non-negative clamp, and hard-zero processing;
+- an affordability-gated FFY cost is calculated through its owning cost rules first, then any positive exact cost is **ceiled once** to whole FFY before affordability and payment; an exact zero remains zero;
+- an explicit signed FFY consequence remains exact through same-fact and same-tick aggregation, then the final same-tick signed delta is **truncated toward zero once** to whole FFY before the non-negative balance floor is applied.
+
+Each distinct positive FFY earning source/event is its own finalization unit. Its complete applicable calculation is finalized once; distinct positive earnings are not pooled merely to recover fractional remainders that would otherwise be discarded.
+
+There is no authoritative fractional balance, FFY subunit, residual/carry state, or cross-tick fractional accumulator. A fractional remainder discarded at one finalization boundary never contributes to a later tick/event/transaction. For example, an exact passive result of `0.75 FFY` for one tick awards `0 FFY` for that tick; the discarded `0.75` is not carried forward.
+
 FFY balances are canonically **non-negative**. Explicit signed FFY consequences use a deterministic two-level aggregation rather than applying a balance floor to each debit/credit in incidental execution order.
 
-First, one authoritative economic fact combines all of its own signed components:
+First, one authoritative economic fact combines all of its own signed components exactly:
 
 ```text
 factRequestedDelta
 = sum(all signed FFY components for this atomic economic fact)
 ```
 
-Then, for each faction and simulation tick `T`, all explicit signed FFY facts resolving on `T` are combined into one tick-stage delta:
+Then, for each faction and simulation tick `T`, all explicit signed FFY facts resolving on `T` are combined exactly into one tick-stage delta:
 
 ```text
 tickSignedDelta[faction, T]
 = sum(factRequestedDelta for that faction on T)
+
+finalizedTickSignedDelta[faction, T]
+= truncateTowardZero(tickSignedDelta[faction, T])
 ```
 
 Ordinary positive FFY events resolving on `T` are finalized first. The signed stage then applies exactly once per faction:
 
 ```text
 balanceAfterSignedStage
-= max(0, balanceAfterOrdinaryPositiveEventsForTick + tickSignedDelta)
+= max(0, balanceAfterOrdinaryPositiveEventsForTick + finalizedTickSignedDelta[faction, T])
 ```
 
-The floor is therefore applied only after both **same-fact** component netting and **same-tick** signed-fact netting. Reordering signed facts within the tick cannot change the resulting balance. Explicit signed transactions are not ordinary positive FFY events and do not acquire positive-event yield modifiers merely because their net delta is positive.
+The whole-unit truncation therefore occurs only after both **same-fact** component netting and **same-tick** signed-fact netting, and the balance floor occurs only after that finalization. Reordering signed facts within the tick cannot change the resulting balance. Explicit signed transactions are not ordinary positive FFY events and do not acquire positive-event yield modifiers merely because their net delta is positive.
 
-Purchase prices, Transport embarkation costs, strategic-weapon costs, and other affordability-gated spending transactions are **not** folded into this signed-consequence stage; they retain their own canonical validation/payment transactions. V1 creates no FFY debt, and subsequent affordability/spending consumes the resulting non-negative authoritative balance.
+Purchase prices, Transport embarkation costs, strategic-weapon costs, and other affordability-gated spending transactions are **not** folded into this signed-consequence stage; they retain their own canonical validation/payment transactions. Their effective positive FFY cost is ceiled once at the FFY payment boundary described above before affordability is tested. V1 creates no FFY debt, and subsequent affordability/spending consumes the resulting non-negative authoritative balance.
 
 ## 3.1 P05 structure-transfer conquest event
 
@@ -285,7 +324,7 @@ The omission of wartime state is deliberate. Ordinary external Trade payout eval
 
 The launch-time planned destination cell is the immutable `Vowner` valuation location. If the physical voyage later reroutes, changes destination ownership, or loses access to that original Port, neither the valuation cell nor `Vowner` is recomputed.
 
-`ownerSuccessValueFfy` stores the canonical finalized FFY amount produced by the ordinary numeric/effective-rule contract. `Vowner` does not define a second rounding or floating-point policy of its own; whatever deterministic numeric finalization is bound to the match ruleset/effective-rule contract applies once, before this value is stored.
+`ownerSuccessValueFfy` stores the canonical finalized **whole-FFY** amount produced by the launch-time ordinary positive-event calculation. `Vowner` does not define a second rounding policy: the calculation remains exact through the eligible §3 pipeline and is floored once at that section's ordinary positive-award finalization boundary before the value is stored.
 
 The physical voyage/cargo identity serializes enough authoritative economic state to restore the immutable launch snapshot without consulting mutable current match state. At minimum the economic snapshot binds:
 
@@ -443,4 +482,4 @@ Ordinary faction defeat gives:
 0 universal FFY
 ```
 
-Remaining unspent FFY is not awarded through a universal last-hit bounty. Explicit scenario/objective rewards may define their own events.
+Capitulation or defeat stops subsequent passive FFY accrual under §1.1 but does not erase or reset the faction's existing authoritative FFY balance. A later status transition does not retroactively cancel any already-valid same-tick economic fact unless that fact's owning mechanic explicitly specifies cancellation. Remaining unspent FFY is not awarded through a universal last-hit bounty. Explicit scenario/objective rewards may define their own events.
