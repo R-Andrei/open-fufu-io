@@ -231,7 +231,7 @@ describe("target mobile-unit runtime foundation", () => {
     ).toThrow(/progress/i);
   });
 
-  it("rejects sparse authoritative mobile-unit collections", () => {
+  it("rejects sparse authoritative mobile-unit and route arrays", () => {
     const map = syntheticMap(3, 1);
     const sparseUnits = new Array<MobileUnitState>(1);
 
@@ -241,6 +241,28 @@ describe("target mobile-unit runtime foundation", () => {
         nextMobileUnitOrdinal: 1,
       }),
     ).toThrow(/mobileUnits|sparse|dense/i);
+
+    const created = createMobileUnit(map, ["alpha"], emptyCollection(), {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
+    const sparseCells = new Array<number>(3);
+    sparseCells[0] = 0;
+    sparseCells[2] = 2;
+    expect(() =>
+      assignMobileUnitRoute(map, created.unit, {
+        cells: sparseCells,
+        edgeWeights: [10, 10],
+      }),
+    ).toThrow(/cells|sparse|dense/i);
+    expect(() =>
+      assignMobileUnitRoute(map, created.unit, {
+        cells: [0, 1],
+        edgeWeights: new Array<number>(1),
+      }),
+    ).toThrow(/edgeWeights|sparse|dense/i);
   });
 
   it("strips undeclared state even from already-frozen unit and route objects", () => {
@@ -400,6 +422,14 @@ describe("target mobile-unit runtime foundation", () => {
     expect(indexAfter.atCell(1).map((unit) => unit.id)).toEqual([first.unit.id]);
     expect(indexBefore.atCell(0)).toHaveLength(2);
 
+    const afterRemoval = removeMobileUnit(afterMovement, first.unit.id);
+    const indexAfterRemoval = createMobileUnitSpatialIndex(afterRemoval.mobileUnits);
+    expect(indexAfterRemoval.get(first.unit.id)).toBeUndefined();
+    expect(indexAfterRemoval.atCell(1)).toEqual([]);
+    expect(indexAfterRemoval.atCell(0).map((unit) => unit.id)).toEqual([
+      second.unit.id,
+    ]);
+
     const projected = snapshotMobileUnitForProjection(routed);
     expect(projected).toEqual({
       id: routed.id,
@@ -414,7 +444,7 @@ describe("target mobile-unit runtime foundation", () => {
     expect("route" in projected).toBe(false);
   });
 
-  it("serializes in-flight state canonically, preserves allocator state, and makes movement fingerprint-visible", () => {
+  it("serializes in-flight state canonically, restores it, preserves allocator state, and makes movement fingerprint-visible", () => {
     const base = createBaseMatch("mobile-unit-serialization");
     const owners = base.factions.map((faction) => faction.id);
     const first = createMobileUnit(base.map, owners, base, {
@@ -466,6 +496,15 @@ describe("target mobile-unit runtime foundation", () => {
         edgeProgress: 5,
       },
     });
+
+    const restored = createProspectiveMatchState(base, {
+      mobileUnits: serialized.mobileUnits as unknown as MobileUnitState[],
+      nextMobileUnitOrdinal: serialized.nextMobileUnitOrdinal,
+    });
+    expect(canonicalMatchStateSerialization(restored)).toBe(forwardSerialization);
+    expect(restored.mobileUnits).toEqual(forward.mobileUnits);
+    expect(restored.mobileUnits[0]).not.toBe(forward.mobileUnits[0]);
+    expect(Object.isFrozen(restored.mobileUnits[0]?.route?.cells)).toBe(true);
 
     const moved = advanceMobileUnit(partial, 5).unit;
     const movedState = createProspectiveMatchState(base, {
