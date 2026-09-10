@@ -379,7 +379,7 @@ describe("target mobile-unit runtime foundation", () => {
     expect(indexBefore.ownedBy("alpha").map((unit) => unit.id)).toEqual(
       second.mobileUnits.map((unit) => unit.id),
     );
-    expect(indexBefore.get(first.unit.id)).toBe(first.unit);
+    expect(indexBefore.get(first.unit.id)).toBe(second.mobileUnits[0]);
 
     const routed = assignMobileUnitRoute(map, first.unit, {
       cells: [0, 1],
