@@ -328,10 +328,23 @@ describe("target mobile-unit runtime foundation", () => {
       edgeProgress: 5,
     });
 
+    const oneBeforeArrival = advanceMobileUnit(multiEdge.unit, 4);
+    expect(oneBeforeArrival.unit.cellId).toBe(2);
+    expect(oneBeforeArrival.unit.route).toMatchObject({
+      nextCellIndex: 3,
+      edgeProgress: 9,
+    });
+    expect(oneBeforeArrival.unusedWork).toBe(0);
+
     const exactArrival = advanceMobileUnit(multiEdge.unit, 5);
     expect(exactArrival.unit.cellId).toBe(3);
     expect(exactArrival.unit.route).toBeUndefined();
     expect(exactArrival.unusedWork).toBe(0);
+
+    const oneAfterArrival = advanceMobileUnit(multiEdge.unit, 6);
+    expect(oneAfterArrival.unit.cellId).toBe(3);
+    expect(oneAfterArrival.unit.route).toBeUndefined();
+    expect(oneAfterArrival.unusedWork).toBe(1);
 
     const overshoot = advanceMobileUnit(routed, 35);
     expect(overshoot.unit.cellId).toBe(3);
@@ -341,6 +354,10 @@ describe("target mobile-unit runtime foundation", () => {
     expect(() => advanceMobileUnit(routed, -1)).toThrow(/movement work/i);
     expect(() => advanceMobileUnit(routed, 1.5)).toThrow(/movement work/i);
     expect(() => advanceMobileUnit(routed, Number.NaN)).toThrow(/movement work/i);
+    expect(() => advanceMobileUnit(routed, Number.POSITIVE_INFINITY)).toThrow(
+      /movement work/i,
+    );
+    expect(() => advanceMobileUnit(routed, -0)).toThrow(/movement work/i);
   });
 
   it("advances simultaneous units in stable identity order independent of input enumeration", () => {
