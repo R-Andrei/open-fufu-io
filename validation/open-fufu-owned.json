@@ -26,6 +26,7 @@
     "tests/LandRuntime.test.ts",
     "tests/MapArtifact.test.ts",
     "tests/MatchRuntime.test.ts",
+    "tests/MobileUnits.test.ts",
     "tests/Navigation.test.ts",
     "tests/ObservationFieldVocabulary.test.ts",
     "tests/OfficialAiConfiguration.test.ts",
