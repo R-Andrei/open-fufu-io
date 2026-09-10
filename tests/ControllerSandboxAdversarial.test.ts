@@ -79,6 +79,26 @@ describe("production controller sandbox adversarial capabilities", () => {
     });
   });
 
+  it("does not expose Atomics timeout primitives as a guest real-time source", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            return {
+              commands: [],
+              log: typeof globalThis.Atomics?.wait + ":" + typeof globalThis.Atomics?.waitAsync,
+            };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "undefined:undefined" },
+      });
+    });
+  });
+
   it("does not expose GC-derived nondeterminism through WeakRef or FinalizationRegistry", async () => {
     await withPool(async (pool) => {
       const host = new ProductionControllerHost(pool, {
