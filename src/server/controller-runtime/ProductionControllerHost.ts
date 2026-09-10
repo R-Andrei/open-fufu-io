@@ -120,6 +120,14 @@ export type ProductionControllerOutputValidationResult =
 class InvalidTransportValueError extends Error {}
 
 const utf8Encoder = new TextEncoder();
+const controllerWorkerFaults = new Set<ControllerWorkerFault>([
+  "RUNTIME_ERROR",
+  "INVALID_OUTPUT",
+  "TIMEOUT",
+  "MEMORY_LIMIT",
+  "SANDBOX_VIOLATION",
+  "WORKER_DIED",
+]);
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -294,16 +302,33 @@ function normalizeWorkerFault<T>(fault: ControllerWorkerFault): ControllerHostIn
     case "WORKER_DIED":
     case "RUNTIME_ERROR":
       return hostFault("RUNTIME_ERROR");
+    default:
+      return hostFault("RUNTIME_ERROR");
   }
 }
 
-function validUsage(usage: ControllerResourceUsage): boolean {
+function validUsage(usage: unknown): usage is ControllerResourceUsage {
+  if (!isPlainRecord(usage)) return false;
   return (
     Number.isInteger(usage.queries) &&
     usage.queries >= 0 &&
     Number.isInteger(usage.materializedCells) &&
     usage.materializedCells >= 0
   );
+}
+
+export function isControllerWorkerResponse(
+  value: unknown,
+): value is ControllerWorkerResponse {
+  if (!isPlainRecord(value)) return false;
+  if (value.ok === true) return validUsage(value.usage);
+  if (value.ok === false) {
+    return (
+      typeof value.fault === "string" &&
+      controllerWorkerFaults.has(value.fault as ControllerWorkerFault)
+    );
+  }
+  return false;
 }
 
 function spatialPolicyRuleCount(value: unknown): number {
@@ -567,7 +592,7 @@ export class ProductionControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
-    let response: ControllerWorkerResponse;
+    let response: unknown;
     try {
       response = await this.pool.invoke(
         Object.freeze({
@@ -588,8 +613,8 @@ export class ProductionControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
+    if (!isControllerWorkerResponse(response)) return hostFault("RUNTIME_ERROR");
     if (!response.ok) return normalizeWorkerFault(response.fault);
-    if (!validUsage(response.usage)) return hostFault("RUNTIME_ERROR");
 
     if (
       response.usage.queries > PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision ||
