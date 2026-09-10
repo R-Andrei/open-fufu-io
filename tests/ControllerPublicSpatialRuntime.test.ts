@@ -60,6 +60,7 @@ function localSpatialState(): MatchState {
         status: "ACTIVE" as const,
         rules,
         population,
+        ffy: 25_000,
         testMarker: 0,
       }),
       Object.freeze({
@@ -67,6 +68,7 @@ function localSpatialState(): MatchState {
         status: "ACTIVE" as const,
         rules,
         population,
+        ffy: 25_000,
         testMarker: 0,
       }),
     ]),

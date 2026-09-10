@@ -357,7 +357,7 @@ describe("FFY economy integration through MatchRuntime", () => {
         },
       ],
     });
-    original.tick(3);
+    for (let index = 0; index < 3; index += 1) original.tick();
 
     const regenerated = MatchRuntime.regenerate(
       original.spec,
