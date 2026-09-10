@@ -211,13 +211,20 @@ function assertPersistentStructureState(structure: PersistentStructureState): vo
         "structure construction remainingTicks must be a positive safe integer",
       );
     }
-    if (
-      structure.completedLevel !== undefined &&
-      structure.construction.targetLevel <= structure.completedLevel
-    ) {
-      throw new Error(
-        "structure construction targetLevel must exceed completedLevel",
-      );
+    if (structure.completedLevel !== undefined) {
+      if (
+        structure.construction.targetLevel !==
+        structure.completedLevel + 1
+      ) {
+        throw new Error(
+          "structure upgrade construction targetLevel must be the next level",
+        );
+      }
+      if (!structure.active) {
+        throw new Error(
+          "structure upgrade must keep its completed level active",
+        );
+      }
     }
   }
   if (structure.completedLevel === undefined) {
