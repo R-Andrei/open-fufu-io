@@ -1,4 +1,5 @@
 import type { DirectiveChanges } from "../core/controller/ControllerApi";
+import { resolvePassiveFfyTick } from "./Economy";
 import { reconcileHostilityGrace } from "./HostilityState";
 import {
   resolveLandTick,
@@ -257,17 +258,20 @@ export class TickEngine {
     inputs: readonly AcceptedSimulationInput[],
   ): MatchState {
     const prospective = this.applyAcceptedInputs(state, inputs);
-    const land = resolveLandTick(prospective);
-    const nextTick = prospective.tick + 1;
+    const earningSnapshot = createProspectiveMatchState(prospective, {
+      factions: resolvePassiveFfyTick(prospective),
+    });
+    const land = resolveLandTick(earningSnapshot);
+    const nextTick = earningSnapshot.tick + 1;
     const hostilityGrace = reconcileHostilityGrace(
-      prospective.factions,
-      prospective.operations,
+      earningSnapshot.factions,
+      earningSnapshot.operations,
       land.factions,
       land.operations,
-      prospective.hostilityGrace,
+      earningSnapshot.hostilityGrace,
       nextTick,
     );
-    return createAdvancedMatchState(prospective, {
+    return createAdvancedMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,

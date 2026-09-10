@@ -87,6 +87,7 @@
     {"path":"src/simulation/ControllerQueryProjection.ts","validators":["tests/ControllerRuntime.test.ts","tests/ControllerSpatialMigration.test.ts"]},
     {"path":"src/simulation/ControllerRuntime.ts","validators":["tests/ControllerHostFaultClassification.test.ts","tests/ControllerMemoryConformance.test.ts","tests/ControllerPublicSpatialRuntime.test.ts","tests/ControllerRuntime.test.ts","tests/ControllerSpatialMigration.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/ControllerSpatialSurface.ts","validators":["tests/ControllerSpatialMigration.test.ts"]},
+    {"path":"src/simulation/Economy.ts","validators":["tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/HostilityState.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/LandOperations.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandOperations.test.ts","tests/LandRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts"]},
     {"path":"src/simulation/MapArtifact.ts","validators":["tests/MapArtifact.test.ts","tests/Segments.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
