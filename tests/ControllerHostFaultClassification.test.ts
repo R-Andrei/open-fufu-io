@@ -88,6 +88,39 @@ describe("controller-host internal fault classification", () => {
     expect(faultClassification(result)).toBe("INVALID_OUTPUT");
   });
 
+  it("contains a malformed partial worker success response as RUNTIME_ERROR", async () => {
+    const pool: ControllerWorkerPool = {
+      async invoke() {
+        return { ok: true as const } as never;
+      },
+    };
+    const host = new ProductionControllerHost(pool, { alpha: spawnArtifact });
+
+    await expect(host.invoke("alpha", {} as never)).resolves.toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+  });
+
+  it("contains missing or unknown worker fault categories as RUNTIME_ERROR", async () => {
+    for (const response of [
+      { ok: false as const },
+      { ok: false as const, fault: "UNKNOWN_WORKER_FAULT" },
+    ]) {
+      const pool: ControllerWorkerPool = {
+        async invoke() {
+          return response as never;
+        },
+      };
+      const host = new ProductionControllerHost(pool, { alpha: spawnArtifact });
+
+      await expect(host.invoke("alpha", {} as never)).resolves.toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+    }
+  });
+
   it("matches DebugSubject Segment identifiers to the public numeric SegmentId contract", () => {
     expect(
       controllerOutputHasExpectedStructure("DECIDE", {
