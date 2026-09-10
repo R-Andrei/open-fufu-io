@@ -1,4 +1,6 @@
 import type {
+  CellId,
+  CellSelector,
   CellsApi,
   MapApi,
   SegmentId,
@@ -22,7 +24,7 @@ export function createControllerSpatialSurface(
   const sourceMap = session.publicSpatial.map;
   const ownership = session.publicSpatial.ownership;
 
-  const validCellId = (id: number): boolean => sourceMap.isValidCellId(id);
+  const validCellId = (id: CellId): boolean => sourceMap.isValidCellId(id);
   const validSegmentId = (id: SegmentId): boolean => {
     const segments = sourceMap.segments;
     return (
@@ -37,36 +39,39 @@ export function createControllerSpatialSurface(
     width: sourceMap.width,
     height: sourceMap.height,
     cellCount: sourceMap.cellCount,
-    isValidCellId: (id) => validCellId(id),
-    cellIdAt: (x, y) => sourceMap.cellIdAt(x, y),
-    positionOf: (id) =>
+    isValidCellId: (id: CellId) => validCellId(id),
+    cellIdAt: (x: number, y: number) => sourceMap.cellIdAt(x, y),
+    positionOf: (id: CellId) =>
       validCellId(id) ? sourceMap.positionOf(id) : undefined,
-    terrainAt: (id) => {
+    terrainAt: (id: CellId) => {
       if (!validCellId(id)) return undefined;
       const terrain = sourceMap.terrainAt(id);
       return terrain === "TEST" ? undefined : terrain;
     },
-    segmentIdOf: (id) =>
+    segmentIdOf: (id: CellId) =>
       validCellId(id) ? sourceMap.segments?.segmentIdOf(id) : undefined,
-    cardinalNeighbors: (id) =>
+    cardinalNeighbors: (id: CellId) =>
       validCellId(id) ? sourceMap.cardinalNeighbors(id) : undefined,
   });
 
   const cells: CellsApi = Object.freeze({
-    owner: (id) => (validCellId(id) ? (ownership[id] ?? null) : undefined),
-    get: (id) => session.cells.get(id),
-    query: (selector, limit) => session.cells.query(selector, limit),
-    count: (selector) => session.cells.count(selector),
-    neighbors: (id) => session.cells.neighbors(id),
-    boundary: (selector, limit) => session.cells.boundary(selector, limit),
-    distance: (a, b) => session.cells.distance(a, b),
+    owner: (id: CellId) =>
+      validCellId(id) ? (ownership[id] ?? null) : undefined,
+    get: (id: CellId) => session.cells.get(id),
+    query: (selector: CellSelector, limit?: number) =>
+      session.cells.query(selector, limit),
+    count: (selector: CellSelector) => session.cells.count(selector),
+    neighbors: (id: CellId) => session.cells.neighbors(id),
+    boundary: (selector: CellSelector, limit?: number) =>
+      session.cells.boundary(selector, limit),
+    distance: (a: CellId, b: CellId) => session.cells.distance(a, b),
   });
 
   const segments: SegmentsApi = Object.freeze({
-    get: (id) => session.segments.get(id),
+    get: (id: SegmentId) => session.segments.get(id),
     list: () => session.segments.list(),
-    cells: (id) => session.segments.cells(id),
-    cellIds: (id) => {
+    cells: (id: SegmentId) => session.segments.cells(id),
+    cellIds: (id: SegmentId) => {
       const sourceSegments = sourceMap.segments;
       if (sourceSegments === undefined || !validSegmentId(id)) return undefined;
       const span = sourceSegments.cells(id);
