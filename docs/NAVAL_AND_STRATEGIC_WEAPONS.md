@@ -649,6 +649,7 @@ Destroyed Warships stop counting toward the active-count curve.
 | Hard ownership cap | none |
 | Base max health | **1,000 HP** |
 | Base movement speed | **10 cells/s** |
+| Water traversal | **Deep Water only; Shallow Water blocked** |
 | Base naval-gun range | **130 cells** |
 | Base shell damage | **250 HP fixed** |
 | Base shell cooldown | **2 seconds** |
@@ -684,7 +685,7 @@ Warships are autonomous combat formations rather than RTS-micro units.
 
 The controller may issue a strategic **move destination**. An accepted move repositions the Warship and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, attack modes, or individual targets.
 
-Within ordinary operation the Warship wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, target acquisition, pursuit, firing, Trade-Ship capture behavior, and automatic repair retreat are simulation-owned.
+Within ordinary operation the Warship wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, target acquisition, pursuit, firing, Trade-Ship capture behavior, and automatic repair retreat are simulation-owned. Baseline Warship path traversal uses Deep Water and cannot traverse Shallow Water. This is a Warship-specific movement rule, not a generic property inherited by other water units.
 
 Ordinary autonomous target priority within legal observation is:
 
@@ -756,6 +757,7 @@ Transport Ships carry explicitly committed Population and are amphibious-operati
 | Active cap per faction | **3** |
 | Embarkation FFY cost | **0 FFY** before explicit modifiers |
 | Movement speed | **10 cells/s** |
+| Water traversal | **Shallow Water + Deep Water** |
 | Ordinary embark source | legal owned coast/shore embarkation point |
 | Baseline health | fragile / no persistent health pool |
 | Baseline Warship interception | one successful hostile shell destroys Transport |
@@ -765,7 +767,7 @@ The three-Transport cap prevents fragmentation of one invasion into very large n
 
 ## 5.1 Embark and autonomous travel
 
-The controller begins an amphibious operation by choosing a legal embark source, legal landing target, and Population commitment. The simulation creates the Transport and owns pathfinding/travel to that target; Transports do not accept generic controller movement orders.
+The controller begins an amphibious operation by choosing a legal embark source, legal landing target, and Population commitment. The simulation creates the Transport and owns pathfinding/travel to that target; Transports do not accept generic controller movement orders. Baseline Transport routing may traverse both Shallow Water and Deep Water. This traversal permission is Transport-specific and does not broaden the movement rule of another water unit.
 
 When the accepted target is owned by an opposing hostility side, the resulting Transport operation is controller-directed hostility under `OPEN_FUFU_DESIGN.md` and maintains the corresponding `atWar` relation while that directed hostile operation remains active. The Transport's autonomous routing does not create additional war relations with third parties merely because ownership or nearby combat later changes.
 
