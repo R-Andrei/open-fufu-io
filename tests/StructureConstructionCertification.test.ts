@@ -1,3 +1,4 @@
+// Independent adversarial certification probes for issue #143.
 import type { StructureType } from "../src/core/controller/ControllerApi";
 import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
