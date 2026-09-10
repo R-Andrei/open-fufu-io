@@ -309,11 +309,15 @@ function normalizeWorkerFault<T>(fault: ControllerWorkerFault): ControllerHostIn
 
 function validUsage(usage: unknown): usage is ControllerResourceUsage {
   if (!isPlainRecord(usage)) return false;
+  const queries = usage.queries;
+  const materializedCells = usage.materializedCells;
   return (
-    Number.isInteger(usage.queries) &&
-    usage.queries >= 0 &&
-    Number.isInteger(usage.materializedCells) &&
-    usage.materializedCells >= 0
+    typeof queries === "number" &&
+    Number.isInteger(queries) &&
+    queries >= 0 &&
+    typeof materializedCells === "number" &&
+    Number.isInteger(materializedCells) &&
+    materializedCells >= 0
   );
 }
 
