@@ -19,7 +19,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | HTTP/control-plane service API | [`service/SERVICE_API.md`](./service/SERVICE_API.md) |
 | Live participant/spectator stream protocol | [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) |
 | Combat/capture/counter-response tuning | [`COMBAT_TUNING.md`](./COMBAT_TUNING.md) |
-| Terrain, persistent structures, and baseline Tank | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
+| Terrain, physical rail topology, persistent structures, and baseline Tank | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
 | Warships, Transports, and strategic weapons | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
 | FFY economy, Factory Trains, Trade Ships, and piracy | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
 | Strategic Spawn | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
@@ -37,7 +37,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Official-AI preset roster, difficulty targets, allowed-Origin pools, and Origin selection/reveal rules | [`official-ai/OFFICIAL_AI_PRESETS.md`](./official-ai/OFFICIAL_AI_PRESETS.md) |
 | Generic Official-AI Origin support, composition, suppression, and character adaptation contract | [`official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md`](./official-ai/OFFICIAL_AI_ORIGIN_SUPPORT.md) |
 | Official-AI Origin-trait strategic rationale | [`official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md`](./official-ai/OFFICIAL_AI_TRAIT_SUPPORT.md) |
-| Official-AI named-Origin strategic rationale | [`official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) |
+| Exact named Official-Origin AI compositions | [`official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) |
 | Official-AI Baseline/character behavioral rationale and signature semantics | [`official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) |
 | Exact Official-AI trait-support, combination-support, and suppression mappings | [`../design/official-ai/origin-trait-support.config.ts`](../design/official-ai/origin-trait-support.config.ts) |
 | Exact Official-AI named-Origin mappings, assertions, and named support | [`../design/official-ai/origin-configurations.config.ts`](../design/official-ai/origin-configurations.config.ts) |
