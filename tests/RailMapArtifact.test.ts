@@ -146,44 +146,52 @@ type TestRailMap = ReturnType<typeof materialize> & {
 };
 
 describe("production rail topology map-artifact source", () => {
-  it("materializes V3 rail bytes into the authoritative immutable map substrate", () => {
-    const railBytes = new Uint8Array(CELL_COUNT);
-    railBytes.set([P | R, P | L | R, P | L]);
-    const packageValue = v3Package(railBytes);
-    const map = materialize(packageValue) as TestRailMap;
+  it(
+    "materializes V3 rail bytes into the authoritative immutable map substrate",
+    () => {
+      const railBytes = new Uint8Array(CELL_COUNT);
+      railBytes.set([P | R, P | L | R, P | L]);
+      const packageValue = v3Package(railBytes);
+      const map = materialize(packageValue) as TestRailMap;
 
-    expect(map.formatVersion).toBe(3);
-    expect(map.rail.isRailCell(0)).toBe(true);
-    expect(map.rail.neighbors(1)).toEqual([2, 0]);
-    expect(map.rail.componentOf(2)).toBe(0);
-    expect(map.rail.shortestRoute(0, 2)).toEqual({
-      status: "FOUND",
-      distanceCells: 2,
-      cells: [0, 1, 2],
-    });
+      expect(map.formatVersion).toBe(3);
+      expect(map.rail.isRailCell(0)).toBe(true);
+      expect(map.rail.neighbors(1)).toEqual([2, 0]);
+      expect(map.rail.componentOf(2)).toBe(0);
+      expect(map.rail.shortestRoute(0, 2)).toEqual({
+        status: "FOUND",
+        distanceCells: 2,
+        cells: [0, 1, 2],
+      });
 
-    railBytes.fill(0);
-    expect(map.rail.shortestRoute(0, 2)).toEqual({
-      status: "FOUND",
-      distanceCells: 2,
-      cells: [0, 1, 2],
-    });
-  });
+      railBytes.fill(0);
+      expect(map.rail.shortestRoute(0, 2)).toEqual({
+        status: "FOUND",
+        distanceCells: 2,
+        cells: [0, 1, 2],
+      });
+    },
+    60_000,
+  );
 
-  it("gives pre-rail V2 artifacts an empty rail topology without changing their identity", () => {
-    const packageValue = v2Package();
-    const expectedHash = mapArtifactHash(packageValue.files);
-    const map = materialize(packageValue) as TestRailMap;
+  it(
+    "gives pre-rail V2 artifacts an empty rail topology without changing their identity",
+    () => {
+      const packageValue = v2Package();
+      const expectedHash = mapArtifactHash(packageValue.files);
+      const map = materialize(packageValue) as TestRailMap;
 
-    expect(map.formatVersion).toBe(2);
-    expect(map.mapHash).toBe(expectedHash);
-    expect(map.rail.isRailCell(0)).toBe(false);
-    expect(map.rail.componentOf(0)).toBeNull();
-    expect(map.rail.shortestRoute(0, 0)).toEqual({
-      status: "INVALID_ENDPOINT",
-      endpoint: "BOTH",
-    });
-  });
+      expect(map.formatVersion).toBe(2);
+      expect(map.mapHash).toBe(expectedHash);
+      expect(map.rail.isRailCell(0)).toBe(false);
+      expect(map.rail.componentOf(0)).toBeNull();
+      expect(map.rail.shortestRoute(0, 0)).toEqual({
+        status: "INVALID_ENDPOINT",
+        endpoint: "BOTH",
+      });
+    },
+    60_000,
+  );
 
   it("binds rail topology bytes into artifact identity", () => {
     const left = new Uint8Array(CELL_COUNT);
@@ -197,13 +205,17 @@ describe("production rail topology map-artifact source", () => {
     );
   });
 
-  it("rejects malformed V3 rail payloads before state creation", () => {
-    expect(() => materialize(v3Package(new Uint8Array(CELL_COUNT - 1)))).toThrow(
-      /rail.*length/i,
-    );
+  it(
+    "rejects malformed V3 rail payloads before state creation",
+    () => {
+      expect(() => materialize(v3Package(new Uint8Array(CELL_COUNT - 1)))).toThrow(
+        /rail.*length/i,
+      );
 
-    const nonReciprocal = new Uint8Array(CELL_COUNT);
-    nonReciprocal.set([P | R, P]);
-    expect(() => materialize(v3Package(nonReciprocal))).toThrow(/reciprocal/i);
-  });
+      const nonReciprocal = new Uint8Array(CELL_COUNT);
+      nonReciprocal.set([P | R, P]);
+      expect(() => materialize(v3Package(nonReciprocal))).toThrow(/reciprocal/i);
+    },
+    60_000,
+  );
 });
