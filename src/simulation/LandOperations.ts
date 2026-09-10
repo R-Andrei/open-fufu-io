@@ -11,7 +11,13 @@ import type {
   TerrainType,
 } from "../core/controller/ControllerApi";
 import { RULE_COMPONENT } from "../core/rules/OriginRuleManifest";
-import { ruleScopeMatches, type RuleCondition, type RuleScope } from "../core/rules/RuleComposition";
+import {
+  isTerrainScopeId,
+  ruleScopeMatches,
+  type RuleCondition,
+  type RuleScope,
+  type TerrainScopeId,
+} from "../core/rules/RuleComposition";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
@@ -1013,7 +1019,7 @@ function selectorCellSetWithEffectivePopulation<F extends LandFactionStateLike>(
           const terrainId = runtimeTerrain(terrain);
           const base = landTerrainBaseSpec(terrainId).populationBearing;
           const ownerId = ownership[index];
-          if (ownerId === null || terrainId === "TEST") {
+          if (ownerId === null || terrainId === "TEST" || !isTerrainScopeId(terrainId)) {
             return base === selector.value ? [index] : [];
           }
           const owner = factionById(factions, ownerId);
@@ -1094,6 +1100,8 @@ interface FrozenLane {
   readonly targetFactionId?: string;
   readonly sourceCellId: CellId;
   readonly targetCellId: CellId;
+  readonly sourceTerrainId: TerrainScopeId | "TEST";
+  readonly targetTerrainId: TerrainScopeId | "TEST";
   readonly operationIds: readonly string[];
   readonly committedPopulation: number;
   readonly pressurePopulation: number;
@@ -1159,6 +1167,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
     group: MechanicalOperationGroup;
     sourceCellId: number;
     targetCellId: number;
+    sourceTerrainId: TerrainScopeId | "TEST";
+    targetTerrainId: TerrainScopeId | "TEST";
     engagementWeight: number;
   }> = [];
 
@@ -1181,12 +1191,16 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
     );
     for (const sourceCellId of sourceCells) {
       if (state.ownership[sourceCellId] !== group.ownerId) continue;
-      const sourceTerrain = landTerrainBaseSpec(runtimeTerrain(state.map.terrain[sourceCellId]!));
+      const sourceTerrainId = runtimeTerrain(state.map.terrain[sourceCellId]!);
+      const sourceTerrain = landTerrainBaseSpec(sourceTerrainId);
       if (!sourceTerrain.landTraversable) continue;
+      if (sourceTerrainId !== "TEST" && !isTerrainScopeId(sourceTerrainId)) continue;
       for (const targetCellId of neighbors(state.map, sourceCellId)) {
         if (!targetCells.has(targetCellId)) continue;
-        const targetTerrain = landTerrainBaseSpec(runtimeTerrain(state.map.terrain[targetCellId]!));
+        const targetTerrainId = runtimeTerrain(state.map.terrain[targetCellId]!);
+        const targetTerrain = landTerrainBaseSpec(targetTerrainId);
         if (!targetTerrain.conquerable || !targetTerrain.landTraversable) continue;
+        if (targetTerrainId !== "TEST" && !isTerrainScopeId(targetTerrainId)) continue;
         const targetOwner = state.ownership[targetCellId];
         if (group.kind === "ATTACK" && targetOwner !== group.targetFactionId) continue;
         if (group.kind === "NEUTRAL_EXPANSION" && targetOwner !== null) continue;
@@ -1195,6 +1209,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
           group,
           sourceCellId,
           targetCellId,
+          sourceTerrainId,
+          targetTerrainId,
           engagementWeight: policyWeight(group.engagementPriority, targetCellId, state),
         });
       }
@@ -1212,6 +1228,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
     group: MechanicalOperationGroup;
     sourceCellId: number;
     targetCellId: number;
+    sourceTerrainId: TerrainScopeId | "TEST";
+    targetTerrainId: TerrainScopeId | "TEST";
   }> = [];
   for (const [ownerId, candidates] of [...byFaction.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const usedSources = new Set<number>();
@@ -1235,6 +1253,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
         group: candidate.group,
         sourceCellId: candidate.sourceCellId,
         targetCellId: candidate.targetCellId,
+        sourceTerrainId: candidate.sourceTerrainId,
+        targetTerrainId: candidate.targetTerrainId,
       });
     }
     void ownerId;
@@ -1282,6 +1302,8 @@ function freezeLanes<F extends LandFactionStateLike>(state: LandTickStateLike<F>
         ...(group.targetFactionId === undefined ? {} : { targetFactionId: group.targetFactionId }),
         sourceCellId: lane.sourceCellId,
         targetCellId: lane.targetCellId,
+        sourceTerrainId: lane.sourceTerrainId,
+        targetTerrainId: lane.targetTerrainId,
         operationIds: group.operationIds,
         committedPopulation: group.committedPopulation,
         pressurePopulation: allocations[index]!,
@@ -1575,8 +1597,8 @@ function claimantTickFact<F extends LandFactionStateLike>(
   previousProgressMicros: number,
 ): ClaimantTickFact {
   const attacker = factionById(state.factions, lane.ownerId)!;
-  const sourceTerrainId = runtimeTerrain(state.map.terrain[lane.sourceCellId]!);
-  const targetTerrainId = runtimeTerrain(state.map.terrain[lane.targetCellId]!);
+  const sourceTerrainId = lane.sourceTerrainId;
+  const targetTerrainId = lane.targetTerrainId;
   const sourceTerrain = landTerrainBaseSpec(sourceTerrainId);
   const targetTerrain = landTerrainBaseSpec(targetTerrainId);
   const targetHasFallout = state.fallout[lane.targetCellId] ?? false;

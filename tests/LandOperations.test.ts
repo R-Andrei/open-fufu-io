@@ -1,9 +1,35 @@
+import path from "node:path";
+import * as ts from "typescript";
 import type { CellSelector } from "../src/core/controller/ControllerApi";
+import { isTerrainScopeId } from "../src/core/rules/RuleComposition";
 import {
   calculateCounterResponseTick,
   canonicalCellSelectorKey,
   landTerrainBaseSpec,
 } from "../src/simulation/LandOperations";
+
+function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
+  return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+    getCanonicalFileName: (fileName) => fileName,
+    getCurrentDirectory: () => process.cwd(),
+    getNewLine: () => "\n",
+  });
+}
+
+function compilerOptions(): ts.CompilerOptions {
+  const configPath = path.resolve("tsconfig.json");
+  const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+  expect(configFile.error ? formatDiagnostics([configFile.error]) : "").toBe("");
+  const parsed = ts.parseJsonConfigFileContent(
+    configFile.config,
+    ts.sys,
+    process.cwd(),
+    { noEmit: true },
+    configPath,
+  );
+  expect(formatDiagnostics(parsed.errors)).toBe("");
+  return parsed.options;
+}
 
 describe("land-operation focused contracts", () => {
   it("canonicalizes selector structure independently of source spelling", () => {
@@ -32,6 +58,29 @@ describe("land-operation focused contracts", () => {
     expect(canonicalCellSelectorKey({ kind: "CELLS", ids: [9, 2, 9] })).toBe(
       canonicalCellSelectorKey({ kind: "CELLS", ids: [2, 9] }),
     );
+  });
+
+  it("keeps non-rule-scope terrain outside terrain rule evaluation", () => {
+    expect(isTerrainScopeId("PLAINS")).toBe(true);
+    expect(isTerrainScopeId("SHALLOW_WATER")).toBe(true);
+    expect(isTerrainScopeId("DEEP_WATER")).toBe(false);
+    expect(isTerrainScopeId("IMPASSABLE")).toBe(false);
+  });
+
+  it("typechecks the owned LandOperations dependency graph without inherited application code", () => {
+    const program = ts.createProgram({
+      rootNames: [path.resolve("src/simulation/LandOperations.ts")],
+      options: compilerOptions(),
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    expect(formatDiagnostics(diagnostics)).toBe("");
+
+    const repositorySources = program
+      .getSourceFiles()
+      .map((sourceFile) => path.relative(process.cwd(), sourceFile.fileName))
+      .filter((fileName) => !fileName.startsWith("node_modules"));
+    expect(repositorySources).toContain(path.normalize("src/simulation/LandOperations.ts"));
+    expect(repositorySources.some((fileName) => fileName.startsWith("src/server"))).toBe(false);
   });
 
   it("uses the canonical terrain baselines for land acquisition and pressure", () => {
