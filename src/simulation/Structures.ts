@@ -254,11 +254,36 @@ function assertPersistentStructureState(structure: PersistentStructureState): vo
       throw new Error(`duplicate structure charge slotId ${slot.slotId}`);
     }
     slotIds.add(slot.slotId);
+    if (slot.state !== "READY" && slot.state !== "RECHARGING") {
+      throw new Error("structure charge slot state is invalid");
+    }
     if (
       slot.state === "RECHARGING" &&
       (!Number.isSafeInteger(slot.readyAtTick) || slot.readyAtTick < 0)
     ) {
       throw new Error("structure charge readyAtTick must be a non-negative safe integer");
+    }
+  }
+
+  if (
+    structure.type === "MISSILE_SILO" &&
+    structure.active &&
+    structure.completedLevel !== undefined
+  ) {
+    if (structure.chargeSlots === undefined) {
+      throw new Error("active completed Missile Silo requires a persistent charge bank");
+    }
+    if (slotIds.size !== structure.completedLevel) {
+      throw new Error(
+        "active completed Missile Silo charge slots must equal completed level capacity",
+      );
+    }
+    for (let slotId = 0; slotId < structure.completedLevel; slotId += 1) {
+      if (!slotIds.has(slotId)) {
+        throw new Error(
+          "active completed Missile Silo charge slot IDs must equal 0..level-1",
+        );
+      }
     }
   }
 }
