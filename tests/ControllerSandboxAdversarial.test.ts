@@ -53,6 +53,23 @@ function authoritativeQuerySession() {
   });
 }
 
+function outOfOrderCompletionQuerySession() {
+  const base = authoritativeQuerySession();
+  return Object.freeze({
+    ...base,
+    cells: Object.freeze({
+      ...base.cells,
+      async count(selector: Parameters<typeof base.cells.count>[0]) {
+        const value = await base.cells.count(selector);
+        if (selector.kind === "CELLS" && selector.ids[0] === 0) {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        return value;
+      },
+    }),
+  });
+}
+
 function artifact(moduleSource: string): ControllerRuntimeArtifact {
   return Object.freeze({
     moduleSource,
@@ -162,7 +179,7 @@ describe("production controller sandbox adversarial capabilities", () => {
       });
 
       const observedOrders = new Set<string>();
-      for (let iteration = 0; iteration < 12; iteration += 1) {
+      for (let iteration = 0; iteration < 64; iteration += 1) {
         const session = authoritativeQuerySession();
         const result = await host.invoke(
           "alpha",
@@ -175,7 +192,36 @@ describe("production controller sandbox adversarial capabilities", () => {
         expect(session.usage()).toEqual({ queries: 2, materializedCells: 0 });
       }
 
-      expect([...observedOrders]).toHaveLength(1);
+      expect([...observedOrders]).toEqual(["first,second"]);
+    });
+  });
+
+  it("preserves source-order settlement when the second authoritative query finishes first", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export async function decide(context) {
+            const completionOrder = [];
+            const first = context.cells
+              .count({ kind: "CELLS", ids: [0] })
+              .then(() => completionOrder.push("first"));
+            const second = context.cells
+              .count({ kind: "CELLS", ids: [1] })
+              .then(() => completionOrder.push("second"));
+            await Promise.all([first, second]);
+            return { commands: [], log: completionOrder.join(",") };
+          }
+        `),
+      });
+      const session = outOfOrderCompletionQuerySession();
+
+      expect(
+        await host.invoke("alpha", ordinaryObservation(), session),
+      ).toEqual({
+        ok: true,
+        output: { commands: [], log: "first,second" },
+      });
+      expect(session.usage()).toEqual({ queries: 2, materializedCells: 0 });
     });
   });
 
