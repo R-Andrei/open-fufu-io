@@ -7,11 +7,13 @@ import type {
   SpawnOriginDecision,
   SpawnReconsiderContext,
 } from "../core/controller/ControllerApi";
-import type {
-  ControllerHost,
-  ControllerHostInvocationResult,
-  LawfulControllerObservation,
-  LawfulLandCellObservation,
+import {
+  createControllerSpatialSurface,
+  type ControllerHost,
+  type ControllerHostInvocationResult,
+  type ControllerQuerySession,
+  type ControllerSpatialSurface,
+  type LawfulControllerObservation,
 } from "../simulation/ControllerRuntime";
 
 type BaselineProfile = typeof OFFICIAL_AI_BASELINE_CHARACTER_PROFILE;
@@ -21,53 +23,39 @@ export interface OfficialAiControllerRegistration {
   readonly profile: BaselineProfile;
 }
 
-interface LawfulObservationIndex {
-  readonly ownedCells: readonly LawfulLandCellObservation[];
-  readonly neutralCells: readonly LawfulLandCellObservation[];
-}
-
-function compareCellId(
-  left: LawfulLandCellObservation,
-  right: LawfulLandCellObservation,
-): number {
-  return left.id - right.id;
-}
-
-function indexObservation(
-  observation: LawfulControllerObservation,
-): LawfulObservationIndex {
-  const ownedCells = observation.cells
-    .filter((cell) => cell.ownerId === observation.me.id)
-    .sort(compareCellId);
-  const neutralCells = observation.cells
-    .filter((cell) => cell.ownerId === undefined)
-    .sort(compareCellId);
-
-  return Object.freeze({
-    ownedCells: Object.freeze(ownedCells),
-    neutralCells: Object.freeze(neutralCells),
-  });
-}
-
 function decideBaseline(
   profile: BaselineProfile,
   observation: LawfulControllerObservation,
+  spatial: ControllerSpatialSurface,
 ): ControllerDecision | void {
   if (observation.me.status !== "ACTIVE") return;
   if (observation.me.population.available !== 1) return;
-  if (observation.cells.length !== 2) return;
+  if (spatial.map.cellCount !== 2) return;
   if (profile.evaluators.territory !== "LOCAL") return;
   if (profile.evaluators.opportunity !== "OBVIOUS") return;
   if (profile.planners.expansion !== "NEAREST") return;
   if (profile.arbiter.kind !== "SIMPLE_PRIORITY") return;
 
-  const index = indexObservation(observation);
-  if (index.ownedCells.length !== 1 || index.neutralCells.length !== 1) return;
+  let sourceId: number | undefined;
+  let targetId: number | undefined;
+  for (let id = 0; id < spatial.map.cellCount; id += 1) {
+    const ownerId = spatial.cells.owner(id);
+    if (ownerId === observation.me.id) {
+      if (sourceId !== undefined) return;
+      sourceId = id;
+    } else if (ownerId === null) {
+      if (targetId !== undefined) return;
+      targetId = id;
+    }
+  }
 
-  const source = index.ownedCells[0];
-  const target = index.neutralCells[0];
-  if (source === undefined || target === undefined) return;
-  if (source.terrain !== "PLAINS" || target.terrain !== "PLAINS") return;
+  if (sourceId === undefined || targetId === undefined) return;
+  if (
+    spatial.map.terrainAt(sourceId) !== "PLAINS" ||
+    spatial.map.terrainAt(targetId) !== "PLAINS"
+  ) {
+    return;
+  }
 
   return {
     directives: {
@@ -77,8 +65,8 @@ function decideBaseline(
           key: "official-ai:BASELINE_D0:neutral-expansion",
           operation: "NEUTRAL_EXPANSION",
           population: 1,
-          source: { kind: "CELLS", ids: [source.id] },
-          target: { kind: "CELLS", ids: [target.id] },
+          source: { kind: "CELLS", ids: [sourceId] },
+          target: { kind: "CELLS", ids: [targetId] },
         },
       ],
     },
@@ -120,12 +108,18 @@ export class OfficialAiControllerHost implements ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
+    querySession?: ControllerQuerySession,
   ): ControllerHostInvocationResult<ControllerDecision> {
     const profile = this.registrations.get(factionId);
     if (profile === undefined) return successfulInvocation();
+    if (querySession === undefined) return runtimeFailure();
 
     try {
-      const decision = decideBaseline(profile, observation);
+      const decision = decideBaseline(
+        profile,
+        observation,
+        createControllerSpatialSurface(querySession),
+      );
       return decision === undefined
         ? successfulInvocation<ControllerDecision>()
         : successfulInvocation<ControllerDecision>(decision);
