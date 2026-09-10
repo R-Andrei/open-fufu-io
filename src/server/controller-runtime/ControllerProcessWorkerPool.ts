@@ -124,12 +124,18 @@ type QueuedInvocation = Readonly<{
   resolve: (response: ControllerWorkerResponse) => void;
 }>;
 
+type QueryResultState = {
+  nextQueryId: number;
+  readonly buffered: Map<number, WorkerQueryResultEnvelope["result"]>;
+};
+
 type PendingInvocation = Readonly<{
   requestId: number;
   querySession?: ControllerQuerySession;
   resolve: (response: ControllerWorkerResponse) => void;
   watchdog: NodeJS.Timeout;
   seenQueryIds: Set<number>;
+  queryResults: QueryResultState;
 }>;
 
 type WorkerSlot = {
@@ -505,6 +511,10 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         resolve: queued.resolve,
         watchdog,
         seenQueryIds: new Set<number>(),
+        queryResults: {
+          nextQueryId: 1,
+          buffered: new Map<number, WorkerQueryResultEnvelope["result"]>(),
+        },
       });
 
       let publicSpatial: WorkerPublicSpatialUpdate | undefined;
@@ -596,23 +606,49 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
     const session = pending.querySession;
     if (session === undefined) {
-      this.sendQueryResult(slot, message.requestId, message.queryId, { ok: false });
+      this.queueQueryResult(slot, message.requestId, message.queryId, { ok: false });
       return;
     }
 
     void resolveControllerWorkerQuery(session, message.query).then(
       (value) => {
-        this.sendQueryResult(slot, message.requestId, message.queryId, {
+        this.queueQueryResult(slot, message.requestId, message.queryId, {
           ok: true,
           value,
         });
       },
       () => {
-        this.sendQueryResult(slot, message.requestId, message.queryId, {
+        this.queueQueryResult(slot, message.requestId, message.queryId, {
           ok: false,
         });
       },
     );
+  }
+
+  private queueQueryResult(
+    slot: WorkerSlot,
+    requestId: number,
+    queryId: number,
+    result: WorkerQueryResultEnvelope["result"],
+  ): void {
+    const pending = slot.pending;
+    if (
+      slot.failed ||
+      pending === undefined ||
+      pending.requestId !== requestId
+    ) {
+      return;
+    }
+
+    pending.queryResults.buffered.set(queryId, Object.freeze(result));
+    while (pending.queryResults.buffered.has(pending.queryResults.nextQueryId)) {
+      const nextQueryId = pending.queryResults.nextQueryId;
+      const nextResult = pending.queryResults.buffered.get(nextQueryId);
+      if (nextResult === undefined) return;
+      pending.queryResults.buffered.delete(nextQueryId);
+      pending.queryResults.nextQueryId += 1;
+      this.sendQueryResult(slot, requestId, nextQueryId, nextResult);
+    }
   }
 
   private sendQueryResult(
