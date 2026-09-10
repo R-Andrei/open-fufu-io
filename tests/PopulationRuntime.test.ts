@@ -294,7 +294,7 @@ describe("FFY economy integration through MatchRuntime", () => {
     expect(factionFfy(match)).toBe(25_300);
   });
 
-  it("applies Echo then contextual Desert-share yield to each global passive source", () => {
+  it("adds Echo and contextual Desert-share yield before each global passive source finalizes", () => {
     const echo = echoRuleContribution(
       "ffy.all",
       "BENEFICIAL",
@@ -319,7 +319,7 @@ describe("FFY economy integration through MatchRuntime", () => {
     });
 
     match.tick();
-    expect(factionFfy(match)).toBe(25_477);
+    expect(factionFfy(match)).toBe(25_468);
   });
 
   it("uses P48 population-bearing Shallow Water in both P52 Capacity and Desert-share denominator", () => {
