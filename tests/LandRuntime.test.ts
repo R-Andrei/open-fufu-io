@@ -90,12 +90,10 @@ describe("land operations through authoritative MatchRuntime", () => {
     const receipts = match.runControllerRound(
       new InProcessTestControllerHost({
         alpha(observation) {
-          const source = observation.cells.find(
-            (cell) => cell.ownerId === observation.me.id,
-          );
-          const target = observation.cells.find((cell) => cell.ownerId === "beta");
-          expect(source).toMatchObject({ id: 0, terrain: "PLAINS", ownerId: "alpha" });
-          expect(target).toMatchObject({ id: 1, terrain: "PLAINS", ownerId: "beta" });
+          expect(observation.map?.terrainAt(0)).toBe("PLAINS");
+          expect(observation.map?.terrainAt(1)).toBe("PLAINS");
+          expect(observation.cells?.owner(0)).toBe("alpha");
+          expect(observation.cells?.owner(1)).toBe("beta");
           expect(observation.me.population).toMatchObject({
             total: 2,
             available: 2,
@@ -114,8 +112,8 @@ describe("land operations through authoritative MatchRuntime", () => {
                   operation: "ATTACK",
                   population: observation.me.population.available,
                   targetFactionId: "beta",
-                  source: { kind: "CELLS", ids: [source!.id] },
-                  target: { kind: "CELLS", ids: [target!.id] },
+                  source: { kind: "CELLS", ids: [0] },
+                  target: { kind: "CELLS", ids: [1] },
                 },
               ],
             },
@@ -159,11 +157,8 @@ describe("land operations through authoritative MatchRuntime", () => {
     match.runControllerRound(
       new InProcessTestControllerHost({
         alpha(observation) {
-          expect(observation.cells.find((cell) => cell.id === 1)).toMatchObject({
-            id: 1,
-            terrain: "PLAINS",
-            ownerId: "alpha",
-          });
+          expect(observation.map?.terrainAt(1)).toBe("PLAINS");
+          expect(observation.cells?.owner(1)).toBe("alpha");
           expect(observation.me.population).toMatchObject({
             total: 1,
             available: 0,
