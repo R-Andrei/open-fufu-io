@@ -108,6 +108,14 @@ function assertPositiveSafeInteger(value: number, label: string): void {
   }
 }
 
+function assertDenseArray(values: readonly unknown[], label: string): void {
+  for (let index = 0; index < values.length; index += 1) {
+    if (!(index in values)) {
+      throw new Error(`${label} must be a dense array`);
+    }
+  }
+}
+
 function mobileUnitId(ordinal: number): UnitId {
   assertCanonicalNonNegativeSafeInteger(ordinal, "mobile-unit ordinal");
   return `${UNIT_ID_PREFIX}${String(ordinal).padStart(UNIT_ID_WIDTH, "0")}`;
@@ -167,6 +175,8 @@ function materializeRoute(
   if (!Array.isArray(route.cells) || !Array.isArray(route.edgeWeights)) {
     throw new Error("mobile-unit route cells and edge weights must be arrays");
   }
+  assertDenseArray(route.cells, "mobile-unit route cells");
+  assertDenseArray(route.edgeWeights, "mobile-unit route edge weights");
   if (route.cells.length < 2) {
     throw new Error("active mobile-unit route must contain at least two cells");
   }
@@ -200,14 +210,6 @@ function materializeRoute(
     throw new Error("mobile-unit route progress must be below the current edge weight");
   }
 
-  if (
-    Object.isFrozen(route) &&
-    Object.isFrozen(route.cells) &&
-    Object.isFrozen(route.edgeWeights)
-  ) {
-    return route;
-  }
-
   return Object.freeze({
     destinationCellId: route.destinationCellId,
     cells: Object.freeze([...route.cells]),
@@ -232,10 +234,6 @@ function materializeUnit(
   assertCellId(map, unit.cellId);
   const route = unit.route === undefined ? undefined : materializeRoute(map, unit.cellId, unit.route);
 
-  if (Object.isFrozen(unit) && (route === undefined || route === unit.route)) {
-    return unit;
-  }
-
   return Object.freeze({
     id: unit.id,
     ownerId: unit.ownerId,
@@ -257,6 +255,7 @@ export function materializeMobileUnitCollection(
   if (!Array.isArray(state.mobileUnits)) {
     throw new Error("mobileUnits must be an array");
   }
+  assertDenseArray(state.mobileUnits, "mobileUnits");
   assertCanonicalNonNegativeSafeInteger(
     state.nextMobileUnitOrdinal,
     "next mobile-unit ordinal",
@@ -358,6 +357,8 @@ export function assignMobileUnitRoute(
   if (!Array.isArray(input.cells) || !Array.isArray(input.edgeWeights)) {
     throw new Error("mobile-unit route cells and edge weights must be arrays");
   }
+  assertDenseArray(input.cells, "mobile-unit route cells");
+  assertDenseArray(input.edgeWeights, "mobile-unit route edge weights");
   if (input.cells.length === 0) {
     throw new Error("mobile-unit route must contain the current cell");
   }
@@ -408,6 +409,8 @@ function assertAdvanceableRoute(unit: MobileUnitState): MobileUnitRouteState | u
   if (!Array.isArray(route.cells) || !Array.isArray(route.edgeWeights)) {
     throw new Error("mobile-unit route state is malformed");
   }
+  assertDenseArray(route.cells, "mobile-unit route cells");
+  assertDenseArray(route.edgeWeights, "mobile-unit route edge weights");
   if (
     route.cells.length < 2 ||
     route.edgeWeights.length !== route.cells.length - 1 ||
