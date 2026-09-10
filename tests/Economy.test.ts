@@ -48,6 +48,7 @@ interface EconomicStageResult {
   readonly positiveEvents: readonly {
     readonly id: string;
     readonly family: PositiveEventInput["family"];
+    readonly specialization?: PositiveEventInput["specialization"];
     readonly award: number;
   }[];
   readonly signedFacts: readonly { readonly id: string }[];
@@ -196,8 +197,34 @@ describe("authoritative FFY event, signed-consequence, and payment substrate", (
     });
 
     // (100 × (1 + 0.20 + 0.30)) × 3.0 = 450.
-    expect(result.positiveEvents[0]?.award).toBe(450);
+    expect(result.positiveEvents).toEqual([
+      {
+        id: "captured-cargo:7",
+        family: "NAVAL_TRADE",
+        specialization: "PIRACY",
+        award: 450,
+      },
+    ]);
     expect(result.balance).toBe(450);
+  });
+
+  it("rejects PIRACY specialization outside the Naval/trade family", () => {
+    expect(() =>
+      resolveStage({
+        balance: 0,
+        rules: rulesWith(["P30"]),
+        ruleDynamicState: RULE_STATE,
+        positiveEvents: [
+          {
+            id: "invalid-piracy",
+            family: "ALL",
+            specialization: "PIRACY",
+            baseValue: exact(100),
+          },
+        ],
+        signedFacts: [],
+      }),
+    ).toThrow(/PIRACY.*NAVAL_TRADE/i);
   });
 
   it("keeps structural/event arithmetic exact until all ordinary percentages have been added", () => {
@@ -303,6 +330,34 @@ describe("authoritative FFY event, signed-consequence, and payment substrate", (
     expect(reversed).toEqual(forward);
   });
 
+  it("truncates the final signed tick net toward zero for either sign", () => {
+    const positive = resolveStage({
+      balance: 5,
+      rules: rulesWith(),
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [],
+      signedFacts: [
+        { id: "positive-a", components: [exact(3, 2)] },
+        { id: "positive-b", components: [exact(-1, 4)] },
+      ],
+    });
+    expect(positive.finalizedSignedDelta).toBe(1);
+    expect(positive.balance).toBe(6);
+
+    const negative = resolveStage({
+      balance: 5,
+      rules: rulesWith(),
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [],
+      signedFacts: [
+        { id: "negative-a", components: [exact(-3, 2)] },
+        { id: "negative-b", components: [exact(1, 4)] },
+      ],
+    });
+    expect(negative.finalizedSignedDelta).toBe(-1);
+    expect(negative.balance).toBe(4);
+  });
+
   it("applies the non-negative balance floor once after same-tick signed aggregation", () => {
     const result = resolveStage({
       balance: 1,
@@ -331,6 +386,41 @@ describe("authoritative FFY event, signed-consequence, and payment substrate", (
     expect(debit(11, cost)).toEqual({ ok: true, cost: 11, balance: 0 });
     expect(debit(12, cost)).toEqual({ ok: true, cost: 11, balance: 1 });
     expect(debit(12, exact(0))).toEqual({ ok: true, cost: 0, balance: 12 });
+  });
+
+  it("enforces non-negative safe-integer FFY state transitions at numeric boundaries", () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const aboveMax = BigInt(Number.MAX_SAFE_INTEGER) + 1n;
+
+    expect(debit(0, exact(0))).toEqual({ ok: true, cost: 0, balance: 0 });
+    expect(debit(max, exact(0))).toEqual({ ok: true, cost: 0, balance: max });
+    expect(() => debit(-1, exact(0))).toThrow(/non-negative safe integer/i);
+    expect(() => debit(max + 1, exact(0))).toThrow(/non-negative safe integer/i);
+    expect(() => debit(max, exact(aboveMax))).toThrow(/cost.*safe-integer/i);
+
+    expect(() =>
+      resolveStage({
+        balance: max,
+        rules: rulesWith(),
+        ruleDynamicState: RULE_STATE,
+        positiveEvents: [
+          { id: "overflow-credit", family: "ALL", baseValue: exact(1) },
+        ],
+        signedFacts: [],
+      }),
+    ).toThrow(/balance.*safe-integer/i);
+
+    expect(() =>
+      resolveStage({
+        balance: 0,
+        rules: rulesWith(),
+        ruleDynamicState: RULE_STATE,
+        positiveEvents: [],
+        signedFacts: [
+          { id: "overflow-signed", components: [exact(aboveMax)] },
+        ],
+      }),
+    ).toThrow(/signed.*safe-integer/i);
   });
 
   it("rejects malformed balances, costs, and positive-event amounts at their economy boundary", () => {
