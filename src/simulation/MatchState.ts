@@ -22,6 +22,10 @@ import {
   type SyntheticMapSpec,
 } from "./MatchSpec";
 import {
+  materializeMobileUnitCollection,
+  type MobileUnitState,
+} from "./MobileUnits";
+import {
   createEmptyPopulationState,
   createPopulationState,
   type PopulationState,
@@ -55,6 +59,8 @@ export interface MatchState {
   readonly fallout: readonly boolean[];
   readonly factions: readonly MatchFactionState[];
   readonly structures: readonly PersistentStructureState[];
+  readonly mobileUnits: readonly MobileUnitState[];
+  readonly nextMobileUnitOrdinal: number;
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -67,6 +73,8 @@ export interface MatchStateUpdate {
   readonly ownership?: readonly (string | null)[];
   readonly fallout?: readonly boolean[];
   readonly structures?: readonly PersistentStructureState[];
+  readonly mobileUnits?: readonly MobileUnitState[];
+  readonly nextMobileUnitOrdinal?: number;
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -192,16 +200,28 @@ function createState(
   if (fallout.length !== cellCount) {
     throw new Error("fallout length must equal width * height");
   }
+  const factions = freezeFactions(update.factions ?? previous.factions);
+  const mobileUnits = materializeMobileUnitCollection(
+    previous.map,
+    factions.map((faction) => faction.id),
+    {
+      mobileUnits: update.mobileUnits ?? previous.mobileUnits,
+      nextMobileUnitOrdinal:
+        update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
+    },
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
     map: previous.map,
     ownership: freezeOwnership(ownership, previous.ownership),
     fallout: freezeFallout(fallout),
-    factions: freezeFactions(update.factions ?? previous.factions),
+    factions,
     structures: materializePersistentStructures(
       update.structures ?? previous.structures,
     ),
+    mobileUnits: mobileUnits.mobileUnits,
+    nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -272,6 +292,8 @@ function createEmptyInitialMatchState(
       })),
     ),
     structures: Object.freeze([]),
+    mobileUnits: Object.freeze([]),
+    nextMobileUnitOrdinal: 0,
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -410,6 +432,27 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       acquisitionPath: structure.acquisitionPath,
     }));
 
+  const mobileUnits = [...state.mobileUnits]
+    .sort((left, right) => compareIds(left.id, right.id))
+    .map((unit) => ({
+      id: unit.id,
+      ownerId: unit.ownerId,
+      type: unit.type,
+      movementClass: unit.movementClass,
+      cellId: unit.cellId,
+      ...(unit.route === undefined
+        ? {}
+        : {
+            route: {
+              destinationCellId: unit.route.destinationCellId,
+              cells: [...unit.route.cells],
+              edgeWeights: [...unit.route.edgeWeights],
+              nextCellIndex: unit.route.nextCellIndex,
+              edgeProgress: unit.route.edgeProgress,
+            },
+          }),
+    }));
+
   const operations = [...state.operations]
     .sort((left, right) =>
       compareIds(left.ownerId, right.ownerId) ||
@@ -469,6 +512,8 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     fallout: [...state.fallout],
     factions,
     structures,
+    mobileUnits,
+    nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(

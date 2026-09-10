@@ -73,6 +73,8 @@ function localSpatialState(): MatchState {
       }),
     ]),
     structures: Object.freeze([]),
+    mobileUnits: Object.freeze([]),
+    nextMobileUnitOrdinal: 0,
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),

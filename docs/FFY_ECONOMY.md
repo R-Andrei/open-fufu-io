@@ -6,6 +6,7 @@ This file is the **canonical owner for baseline Open Fufu FFY economy, Factory T
 
 Neighboring concerns are owned elsewhere:
 
+- physical rail topology, station attachment, connectivity, and rail-routing semantics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - persistent Factory/Port structure construction and level mechanics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - Warship combat and Transport/strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
 - Origin-specific economic transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
@@ -176,6 +177,8 @@ Given the same pre-mutation state and same authoritative territorial-capture res
 ---
 
 # 4. Factory Train service
+
+Physical rail topology, station attachment, connectivity, deterministic shortest routing, and physical route reconstruction are owned by [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). This section consumes that substrate and owns Train service/economics only.
 
 Factories produce autonomous physical Trains. Each Factory supports at most **one active primary Train** at a time.
 
