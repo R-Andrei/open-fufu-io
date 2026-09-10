@@ -321,10 +321,12 @@ const invokeEntrypointSource = `
     }
   };
 
+  let hostQuerySequence = 0;
   const hostQuery = async (operation, args) => {
+    hostQuerySequence += 1;
     const value = await $1.apply(
       undefined,
-      [{ operation, args }],
+      [{ sequence: hostQuerySequence, operation, args }],
       {
         arguments: { copy: true },
         result: { promise: true, copy: true }
@@ -415,7 +417,6 @@ class ModuleInitializationTimeoutError extends Error {
 }
 
 let activeRequestId: number | undefined;
-let nextQueryId = 1;
 const pendingQueries = new Map<number, PendingQuery>();
 let publicSpatialCache: WorkerPublicSpatialCache | undefined;
 
@@ -515,14 +516,13 @@ function isWorkerQueryResultEnvelope(
 
 function requestHostQuery(
   requestId: number,
+  queryId: number,
   query: ControllerWorkerQueryRequest,
 ): Promise<unknown> {
   if (process.send === undefined || activeRequestId !== requestId) {
     return Promise.reject(new Error("controller query channel unavailable"));
   }
 
-  const queryId = nextQueryId;
-  nextQueryId += 1;
   const envelope: WorkerQueryEnvelope = Object.freeze({
     requestId,
     queryId,
@@ -975,10 +975,19 @@ async function executeRequest(
     }
 
     queryReference = new ivm.Reference((query: unknown) => {
-      if (!isControllerWorkerQueryRequest(query)) {
+      if (
+        !isControllerWorkerQueryRequest(query) ||
+        !isPlainRecord(query) ||
+        !Number.isInteger(query.sequence) ||
+        (query.sequence as number) <= 0
+      ) {
         return Promise.reject(new Error("invalid controller query"));
       }
-      return requestHostQuery(requestId, query);
+      return requestHostQuery(
+        requestId,
+        query.sequence as number,
+        query,
+      );
     });
     spatialReference = new ivm.Reference((query: unknown) =>
       resolvePublicSpatial(spatialCacheKey, query),
@@ -1098,7 +1107,6 @@ process.on("message", (message: unknown) => {
 
   busy = true;
   activeRequestId = message.requestId;
-  nextQueryId = 1;
   pendingQueries.clear();
 
   void handleInvocation(message).finally(() => {
