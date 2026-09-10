@@ -3,6 +3,7 @@ import type {
   MapPoint,
   TerrainType,
 } from "../core/controller/ControllerApi";
+import { createRailNetwork, type RailNetwork } from "./RailNetwork";
 import {
   segmentRuntimeIndexMatchesTerrain,
   type SegmentRuntimeIndex,
@@ -25,6 +26,7 @@ export interface SimulationMap {
   readonly mapVersion?: string;
   readonly mapHash?: string;
   readonly segments?: SegmentRuntimeIndex;
+  readonly rail: RailNetwork;
 
   isValidCellId(cellId: CellId): boolean;
   cellIdAt(x: number, y: number): CellId | undefined;
@@ -45,6 +47,7 @@ export interface SimulationMapInput {
   readonly mapVersion?: string;
   readonly mapHash?: string;
   readonly segments?: SegmentRuntimeIndex;
+  readonly railTopology?: Uint8Array;
 }
 
 function assertPositiveSafeDimension(value: number, label: string): void {
@@ -102,6 +105,10 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
   }
 
   const terrain = Object.freeze([...input.terrain]);
+  const rail = createRailNetwork(
+    { width: input.width, height: input.height, cellCount },
+    input.railTopology,
+  );
   const map: Record<string, unknown> = {
     width: input.width,
     height: input.height,
@@ -181,6 +188,7 @@ export function createSimulationMap(input: SimulationMapInput): SimulationMap {
     ...(input.segments === undefined
       ? {}
       : { segments: { value: input.segments, enumerable: false } }),
+    rail: { value: rail, enumerable: false },
     isValidCellId: { value: isValidCellId, enumerable: false },
     cellIdAt: { value: cellIdAt, enumerable: false },
     positionOf: { value: positionOf, enumerable: false },

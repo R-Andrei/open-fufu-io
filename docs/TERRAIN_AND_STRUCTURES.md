@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This file is the **canonical owner for Open Fufu base terrain, persistent structures, and the baseline Tank chassis**.
+This file is the **canonical owner for Open Fufu base terrain, physical rail topology, persistent structures, and the baseline Tank chassis**.
 
 Neighboring concerns are owned elsewhere:
 
@@ -138,6 +138,38 @@ ordinary Fallout capture / settlement speed × 0.50
 The underlying terrain retains its Capacity classification, traversal, structure-buildability, source offense, target defense, and terrain-share identity. Fallout never creates Population defenders.
 
 Origin-specific Fallout interactions are defined in `ORIGIN_TRAIT_CATALOGUE.md`.
+
+## 1.8 Physical rail topology overlay
+
+Rail is an immutable physical overlay on the simulation raster for the V1 baseline. The authoritative production rail topology is supplied by the bound production map artifact. Exact artifact package, manifest, encoding, serialization, content-identity, and validation details are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts), not duplicated here.
+
+Each rail node is exactly an existing simulation `cellId`; V1 creates no second rail coordinate or node space. Rail occupancy is a separate overlay field from base-terrain identity. This section does not add or infer terrain-specific rail purchase, build, placement, capture, removal, or generation rules.
+
+Rail edges are explicit cardinal connections. A connection is legal only when both endpoint cells are valid rail cells, are cardinally adjacent on the raster, and both endpoints encode the reciprocal connection. Connections may not cross a map edge or wrap between raster rows. Every legal rail edge costs exactly one rail-cell step.
+
+For deterministic rail adjacency and shortest-path enumeration, the canonical direction order is:
+
+```text
+top -> right -> bottom -> left
+```
+
+This ordering breaks equal-cost shortest-path ties. Rail routing must not derive ties from `Map`/`Set` insertion order, artifact enumeration order, or another incidental runtime order.
+
+A City, Port, or Factory is attached to the rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
+
+A rail route query distinguishes three outcomes:
+
+- **invalid endpoint** — the requested endpoint is outside the map or is not a rail cell;
+- **disconnected** — both endpoints are valid rail cells but lie in different rail connected components;
+- **found** — a finite shortest rail path is returned, including both origin and destination cells.
+
+For a valid rail source equal to its destination, the found path contains exactly that one cell and has distance `0`. Otherwise route distance is the number of traversed rail edges in rail-cell steps.
+
+Natural retracing uses the same physical rail cells in reverse. The routing substrate must not fabricate a synthetic closure edge to close a higher-level Train tour.
+
+Rail topology is immutable after map materialization in V1. Its authoritative identity is therefore bound through the production map artifact and the match's existing artifact/replay binding; this registry defines no mutable runtime rail state.
+
+Factory Train target selection, dispatch, dwell, economic events, ownership epochs, turnaround, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume this physical topology rather than redefining it.
 
 ---
 
