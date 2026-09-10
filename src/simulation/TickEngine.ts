@@ -18,6 +18,7 @@ import {
   type PopulationBucket,
   type PopulationState,
 } from "./Population";
+import { resolvePersistentStructureLifecycleTick } from "./Structures";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -259,6 +260,11 @@ export class TickEngine {
     const prospective = this.applyAcceptedInputs(state, inputs);
     const land = resolveLandTick(prospective);
     const nextTick = prospective.tick + 1;
+    const structures = resolvePersistentStructureLifecycleTick(
+      prospective,
+      land.ownership,
+      nextTick,
+    );
     const hostilityGrace = reconcileHostilityGrace(
       prospective.factions,
       prospective.operations,
@@ -271,6 +277,7 @@ export class TickEngine {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,
+      structures,
       operations: land.operations,
       defensePriorities: land.defensePriorities,
       captureProgress: land.captureProgress,

@@ -12,7 +12,11 @@ import {
   type RuleConditions,
   type RuleScope,
 } from "../core/rules/RuleComposition";
-import { materializeCompiledCapRule } from "../core/rules/RuleMaterialization";
+import {
+  materializeCompiledCapRule,
+  materializeCompiledScalarRule,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
 import type { MatchState } from "./MatchState";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
@@ -34,6 +38,35 @@ const BASE_BUILDABLE_TERRAINS = new Set([
   "FOREST",
   "MARSH",
 ]);
+
+const PORT_LAND_TERRAINS = new Set([
+  "PLAINS",
+  "HIGHLAND",
+  "MOUNTAIN",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+]);
+
+const BASE_STRUCTURE_CONSTRUCTION_TICKS: Readonly<Record<StructureType, number>> =
+  Object.freeze({
+    CITY: 50,
+    FORT: 50,
+    PORT: 50,
+    FACTORY: 100,
+    MISSILE_SILO: 150,
+    SAM_LAUNCHER: 150,
+    OBSERVATION_POST: 50,
+    COMMAND_POST: 100,
+  });
+
+const BASE_STRUCTURE_RECHARGE_TICKS = Object.freeze({
+  MISSILE_SILO: 90,
+  SAM_LAUNCHER: 90,
+} as const);
+
+type ChargeBearingStructureType = keyof typeof BASE_STRUCTURE_RECHARGE_TICKS;
 
 export interface StructureConstructionState {
   readonly targetLevel: StructureLevel;
@@ -80,6 +113,11 @@ export interface StructureGrantRequest {
   readonly level: StructureLevel;
 }
 
+export interface StructureUpgradeRequest {
+  readonly structureId: string;
+  readonly ownerId: string;
+}
+
 export type StructureAdmissionFailureCode =
   | "INVALID_REQUEST"
   | "UNKNOWN_OWNER"
@@ -106,10 +144,116 @@ export type StructureGrantResult =
     }
   | { readonly ok: false; readonly failure: StructureAdmissionFailure };
 
+export type StructureBuildResult = StructureGrantResult;
+
+export type StructureUpgradeFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_STRUCTURE"
+  | "NOT_OWNER"
+  | "NOT_COMPLETED"
+  | "CONSTRUCTION_IN_PROGRESS"
+  | "MAX_LEVEL"
+  | "UPGRADE_NOT_PERMITTED";
+
+export type StructureUpgradeResult =
+  | {
+      readonly ok: true;
+      readonly structure: PersistentStructureState;
+      readonly structures: readonly PersistentStructureState[];
+    }
+  | {
+      readonly ok: false;
+      readonly failure: Readonly<{ code: StructureUpgradeFailureCode }>;
+    };
+
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
+}
+
+function isStructureType(value: unknown): value is StructureType {
+  return typeof value === "string" && STRUCTURE_TYPES.has(value as StructureType);
+}
+
+function isStructureLevel(value: unknown): value is StructureLevel {
+  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 5;
+}
+
+function assertPersistentStructureState(structure: PersistentStructureState): void {
+  if (typeof structure.id !== "string" || structure.id.length === 0) {
+    throw new Error("structure id must be a non-empty string");
+  }
+  if (typeof structure.ownerId !== "string" || structure.ownerId.length === 0) {
+    throw new Error("structure ownerId must be a non-empty string");
+  }
+  if (!isStructureType(structure.type)) {
+    throw new Error("structure type is invalid");
+  }
+  if (!Number.isSafeInteger(structure.cellId) || structure.cellId < 0) {
+    throw new Error("structure cellId must be a non-negative safe integer");
+  }
+  if (
+    structure.completedLevel !== undefined &&
+    !isStructureLevel(structure.completedLevel)
+  ) {
+    throw new Error("structure completedLevel must be in 1..5");
+  }
+  if (structure.construction !== undefined) {
+    if (!isStructureLevel(structure.construction.targetLevel)) {
+      throw new Error("structure construction targetLevel must be in 1..5");
+    }
+    if (
+      !Number.isSafeInteger(structure.construction.remainingTicks) ||
+      structure.construction.remainingTicks <= 0
+    ) {
+      throw new Error(
+        "structure construction remainingTicks must be a positive safe integer",
+      );
+    }
+    if (
+      structure.completedLevel !== undefined &&
+      structure.construction.targetLevel <= structure.completedLevel
+    ) {
+      throw new Error(
+        "structure construction targetLevel must exceed completedLevel",
+      );
+    }
+  }
+  if (structure.completedLevel === undefined) {
+    if (structure.active) {
+      throw new Error("structure without a completed level cannot be active");
+    }
+    if (structure.construction === undefined) {
+      throw new Error(
+        "structure without a completed level must have construction state",
+      );
+    }
+  }
+  if (
+    structure.acquisitionPath !== "PURCHASE_BUILD" &&
+    structure.acquisitionPath !== "GRANT" &&
+    structure.acquisitionPath !== "CAPTURE_TRANSFER"
+  ) {
+    throw new Error("structure acquisitionPath is invalid");
+  }
+
+  const slotIds = new Set<number>();
+  for (const slot of structure.chargeSlots ?? []) {
+    if (!Number.isSafeInteger(slot.slotId) || slot.slotId < 0) {
+      throw new Error("structure charge slotId must be a non-negative safe integer");
+    }
+    if (slotIds.has(slot.slotId)) {
+      throw new Error(`duplicate structure charge slotId ${slot.slotId}`);
+    }
+    slotIds.add(slot.slotId);
+    if (
+      slot.state === "RECHARGING" &&
+      (!Number.isSafeInteger(slot.readyAtTick) || slot.readyAtTick < 0)
+    ) {
+      throw new Error("structure charge readyAtTick must be a non-negative safe integer");
+    }
+  }
 }
 
 function freezeConstruction(
@@ -142,6 +286,7 @@ function freezeChargeSlots(
 export function materializePersistentStructureState(
   structure: PersistentStructureState,
 ): PersistentStructureState {
+  assertPersistentStructureState(structure);
   return Object.freeze({
     id: structure.id,
     ownerId: structure.ownerId,
@@ -180,12 +325,8 @@ function failure(code: StructureAdmissionFailureCode): StructureAdmissionResult 
   return Object.freeze({ ok: false, failure: Object.freeze({ code }) });
 }
 
-function isStructureType(value: unknown): value is StructureType {
-  return typeof value === "string" && STRUCTURE_TYPES.has(value as StructureType);
-}
-
-function isStructureLevel(value: unknown): value is StructureLevel {
-  return Number.isInteger(value) && Number(value) >= 1 && Number(value) <= 5;
+function upgradeFailure(code: StructureUpgradeFailureCode): StructureUpgradeResult {
+  return Object.freeze({ ok: false, failure: Object.freeze({ code }) });
 }
 
 function requestIsWellFormed(
@@ -264,6 +405,41 @@ function buildPlacementAllowed(
   );
 }
 
+function territorialContactCount(state: MatchState, ownerId: string): number {
+  const active = new Set(
+    state.factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < state.ownership.length; cellId += 1) {
+    if (state.ownership[cellId] !== ownerId) continue;
+    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
+      const neighborOwner = state.ownership[neighbor] ?? null;
+      if (
+        neighborOwner !== null &&
+        neighborOwner !== ownerId &&
+        active.has(neighborOwner)
+      ) {
+        contacts.add(neighborOwner);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+function ruleDynamicState(state: MatchState, ownerId: string): RuleDynamicState {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  return Object.freeze({
+    ownedPersistentStructureCount: state.structures.filter(
+      (structure) => structure.ownerId === ownerId,
+    ).length,
+    territorialContactCount: territorialContactCount(state, ownerId),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
 function effectiveOwnershipCap(
   state: MatchState,
   request: StructureAcquisitionRequest,
@@ -274,33 +450,111 @@ function effectiveOwnershipCap(
     kind: "STRUCTURE",
     structure: request.type,
   } as const satisfies RuleScope;
-  const relevantDynamicProviders = owner.rules.dynamicProviders.filter(
-    (provider) =>
-      provider.axis === "STRUCTURE_OWNERSHIP_CAP" &&
-      ruleScopeMatches(provider.scope, scope),
-  );
-  if (
-    relevantDynamicProviders.some(
-      (provider) => provider.dependency === "TERRITORIAL_CONTACT_COUNT",
-    )
-  ) {
-    throw new Error(
-      "STRUCTURE_OWNERSHIP_CAP requires Territorial Contact state unavailable to the current structure foundation",
-    );
-  }
   return materializeCompiledCapRule(
     Number.MAX_SAFE_INTEGER,
     owner.rules,
     RULE_AXIS_REGISTRY,
     "STRUCTURE_OWNERSHIP_CAP",
     scope,
-    {
-      ownedPersistentStructureCount: state.structures.filter(
-        (structure) => structure.ownerId === request.ownerId,
-      ).length,
-      territorialContactCount: 0,
-      peakTotalPopulation: owner.population.peakTotal,
-    },
+    ruleDynamicState(state, request.ownerId),
+  );
+}
+
+function finalizePositiveTicks(value: number, label: string): number {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must resolve to a finite positive duration`);
+  }
+  const ticks = Math.ceil(value);
+  if (!Number.isSafeInteger(ticks) || ticks <= 0) {
+    throw new Error(`${label} must resolve to a positive safe-integer tick duration`);
+  }
+  return ticks;
+}
+
+export function effectiveStructureConstructionTicks(
+  state: MatchState,
+  ownerId: string,
+  type: StructureType,
+): number {
+  if (!isStructureType(type)) throw new Error(`unknown structure type: ${String(type)}`);
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "STRUCTURE", structure: type } as const satisfies RuleScope;
+  const effective = materializeCompiledScalarRule(
+    BASE_STRUCTURE_CONSTRUCTION_TICKS[type],
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "STRUCTURE_CONSTRUCTION_TIME",
+    scope,
+    ruleDynamicState(state, ownerId),
+  );
+  return finalizePositiveTicks(effective, `${type} construction time`);
+}
+
+export function effectiveStructureRechargeTicks(
+  state: MatchState,
+  ownerId: string,
+  type: ChargeBearingStructureType,
+): number {
+  const base = BASE_STRUCTURE_RECHARGE_TICKS[type];
+  if (base === undefined) {
+    throw new Error(`${String(type)} has no persistent structure recharge duration`);
+  }
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "STRUCTURE", structure: type } as const satisfies RuleScope;
+  const effective = materializeCompiledScalarRule(
+    base,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "STRUCTURE_RECHARGE_TIME",
+    scope,
+    ruleDynamicState(state, ownerId),
+  );
+  return finalizePositiveTicks(effective, `${type} recharge time`);
+}
+
+function upgradeAllowed(
+  state: MatchState,
+  structure: PersistentStructureState,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === structure.ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${structure.ownerId}`);
+  const scope = {
+    kind: "STRUCTURE",
+    structure: structure.type,
+  } as const satisfies RuleScope;
+  const contributions = selectRuleContributionsForScope(
+    "STRUCTURE_UPGRADE_PERMISSION",
+    scope,
+    owner.rules.contributions,
+  );
+  if (
+    contributions.some(
+      (entry) => entry.conditions !== undefined && entry.conditions.length > 0,
+    )
+  ) {
+    throw new Error(
+      "conditioned STRUCTURE_UPGRADE_PERMISSION requires an explicit lifecycle context",
+    );
+  }
+  return reducePermissionRule(
+    true,
+    RULE_AXIS_REGISTRY.STRUCTURE_UPGRADE_PERMISSION,
+    contributions,
+  );
+}
+
+function portPlacementHasDeepWaterInterface(
+  state: MatchState,
+  request: StructureAcquisitionRequest,
+): boolean {
+  const terrain = state.map.terrainAt(request.cellId);
+  return (
+    PORT_LAND_TERRAINS.has(terrain) &&
+    state.map
+      .cardinalNeighbors(request.cellId)
+      .some((neighbor) => state.map.terrainAt(neighbor) === "DEEP_WATER")
   );
 }
 
@@ -355,10 +609,7 @@ export function evaluateStructureAcquisitionAdmission(
   if (!buildPlacementAllowed(state, request)) {
     return failure("BUILD_NOT_PERMITTED");
   }
-
-  // The current synthetic substrate has no canonical coast/interface predicate.
-  // Reject Port materialization rather than inventing a second placement authority.
-  if (request.type === "PORT") {
+  if (request.type === "PORT" && !portPlacementHasDeepWaterInterface(state, request)) {
     return failure("PLACEMENT_GEOMETRY_UNAVAILABLE");
   }
 
@@ -403,4 +654,297 @@ export function tryMaterializeStructureGrant(
     structure,
     structures: materializePersistentStructures([...state.structures, structure]),
   });
+}
+
+export function tryMaterializeStructureBuild(
+  state: MatchState,
+  build: StructureGrantRequest,
+): StructureBuildResult {
+  const request: StructureAcquisitionRequest = {
+    ...build,
+    acquisitionPath: "PURCHASE_BUILD",
+  };
+  const admission = evaluateStructureAcquisitionAdmission(state, request);
+  if (!admission.ok) return admission;
+
+  const remainingTicks = effectiveStructureConstructionTicks(
+    state,
+    build.ownerId,
+    build.type,
+  );
+  const structure = materializePersistentStructureState({
+    id: build.structureId,
+    ownerId: build.ownerId,
+    type: build.type,
+    cellId: build.cellId,
+    active: false,
+    construction: {
+      targetLevel: build.level,
+      remainingTicks,
+    },
+    acquisitionPath: "PURCHASE_BUILD",
+  });
+  return Object.freeze({
+    ok: true,
+    structure,
+    structures: materializePersistentStructures([...state.structures, structure]),
+  });
+}
+
+export function tryBeginStructureUpgrade(
+  state: MatchState,
+  request: StructureUpgradeRequest,
+): StructureUpgradeResult {
+  if (
+    typeof request.structureId !== "string" ||
+    request.structureId.length === 0 ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0
+  ) {
+    return upgradeFailure("INVALID_REQUEST");
+  }
+  const structure = state.structures.find(
+    (candidate) => candidate.id === request.structureId,
+  );
+  if (structure === undefined) return upgradeFailure("UNKNOWN_STRUCTURE");
+  if (structure.ownerId !== request.ownerId) return upgradeFailure("NOT_OWNER");
+  if (structure.construction !== undefined) {
+    return upgradeFailure("CONSTRUCTION_IN_PROGRESS");
+  }
+  if (structure.completedLevel === undefined) return upgradeFailure("NOT_COMPLETED");
+  if (structure.completedLevel >= 5) return upgradeFailure("MAX_LEVEL");
+  if (!upgradeAllowed(state, structure)) {
+    return upgradeFailure("UPGRADE_NOT_PERMITTED");
+  }
+
+  const remainingTicks = effectiveStructureConstructionTicks(
+    state,
+    structure.ownerId,
+    structure.type,
+  );
+  const targetLevel = (structure.completedLevel + 1) as StructureLevel;
+  const upgraded = materializePersistentStructureState({
+    ...structure,
+    construction: { targetLevel, remainingTicks },
+  });
+  return Object.freeze({
+    ok: true,
+    structure: upgraded,
+    structures: materializePersistentStructures(
+      state.structures.map((candidate) =>
+        candidate.id === structure.id ? upgraded : candidate,
+      ),
+    ),
+  });
+}
+
+function factionHasN17CaptureDestruction(
+  state: MatchState,
+  ownerId: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  return (
+    owner?.rules.customDomains.some(
+      (entry) =>
+        entry.sourceKind === "ORIGIN" &&
+        entry.sourceId === "N17" &&
+        entry.domain === "STRUCTURE_CAPTURE_DISPOSITION",
+    ) ?? false
+  );
+}
+
+function acquisitionLevelForCapture(
+  structure: PersistentStructureState,
+): StructureLevel {
+  if (structure.completedLevel !== undefined) return structure.completedLevel;
+  if (structure.construction !== undefined) return structure.construction.targetLevel;
+  throw new Error(`structure ${structure.id} has no level-bearing persistent state`);
+}
+
+function resolveCaptureTransfers(
+  state: MatchState,
+  nextOwnership: readonly (string | null)[],
+): readonly PersistentStructureState[] {
+  const candidates = state.structures
+    .filter((structure) => {
+      const nextOwner = nextOwnership[structure.cellId] ?? null;
+      return nextOwner !== null && nextOwner !== structure.ownerId;
+    })
+    .sort(
+      (left, right) => left.cellId - right.cellId || compareIds(left.id, right.id),
+    );
+  if (candidates.length === 0) return state.structures;
+
+  const candidateIds = new Set(candidates.map((structure) => structure.id));
+  let working = state.structures.filter(
+    (structure) => !candidateIds.has(structure.id),
+  );
+
+  for (const structure of candidates) {
+    const nextOwnerId = nextOwnership[structure.cellId];
+    if (nextOwnerId === null || nextOwnerId === undefined) continue;
+    if (factionHasN17CaptureDestruction(state, nextOwnerId)) continue;
+
+    const admissionState = {
+      ...state,
+      ownership: nextOwnership,
+      structures: materializePersistentStructures([...working, structure]),
+    } as MatchState;
+    const admission = evaluateStructureAcquisitionAdmission(admissionState, {
+      structureId: structure.id,
+      ownerId: nextOwnerId,
+      type: structure.type,
+      cellId: structure.cellId,
+      level: acquisitionLevelForCapture(structure),
+      acquisitionPath: "CAPTURE_TRANSFER",
+    });
+    if (!admission.ok) {
+      if (admission.failure.code === "OWNERSHIP_CAP") continue;
+      throw new Error(
+        `capture transfer admission for ${structure.id} failed with ${admission.failure.code}`,
+      );
+    }
+
+    working = [
+      ...working,
+      materializePersistentStructureState({
+        ...structure,
+        ownerId: nextOwnerId,
+        acquisitionPath: "CAPTURE_TRANSFER",
+      }),
+    ];
+  }
+
+  return materializePersistentStructures(working);
+}
+
+function matureChargeSlots(
+  slots: readonly StructureChargeSlotState[] | undefined,
+  currentTick: number,
+): readonly StructureChargeSlotState[] | undefined {
+  if (slots === undefined) return undefined;
+  return freezeChargeSlots(
+    slots.map((slot) =>
+      slot.state === "RECHARGING" && currentTick >= slot.readyAtTick
+        ? { slotId: slot.slotId, state: "READY" as const }
+        : slot,
+    ),
+  );
+}
+
+function completedSiloChargeSlots(
+  state: MatchState,
+  structure: PersistentStructureState,
+  targetLevel: StructureLevel,
+  activationTick: number,
+): readonly StructureChargeSlotState[] {
+  if (structure.completedLevel === undefined) {
+    return Object.freeze(
+      Array.from({ length: targetLevel }, (_, slotId) =>
+        Object.freeze({ slotId, state: "READY" as const }),
+      ),
+    );
+  }
+
+  const existing = matureChargeSlots(structure.chargeSlots, activationTick);
+  if (existing === undefined) {
+    throw new Error(
+      `upgrading Missile Silo ${structure.id} is missing its persistent charge bank`,
+    );
+  }
+  const byId = new Map(existing.map((slot) => [slot.slotId, slot]));
+  for (let slotId = 0; slotId < structure.completedLevel; slotId += 1) {
+    if (!byId.has(slotId)) {
+      throw new Error(
+        `upgrading Missile Silo ${structure.id} is missing charge slot ${slotId}`,
+      );
+    }
+  }
+
+  const rechargeTicks = effectiveStructureRechargeTicks(
+    state,
+    structure.ownerId,
+    "MISSILE_SILO",
+  );
+  const result: StructureChargeSlotState[] = [...existing];
+  for (let slotId = structure.completedLevel; slotId < targetLevel; slotId += 1) {
+    if (byId.has(slotId)) {
+      throw new Error(
+        `upgrading Missile Silo ${structure.id} already contains future charge slot ${slotId}`,
+      );
+    }
+    result.push({
+      slotId,
+      state: "RECHARGING",
+      readyAtTick: activationTick + rechargeTicks,
+    });
+  }
+  return freezeChargeSlots(result);
+}
+
+function progressStructure(
+  state: MatchState,
+  structure: PersistentStructureState,
+  currentTick: number,
+): PersistentStructureState {
+  const maturedSlots = matureChargeSlots(structure.chargeSlots, currentTick);
+  const current =
+    maturedSlots === structure.chargeSlots
+      ? structure
+      : materializePersistentStructureState({
+          ...structure,
+          ...(maturedSlots === undefined ? {} : { chargeSlots: maturedSlots }),
+        });
+  if (current.construction === undefined) return current;
+
+  if (current.construction.remainingTicks > 1) {
+    return materializePersistentStructureState({
+      ...current,
+      construction: {
+        targetLevel: current.construction.targetLevel,
+        remainingTicks: current.construction.remainingTicks - 1,
+      },
+    });
+  }
+
+  const targetLevel = current.construction.targetLevel;
+  const chargeSlots =
+    current.type === "MISSILE_SILO"
+      ? completedSiloChargeSlots(state, current, targetLevel, currentTick)
+      : maturedSlots;
+  return materializePersistentStructureState({
+    id: current.id,
+    ownerId: current.ownerId,
+    type: current.type,
+    cellId: current.cellId,
+    completedLevel: targetLevel,
+    active: true,
+    ...(chargeSlots === undefined ? {} : { chargeSlots }),
+    acquisitionPath: current.acquisitionPath,
+  });
+}
+
+export function resolvePersistentStructureLifecycleTick(
+  state: MatchState,
+  nextOwnership: readonly (string | null)[],
+  currentTick: number,
+): readonly PersistentStructureState[] {
+  if (nextOwnership.length !== state.ownership.length) {
+    throw new Error("structure lifecycle ownership length must match MatchState");
+  }
+  if (!Number.isSafeInteger(currentTick) || currentTick < 0) {
+    throw new Error("structure lifecycle tick must be a non-negative safe integer");
+  }
+
+  const afterCapture = resolveCaptureTransfers(state, nextOwnership);
+  const postCaptureState = {
+    ...state,
+    ownership: nextOwnership,
+    structures: afterCapture,
+  } as MatchState;
+  return materializePersistentStructures(
+    afterCapture.map((structure) =>
+      progressStructure(postCaptureState, structure, currentTick),
+    ),
+  );
 }
