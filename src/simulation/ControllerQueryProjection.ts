@@ -200,6 +200,7 @@ function isWater(terrain: SimulationTerrain): boolean {
 function isCoast(state: MatchState, id: CellId): boolean {
   const terrain = state.map.terrainAt(id);
   return (
+    terrain !== "SHALLOW_WATER" &&
     landTerrainBaseSpec(terrain).landTraversable &&
     state.map
       .cardinalNeighbors(id)
