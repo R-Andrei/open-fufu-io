@@ -231,7 +231,19 @@ describe("target mobile-unit runtime foundation", () => {
     ).toThrow(/progress/i);
   });
 
-  it("rejects sparse unit collections and strips undeclared frozen authoritative state", () => {
+  it("rejects sparse authoritative mobile-unit collections", () => {
+    const map = syntheticMap(3, 1);
+    const sparseUnits = new Array<MobileUnitState>(1);
+
+    expect(() =>
+      materializeMobileUnitCollection(map, ["alpha"], {
+        mobileUnits: sparseUnits,
+        nextMobileUnitOrdinal: 1,
+      }),
+    ).toThrow(/mobileUnits|sparse|dense/i);
+  });
+
+  it("strips undeclared state even from already-frozen unit and route objects", () => {
     const map = syntheticMap(3, 1);
     const owners = ["alpha"] as const;
     const created = createMobileUnit(map, owners, emptyCollection(), {
@@ -240,15 +252,6 @@ describe("target mobile-unit runtime foundation", () => {
       movementClass: "TANK",
       cellId: 0,
     });
-
-    const sparseUnits = new Array<MobileUnitState>(1);
-    expect(() =>
-      materializeMobileUnitCollection(map, owners, {
-        mobileUnits: sparseUnits,
-        nextMobileUnitOrdinal: 1,
-      }),
-    ).toThrow(/mobileUnits|sparse|dense/i);
-
     const routed = assignMobileUnitRoute(map, created.unit, {
       cells: [0, 1, 2],
       edgeWeights: [10, 10],
