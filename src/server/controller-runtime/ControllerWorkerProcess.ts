@@ -125,6 +125,8 @@ const hardenGlobalSource = `
     const __openFufuGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
     const __openFufuReflectConstruct = Reflect.construct;
     const __openFufuNumberIsFinite = Number.isFinite;
+    const __openFufuPromiseResolve = Promise.resolve.bind(Promise);
+    const __openFufuPromiseThen = Function.prototype.call.bind(Promise.prototype.then);
     let __openFufuAllocatorFaulted = false;
 
     const __openFufuIsAllocatorFailure = (error) =>
@@ -211,7 +213,9 @@ const hardenGlobalSource = `
       SetCtor: Set,
       setHas: __openFufuSetHas,
       setAdd: __openFufuSetAdd,
-      setDelete: __openFufuSetDelete
+      setDelete: __openFufuSetDelete,
+      promiseResolve: __openFufuPromiseResolve,
+      promiseThen: __openFufuPromiseThen
     });
 
     __openFufuDefineProperty(globalThis, "__openFufuPrimordials", {
@@ -322,9 +326,10 @@ const invokeEntrypointSource = `
   };
 
   let hostQuerySequence = 0;
-  const hostQuery = async (operation, args) => {
+  let hostQuerySettlement = primordials.promiseResolve();
+  const hostQuery = (operation, args) => {
     hostQuerySequence += 1;
-    const value = await $1.apply(
+    const bridgeResult = $1.apply(
       undefined,
       [{ sequence: hostQuerySequence, operation, args }],
       {
@@ -332,7 +337,20 @@ const invokeEntrypointSource = `
         result: { promise: true, copy: true }
       }
     );
-    return deepFreeze(value);
+    const orderedResult = primordials.promiseThen(
+      hostQuerySettlement,
+      () => bridgeResult
+    );
+    const frozenResult = primordials.promiseThen(
+      orderedResult,
+      (value) => deepFreeze(value)
+    );
+    hostQuerySettlement = primordials.promiseThen(
+      frozenResult,
+      () => undefined,
+      () => undefined
+    );
+    return frozenResult;
   };
 
   const localSpatial = (operation, args) => {
