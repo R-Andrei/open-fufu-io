@@ -1,0 +1,124 @@
+import { OFFICIAL_AI_BASELINE_CHARACTER_PROFILE } from "../design/official-ai/character-configurations.config";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { OfficialAiControllerHost } from "../src/official-ai/OfficialAiController";
+import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import {
+  CONTROLLER_QUERY_LIMITS,
+  InProcessTestControllerHost,
+  projectLawfulControllerObservation,
+} from "../src/simulation/ControllerRuntime";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+
+function emptyRules() {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
+
+function baselineFixture() {
+  const match = new MatchRuntime(
+    createMicroSimulationSpec({
+      seed: "controller-spatial-migration",
+      width: 2,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS"],
+      initialOwners: ["alpha", null],
+      factions: [
+        { id: "alpha", rules: emptyRules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  match.acceptAction({
+    type: "GRANT_POPULATION",
+    factionId: "alpha",
+    amount: 1,
+  });
+  match.tick();
+  return match;
+}
+
+describe("controller spatial API migration", () => {
+  it("removes the eager cell array from the raw lawful observation", () => {
+    const match = baselineFixture();
+    const observation = projectLawfulControllerObservation(
+      match.snapshot(),
+      "alpha",
+      0,
+    );
+
+    expect(Object.prototype.hasOwnProperty.call(observation, "cells")).toBe(false);
+  });
+
+  it("gives in-process controllers the current local map/cells/segments surface", () => {
+    const match = baselineFixture();
+    let spatialSurfaceSeen = false;
+
+    const receipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha: {
+          decide(context) {
+            if (
+              context.map === undefined ||
+              context.cells === undefined ||
+              context.segments === undefined
+            ) {
+              throw new Error("current controller spatial surface missing");
+            }
+            expect(Array.isArray(context.cells)).toBe(false);
+            expect(context.map.cellCount).toBe(2);
+            expect(context.map.terrainAt(0)).toBe("PLAINS");
+            expect(context.cells.owner(0)).toBe("alpha");
+            expect(context.cells.owner(1)).toBeNull();
+            expect(context.cells.owner(2)).toBeUndefined();
+            expect(context.segments.cellIds(0)).toBeUndefined();
+            spatialSurfaceSeen = true;
+            return { commands: [] };
+          },
+        },
+      }),
+    );
+
+    expect(spatialSurfaceSeen).toBe(true);
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
+      true,
+    );
+  });
+
+  it("lets BASELINE_D0 preserve its existing expansion decision without the eager array", () => {
+    const match = baselineFixture();
+    const state = match.snapshot();
+    const observation = projectLawfulControllerObservation(state, "alpha", 0);
+    const querySession = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+    );
+    const host = new OfficialAiControllerHost([
+      {
+        factionId: "alpha",
+        profile: OFFICIAL_AI_BASELINE_CHARACTER_PROFILE,
+      },
+    ]);
+
+    const result = host.invoke("alpha", observation, querySession);
+
+    expect(result).toEqual({
+      ok: true,
+      output: {
+        directives: {
+          set: [
+            {
+              kind: "LAND_OPERATION",
+              key: "official-ai:BASELINE_D0:neutral-expansion",
+              operation: "NEUTRAL_EXPANSION",
+              population: 1,
+              source: { kind: "CELLS", ids: [0] },
+              target: { kind: "CELLS", ids: [1] },
+            },
+          ],
+        },
+      },
+    });
+  });
+});

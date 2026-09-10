@@ -424,7 +424,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await callbackTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "TIMEOUT" },
       });
 
       const moduleTimeout = new ProductionControllerHost(pool, {
@@ -435,13 +435,140 @@ describe("production controller sandbox process", () => {
       });
       expect(await moduleTimeout.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "TIMEOUT" },
       });
 
       const healthy = healthyHost(pool);
       expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
         output: { commands: [], log: "healthy" },
+      });
+    });
+  });
+
+  it("counts compilation inside the single module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(
+            `/*${"x".repeat(8 * 1024 * 1024)}*/\n` +
+              "export function decide() { return { commands: [] }; }",
+          ),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 20,
+          moduleEvaluationTimeoutMs: 5,
+          isolateMemoryMb: 128,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "TIMEOUT" });
+      expect(await healthyHost(pool, "after-compile-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-compile-timeout" },
+      });
+    });
+  });
+
+  it("counts top-level-await settlement inside the module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          await new Promise(() => {});
+          export function decide() { return { commands: [] }; }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "TIMEOUT" },
+      });
+      expect(await healthyHost(pool, "after-tla-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-tla-timeout" },
+      });
+    });
+  });
+
+  it("allows top-level await that settles inside the module-initialization timeout budget", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          await Promise.resolve();
+          export function decide() {
+            return { commands: [], log: "tla-settled" };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "tla-settled" },
+      });
+    });
+  });
+
+  it("bounds getter-backed result materialization inside the callback timeout", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            return {
+              commands: [],
+              get log() {
+                while (true) {}
+              },
+            };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "TIMEOUT" },
+      });
+      expect(await healthyHost(pool, "after-getter-timeout").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-getter-timeout" },
+      });
+    });
+  });
+
+  it("rejects an oversized decision inside the worker before parent IPC", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const largeName = "x".repeat(2048);
+              return {
+                commands: [],
+                debug: Array.from({ length: 256 }, (_, index) => ({
+                  kind: "METRIC",
+                  name: largeName + String(index),
+                  value: index,
+                })),
+              };
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 20,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
+      expect(await healthyHost(pool, "after-oversized-output").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-oversized-output" },
       });
     });
   });
@@ -456,7 +583,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await importing.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "RUNTIME_ERROR" },
+        fault: { code: "SANDBOX_VIOLATION" },
       });
 
       const malformed = new ProductionControllerHost(pool, {
@@ -466,7 +593,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await malformed.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
-        fault: { code: "INVALID_OUTPUT" },
+        fault: { code: "RUNTIME_ERROR" },
       });
     });
   });
@@ -535,7 +662,74 @@ describe("production controller sandbox process", () => {
     }
   });
 
-  it("normalizes worker death, replaces the failed process, and resumes service", async () => {
+  it("contains actual isolate memory exhaustion and leaves the worker pool usable", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const retained = [];
+              const twoMegabytes = 2 * 1024 * 1024;
+              while (true) {
+                const array = new Uint8Array(twoMegabytes);
+                for (let offset = 0; offset < twoMegabytes; offset += 4096) {
+                  array[offset] = 1;
+                }
+                retained.push(array);
+              }
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 2_000,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
+      expect(await healthyHost(pool, "after-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-memory-limit" },
+      });
+    });
+  });
+
+  it("contains fatal isolate heap exhaustion and leaves the worker pool usable", async () => {
+    await withPool(async (pool) => {
+      const response = await pool.invoke(
+        Object.freeze({
+          factionId: "alpha",
+          artifact: artifact(`
+            export function decide() {
+              const retained = [];
+              while (true) {
+                retained.push(new Array(100_000).fill(0));
+              }
+            }
+          `),
+          hook: "DECIDE" as const,
+          entrypoint: "decide",
+          context: ordinaryObservation(),
+          memoryJson: "{}",
+          timeoutMs: 2_000,
+          moduleEvaluationTimeoutMs: 100,
+          isolateMemoryMb: 32,
+        }),
+      );
+
+      expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
+      expect(await healthyHost(pool, "after-fatal-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "after-fatal-memory-limit" },
+      });
+    });
+  });
+
+  it("normalizes catastrophic worker abort, replaces the failed process, and resumes service", async () => {
     await withPool(async (pool) => {
       const originalPid = pool.workerProcessIds()[0];
       if (originalPid === undefined) throw new Error("expected worker pid");
@@ -549,7 +743,7 @@ describe("production controller sandbox process", () => {
       });
       const pending = stuck.invoke("alpha", ordinaryObservation());
       await new Promise((resolve) => setTimeout(resolve, 10));
-      process.kill(originalPid, "SIGKILL");
+      process.kill(originalPid, "SIGABRT");
 
       expect(await pending).toEqual({
         ok: false,

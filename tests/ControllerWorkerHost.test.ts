@@ -324,7 +324,7 @@ describe("production controller worker host", () => {
     const tooManyQueries = await host.invoke("alpha", ordinaryObservation());
     const tooManyCells = await host.invoke("alpha", ordinaryObservation());
 
-    expect(oversized).toEqual({ ok: false, fault: { code: "INVALID_OUTPUT" } });
+    expect(oversized).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(tooManyQueries).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(tooManyCells).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
@@ -412,7 +412,192 @@ describe("production controller worker host", () => {
     });
   });
 
-  it("normalizes worker rejection and worker-death responses without exposing process errors", async () => {
+  it("proves literal lower, exact, and upper boundaries for deterministic production ceilings", async () => {
+    type Usage = { queries: number; materializedCells: number };
+    const encoder = new TextEncoder();
+    const zeroUsage: Usage = { queries: 0, materializedCells: 0 };
+
+    const invoke = async (
+      output: ControllerDecision,
+      usage: Usage = zeroUsage,
+    ) => {
+      const pool = new RecordingPool(() => ({ ok: true, output, usage }));
+      const host = new ProductionControllerHost(pool, { alpha: artifact });
+      return host.invoke("alpha", ordinaryObservation());
+    };
+
+    const expectRuntimeBoundary = async (
+      limit: number,
+      build: (value: number) => { output: ControllerDecision; usage?: Usage },
+    ) => {
+      for (const [delta, accepted] of [
+        [-1, true],
+        [0, true],
+        [1, false],
+      ] as const) {
+        const testCase = build(limit + delta);
+        const result = await invoke(testCase.output, testCase.usage ?? zeroUsage);
+        if (accepted) {
+          expect(result.ok).toBe(true);
+        } else {
+          expect(result).toEqual({
+            ok: false,
+            fault: { code: "RUNTIME_ERROR" },
+          });
+        }
+      }
+    };
+
+    const utf8Payload = (bytes: number): string =>
+      "é".repeat(Math.floor(bytes / 2)) + (bytes % 2 === 0 ? "" : "x");
+
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
+      (queries) => ({
+        output: { commands: [] },
+        usage: { queries, materializedCells: 0 },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.materializedCellsPerDecision,
+      (materializedCells) => ({
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision,
+      (count) => ({
+        output: {
+          commands: Array.from({ length: count }, (_, index) => ({
+            kind: "CAPITULATE" as const,
+            key: `command-boundary-${index}`,
+          })),
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision,
+      (count) => ({
+        output: {
+          directives: {
+            end: Array.from(
+              { length: count },
+              (_, index) => `directive-boundary-${index}`,
+            ),
+          },
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.policyRulesPerDecision,
+      (count) => ({
+        output: {
+          directives: {
+            set: [
+              {
+                kind: "DEFENSE_PRIORITY" as const,
+                key: "policy-boundary",
+                priority: {
+                  rules: Array.from({ length: count }, (_, index) => ({
+                    selector: {
+                      kind: "OWNER" as const,
+                      factionId: index % 2 === 0 ? "alpha" : "beta",
+                    },
+                    weight: index + 1,
+                  })),
+                },
+              },
+            ],
+          },
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.debugItemsPerDecision,
+      (count) => ({
+        output: {
+          debug: Array.from({ length: count }, (_, index) => ({
+            kind: "METRIC" as const,
+            name: `debug-boundary-${index}`,
+            value: index,
+          })),
+        },
+      }),
+    );
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.logBytesPerDecision,
+      (bytes) => {
+        const log = utf8Payload(bytes);
+        expect(encoder.encode(log).byteLength).toBe(bytes);
+        return { output: { log } };
+      },
+    );
+
+    const serializedTemplate: ControllerDecision = {
+      debug: [{ kind: "METRIC", name: "", value: 0 }],
+    };
+    const serializedOverhead = encoder.encode(
+      JSON.stringify(serializedTemplate),
+    ).byteLength;
+    await expectRuntimeBoundary(
+      PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes,
+      (bytes) => {
+        const name = utf8Payload(bytes - serializedOverhead);
+        const output: ControllerDecision = {
+          debug: [{ kind: "METRIC", name, value: 0 }],
+        };
+        expect(encoder.encode(JSON.stringify(output)).byteLength).toBe(bytes);
+        return { output };
+      },
+    );
+
+    const memoryOverhead = encoder.encode(JSON.stringify({ x: "" })).byteLength;
+    for (const [delta, accepted] of [
+      [-1, true],
+      [0, true],
+      [1, false],
+    ] as const) {
+      const bytes = PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes + delta;
+      const memory = { x: utf8Payload(bytes - memoryOverhead) };
+      expect(encoder.encode(JSON.stringify(memory)).byteLength).toBe(bytes);
+      const result = await invoke({ commands: [], memory });
+      if (accepted) {
+        expect(result.ok).toBe(true);
+      } else {
+        expect(result).toEqual({
+          ok: false,
+          fault: { code: "MEMORY_LIMIT" },
+        });
+      }
+    }
+  });
+
+  it("preserves public worker-fault categories while containing worker death", async () => {
+    const workerFaults: readonly [ControllerWorkerResponse, string][] = [
+      [{ ok: false, fault: "TIMEOUT" }, "TIMEOUT"],
+      [{ ok: false, fault: "MEMORY_LIMIT" }, "MEMORY_LIMIT"],
+      [{ ok: false, fault: "SANDBOX_VIOLATION" }, "SANDBOX_VIOLATION"],
+      [{ ok: false, fault: "INVALID_OUTPUT" }, "RUNTIME_ERROR"],
+      [{ ok: false, fault: "WORKER_DIED" }, "RUNTIME_ERROR"],
+      [{ ok: false, fault: "RUNTIME_ERROR" }, "RUNTIME_ERROR"],
+    ];
+    let cursor = 0;
+    const pool = new RecordingPool(() => workerFaults[cursor++]?.[0] ?? {
+      ok: false,
+      fault: "RUNTIME_ERROR",
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    for (const [, expectedCode] of workerFaults) {
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: expectedCode },
+      });
+    }
+  });
+
+  it("normalizes thrown worker transport failures and worker death to runtime error without exposing process details", async () => {
     let invocation = 0;
     const pool = new RecordingPool(() => {
       invocation += 1;
@@ -429,5 +614,233 @@ describe("production controller worker host", () => {
       ok: false,
       fault: { code: "RUNTIME_ERROR" },
     });
+  });
+
+  it("maps malformed memory to runtime error and memory quota overflow to memory limit without committing either", async () => {
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: { commands: [], memory: { invalid: Number.NaN } },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      if (invocation === 2) {
+        return {
+          ok: true,
+          output: {
+            commands: [],
+            memory: {
+              oversized: "x".repeat(PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes),
+            },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "MEMORY_LIMIT" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
+  });
+
+  it("enforces the canonical TEAM_SIGNAL payload byte limit without charging key or channel bytes", async () => {
+    const payloads = [
+      "x".repeat(1021),
+      "x".repeat(1022),
+      "x".repeat(1023),
+      "é".repeat(511),
+      "é".repeat(512),
+    ];
+    let cursor = 0;
+    const pool = new RecordingPool(() => ({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[cursor++],
+          },
+        ],
+      },
+      usage: { queries: 0, materializedCells: 0 },
+    }));
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[0],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[1],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: {
+        commands: [
+          {
+            kind: "TEAM_SIGNAL",
+            key: "k".repeat(4096),
+            channel: "c".repeat(4096),
+            payload: payloads[3],
+          },
+        ],
+      },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+  });
+
+  it("rejects malformed nested decisions as runtime faults rather than treating copied data as typed decisions", async () => {
+    const malformedOutputs: readonly unknown[] = [
+      { commands: [null] },
+      { commands: [{ kind: "CAPITULATE" }] },
+      { directives: { set: [null] } },
+      { directives: { end: [1] } },
+      { debug: [null] },
+    ];
+
+    for (const output of malformedOutputs) {
+      const pool = new RecordingPool(() => ({
+        ok: true,
+        output,
+        usage: { queries: 0, materializedCells: 0 },
+      }));
+      const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+    }
+  });
+
+  it("rejects malformed normal output before committing its proposed memory", async () => {
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: {
+            commands: [null],
+            memory: { mustNotCommit: true },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: artifact });
+
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}"]);
+  });
+
+  it("rejects malformed Spawn output before committing its proposed memory", async () => {
+    const spawnArtifact: ControllerRuntimeArtifact = Object.freeze({
+      moduleSource: "export function chooseInfluence() { return { centers: [] }; }",
+      entrypoints: Object.freeze({
+        decide: "decide",
+        chooseInfluence: "chooseInfluence",
+      }),
+    });
+    let invocation = 0;
+    const seenMemoryJson: string[] = [];
+    const pool = new RecordingPool((request) => {
+      seenMemoryJson.push(request.memoryJson);
+      invocation += 1;
+      if (invocation === 1) {
+        return {
+          ok: true,
+          output: {
+            centers: null,
+            memory: { mustNotCommit: true },
+          },
+          usage: { queries: 0, materializedCells: 0 },
+        };
+      }
+      return {
+        ok: true,
+        output: { commands: [] },
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
+    const host = new ProductionControllerHost(pool, { alpha: spawnArtifact });
+
+    expect(
+      await host.chooseInfluence(
+        "alpha",
+        { phase: "INFLUENCE", memory: {} } as never,
+      ),
+    ).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+      ok: true,
+      output: { commands: [] },
+    });
+    expect(seenMemoryJson).toEqual(["{}", "{}"]);
   });
 });

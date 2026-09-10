@@ -164,7 +164,14 @@ function effectivePopulationBearing(
 ): boolean {
   const base = landTerrainBaseSpec(terrain).populationBearing;
   const ownerId = state.ownership[id] ?? null;
-  if (ownerId === null || terrain === "TEST") return base;
+  if (
+    ownerId === null ||
+    terrain === "TEST" ||
+    terrain === "DEEP_WATER" ||
+    terrain === "IMPASSABLE"
+  ) {
+    return base;
+  }
 
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) return base;
@@ -509,8 +516,6 @@ function structureIsLawfullyVisible(
   return resolveTacticalVisibility({
     selfOwned: structure.ownerId === context.requesterFactionId,
     explicitPublic,
-    // Direct-reveal records are not yet present in MatchState. Do not invent an
-    // ID-addressable substitute at this projection boundary.
     directRevealActive: false,
     concealed,
     remotelyObserved,

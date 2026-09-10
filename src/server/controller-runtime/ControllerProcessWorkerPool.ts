@@ -124,18 +124,25 @@ type QueuedInvocation = Readonly<{
   resolve: (response: ControllerWorkerResponse) => void;
 }>;
 
+type QueryResultState = {
+  nextQueryId: number;
+  readonly buffered: Map<number, WorkerQueryResultEnvelope["result"]>;
+};
+
 type PendingInvocation = Readonly<{
   requestId: number;
   querySession?: ControllerQuerySession;
   resolve: (response: ControllerWorkerResponse) => void;
   watchdog: NodeJS.Timeout;
   seenQueryIds: Set<number>;
+  queryResults: QueryResultState;
 }>;
 
 type WorkerSlot = {
   child: ChildProcess;
   pending?: PendingInvocation;
   failed: boolean;
+  catastrophicMemoryLimit: boolean;
   startedAtMs: number;
   publicSpatialCacheKey?: number;
   publicOwnershipCacheKey?: number;
@@ -155,6 +162,11 @@ const workerEntrypoint = resolveWorkerEntrypoint();
 const controllerWorkerFault = Object.freeze({
   ok: false as const,
   fault: "WORKER_DIED" as const,
+});
+
+const controllerMemoryLimitFault = Object.freeze({
+  ok: false as const,
+  fault: "MEMORY_LIMIT" as const,
 });
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -380,7 +392,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         return Promise.resolve();
       }
       return new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
+        child.once("close", () => resolve());
         child.kill("SIGTERM");
       });
     });
@@ -392,20 +404,24 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     const child = fork(workerEntrypoint, [], {
       execPath: process.execPath,
       execArgv: ["--no-node-snapshot", "--import", "tsx"],
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      stdio: ["ignore", "ignore", "ignore", "ipc", "pipe"],
       serialization: "advanced",
     });
 
     const slot: WorkerSlot = {
       child,
       failed: false,
+      catastrophicMemoryLimit: false,
       startedAtMs: this.nowMs(),
     };
 
+    child.stdio[4]?.on("data", () => {
+      slot.catastrophicMemoryLimit = true;
+    });
     child.on("message", (message) => this.handleMessage(slot, message));
     child.once("error", () => this.markWorkerFailed(slot));
     child.once("disconnect", () => this.markWorkerFailed(slot));
-    child.once("exit", () => this.handleExit(index, slot));
+    child.once("close", () => this.handleClose(index, slot));
 
     return slot;
   }
@@ -495,6 +511,10 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         resolve: queued.resolve,
         watchdog,
         seenQueryIds: new Set<number>(),
+        queryResults: {
+          nextQueryId: 1,
+          buffered: new Map<number, WorkerQueryResultEnvelope["result"]>(),
+        },
       });
 
       let publicSpatial: WorkerPublicSpatialUpdate | undefined;
@@ -586,23 +606,49 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
     const session = pending.querySession;
     if (session === undefined) {
-      this.sendQueryResult(slot, message.requestId, message.queryId, { ok: false });
+      this.queueQueryResult(slot, message.requestId, message.queryId, { ok: false });
       return;
     }
 
     void resolveControllerWorkerQuery(session, message.query).then(
       (value) => {
-        this.sendQueryResult(slot, message.requestId, message.queryId, {
+        this.queueQueryResult(slot, message.requestId, message.queryId, {
           ok: true,
           value,
         });
       },
       () => {
-        this.sendQueryResult(slot, message.requestId, message.queryId, {
+        this.queueQueryResult(slot, message.requestId, message.queryId, {
           ok: false,
         });
       },
     );
+  }
+
+  private queueQueryResult(
+    slot: WorkerSlot,
+    requestId: number,
+    queryId: number,
+    result: WorkerQueryResultEnvelope["result"],
+  ): void {
+    const pending = slot.pending;
+    if (
+      slot.failed ||
+      pending === undefined ||
+      pending.requestId !== requestId
+    ) {
+      return;
+    }
+
+    pending.queryResults.buffered.set(queryId, Object.freeze(result));
+    while (pending.queryResults.buffered.has(pending.queryResults.nextQueryId)) {
+      const nextQueryId = pending.queryResults.nextQueryId;
+      const nextResult = pending.queryResults.buffered.get(nextQueryId);
+      if (nextResult === undefined) return;
+      pending.queryResults.buffered.delete(nextQueryId);
+      pending.queryResults.nextQueryId += 1;
+      this.sendQueryResult(slot, requestId, nextQueryId, nextResult);
+    }
   }
 
   private sendQueryResult(
@@ -648,22 +694,29 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private markWorkerFailed(slot: WorkerSlot): void {
     if (slot.failed) return;
     slot.failed = true;
-    this.failPending(slot);
     if (slot.child.exitCode === null && slot.child.signalCode === null) {
       slot.child.kill("SIGKILL");
     }
   }
 
-  private failPending(slot: WorkerSlot): void {
+  private failPending(
+    slot: WorkerSlot,
+    response: ControllerWorkerResponse = controllerWorkerFault,
+  ): void {
     const pending = slot.pending;
     if (pending === undefined) return;
     slot.pending = undefined;
     clearTimeout(pending.watchdog);
-    pending.resolve(controllerWorkerFault);
+    pending.resolve(response);
   }
 
-  private handleExit(index: number, slot: WorkerSlot): void {
-    this.failPending(slot);
+  private handleClose(index: number, slot: WorkerSlot): void {
+    this.failPending(
+      slot,
+      slot.catastrophicMemoryLimit
+        ? controllerMemoryLimitFault
+        : controllerWorkerFault,
+    );
     if (this.closing) return;
     if (this.slots[index] !== slot) return;
 
