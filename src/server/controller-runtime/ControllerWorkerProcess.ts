@@ -993,19 +993,18 @@ async function executeRequest(
     }
 
     queryReference = new ivm.Reference((query: unknown) => {
+      if (!isPlainRecord(query)) {
+        return Promise.reject(new Error("invalid controller query"));
+      }
+      const sequence = query.sequence;
       if (
         !isControllerWorkerQueryRequest(query) ||
-        !isPlainRecord(query) ||
-        !Number.isInteger(query.sequence) ||
-        (query.sequence as number) <= 0
+        !Number.isInteger(sequence) ||
+        (sequence as number) <= 0
       ) {
         return Promise.reject(new Error("invalid controller query"));
       }
-      return requestHostQuery(
-        requestId,
-        query.sequence as number,
-        query,
-      );
+      return requestHostQuery(requestId, sequence as number, query);
     });
     spatialReference = new ivm.Reference((query: unknown) =>
       resolvePublicSpatial(spatialCacheKey, query),
