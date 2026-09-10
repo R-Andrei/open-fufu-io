@@ -1,5 +1,4 @@
 import type {
-  CellView,
   ControllerDecision,
   ControllerMemory,
   DecisionFailure,
@@ -21,12 +20,22 @@ import {
   type ControllerQuerySession,
 } from "./ControllerQueryProjection";
 import {
+  createControllerSpatialSurface,
+  type ControllerSpatialSurface,
+} from "./ControllerSpatialSurface";
+import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
 import type { MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
+
+export {
+  createControllerSpatialSurface,
+  type ControllerSpatialSurface,
+} from "./ControllerSpatialSurface";
+export type { ControllerQuerySession } from "./ControllerQueryProjection";
 
 export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
@@ -61,24 +70,23 @@ export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
   readonly population: LawfulPopulationObservation;
 }
 
-export type LawfulLandCellObservation = Readonly<
-  Pick<CellView, "id" | "ownerId"> & {
-    readonly terrain: CellView["terrain"] | "TEST";
-  }
->;
-
 export interface LawfulControllerObservation {
   readonly tick: number;
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
-  /** Legacy synthetic-fixture convenience only; normal runtime uses CellsApi queries. */
-  readonly cells?: readonly LawfulLandCellObservation[];
   readonly lastDecision?: DecisionReceipt;
 }
 
-export interface HostedLawfulControllerObservation
+export interface LawfulInProcessControllerObservation
   extends LawfulControllerObservation {
+  readonly map?: ControllerSpatialSurface["map"];
+  readonly cells?: ControllerSpatialSurface["cells"];
+  readonly segments?: ControllerSpatialSurface["segments"];
+}
+
+export interface HostedLawfulControllerObservation
+  extends LawfulInProcessControllerObservation {
   readonly memory: Readonly<ControllerMemory>;
 }
 
@@ -121,7 +129,7 @@ export interface ControllerHost {
 }
 
 export type InProcessController = (
-  observation: LawfulControllerObservation,
+  observation: LawfulInProcessControllerObservation,
 ) => ControllerDecision | void;
 
 export interface InProcessTestControllerCallbacks {
@@ -314,6 +322,17 @@ function projectHostedContext<T extends object>(
   };
 }
 
+function projectInProcessObservation(
+  observation: LawfulControllerObservation,
+  querySession?: ControllerQuerySession,
+): LawfulInProcessControllerObservation {
+  if (querySession === undefined) return observation;
+  return Object.freeze({
+    ...observation,
+    ...createControllerSpatialSurface(querySession),
+  });
+}
+
 function materializeControllerValue(
   value: unknown,
   ancestors: Set<object>,
@@ -438,23 +457,30 @@ export class InProcessTestControllerHost implements ControllerHost {
   invoke(
     factionId: string,
     observation: LawfulControllerObservation,
-    _querySession?: ControllerQuerySession,
+    querySession?: ControllerQuerySession,
   ): ControllerHostInvocationResult<ControllerDecision> {
     const registration = this.controllers[factionId];
     if (registration === undefined) return hostSuccess();
+    const inProcessObservation = projectInProcessObservation(
+      observation,
+      querySession,
+    );
 
     if (typeof registration === "function") {
       return this.executeInvocation<ControllerDecision>(
         factionId,
         "DECIDE",
-        () => registration(observation),
+        () => registration(inProcessObservation),
       );
     }
 
     return this.executeInvocation<ControllerDecision>(
       factionId,
       "DECIDE",
-      (memory) => registration.decide?.(projectHostedContext(observation, memory)),
+      (memory) =>
+        registration.decide?.(
+          projectHostedContext(inProcessObservation, memory),
+        ),
     );
   }
 
@@ -621,21 +647,6 @@ function freezeSelfFactionObservation(
   });
 }
 
-function freezeLandCellObservations(
-  state: MatchState,
-): readonly LawfulLandCellObservation[] {
-  return Object.freeze(
-    state.map.terrain.map((terrain, id) => {
-      const ownerId = state.ownership[id] ?? null;
-      return Object.freeze({
-        id,
-        terrain: terrain as LawfulLandCellObservation["terrain"],
-        ...(ownerId === null ? {} : { ownerId }),
-      });
-    }),
-  );
-}
-
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
@@ -652,17 +663,12 @@ export function projectLawfulControllerObservation(
       .sort((left, right) => compareIds(left.id, right.id))
       .map((faction) => freezeFactionObservation(faction.id, faction.status)),
   );
-  const syntheticCells =
-    state.map.source === "SYNTHETIC"
-      ? freezeLandCellObservations(state)
-      : undefined;
 
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
     me: freezeSelfFactionObservation(me.id, me.status, me.population),
     factions,
-    ...(syntheticCells === undefined ? {} : { cells: syntheticCells }),
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
