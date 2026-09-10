@@ -23,13 +23,15 @@ Each base terrain may define:
 
 - whether the cell is conquerable;
 - whether it is population-bearing and contributes Population Capacity while owned;
-- ordinary land/naval traversal;
+- ordinary land traversal;
 - structure buildability;
 - Initial Territory / exact-spawn eligibility;
 - capture/settlement-speed multiplier;
 - source offensive-pressure modifier;
 - target defensive-pressure modifier;
 - optional faction-wide effect based on owned terrain composition.
+
+Water-unit traversal is unit/system-specific rather than one terrain-global naval permission. Warship/Transport traversal is owned by [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md); Trade Ship traversal/reachability is owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md).
 
 ### Capture / settlement speed
 
@@ -58,18 +60,18 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 
 ## 1.2 Canonical base-terrain table
 
-| Terrain | Ownable | Population-bearing | Capacity | Land traversal | Naval traversal | Structures | Spawn eligible | Capture / settlement speed | Source offense | Target defense | Faction-wide effect |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| **Plains** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **110%** | `100%` | `100%` | **Population Growth `+6% × Plains share`** |
-| **Highland** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **100%** | **`+8%`** | `100%` | — |
-| **Mountain** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **80%** | `100%` | **`+15%`** | — |
-| **Desert** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **90%** | `100%` | `100%` | **All FFY event yield `+6% × Desert share`** |
-| **Forest** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **90%** | **`-5%`** | **`+10%`** | — |
-| **Tundra** | Yes | **No** | **`0`** | Yes | No | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
-| **Marsh** | Yes | Yes | `+1/cell` | Yes | No | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
-| **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
-| **Deep Water** | No | No | `0` | No | **Yes** | No | No | — | — | — | — |
-| **Impassable** | No | No | `0` | No | No | No | No | — | — | — | — |
+| Terrain | Ownable | Population-bearing | Capacity | Land traversal | Structures | Spawn eligible | Capture / settlement speed | Source offense | Target defense | Faction-wide effect |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| **Plains** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **110%** | `100%` | `100%` | **Population Growth `+6% × Plains share`** |
+| **Highland** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **100%** | **`+8%`** | `100%` | — |
+| **Mountain** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **80%** | `100%` | **`+15%`** | — |
+| **Desert** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **90%** | `100%` | `100%` | **All FFY event yield `+6% × Desert share`** |
+| **Forest** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **90%** | **`-5%`** | **`+10%`** | — |
+| **Tundra** | Yes | **No** | **`0`** | Yes | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
+| **Marsh** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
+| **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
+| **Deep Water** | No | No | `0` | No | No | No | — | — | — | — |
+| **Impassable** | No | No | `0` | No | No | No | — | — | — | — |
 
 ## 1.3 Terrain identities
 
@@ -82,8 +84,8 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 | **Forest** | Defender-favored attritional terrain. |
 | **Tundra** | Conquerable, 0 Capacity, unbuildable land. |
 | **Marsh** | Very slow acquisition with poor attack and defense performance. |
-| **Shallow Water** | Conquerable crossing terrain for ordinary land operations and naval units; 0 Capacity and unbuildable. |
-| **Deep Water** | Naval-only unconquerable water. |
+| **Shallow Water** | Conquerable crossing terrain for ordinary land operations; 0 Capacity and unbuildable. Water-unit traversal is defined by the owning unit/economy subsystem. |
+| **Deep Water** | Unconquerable water. Water-unit traversal is defined by the owning unit/economy subsystem. |
 | **Impassable** | Hard map topology. |
 
 ## 1.4 Conquerable non-population-bearing terrain
@@ -114,14 +116,15 @@ A hostile capture of Tundra/Shallow Water transfers `0` Capacity. Game-wide host
 | Ownable | **Yes** | No |
 | Capacity | `0` | `0` |
 | Ordinary land operation traversal | **Yes** | No |
-| Naval traversal | **Yes** | Yes |
 | Structures | No | No |
 | Initial Territory / exact spawn | No | No |
 | Capture / settlement speed | **70%** | — |
 | Source offense | **-15%** | — |
 | Target defense | **-15%** | — |
 
-Heavy land units use their own traversal table and do not inherit ordinary Population-operation traversal permissions.
+Heavy land units use their own traversal table and do not inherit ordinary Population-operation traversal permissions. Water-unit traversal is likewise not inferred from this terrain table; use the Warship/Transport owner and Trade Ship owner linked above.
+
+The general `COAST` spatial classification is **land-sided**. A coast cell must be a non-water ordinarily land-traversable cell with at least one cardinal neighbor whose base terrain is Shallow Water or Deep Water. A Shallow-Water or Deep-Water cell is never itself `COAST` merely because it borders another water type. This general classification is a public spatial fact and is distinct from the stricter Port-construction interface defined below.
 
 ## 1.7 Fallout overlay
 
@@ -164,7 +167,7 @@ All persistent structures have levels `1–5`; normal purchases create L1 and L5
 - Every L2–L5 upgrade takes the same structure-specific time as L1 construction.
 - A new structure is inactive until construction completes.
 - During an upgrade the previous completed level remains active; the new level activates atomically at completion.
-- Ordinary placement requires owned buildable terrain; Port additionally requires a legal coast/water interface.
+- Ordinary placement requires owned buildable terrain; Port additionally requires the exact Deep-Water interface defined in its structure-specific rules.
 - Same-type area effects use the strongest applicable same-type effect rather than stacking.
 
 Construction state is represented independently from activity and completed level:
@@ -188,6 +191,26 @@ completed structure:
 ```
 
 A rule such as P41 may change the fresh construction target without creating hidden intermediate levels. Its direct-L5 City therefore has no completed level during its five-second build, then atomically completes at L5.
+
+### Effective tick-duration finalization
+
+Persistent-structure construction and upgrade timing consumes the fully composed effective `STRUCTURE_CONSTRUCTION_TIME` value at the transition that begins the work. The owning lifecycle finalizes that tick-valued scalar exactly once:
+
+```text
+effectiveConstructionTicks
+= ceil(fullyComposedEffectiveConstructionTimeTicks)
+```
+
+The fully composed value must be finite and strictly positive before it can enter authoritative state. `construction.remainingTicks` is the resulting positive integer and ordinary lifecycle progression subtracts exactly one tick per eligible simulation tick until completion. Rounding is not repeated after individual modifier stages.
+
+Persistent-structure recharge transitions use the same tick-lattice finalization principle on `STRUCTURE_RECHARGE_TIME`:
+
+```text
+effectiveRechargeTicks
+= ceil(fullyComposedEffectiveRechargeTimeTicks)
+```
+
+The fully composed recharge value must likewise be finite and strictly positive. The finalized integer duration is snapshotted when that recharge transition begins and determines its absolute deadline; later modifier changes do not retroactively move an existing deadline. This is the persistent-structure recharge boundary used by Silo/SAM charge transitions. It is distinct from the Tank-chassis construction **work-rate** formula in Section 3.1.
 
 ### 2.1.1 Canonical radial structure fields
 
@@ -347,6 +370,8 @@ commit cell ownership + structure fate + consequences atomically
 emit immutable StructureCaptureResolved fact
 ```
 
+For the simulation tick that contains this capture, that entire territorial-capture/structure-fate transaction resolves **before** end-of-tick persistent-structure construction progression. The frozen capture context therefore observes the pre-progress `construction.remainingTicks`; a successful transfer preserves that exact value. Only after the capture transaction commits does lifecycle progression subtract the tick and perform any resulting completion. Consequently, a structure captured with `remainingTicks = 1` transfers while still incomplete and may then complete later in the same tick under the new owner. Post-transfer field queries use the new owner's effective rules at the structure's still-current completed level until any later atomic completion changes that level.
+
 ### 2.4.1 Capture context and disposition
 
 The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time.
@@ -458,6 +483,8 @@ A Fort never creates Population defenders. Its defensive-pressure effect applies
 
 Ports are Trade Ship origins/destinations, naval repair infrastructure, and Warship production structures.
 
+A Port purchase/grant requests one exact physical structure cell; Port placement does not search, snap, or substitute a nearby cell. The requested cell must first satisfy the ordinary effective ownership/buildability/occupancy rules for that acquisition path. In addition, it must have at least one **cardinally adjacent Deep Water** cell. Shallow-Water adjacency alone does not qualify, and diagonal Deep Water does not qualify. The Port itself occupies the requested buildable land-side cell, not the adjacent Deep Water. A rule that expands ordinary structure-build terrain eligibility changes only that ordinary buildability input; it does not waive the distinct Deep-Water Port-interface requirement unless the rule explicitly says so.
+
 Port level affects passive naval repair only through the table above. The L1 baseline repair rate is **50 HP/s**, so the L1→L5 rates are:
 
 ```text
@@ -515,7 +542,7 @@ During an ordinary upgrade, the previous completed level and its existing charge
 1. capacity becomes the new completed level;
 2. every pre-existing slot keeps the same `slotId`, READY/recharge state, and existing deadline;
 3. every newly added slot `oldCapacity..newCapacity-1` begins **RECHARGING**, not READY;
-4. each new slot's deadline is `activationTick + effectiveRechargeTicks` using the effective recharge duration resolved for that transition.
+4. each new slot's deadline is `activationTick + effectiveRechargeTicks` using the effective recharge duration resolved for that transition under the Section 2.1 tick finalization rule.
 
 Thus an ordinary L1→L2 activation at tick `T` preserves slot `0` and creates slot `1` with baseline `readyAtTick = T + 90`. Completing an upgrade never grants a free instant strategic launch, renumbers an existing slot, or resets an older cooling charge.
 
