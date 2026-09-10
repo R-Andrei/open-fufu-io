@@ -5,6 +5,7 @@ import { isTerrainScopeId } from "../src/core/rules/RuleComposition";
 import {
   calculateCounterResponseTick,
   canonicalCellSelectorKey,
+  isLandSideCoastTerrain,
   landTerrainBaseSpec,
 } from "../src/simulation/LandOperations";
 
@@ -105,6 +106,13 @@ describe("land-operation focused contracts", () => {
       populationBearing: false,
       landTraversable: false,
     });
+  });
+
+  it("keeps the canonical coast predicate on the land side of a Shallow/Deep Water boundary", () => {
+    expect(isLandSideCoastTerrain("PLAINS", ["SHALLOW_WATER"])).toBe(true);
+    expect(isLandSideCoastTerrain("PLAINS", ["DEEP_WATER"])).toBe(true);
+    expect(isLandSideCoastTerrain("SHALLOW_WATER", ["DEEP_WATER"])).toBe(false);
+    expect(isLandSideCoastTerrain("DEEP_WATER", ["SHALLOW_WATER"])).toBe(false);
   });
 
   it("resolves parity counter-response from one immutable pre-tick state", () => {

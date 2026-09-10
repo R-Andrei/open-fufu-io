@@ -142,6 +142,21 @@ export function landTerrainBaseSpec(terrain: TerrainType | "TEST"): LandTerrainB
   return LAND_TERRAIN_BASE_SPECS[terrain];
 }
 
+function isWaterTerrain(terrain: TerrainType | "TEST"): boolean {
+  return terrain === "SHALLOW_WATER" || terrain === "DEEP_WATER";
+}
+
+export function isLandSideCoastTerrain(
+  terrain: TerrainType | "TEST",
+  adjacentTerrains: readonly (TerrainType | "TEST")[],
+): boolean {
+  return (
+    !isWaterTerrain(terrain) &&
+    landTerrainBaseSpec(terrain).landTraversable &&
+    adjacentTerrains.some(isWaterTerrain)
+  );
+}
+
 function assertFiniteScalar(value: number, label: string): void {
   if (!Number.isFinite(value)) throw new Error(`${label} must be finite`);
 }
@@ -814,12 +829,12 @@ function selectorCellSet(
       const result = new Set<number>();
       for (let cellId = 0; cellId < map.width * map.height; cellId += 1) {
         const terrain = runtimeTerrain(map.terrain[cellId]!);
-        const land = landTerrainBaseSpec(terrain).landTraversable;
-        const adjacentWater = neighbors(map, cellId).some((neighbor) => {
-          const adjacent = runtimeTerrain(map.terrain[neighbor]!);
-          return adjacent === "SHALLOW_WATER" || adjacent === "DEEP_WATER";
-        });
-        if ((land && adjacentWater) === selector.value) result.add(cellId);
+        const adjacentTerrains = neighbors(map, cellId).map((neighbor) =>
+          runtimeTerrain(map.terrain[neighbor]!),
+        );
+        if (isLandSideCoastTerrain(terrain, adjacentTerrains) === selector.value) {
+          result.add(cellId);
+        }
       }
       return result;
     }
