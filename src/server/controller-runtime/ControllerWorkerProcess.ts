@@ -1,9 +1,13 @@
+import { randomUUID } from "node:crypto";
+import { writeSync } from "node:fs";
+
 import ivm from "isolated-vm";
 
 import type { CellId, CellSelector, SegmentId, TerrainType } from "../../core/controller/ControllerApi";
-import type {
-  ControllerWorkerRequest,
-  ControllerWorkerResponse,
+import {
+  validateProductionControllerOutput,
+  type ControllerWorkerRequest,
+  type ControllerWorkerResponse,
 } from "./ProductionControllerHost";
 
 type ControllerWorkerQueryRequest =
@@ -93,6 +97,7 @@ type WorkerPublicSpatialCache = Readonly<{
   ownerCodes: Uint32Array;
 }>;
 
+const CATASTROPHIC_FAULT_FD = 4;
 const NO_SEGMENT_ID = 0xffff;
 const NO_PUBLIC_TERRAIN = 0xff;
 const PUBLIC_TERRAIN_ORDER = Object.freeze([
@@ -110,43 +115,199 @@ const PUBLIC_TERRAIN_ORDER = Object.freeze([
 
 const hardenGlobalSource = `
   "use strict";
-  for (const name of [
-    "process",
-    "require",
-    "Buffer",
-    "fetch",
-    "WebSocket",
-    "Date",
-    "performance",
-    "crypto"
-  ]) {
-    Object.defineProperty(globalThis, name, {
+
+  (() => {
+    const __openFufuSetHas = Function.prototype.call.bind(Set.prototype.has);
+    const __openFufuSetAdd = Function.prototype.call.bind(Set.prototype.add);
+    const __openFufuSetDelete = Function.prototype.call.bind(Set.prototype.delete);
+    const __openFufuHasOwn = Function.prototype.call.bind(Object.prototype.hasOwnProperty);
+    const __openFufuDefineProperty = Object.defineProperty;
+    const __openFufuGetOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    const __openFufuReflectConstruct = Reflect.construct;
+    const __openFufuNumberIsFinite = Number.isFinite;
+    let __openFufuAllocatorFaulted = false;
+
+    const __openFufuIsAllocatorFailure = (error) =>
+      error !== null &&
+      typeof error === "object" &&
+      error.message === "Array buffer allocation failed";
+
+    const __openFufuWrapAllocatorConstructor = (name) => {
+      const NativeConstructor = globalThis[name];
+      if (typeof NativeConstructor !== "function") return;
+
+      const WrappedConstructor = new Proxy(NativeConstructor, {
+        construct(target, args, newTarget) {
+          try {
+            return __openFufuReflectConstruct(target, args, newTarget);
+          } catch (error) {
+            if (
+              newTarget === WrappedConstructor &&
+              args.length === 1 &&
+              typeof args[0] === "number" &&
+              __openFufuNumberIsFinite(args[0]) &&
+              args[0] >= 0 &&
+              __openFufuIsAllocatorFailure(error)
+            ) {
+              __openFufuAllocatorFaulted = true;
+            }
+            throw error;
+          }
+        }
+      });
+
+      __openFufuDefineProperty(globalThis, name, {
+        value: WrappedConstructor,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+
+      const prototype = NativeConstructor.prototype;
+      if (prototype !== undefined && prototype !== null) {
+        const constructorDescriptor = __openFufuGetOwnPropertyDescriptor(
+          prototype,
+          "constructor"
+        );
+        if (
+          constructorDescriptor !== undefined &&
+          constructorDescriptor.configurable
+        ) {
+          __openFufuDefineProperty(prototype, "constructor", {
+            ...constructorDescriptor,
+            value: WrappedConstructor
+          });
+        }
+      }
+    };
+
+    for (const name of [
+      "ArrayBuffer",
+      "SharedArrayBuffer",
+      "Int8Array",
+      "Uint8Array",
+      "Uint8ClampedArray",
+      "Int16Array",
+      "Uint16Array",
+      "Int32Array",
+      "Uint32Array",
+      "Float16Array",
+      "Float32Array",
+      "Float64Array",
+      "BigInt64Array",
+      "BigUint64Array"
+    ]) {
+      __openFufuWrapAllocatorConstructor(name);
+    }
+
+    const __openFufuPrimordials = Object.freeze({
+      freeze: Object.freeze,
+      keys: Object.keys,
+      is: Object.is,
+      isArray: Array.isArray,
+      numberIsFinite: __openFufuNumberIsFinite,
+      reflectOwnKeys: Reflect.ownKeys,
+      hasOwn: __openFufuHasOwn,
+      SetCtor: Set,
+      setHas: __openFufuSetHas,
+      setAdd: __openFufuSetAdd,
+      setDelete: __openFufuSetDelete
+    });
+
+    __openFufuDefineProperty(globalThis, "__openFufuPrimordials", {
+      value: __openFufuPrimordials,
+      writable: false,
+      configurable: false,
+      enumerable: false
+    });
+
+    for (const name of [
+      "process",
+      "require",
+      "Buffer",
+      "fetch",
+      "WebSocket",
+      "Date",
+      "performance",
+      "crypto",
+      "WeakRef",
+      "FinalizationRegistry"
+    ]) {
+      __openFufuDefineProperty(globalThis, name, {
+        value: undefined,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+    }
+
+    if (typeof Intl === "object" && Intl !== null) {
+      __openFufuDefineProperty(Intl, "DateTimeFormat", {
+        value: undefined,
+        writable: false,
+        configurable: false,
+        enumerable: false
+      });
+    }
+
+    __openFufuDefineProperty(Math, "random", {
       value: undefined,
       writable: false,
       configurable: false,
       enumerable: false
     });
-  }
-  Object.defineProperty(Math, "random", {
-    value: undefined,
-    writable: false,
-    configurable: false,
-    enumerable: false
-  });
+
+    return () => __openFufuAllocatorFaulted;
+  })();
 `;
 
 const invokeEntrypointSource = `
   "use strict";
-  const deepFreeze = (value, seen = new Set()) => {
+  const primordials = globalThis.__openFufuPrimordials;
+
+  const deepFreeze = (value, seen = new primordials.SetCtor()) => {
     if (value === null || (typeof value !== "object" && typeof value !== "function")) {
       return value;
     }
-    if (seen.has(value)) return value;
-    seen.add(value);
-    for (const key of Reflect.ownKeys(value)) {
+    if (primordials.setHas(seen, value)) return value;
+    primordials.setAdd(seen, value);
+    for (const key of primordials.reflectOwnKeys(value)) {
       deepFreeze(value[key], seen);
     }
-    return Object.freeze(value);
+    return primordials.freeze(value);
+  };
+
+  const materialize = (value, ancestors = new primordials.SetCtor()) => {
+    if (value === null) return null;
+    if (typeof value === "boolean" || typeof value === "string") return value;
+    if (typeof value === "number") {
+      if (!primordials.numberIsFinite(value)) throw new TypeError("non-finite result number");
+      return primordials.is(value, -0) ? 0 : value;
+    }
+    if (typeof value !== "object") throw new TypeError("non-data result value");
+    if (primordials.setHas(ancestors, value)) throw new TypeError("cyclic result value");
+    primordials.setAdd(ancestors, value);
+
+    try {
+      if (primordials.isArray(value)) {
+        const copy = [];
+        for (let index = 0; index < value.length; index += 1) {
+          if (!primordials.hasOwn(value, index)) {
+            throw new TypeError("sparse result array");
+          }
+          copy.push(materialize(value[index], ancestors));
+        }
+        return copy;
+      }
+
+      const copy = {};
+      for (const key of primordials.keys(value)) {
+        copy[key] = materialize(value[key], ancestors);
+      }
+      return copy;
+    } finally {
+      primordials.setDelete(ancestors, value);
+    }
   };
 
   const hostQuery = async (operation, args) => {
@@ -223,22 +384,24 @@ const invokeEntrypointSource = `
     try {
       output = await $0(input);
     } catch {
-      return "RUNTIME_ERROR";
+      return { status: "RUNTIME_ERROR" };
     }
 
+    if (output === undefined) return { status: "OK" };
     try {
-      Object.defineProperty(globalThis, "__openFufuResult", {
-        value: output,
-        writable: false,
-        configurable: true,
-        enumerable: false
-      });
+      return { status: "OK", output: materialize(output) };
     } catch {
-      return "RUNTIME_ERROR";
+      return { status: "INVALID_OUTPUT" };
     }
-    return "OK";
   })();
 `;
+
+class ModuleInitializationTimeoutError extends Error {
+  constructor() {
+    super("controller module initialization timed out");
+    this.name = "ModuleInitializationTimeoutError";
+  }
+}
 
 let activeRequestId: number | undefined;
 let nextQueryId = 1;
@@ -255,8 +418,30 @@ function isTimeoutError(error: unknown): boolean {
   return error instanceof Error && /timed out/i.test(error.message);
 }
 
+function isMemoryLimitMessage(message: string): boolean {
+  return /memory limit|out[- ]of[- ]memory/i.test(message);
+}
+
 function isMemoryLimitError(error: unknown): boolean {
-  return error instanceof Error && /memory limit|out of memory/i.test(error.message);
+  return error instanceof Error && isMemoryLimitMessage(error.message);
+}
+
+async function hasAllocatorMemoryFault(
+  probe: ivm.Reference<() => boolean>,
+): Promise<boolean> {
+  return (
+    (await probe.apply(undefined, [], {
+      result: { copy: true },
+    })) === true
+  );
+}
+
+function reportCatastrophicMemoryLimit(): void {
+  try {
+    writeSync(CATASTROPHIC_FAULT_FD, "1");
+  } catch {
+    // The worker still aborts; the parent will fall back to WORKER_DIED.
+  }
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -602,6 +787,79 @@ function resolvePublicSpatial(
   throw new Error("invalid controller local spatial request");
 }
 
+function createModuleInitializationDeadline(timeoutMs: number): bigint {
+  return process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n;
+}
+
+function remainingModuleInitializationMs(deadline: bigint): number {
+  const remainingNs = deadline - process.hrtime.bigint();
+  if (remainingNs <= 0n) {
+    throw new ModuleInitializationTimeoutError();
+  }
+  return Math.max(1, Math.ceil(Number(remainingNs) / 1_000_000));
+}
+
+async function withinModuleInitializationDeadline<T>(
+  deadline: bigint,
+  operation: (remainingMs: number) => Promise<T>,
+): Promise<T> {
+  const remainingMs = remainingModuleInitializationMs(deadline);
+
+  return await new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new ModuleInitializationTimeoutError()),
+      remainingMs,
+    );
+
+    operation(remainingMs).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function createModuleCompletionProbe(): Readonly<{
+  exportName: string;
+  token: string;
+}> {
+  const token = randomUUID();
+  return Object.freeze({
+    exportName: `__openFufuModuleCompletion_${token.replace(/-/g, "_")}`,
+    token,
+  });
+}
+
+function instrumentModuleSource(
+  moduleSource: string,
+  completion: Readonly<{ exportName: string; token: string }>,
+): string {
+  return `${moduleSource}\nexport var ${completion.exportName} = ${JSON.stringify(completion.token)};\n`;
+}
+
+async function evaluateModuleWithinInitializationDeadline(
+  module: ivm.Module,
+  deadline: bigint,
+  completion: Readonly<{ exportName: string; token: string }>,
+): Promise<void> {
+  await withinModuleInitializationDeadline(deadline, async (remainingMs) => {
+    await module.evaluate({ timeout: remainingMs });
+
+    while (true) {
+      const value = await module.namespace.get(completion.exportName, {
+        copy: true,
+      });
+      if (value === completion.token) return;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  });
+}
+
 async function executeRequest(
   requestId: number,
   request: ControllerWorkerRequest,
@@ -614,35 +872,73 @@ async function executeRequest(
   try {
     isolate = new ivm.Isolate({
       memoryLimit: request.isolateMemoryMb,
-      onCatastrophicError: () => process.abort(),
+      onCatastrophicError: (message) => {
+        if (isMemoryLimitMessage(message)) {
+          reportCatastrophicMemoryLimit();
+        }
+        process.abort();
+      },
     });
     const context = await isolate.createContext();
 
     const hardenScript = await isolate.compileScript(hardenGlobalSource);
-    await hardenScript.run(context, {
+    const hardenResult = await hardenScript.run(context, {
       timeout: request.moduleEvaluationTimeoutMs,
+      reference: true,
     });
+    if (
+      !(hardenResult instanceof ivm.Reference) ||
+      hardenResult.typeof !== "function"
+    ) {
+      return workerFault("RUNTIME_ERROR");
+    }
+    const allocatorFaultProbe = hardenResult as ivm.Reference<() => boolean>;
 
-    const module = await isolate.compileModule(request.artifact.moduleSource, {
-      filename: `open-fufu-controller:${request.factionId}`,
-    });
+    const completion = createModuleCompletionProbe();
+    const moduleInitializationDeadline = createModuleInitializationDeadline(
+      request.moduleEvaluationTimeoutMs,
+    );
+
+    const module = await withinModuleInitializationDeadline(
+      moduleInitializationDeadline,
+      () =>
+        isolate!.compileModule(
+          instrumentModuleSource(request.artifact.moduleSource, completion),
+          {
+            filename: `open-fufu-controller:${request.factionId}`,
+          },
+        ),
+    );
 
     if (module.dependencySpecifiers.length !== 0) {
       return workerFault("SANDBOX_VIOLATION");
     }
 
-    await module.instantiate(context, () => {
-      throw new Error("controller module imports are forbidden");
-    });
+    await withinModuleInitializationDeadline(
+      moduleInitializationDeadline,
+      () =>
+        module.instantiate(context, () => {
+          throw new Error("controller module imports are forbidden");
+        }),
+    );
 
     try {
-      await module.evaluate({
-        timeout: request.moduleEvaluationTimeoutMs,
-      });
+      await evaluateModuleWithinInitializationDeadline(
+        module,
+        moduleInitializationDeadline,
+        completion,
+      );
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
+      if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+        return workerFault("MEMORY_LIMIT");
+      }
       return workerFault("RUNTIME_ERROR");
+    }
+
+    if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+      return workerFault("MEMORY_LIMIT");
     }
 
     const entrypoint = await module.namespace.get(request.entrypoint, {
@@ -678,9 +974,9 @@ async function executeRequest(
       resolvePublicSpatial(spatialCacheKey, query),
     );
 
-    let invocationStatus: unknown;
+    let invocationResult: unknown;
     try {
-      invocationStatus = await context.evalClosure(
+      invocationResult = await context.evalClosure(
         invokeEntrypointSource,
         [
           entrypoint.derefInto(),
@@ -696,23 +992,46 @@ async function executeRequest(
     } catch (error) {
       if (isTimeoutError(error)) return workerFault("TIMEOUT");
       if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
-      return workerFault("RUNTIME_ERROR");
-    }
-
-    if (invocationStatus !== "OK") {
-      return workerFault("RUNTIME_ERROR");
-    }
-
-    let output: unknown;
-    try {
-      output = await context.global.get("__openFufuResult", { copy: true });
-    } catch {
+      if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+        return workerFault("MEMORY_LIMIT");
+      }
       return workerFault("INVALID_OUTPUT");
+    }
+
+    if (await hasAllocatorMemoryFault(allocatorFaultProbe)) {
+      return workerFault("MEMORY_LIMIT");
+    }
+
+    if (
+      invocationResult === null ||
+      typeof invocationResult !== "object" ||
+      Array.isArray(invocationResult)
+    ) {
+      return workerFault("RUNTIME_ERROR");
+    }
+
+    const invocationRecord = invocationResult as Record<string, unknown>;
+    if (invocationRecord.status === "RUNTIME_ERROR") {
+      return workerFault("RUNTIME_ERROR");
+    }
+    if (invocationRecord.status === "INVALID_OUTPUT") {
+      return workerFault("INVALID_OUTPUT");
+    }
+    if (invocationRecord.status !== "OK") {
+      return workerFault("RUNTIME_ERROR");
+    }
+
+    const validated = validateProductionControllerOutput(
+      request.hook,
+      invocationRecord.output,
+    );
+    if (!validated.ok) {
+      return workerFault(validated.fault);
     }
 
     return Object.freeze({
       ok: true as const,
-      output,
+      output: validated.output,
       usage: Object.freeze({
         queries: 0,
         materializedCells: 0,
@@ -725,7 +1044,9 @@ async function executeRequest(
   } finally {
     spatialReference?.release();
     queryReference?.release();
-    isolate?.dispose();
+    if (isolate !== undefined && !isolate.isDisposed) {
+      isolate.dispose();
+    }
   }
 }
 

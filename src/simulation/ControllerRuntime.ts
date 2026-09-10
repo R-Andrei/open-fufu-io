@@ -13,6 +13,10 @@ import type {
   SpawnReconsiderContext,
 } from "../core/controller/ControllerApi";
 import {
+  controllerOutputHasExpectedStructure,
+  type ControllerOutputKind,
+} from "../core/controller/ControllerOutputValidation";
+import {
   createControllerQuerySession,
   type ControllerQuerySession,
 } from "./ControllerQueryProjection";
@@ -24,7 +28,7 @@ import type { MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
-const MAX_CONTROLLER_MEMORY_BYTES = 131_072;
+export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
@@ -33,6 +37,8 @@ export const CONTROLLER_QUERY_LIMITS = Object.freeze({
   queriesPerDecision: 128,
   materializedCellsPerDecision: 25_000,
 });
+
+type ControllerHostFaultClassification = "INVALID_OUTPUT";
 
 export interface LawfulFactionObservation {
   readonly id: string;
@@ -76,7 +82,11 @@ export interface HostedLawfulControllerObservation
   readonly memory: Readonly<ControllerMemory>;
 }
 
-export type ControllerHostFaultCode = "RUNTIME_ERROR" | "INVALID_OUTPUT";
+export type ControllerHostFaultCode =
+  | "RUNTIME_ERROR"
+  | "TIMEOUT"
+  | "MEMORY_LIMIT"
+  | "SANDBOX_VIOLATION";
 
 export interface ControllerHostFault {
   readonly code: ControllerHostFaultCode;
@@ -138,13 +148,17 @@ type ControllerOutputWithMemory = Readonly<{
 }>;
 
 class InvalidControllerValueError extends Error {}
+export class ControllerMemoryLimitError extends InvalidControllerValueError {}
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return (
+    (prototype === Object.prototype || prototype === null) &&
+    Object.getOwnPropertySymbols(value).length === 0
+  );
 }
 
 function canonicalizeMemoryValue(
@@ -206,7 +220,7 @@ function canonicalizeMemoryValue(
   }
 }
 
-function canonicalizeControllerMemory(value: unknown): string {
+export function canonicalizeControllerMemory(value: unknown): string {
   if (!isPlainRecord(value)) {
     throw new InvalidControllerValueError(
       "controller memory root must be a plain object",
@@ -214,8 +228,8 @@ function canonicalizeControllerMemory(value: unknown): string {
   }
 
   const serialized = canonicalizeMemoryValue(value, new Set<object>());
-  if (utf8Encoder.encode(serialized).byteLength > MAX_CONTROLLER_MEMORY_BYTES) {
-    throw new InvalidControllerValueError("controller memory exceeds quota");
+  if (utf8Encoder.encode(serialized).byteLength > CONTROLLER_MEMORY_MAX_BYTES) {
+    throw new ControllerMemoryLimitError("controller memory exceeds quota");
   }
   return serialized;
 }
@@ -239,6 +253,12 @@ function deepFreezePlainValue<T>(value: T, seen = new Set<object>()): T {
   }
 
   return value;
+}
+
+export function decodeControllerMemory(
+  serialized: string,
+): Readonly<ControllerMemory> {
+  return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
 }
 
 function cloneLegalValue<T>(value: T, seen = new WeakMap<object, unknown>()): T {
@@ -367,10 +387,24 @@ function hostSuccess<T>(
     : Object.freeze({ ok: true as const, output });
 }
 
-function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationResult<T> {
+function hostFault<T>(
+  code: ControllerHostFaultCode,
+  classification?: ControllerHostFaultClassification,
+): ControllerHostInvocationResult<T> {
+  const fault = { code } as ControllerHostFault & {
+    readonly classification?: ControllerHostFaultClassification;
+  };
+  if (classification !== undefined) {
+    Object.defineProperty(fault, "classification", {
+      value: classification,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
   return Object.freeze({
     ok: false as const,
-    fault: Object.freeze({ code }),
+    fault: Object.freeze(fault),
   });
 }
 
@@ -410,13 +444,17 @@ export class InProcessTestControllerHost implements ControllerHost {
     if (registration === undefined) return hostSuccess();
 
     if (typeof registration === "function") {
-      return this.executeInvocation<ControllerDecision>(factionId, () =>
-        registration(observation),
+      return this.executeInvocation<ControllerDecision>(
+        factionId,
+        "DECIDE",
+        () => registration(observation),
       );
     }
 
-    return this.executeInvocation<ControllerDecision>(factionId, (memory) =>
-      registration.decide?.(projectHostedContext(observation, memory)),
+    return this.executeInvocation<ControllerDecision>(
+      factionId,
+      "DECIDE",
+      (memory) => registration.decide?.(projectHostedContext(observation, memory)),
     );
   }
 
@@ -425,8 +463,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnInfluenceContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
-      registration?.chooseInfluence?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnInfluenceDecision>(
+      factionId,
+      "CHOOSE_INFLUENCE",
+      (memory) => registration?.chooseInfluence?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -435,8 +475,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnReconsiderContext,
   ): ControllerHostInvocationResult<SpawnInfluenceDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnInfluenceDecision>(factionId, (memory) =>
-      registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnInfluenceDecision>(
+      factionId,
+      "RECONSIDER_INFLUENCE",
+      (memory) => registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -445,8 +487,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     context: SpawnOriginContext,
   ): ControllerHostInvocationResult<SpawnOriginDecision> {
     const registration = this.controllerCallbacks(factionId);
-    return this.executeInvocation<SpawnOriginDecision>(factionId, (memory) =>
-      registration?.chooseOrigins?.(projectHostedContext(context, memory)),
+    return this.executeInvocation<SpawnOriginDecision>(
+      factionId,
+      "CHOOSE_ORIGINS",
+      (memory) => registration?.chooseOrigins?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -460,12 +504,12 @@ export class InProcessTestControllerHost implements ControllerHost {
   }
 
   private controllerMemory(factionId: string): Readonly<ControllerMemory> {
-    const serialized = this.memoryByFaction.get(factionId) ?? "{}";
-    return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
+    return decodeControllerMemory(this.memoryByFaction.get(factionId) ?? "{}");
   }
 
   private executeInvocation<T extends ControllerOutputWithMemory>(
     factionId: string,
+    outputKind: ControllerOutputKind,
     invoke: (memory: Readonly<ControllerMemory>) => T | void,
   ): ControllerHostInvocationResult<T> {
     let output: T | void;
@@ -476,25 +520,32 @@ export class InProcessTestControllerHost implements ControllerHost {
     }
 
     if (output === undefined) return hostSuccess();
-    if (!isPlainRecord(output)) return hostFault("INVALID_OUTPUT");
+    if (!isPlainRecord(output)) {
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+    }
 
     try {
-      let nextMemory: string | undefined;
-      if (Object.prototype.hasOwnProperty.call(output, "memory")) {
-        nextMemory = canonicalizeControllerMemory(output.memory);
-      }
-
       const materialized = materializeControllerValue(
         output,
         new Set<object>(),
       ) as T;
+      if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
+        return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+      }
+
+      let nextMemory: string | undefined;
+      if (Object.prototype.hasOwnProperty.call(materialized, "memory")) {
+        nextMemory = canonicalizeControllerMemory(materialized.memory);
+      }
 
       if (nextMemory !== undefined) {
         this.memoryByFaction.set(factionId, nextMemory);
       }
       return hostSuccess(materialized);
-    } catch {
-      return hostFault("INVALID_OUTPUT");
+    } catch (error) {
+      return error instanceof ControllerMemoryLimitError
+        ? hostFault("MEMORY_LIMIT")
+        : hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
     }
   }
 }
@@ -742,7 +793,7 @@ function finalizeControllerRound(
     }
 
     const invocation = outcome.invocation;
-    if (outcome.threw === true || invocation === undefined || !invocation.ok) {
+    if (outcome.threw === true || invocation === undefined) {
       recordNormalRuntimeFault(
         outcome.factionId,
         faultCounts,
@@ -752,6 +803,19 @@ function finalizeControllerRound(
       invocationFailures.set(
         outcome.factionId,
         Object.freeze({ code: "RUNTIME_ERROR" }),
+      );
+      continue;
+    }
+    if (!invocation.ok) {
+      recordNormalRuntimeFault(
+        outcome.factionId,
+        faultCounts,
+        consecutiveFaultCounts,
+        faultedFactionIds,
+      );
+      invocationFailures.set(
+        outcome.factionId,
+        Object.freeze({ code: invocation.fault.code }),
       );
       continue;
     }

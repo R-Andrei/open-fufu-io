@@ -136,6 +136,7 @@ type WorkerSlot = {
   child: ChildProcess;
   pending?: PendingInvocation;
   failed: boolean;
+  catastrophicMemoryLimit: boolean;
   startedAtMs: number;
   publicSpatialCacheKey?: number;
   publicOwnershipCacheKey?: number;
@@ -155,6 +156,11 @@ const workerEntrypoint = resolveWorkerEntrypoint();
 const controllerWorkerFault = Object.freeze({
   ok: false as const,
   fault: "WORKER_DIED" as const,
+});
+
+const controllerMemoryLimitFault = Object.freeze({
+  ok: false as const,
+  fault: "MEMORY_LIMIT" as const,
 });
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -380,7 +386,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         return Promise.resolve();
       }
       return new Promise<void>((resolve) => {
-        child.once("exit", () => resolve());
+        child.once("close", () => resolve());
         child.kill("SIGTERM");
       });
     });
@@ -392,20 +398,24 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     const child = fork(workerEntrypoint, [], {
       execPath: process.execPath,
       execArgv: ["--no-node-snapshot", "--import", "tsx"],
-      stdio: ["ignore", "ignore", "ignore", "ipc"],
+      stdio: ["ignore", "ignore", "ignore", "ipc", "pipe"],
       serialization: "advanced",
     });
 
     const slot: WorkerSlot = {
       child,
       failed: false,
+      catastrophicMemoryLimit: false,
       startedAtMs: this.nowMs(),
     };
 
+    child.stdio[4]?.on("data", () => {
+      slot.catastrophicMemoryLimit = true;
+    });
     child.on("message", (message) => this.handleMessage(slot, message));
     child.once("error", () => this.markWorkerFailed(slot));
     child.once("disconnect", () => this.markWorkerFailed(slot));
-    child.once("exit", () => this.handleExit(index, slot));
+    child.once("close", () => this.handleClose(index, slot));
 
     return slot;
   }
@@ -648,22 +658,29 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private markWorkerFailed(slot: WorkerSlot): void {
     if (slot.failed) return;
     slot.failed = true;
-    this.failPending(slot);
     if (slot.child.exitCode === null && slot.child.signalCode === null) {
       slot.child.kill("SIGKILL");
     }
   }
 
-  private failPending(slot: WorkerSlot): void {
+  private failPending(
+    slot: WorkerSlot,
+    response: ControllerWorkerResponse = controllerWorkerFault,
+  ): void {
     const pending = slot.pending;
     if (pending === undefined) return;
     slot.pending = undefined;
     clearTimeout(pending.watchdog);
-    pending.resolve(controllerWorkerFault);
+    pending.resolve(response);
   }
 
-  private handleExit(index: number, slot: WorkerSlot): void {
-    this.failPending(slot);
+  private handleClose(index: number, slot: WorkerSlot): void {
+    this.failPending(
+      slot,
+      slot.catastrophicMemoryLimit
+        ? controllerMemoryLimitFault
+        : controllerWorkerFault,
+    );
     if (this.closing) return;
     if (this.slots[index] !== slot) return;
 

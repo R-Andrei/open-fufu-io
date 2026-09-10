@@ -7,17 +7,22 @@ import type {
   SpawnOriginDecision,
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
+import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
 import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
 import {
+  canonicalizeControllerMemory,
+  CONTROLLER_MEMORY_MAX_BYTES,
   CONTROLLER_QUERY_LIMITS,
+  ControllerMemoryLimitError,
   type ControllerHost,
+  type ControllerHostFault,
   type ControllerHostFaultCode,
   type ControllerHostInvocationResult,
   type LawfulControllerObservation,
 } from "../../simulation/ControllerRuntime";
 
 export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
-  persistentMemoryBytes: 131_072,
+  persistentMemoryBytes: CONTROLLER_MEMORY_MAX_BYTES,
   isolateMemoryMb: 32,
   decideTimeoutMs: 20,
   spawnHookTimeoutMs: 50,
@@ -99,6 +104,18 @@ type ControllerOutputWithMemory = Readonly<{
 }>;
 
 type OutputRecord = Record<string, unknown> & ControllerOutputWithMemory;
+type ControllerHostFaultClassification = "INVALID_OUTPUT";
+
+export type ProductionControllerOutputValidationResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly output?: unknown;
+      readonly nextMemory?: string;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly fault: "INVALID_OUTPUT" | "MEMORY_LIMIT";
+    }>;
 
 class InvalidTransportValueError extends Error {}
 
@@ -109,7 +126,10 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
     return false;
   }
   const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  return (
+    (prototype === Object.prototype || prototype === null) &&
+    Object.getOwnPropertySymbols(value).length === 0
+  );
 }
 
 function cloneFrozenTransportValue(
@@ -179,7 +199,7 @@ function cloneWorkerContext(context: object): Readonly<Record<string, unknown>> 
   return Object.freeze(clone);
 }
 
-function canonicalizeMemoryValue(
+function canonicalizeJsonValue(
   value: unknown,
   ancestors: Set<object>,
 ): string {
@@ -190,7 +210,7 @@ function canonicalizeMemoryValue(
       return value ? "true" : "false";
     case "number":
       if (!Number.isFinite(value)) {
-        throw new InvalidTransportValueError("controller memory number must be finite");
+        throw new InvalidTransportValueError("JSON number must be finite");
       }
       return JSON.stringify(Object.is(value, -0) ? 0 : value);
     case "string":
@@ -198,11 +218,11 @@ function canonicalizeMemoryValue(
     case "object":
       break;
     default:
-      throw new InvalidTransportValueError("controller memory is not JSON-shaped");
+      throw new InvalidTransportValueError("value is not JSON-shaped");
   }
 
   if (ancestors.has(value)) {
-    throw new InvalidTransportValueError("controller memory must be acyclic");
+    throw new InvalidTransportValueError("JSON value must be acyclic");
   }
   ancestors.add(value);
 
@@ -211,48 +231,27 @@ function canonicalizeMemoryValue(
       const entries: string[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw new InvalidTransportValueError(
-            "controller memory arrays must not be sparse",
-          );
+          throw new InvalidTransportValueError("JSON arrays must not be sparse");
         }
-        entries.push(canonicalizeMemoryValue(value[index], ancestors));
+        entries.push(canonicalizeJsonValue(value[index], ancestors));
       }
       return `[${entries.join(",")}]`;
     }
 
     if (!isPlainRecord(value)) {
-      throw new InvalidTransportValueError(
-        "controller memory objects must be plain records",
-      );
+      throw new InvalidTransportValueError("JSON objects must be plain records");
     }
 
     const entries = Object.keys(value)
       .sort()
       .map(
         (key) =>
-          `${JSON.stringify(key)}:${canonicalizeMemoryValue(value[key], ancestors)}`,
+          `${JSON.stringify(key)}:${canonicalizeJsonValue(value[key], ancestors)}`,
       );
     return `{${entries.join(",")}}`;
   } finally {
     ancestors.delete(value);
   }
-}
-
-function canonicalizeControllerMemory(value: unknown): string {
-  if (!isPlainRecord(value)) {
-    throw new InvalidTransportValueError(
-      "controller memory root must be a plain object",
-    );
-  }
-
-  const serialized = canonicalizeMemoryValue(value, new Set<object>());
-  if (
-    utf8Encoder.encode(serialized).byteLength >
-    PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes
-  ) {
-    throw new InvalidTransportValueError("controller memory exceeds quota");
-  }
-  return serialized;
 }
 
 function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
@@ -261,15 +260,41 @@ function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
     : Object.freeze({ ok: true as const, output });
 }
 
-function hostFault<T>(code: ControllerHostFaultCode): ControllerHostInvocationResult<T> {
+function hostFault<T>(
+  code: ControllerHostFaultCode,
+  classification?: ControllerHostFaultClassification,
+): ControllerHostInvocationResult<T> {
+  const fault = { code } as ControllerHostFault & {
+    readonly classification?: ControllerHostFaultClassification;
+  };
+  if (classification !== undefined) {
+    Object.defineProperty(fault, "classification", {
+      value: classification,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+  }
   return Object.freeze({
     ok: false as const,
-    fault: Object.freeze({ code }),
+    fault: Object.freeze(fault),
   });
 }
 
 function normalizeWorkerFault<T>(fault: ControllerWorkerFault): ControllerHostInvocationResult<T> {
-  return hostFault(fault === "INVALID_OUTPUT" ? "INVALID_OUTPUT" : "RUNTIME_ERROR");
+  switch (fault) {
+    case "TIMEOUT":
+      return hostFault("TIMEOUT");
+    case "MEMORY_LIMIT":
+      return hostFault("MEMORY_LIMIT");
+    case "SANDBOX_VIOLATION":
+      return hostFault("SANDBOX_VIOLATION");
+    case "INVALID_OUTPUT":
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+    case "WORKER_DIED":
+    case "RUNTIME_ERROR":
+      return hostFault("RUNTIME_ERROR");
+  }
 }
 
 function validUsage(usage: ControllerResourceUsage): boolean {
@@ -300,12 +325,29 @@ function directivePolicyRuleCount(value: unknown): number {
   return 0;
 }
 
+function teamSignalPayloadWithinLimit(command: unknown): boolean {
+  if (!isPlainRecord(command) || command.kind !== "TEAM_SIGNAL") return true;
+  try {
+    const canonicalPayload = canonicalizeJsonValue(
+      command.payload,
+      new Set<object>(),
+    );
+    return (
+      utf8Encoder.encode(canonicalPayload).byteLength <=
+      PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes
+    );
+  } catch {
+    return false;
+  }
+}
+
 function outputWithinResourceCeilings(output: OutputRecord): boolean {
   if (Object.prototype.hasOwnProperty.call(output, "commands")) {
     if (!Array.isArray(output.commands)) return false;
     if (output.commands.length > PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision) {
       return false;
     }
+    if (!output.commands.every(teamSignalPayloadWithinLimit)) return false;
   }
 
   if (Object.prototype.hasOwnProperty.call(output, "directives")) {
@@ -350,6 +392,61 @@ function outputWithinResourceCeilings(output: OutputRecord): boolean {
   }
 
   return true;
+}
+
+export function validateProductionControllerOutput(
+  hook: ControllerWorkerHook,
+  value: unknown,
+): ProductionControllerOutputValidationResult {
+  if (value === undefined) {
+    return Object.freeze({ ok: true as const });
+  }
+
+  let materialized: unknown;
+  try {
+    materialized = cloneFrozenTransportValue(value);
+  } catch {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+  if (!isPlainRecord(materialized)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  const serialized = JSON.stringify(materialized);
+  if (
+    utf8Encoder.encode(serialized).byteLength >
+    PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
+  ) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  const output = materialized as OutputRecord;
+  if (!controllerOutputHasExpectedStructure(hook, output)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  let nextMemory: string | undefined;
+  if (Object.prototype.hasOwnProperty.call(output, "memory")) {
+    try {
+      nextMemory = canonicalizeControllerMemory(output.memory);
+    } catch (error) {
+      return Object.freeze({
+        ok: false as const,
+        fault:
+          error instanceof ControllerMemoryLimitError
+            ? ("MEMORY_LIMIT" as const)
+            : ("INVALID_OUTPUT" as const),
+      });
+    }
+  }
+
+  if (!outputWithinResourceCeilings(output)) {
+    return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
+  }
+
+  return nextMemory === undefined
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, nextMemory });
 }
 
 export class ProductionControllerHost implements ControllerHost {
@@ -502,42 +599,14 @@ export class ProductionControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
-    if (response.output === undefined) return hostSuccess();
+    const validated = validateProductionControllerOutput(hook, response.output);
+    if (!validated.ok) return normalizeWorkerFault(validated.fault);
+    if (validated.output === undefined) return hostSuccess();
 
-    let materialized: unknown;
-    try {
-      materialized = cloneFrozenTransportValue(response.output);
-    } catch {
-      return hostFault("INVALID_OUTPUT");
-    }
-    if (!isPlainRecord(materialized)) return hostFault("INVALID_OUTPUT");
-
-    const serialized = JSON.stringify(materialized);
-    if (
-      utf8Encoder.encode(serialized).byteLength >
-      PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
-    ) {
-      return hostFault("INVALID_OUTPUT");
+    if (validated.nextMemory !== undefined) {
+      this.memoryByFaction.set(factionId, validated.nextMemory);
     }
 
-    const output = materialized as OutputRecord;
-    let nextMemory: string | undefined;
-    if (Object.prototype.hasOwnProperty.call(output, "memory")) {
-      try {
-        nextMemory = canonicalizeControllerMemory(output.memory);
-      } catch {
-        return hostFault("INVALID_OUTPUT");
-      }
-    }
-
-    if (!outputWithinResourceCeilings(output)) {
-      return hostFault("RUNTIME_ERROR");
-    }
-
-    if (nextMemory !== undefined) {
-      this.memoryByFaction.set(factionId, nextMemory);
-    }
-
-    return hostSuccess(output as T);
+    return hostSuccess(validated.output as T);
   }
 }
