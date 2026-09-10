@@ -74,7 +74,7 @@ describe("ownership-plane adversarial certification", () => {
     publisher.observe(Object.freeze(alternatingOwnership(128)), 0);
     const baseline = requirePublication(publisher.flush());
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: 128 });
     expect(
       cache.applyEnvelope({
         streamId: "fresh-gap",
@@ -101,6 +101,12 @@ describe("ownership-plane adversarial certification", () => {
   });
 
   it("rejects a complete ownership baseline whose cell count does not match the bound stream map", () => {
+    expect(() => new OwnershipPlaneCache({ expectedCellCount: V1_CELL_COUNT })).not.toThrow();
+    expect(() => new OwnershipPlaneCache({ expectedCellCount: 0 })).toThrow();
+    expect(
+      () => new OwnershipPlaneCache({ expectedCellCount: V1_CELL_COUNT + 1 }),
+    ).toThrow();
+
     const wrongPublisher = new OwnershipPlanePublisher({ chunkSize: 32 });
     wrongPublisher.observe(Object.freeze(new Array<string | null>(64).fill(null)), 0);
     const wrongBaseline = requirePublication(wrongPublisher.flush());
@@ -111,10 +117,7 @@ describe("ownership-plane adversarial certification", () => {
     correctPublisher.observe(Object.freeze(correctOwnership), 0);
     const correctBaseline = requirePublication(correctPublisher.flush());
 
-    const Cache = OwnershipPlaneCache as unknown as new (options: {
-      expectedCellCount: number;
-    }) => OwnershipPlaneCache;
-    const cache = new Cache({ expectedCellCount: 128 });
+    const cache = new OwnershipPlaneCache({ expectedCellCount: 128 });
 
     expect(cache.applyEnvelope({ streamId: "wrong-map", seq: 1, tick: 0 })).toEqual({
       ok: true,
@@ -174,7 +177,7 @@ describe("ownership-plane adversarial certification", () => {
       /non-negative safe integer/,
     );
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(
       cache.applyEnvelope({ streamId: "tick-bound", seq: 1, tick: 0 }),
     ).toEqual({ ok: true, revision: 0 });
@@ -262,7 +265,7 @@ describe("ownership-plane adversarial certification", () => {
       delta.stats.fullReplacementEncodedBytes,
     );
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: cellCount });
     expect(cache.applyEnvelope({ streamId: "replace", seq: 1, tick: 0 })).toEqual({
       ok: true,
       revision: 0,
@@ -297,7 +300,7 @@ describe("ownership-plane adversarial certification", () => {
       /unsupported ownership-plane schema version/,
     );
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: 3 });
     expect(cache.applyEnvelope({ streamId: "schema", seq: 1, tick: 0 })).toEqual({
       ok: true,
       revision: 0,

@@ -782,9 +782,18 @@ function readReplaceChunk(
   return Object.freeze({ chunkIndex, mode: "REPLACE", codes });
 }
 
-export function decodeOwnershipFrame(bytes: Uint8Array): DecodedOwnershipFrame {
+export function decodeOwnershipFrame(
+  bytes: Uint8Array,
+  expectedCellCount?: number,
+): DecodedOwnershipFrame {
   if (!(bytes instanceof Uint8Array)) {
     throw new TypeError("ownership payload must be Uint8Array");
+  }
+  if (expectedCellCount !== undefined) {
+    requirePositiveSafeInteger(expectedCellCount, "expected ownership cell count");
+    if (expectedCellCount > MAX_OWNERSHIP_CELL_COUNT) {
+      throw new RangeError("expected ownership cell count exceeds V1 bounds");
+    }
   }
   const reader = new ByteReader(bytes);
   readMagic(reader);
@@ -801,6 +810,9 @@ export function decodeOwnershipFrame(bytes: Uint8Array): DecodedOwnershipFrame {
   const cellCount = reader.varuint();
   if (cellCount <= 0 || cellCount > MAX_OWNERSHIP_CELL_COUNT) {
     throw new Error("ownership cell count is outside V1 bounds");
+  }
+  if (expectedCellCount !== undefined && cellCount !== expectedCellCount) {
+    throw new Error("ownership cell count does not match bound stream map");
   }
   const palette = readPalette(reader, cellCount);
 
@@ -1075,6 +1087,7 @@ function applyFailure(
 }
 
 export class OwnershipPlaneCache {
+  private readonly expectedCellCountValue: number;
   private streamIdValue?: string;
   private lastSeq?: number;
   private lastEnvelopeTick?: number;
@@ -1083,6 +1096,20 @@ export class OwnershipPlaneCache {
   private palette: readonly string[] = Object.freeze([]);
   private codes?: OwnerCodePlane;
   private requiresResync = false;
+
+  constructor(options: Readonly<{ expectedCellCount: number }>) {
+    if (typeof options !== "object" || options === null) {
+      throw new TypeError("ownership cache requires a stream map binding");
+    }
+    requirePositiveSafeInteger(
+      options.expectedCellCount,
+      "expected ownership cell count",
+    );
+    if (options.expectedCellCount > MAX_OWNERSHIP_CELL_COUNT) {
+      throw new RangeError("expected ownership cell count exceeds V1 bounds");
+    }
+    this.expectedCellCountValue = options.expectedCellCount;
+  }
 
   revision(): number {
     return this.revisionValue;
@@ -1194,7 +1221,7 @@ export class OwnershipPlaneCache {
 
     let decoded: DecodedOwnershipFrame;
     try {
-      decoded = decodeOwnershipFrame(envelope.bytes);
+      decoded = decodeOwnershipFrame(envelope.bytes, this.expectedCellCountValue);
     } catch {
       if (!sameStream) {
         this.streamIdValue = envelope.streamId;

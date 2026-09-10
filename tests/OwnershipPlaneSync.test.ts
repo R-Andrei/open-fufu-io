@@ -129,7 +129,7 @@ describe("participant ownership-plane synchronization", () => {
     expect(decoded.kind).toBe("SNAPSHOT");
     expect(decoded.cellCount).toBe(V1_CELL_COUNT);
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: V1_CELL_COUNT });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-a", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -171,7 +171,7 @@ describe("participant ownership-plane synchronization", () => {
       delta.stats.fullReplacementEncodedBytes,
     );
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-a", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -236,7 +236,7 @@ describe("participant ownership-plane synchronization", () => {
       replacement.stats.incrementalCandidateBytes,
     );
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: V1_CELL_COUNT });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-heavy", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -288,7 +288,7 @@ describe("participant ownership-plane synchronization", () => {
     const delta = requirePublication(publisher.flush());
 
     expect(delta.kind).toBe("DELTA");
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-c", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -323,7 +323,7 @@ describe("participant ownership-plane synchronization", () => {
     publisher.observe(Object.freeze(next), 0);
     const delta = requirePublication(publisher.flush());
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-interleaved", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -373,7 +373,7 @@ describe("participant ownership-plane synchronization", () => {
     expect(firstDelta.kind).toBe("DELTA");
     expect(secondDelta.kind).toBe("DELTA");
 
-    const sequenceGap = new OwnershipPlaneCache();
+    const sequenceGap = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(sequenceGap.applyEnvelope(sequenceOnlyEnvelope("stream-gap", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -405,7 +405,7 @@ describe("participant ownership-plane synchronization", () => {
       }),
     ).toEqual({ ok: false, reason: "RESYNC_REQUIRED", resyncRequired: true });
 
-    const revisionGap = new OwnershipPlaneCache();
+    const revisionGap = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(revisionGap.applyEnvelope(sequenceOnlyEnvelope("stream-rev", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -452,7 +452,7 @@ describe("participant ownership-plane synchronization", () => {
     expect(firstDelta.kind).toBe("DELTA");
     expect(secondDelta.kind).toBe("DELTA");
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-retained", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -527,7 +527,7 @@ describe("participant ownership-plane synchronization", () => {
     const delta = requirePublication(publisher.flush());
 
     expect(delta.kind).toBe("DELTA");
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("stream-malformed", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -560,14 +560,14 @@ describe("participant ownership-plane synchronization", () => {
     publisher.observe(initial, 0);
     const baseline = requirePublication(publisher.flush());
 
-    const malformedContainer = new OwnershipPlaneCache();
+    const malformedContainer = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(malformedContainer.applyEnvelope(null as never)).toEqual({
       ok: false,
       reason: "INVALID_PAYLOAD",
       resyncRequired: true,
     });
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("new-stream", 1))).toEqual({
       ok: true,
       revision: 0,
@@ -615,7 +615,7 @@ describe("participant ownership-plane synchronization", () => {
     requirePublication(publisher.flush());
     const fresh = publisher.currentSnapshot();
 
-    const cache = new OwnershipPlaneCache();
+    const cache = new OwnershipPlaneCache({ expectedCellCount: initial.length });
     expect(cache.applyEnvelope(sequenceOnlyEnvelope("old-stream", 1))).toEqual({
       ok: true,
       revision: 0,
