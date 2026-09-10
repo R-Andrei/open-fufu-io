@@ -7,7 +7,6 @@ import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
   projectLawfulControllerObservation,
-  type LawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
@@ -59,25 +58,20 @@ describe("controller spatial API migration", () => {
       new InProcessTestControllerHost({
         alpha: {
           decide(context) {
-            const spatial = context as unknown as {
-              readonly map: {
-                readonly cellCount: number;
-                terrainAt(id: number): string | undefined;
-              };
-              readonly cells: {
-                owner(id: number): string | null | undefined;
-              };
-              readonly segments: {
-                cellIds(id: number): readonly number[] | undefined;
-              };
-            };
-            expect(Array.isArray(spatial.cells)).toBe(false);
-            expect(spatial.map.cellCount).toBe(2);
-            expect(spatial.map.terrainAt(0)).toBe("PLAINS");
-            expect(spatial.cells.owner(0)).toBe("alpha");
-            expect(spatial.cells.owner(1)).toBeNull();
-            expect(spatial.cells.owner(2)).toBeUndefined();
-            expect(spatial.segments.cellIds(0)).toBeUndefined();
+            if (
+              context.map === undefined ||
+              context.cells === undefined ||
+              context.segments === undefined
+            ) {
+              throw new Error("current controller spatial surface missing");
+            }
+            expect(Array.isArray(context.cells)).toBe(false);
+            expect(context.map.cellCount).toBe(2);
+            expect(context.map.terrainAt(0)).toBe("PLAINS");
+            expect(context.cells.owner(0)).toBe("alpha");
+            expect(context.cells.owner(1)).toBeNull();
+            expect(context.cells.owner(2)).toBeUndefined();
+            expect(context.segments.cellIds(0)).toBeUndefined();
             spatialSurfaceSeen = true;
             return { commands: [] };
           },
@@ -94,13 +88,7 @@ describe("controller spatial API migration", () => {
   it("lets BASELINE_D0 preserve its existing expansion decision without the eager array", () => {
     const match = baselineFixture();
     const state = match.snapshot();
-    const projected = projectLawfulControllerObservation(state, "alpha", 0);
-    const { cells: _obsoleteCells, ...withoutObsoleteCells } = projected as LawfulControllerObservation & {
-      readonly cells?: unknown;
-    };
-    const observation = Object.freeze(
-      withoutObsoleteCells,
-    ) as LawfulControllerObservation;
+    const observation = projectLawfulControllerObservation(state, "alpha", 0);
     const querySession = createControllerQuerySession(
       state,
       "alpha",
