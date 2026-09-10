@@ -32,12 +32,17 @@ const FFY_ALL_SCOPE = Object.freeze({
   kind: "FFY_FAMILY" as const,
   family: "ALL" as const,
 });
+const FFY_PIRACY_SCOPE = Object.freeze({
+  kind: "FFY_FAMILY" as const,
+  family: "PIRACY" as const,
+});
 const FFY_EVENT_FAMILIES = new Set<FfyEventFamily>([
   "ALL",
   "MILITARY_CONQUEST",
   "NAVAL_TRADE",
   "INDUSTRIAL",
 ]);
+const FFY_EVENT_SPECIALIZATIONS = new Set<FfyEventSpecialization>(["PIRACY"]);
 
 export interface ExactFfyValue {
   readonly numerator: bigint;
@@ -50,9 +55,12 @@ export type FfyEventFamily =
   | "NAVAL_TRADE"
   | "INDUSTRIAL";
 
+export type FfyEventSpecialization = "PIRACY";
+
 export interface PositiveFfyEventInput {
   readonly id: string;
   readonly family: FfyEventFamily;
+  readonly specialization?: FfyEventSpecialization;
   readonly baseValue: ExactFfyValue;
   readonly structuralMultiplier?: ExactFfyValue;
   readonly conditionApplies?: (condition: RuleCondition) => boolean;
@@ -74,6 +82,7 @@ export interface FfyEconomicStageInput {
 export interface FinalizedPositiveFfyEvent {
   readonly id: string;
   readonly family: FfyEventFamily;
+  readonly specialization?: FfyEventSpecialization;
   readonly award: number;
 }
 
@@ -458,6 +467,45 @@ function eventConditionPredicate(
     conditions.every((condition) => event.conditionApplies!(condition));
 }
 
+function positiveEventRuleTerms(
+  event: PositiveFfyEventInput,
+  rules: CompiledRuleProfile,
+  dynamicState: RuleDynamicState,
+): readonly ResolvedRuleTerm[] {
+  const familyScope = Object.freeze({
+    kind: "FFY_FAMILY" as const,
+    family: event.family,
+  });
+  const familyTerms = resolvedRuleTermsForScope(
+    rules,
+    RULE_AXIS_REGISTRY,
+    "FFY_EVENT_YIELD",
+    familyScope,
+    dynamicState,
+  );
+  if (event.specialization === undefined) {
+    return conditionEligibleRuleTerms(
+      familyTerms,
+      eventConditionPredicate(event),
+    );
+  }
+
+  const specializationTerms = resolvedRuleTermsForScope(
+    rules,
+    RULE_AXIS_REGISTRY,
+    "FFY_EVENT_YIELD",
+    FFY_PIRACY_SCOPE,
+    dynamicState,
+  ).filter(
+    (term) =>
+      term.scope.kind === "FFY_FAMILY" && term.scope.family === "PIRACY",
+  );
+  return conditionEligibleRuleTerms(
+    Object.freeze([...familyTerms, ...specializationTerms]),
+    eventConditionPredicate(event),
+  );
+}
+
 function positiveEventAward(
   event: PositiveFfyEventInput,
   rules: CompiledRuleProfile,
@@ -468,6 +516,17 @@ function positiveEventAward(
   }
   if (!FFY_EVENT_FAMILIES.has(event.family)) {
     throw new Error(`unknown positive FFY event family: ${String(event.family)}`);
+  }
+  if (
+    event.specialization !== undefined &&
+    !FFY_EVENT_SPECIALIZATIONS.has(event.specialization)
+  ) {
+    throw new Error(
+      `unknown positive FFY event specialization: ${String(event.specialization)}`,
+    );
+  }
+  if (event.specialization === "PIRACY" && event.family !== "NAVAL_TRADE") {
+    throw new Error("PIRACY specialization requires NAVAL_TRADE event family");
   }
   const baseValue = materializeExactFfy(
     event.baseValue,
@@ -482,20 +541,7 @@ function positiveEventAward(
           "positive FFY event structural multiplier",
         );
   const transformed = multiplyExactFfy(baseValue, structuralMultiplier);
-  const scope = Object.freeze({
-    kind: "FFY_FAMILY" as const,
-    family: event.family,
-  });
-  const terms = conditionEligibleRuleTerms(
-    resolvedRuleTermsForScope(
-      rules,
-      RULE_AXIS_REGISTRY,
-      "FFY_EVENT_YIELD",
-      scope,
-      dynamicState,
-    ),
-    eventConditionPredicate(event),
-  );
+  const terms = positiveEventRuleTerms(event, rules, dynamicState);
   const scale = ffyYieldScaleFromTerms(terms);
   return floorPositiveExactFfy(
     multiplyExactFfy(transformed, {
@@ -537,7 +583,14 @@ export function resolveFfyEconomicStage(
     const award = positiveEventAward(event, input.rules, input.ruleDynamicState);
     balance = checkedCredit(balance, award);
     positiveEvents.push(
-      Object.freeze({ id: event.id, family: event.family, award }),
+      Object.freeze({
+        id: event.id,
+        family: event.family,
+        ...(event.specialization === undefined
+          ? {}
+          : { specialization: event.specialization }),
+        award,
+      }),
     );
   }
 
