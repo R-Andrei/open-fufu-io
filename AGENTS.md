@@ -6,6 +6,8 @@ Applies to automated coding/documentation agents in this repository.
 
 Before repository work, freshly read this file. Re-read before every commit or merge and whenever rules, claim, scope, or materially relevant repository state changes. Batch related read-only steps.
 
+When working on an approved plan, limit each work session to roughly 25 minutes. At the end of the session, finish the current atomic action, report material findings, and state the exact next action.
+
 Every repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion and a concrete recommended next action grounded in them and these rules. Investigations/work MUST disclose results. Repository file content is excluded.
 
 Never assume an unestablished truth. If user instructions plus current canonical authority do not determine a mechanic, semantic, intended behavior/value/order, theoretical premise, or other material unknown, STOP and ask. Only mechanically unambiguous corrections established by context may be inferred.
