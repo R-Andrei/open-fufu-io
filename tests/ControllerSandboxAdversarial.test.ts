@@ -1,4 +1,9 @@
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import type { LawfulControllerObservation } from "../src/simulation/ControllerRuntime";
+import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
@@ -25,7 +30,26 @@ function ordinaryObservation(): LawfulControllerObservation {
       Object.freeze({ id: "alpha", status: "ACTIVE" as const }),
       Object.freeze({ id: "beta", status: "ACTIVE" as const }),
     ]),
-    cells: Object.freeze([]),
+  });
+}
+
+function authoritativeQuerySession() {
+  const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+  const runtime = new MatchRuntime(
+    createMicroSimulationSpec({
+      seed: "controller-sandbox-concurrent-query-order",
+      width: 2,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS"],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    }),
+  );
+  return createControllerQuerySession(runtime.snapshot(), "alpha", {
+    queriesPerDecision: 128,
+    materializedCellsPerDecision: 25_000,
   });
 }
 
@@ -96,6 +120,62 @@ describe("production controller sandbox adversarial capabilities", () => {
         ok: true,
         output: { commands: [], log: "undefined:undefined" },
       });
+    });
+  });
+
+  it("does not expose Temporal as an alternate guest wall-clock source", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            return {
+              commands: [],
+              log: typeof globalThis.Temporal + ":" + typeof globalThis.Temporal?.Now?.instant,
+            };
+          }
+        `),
+      });
+
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: true,
+        output: { commands: [], log: "undefined:undefined" },
+      });
+    });
+  });
+
+  it("keeps concurrent authoritative-query completion order repeatable", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export async function decide(context) {
+            const completionOrder = [];
+            const first = context.cells
+              .count({ kind: "CELLS", ids: [0] })
+              .then(() => completionOrder.push("first"));
+            const second = context.cells
+              .count({ kind: "CELLS", ids: [1] })
+              .then(() => completionOrder.push("second"));
+            await Promise.all([first, second]);
+            return { commands: [], log: completionOrder.join(",") };
+          }
+        `),
+      });
+
+      const observedOrders = new Set<string>();
+      for (let iteration = 0; iteration < 12; iteration += 1) {
+        const session = authoritativeQuerySession();
+        const result = await host.invoke(
+          "alpha",
+          ordinaryObservation(),
+          session,
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error("expected successful concurrent query probe");
+        observedOrders.add(result.output?.log ?? "");
+        expect(session.usage()).toEqual({ queries: 2, materializedCells: 0 });
+      }
+
+      expect([...observedOrders]).toHaveLength(1);
     });
   });
 
