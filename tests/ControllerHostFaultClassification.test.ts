@@ -1,4 +1,5 @@
 import type { SpawnInfluenceDecision } from "../src/core/controller/ControllerApi";
+import { controllerOutputHasExpectedStructure } from "../src/core/controller/ControllerOutputValidation";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
@@ -85,5 +86,119 @@ describe("controller-host internal fault classification", () => {
       fault: { code: "RUNTIME_ERROR" },
     });
     expect(faultClassification(result)).toBe("INVALID_OUTPUT");
+  });
+
+  it("matches DebugSubject Segment identifiers to the public numeric SegmentId contract", () => {
+    expect(
+      controllerOutputHasExpectedStructure("DECIDE", {
+        debug: [
+          {
+            kind: "ANNOTATION",
+            subject: { kind: "SEGMENT", id: 7 },
+            label: "segment",
+          },
+        ],
+      }),
+    ).toBe(true);
+
+    expect(
+      controllerOutputHasExpectedStructure("DECIDE", {
+        debug: [
+          {
+            kind: "ANNOTATION",
+            subject: { kind: "SEGMENT", id: "7" },
+            label: "segment",
+          },
+        ],
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects values outside closed public controller output vocabularies as malformed", () => {
+    const malformedOutputs = [
+      {
+        debug: [
+          {
+            kind: "REGION",
+            selector: { kind: "TERRAIN", terrain: "LAVA" },
+          },
+        ],
+      },
+      {
+        debug: [
+          {
+            kind: "REGION",
+            selector: {
+              kind: "STRUCTURE_FIELD",
+              field: "NOT_A_FIELD",
+              referenceFactionId: "alpha",
+              affiliation: "SELF",
+            },
+          },
+        ],
+      },
+      {
+        debug: [
+          {
+            kind: "REGION",
+            selector: {
+              kind: "STRUCTURE_FIELD",
+              field: "FORT",
+              referenceFactionId: "alpha",
+              affiliation: "ENEMY",
+            },
+          },
+        ],
+      },
+      {
+        debug: [
+          {
+            kind: "REGION",
+            selector: {
+              kind: "STRUCTURE_FIELD_INSTANCE",
+              structureId: "fort-1",
+              field: "NOT_A_FIELD",
+            },
+          },
+        ],
+      },
+      {
+        commands: [
+          {
+            kind: "BUILD_STRUCTURE",
+            key: "bad-structure",
+            structure: "CASTLE",
+            cellId: 0,
+          },
+        ],
+      },
+      {
+        commands: [
+          {
+            kind: "BUILD_UNIT",
+            key: "bad-unit",
+            unit: "AIRPLANE",
+            producerId: "factory-1",
+          },
+        ],
+      },
+      {
+        commands: [
+          {
+            kind: "LAUNCH_WEAPON",
+            key: "bad-weapon",
+            launcherId: "silo-1",
+            weapon: "LASER",
+            targetCellId: 0,
+          },
+        ],
+      },
+    ];
+
+    expect(
+      malformedOutputs.map((output) =>
+        controllerOutputHasExpectedStructure("DECIDE", output),
+      ),
+    ).toEqual(Array.from({ length: malformedOutputs.length }, () => false));
   });
 });
