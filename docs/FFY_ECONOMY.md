@@ -262,6 +262,8 @@ Baseline Trade Ship speed is:
 10 water cells / second
 ```
 
+Baseline Trade Ship routing traverses **Deep Water only**. `SHALLOW_WATER` is not a legal Trade Ship route cell and does not contribute to Trade Ship reachability.
+
 Every active Port with at least one legal reachable foreign Trade destination maintains its own independent deterministic dispatch timer.
 
 After the Port becomes active and after every successful dispatch, the next ordinary dispatch delay is a deterministic match-RNG value in:
