@@ -37,11 +37,12 @@ interface IssuedReference {
   readonly incarnation: IncarnationOrdinal;
 }
 
-const DOMAIN_CODES: Readonly<Record<ControllerReferenceDomain, string>> = Object.freeze({
-  UNIT: "u",
-  STRUCTURE: "s",
-  OPERATION: "o",
-});
+const DOMAIN_CODES: Readonly<Record<ControllerReferenceDomain, string>> =
+  Object.freeze({
+    UNIT: "u",
+    STRUCTURE: "s",
+    OPERATION: "o",
+  });
 
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -62,20 +63,42 @@ function operationLogicalKey(ownerId: string, controllerKey: string): string {
 function operationDirectiveKind(
   operation: MatchState["operations"][number],
 ): OperationDirectiveKind {
-  return operation.kind === "COUNTER_RESPONSE" ? "COUNTER_RESPONSE" : "LAND_OPERATION";
+  return operation.kind === "COUNTER_RESPONSE"
+    ? "COUNTER_RESPONSE"
+    : "LAND_OPERATION";
 }
 
+/**
+ * Trusted live-match identity state for controller-facing opaque references.
+ *
+ * This session deliberately owns identity only. Requester-relative visibility must
+ * be applied by the lawful projection/consumer after resolution and before any
+ * controller-visible result is materialized.
+ *
+ * The namespace is a live-match instance namespace supplied by the match adapter.
+ * It must be unique for simultaneously valid matches and is intentionally not part
+ * of canonical MatchState/replay state.
+ */
 export class ControllerReferenceSession {
   private readonly encodedNamespace: string;
   private readonly viewers = new Map<string, number>();
-  private readonly domains: Record<ControllerReferenceDomain, DomainIncarnationState> = {
+  private readonly domains: Record<
+    ControllerReferenceDomain,
+    DomainIncarnationState
+  > = {
     UNIT: createDomainState(),
     STRUCTURE: createDomainState(),
     OPERATION: createDomainState(),
   };
   private pendingEntityLifecycleTransitions: EntityLifecycleTransition[] = [];
-  private operationIncarnationByLogicalKey = new Map<string, IncarnationOrdinal>();
-  private operationDirectiveKindByLogicalKey = new Map<string, OperationDirectiveKind>();
+  private operationIncarnationByLogicalKey = new Map<
+    string,
+    IncarnationOrdinal
+  >();
+  private operationDirectiveKindByLogicalKey = new Map<
+    string,
+    OperationDirectiveKind
+  >();
   private pendingOperationTransitions: OperationTransition[] = [];
   private readonly issuedRefByIdentity = new Map<string, string>();
   private readonly issuedIdentityByRef = new Map<string, IssuedReference>();
@@ -86,7 +109,10 @@ export class ControllerReferenceSession {
       throw new Error("controller reference namespace must be a non-empty string");
     }
     this.encodedNamespace = encodeURIComponent(namespace);
-    const viewerIds = initialState.factions.map((faction) => faction.id).sort(compareText);
+
+    const viewerIds = initialState.factions
+      .map((faction) => faction.id)
+      .sort(compareText);
     for (let index = 0; index < viewerIds.length; index += 1) {
       const viewerId = viewerIds[index]!;
       if (this.viewers.has(viewerId)) {
@@ -94,10 +120,13 @@ export class ControllerReferenceSession {
       }
       this.viewers.set(viewerId, index);
     }
+
     this.reconcile(initialState);
   }
 
-  private allocateIncarnation(domain: ControllerReferenceDomain): IncarnationOrdinal {
+  private allocateIncarnation(
+    domain: ControllerReferenceDomain,
+  ): IncarnationOrdinal {
     const state = this.domains[domain];
     const incarnation = state.nextIncarnation;
     if (!Number.isSafeInteger(incarnation) || incarnation < 0) {
@@ -112,34 +141,47 @@ export class ControllerReferenceSession {
     authoritativeIds: readonly string[],
   ): void {
     const state = this.domains[domain];
-    const activeById = new Map(state.currentByAuthoritativeId);
+    const activeByAuthoritativeId = new Map(state.currentByAuthoritativeId);
+
     for (const transition of this.pendingEntityLifecycleTransitions) {
       if (transition.domain !== domain) continue;
       if (transition.kind === "END") {
-        activeById.delete(transition.authoritativeId);
-      } else if (!activeById.has(transition.authoritativeId)) {
-        activeById.set(transition.authoritativeId, this.allocateIncarnation(domain));
+        activeByAuthoritativeId.delete(transition.authoritativeId);
+        continue;
+      }
+      if (!activeByAuthoritativeId.has(transition.authoritativeId)) {
+        activeByAuthoritativeId.set(
+          transition.authoritativeId,
+          this.allocateIncarnation(domain),
+        );
       }
     }
 
     const ordered = [...authoritativeIds].sort(compareText);
     const nextById = new Map<string, IncarnationOrdinal>();
     const nextByIncarnation = new Map<IncarnationOrdinal, string>();
+
     for (const authoritativeId of ordered) {
       if (nextById.has(authoritativeId)) {
         throw new Error(`duplicate ${domain} authoritative identity ${authoritativeId}`);
       }
-      const incarnation = activeById.get(authoritativeId) ?? this.allocateIncarnation(domain);
+      const incarnation =
+        activeByAuthoritativeId.get(authoritativeId) ??
+        this.allocateIncarnation(domain);
       nextById.set(authoritativeId, incarnation);
       nextByIncarnation.set(incarnation, authoritativeId);
     }
+
     state.currentByAuthoritativeId = nextById;
     state.authoritativeIdByIncarnation = nextByIncarnation;
   }
 
   private reconcileOperations(state: MatchState): void {
     const activeByLogicalKey = new Map(this.operationIncarnationByLogicalKey);
-    const activeDirectiveKindByLogicalKey = new Map(this.operationDirectiveKindByLogicalKey);
+    const activeDirectiveKindByLogicalKey = new Map(
+      this.operationDirectiveKindByLogicalKey,
+    );
+
     for (const transition of this.pendingOperationTransitions) {
       if (transition.kind === "END") {
         activeByLogicalKey.delete(transition.logicalKey);
@@ -147,11 +189,22 @@ export class ControllerReferenceSession {
         continue;
       }
       const currentIncarnation = activeByLogicalKey.get(transition.logicalKey);
-      const currentDirectiveKind = activeDirectiveKindByLogicalKey.get(transition.logicalKey);
-      if (currentIncarnation === undefined || currentDirectiveKind !== transition.directiveKind) {
-        activeByLogicalKey.set(transition.logicalKey, this.allocateIncarnation("OPERATION"));
+      const currentDirectiveKind = activeDirectiveKindByLogicalKey.get(
+        transition.logicalKey,
+      );
+      if (
+        currentIncarnation === undefined ||
+        currentDirectiveKind !== transition.directiveKind
+      ) {
+        activeByLogicalKey.set(
+          transition.logicalKey,
+          this.allocateIncarnation("OPERATION"),
+        );
       }
-      activeDirectiveKindByLogicalKey.set(transition.logicalKey, transition.directiveKind);
+      activeDirectiveKindByLogicalKey.set(
+        transition.logicalKey,
+        transition.directiveKind,
+      );
     }
 
     const operations = [...state.operations].sort(
@@ -164,14 +217,23 @@ export class ControllerReferenceSession {
     const nextDirectiveKind = new Map<string, OperationDirectiveKind>();
     const nextById = new Map<string, IncarnationOrdinal>();
     const nextByIncarnation = new Map<IncarnationOrdinal, string>();
+
     for (const operation of operations) {
-      const logicalKey = operationLogicalKey(operation.ownerId, operation.controllerKey);
-      if (nextLogical.has(logicalKey)) throw new Error(`duplicate operation logical identity ${logicalKey}`);
-      if (nextById.has(operation.id)) throw new Error(`duplicate OPERATION authoritative identity ${operation.id}`);
+      const logicalKey = operationLogicalKey(
+        operation.ownerId,
+        operation.controllerKey,
+      );
+      if (nextLogical.has(logicalKey)) {
+        throw new Error(`duplicate operation logical identity ${logicalKey}`);
+      }
+      if (nextById.has(operation.id)) {
+        throw new Error(`duplicate OPERATION authoritative identity ${operation.id}`);
+      }
       const directiveKind = operationDirectiveKind(operation);
       const activeIncarnation = activeByLogicalKey.get(logicalKey);
       const incarnation =
-        activeIncarnation !== undefined && activeDirectiveKindByLogicalKey.get(logicalKey) === directiveKind
+        activeIncarnation !== undefined &&
+        activeDirectiveKindByLogicalKey.get(logicalKey) === directiveKind
           ? activeIncarnation
           : this.allocateIncarnation("OPERATION");
       nextLogical.set(logicalKey, incarnation);
@@ -179,6 +241,7 @@ export class ControllerReferenceSession {
       nextById.set(operation.id, incarnation);
       nextByIncarnation.set(incarnation, operation.id);
     }
+
     this.operationIncarnationByLogicalKey = nextLogical;
     this.operationDirectiveKindByLogicalKey = nextDirectiveKind;
     this.domains.OPERATION.currentByAuthoritativeId = nextById;
@@ -186,24 +249,43 @@ export class ControllerReferenceSession {
     this.pendingOperationTransitions = [];
   }
 
+  /**
+   * Records ordered unit/structure lifecycle facts that cannot always be recovered
+   * from before/after snapshots when one authoritative ID is ended and recreated
+   * before the next reconcile. START preserves an already-active incarnation;
+   * END followed by START therefore creates a replacement incarnation.
+   */
   applyEntityLifecycleTransition(
     domain: SimpleEntityDomain,
     authoritativeId: string,
     kind: EntityLifecycleTransitionKind,
   ): void {
-    this.pendingEntityLifecycleTransitions.push(Object.freeze({ domain, authoritativeId, kind }));
+    this.pendingEntityLifecycleTransitions.push(
+      Object.freeze({ domain, authoritativeId, kind }),
+    );
   }
 
+  /**
+   * Records ordered persistent-directive lifecycle facts that cannot always be
+   * recovered from before/after snapshots when a key is ended and recreated in
+   * one authoritative tick. The transitions take effect on the next reconcile.
+   */
   applyDirectiveChanges(factionId: string, changes: DirectiveChanges): void {
     for (const key of changes.end ?? []) {
       this.pendingOperationTransitions.push(
-        Object.freeze({ logicalKey: operationLogicalKey(factionId, key), kind: "END" as const }),
+        Object.freeze({
+          logicalKey: operationLogicalKey(factionId, key),
+          kind: "END" as const,
+        }),
       );
     }
+
     for (const directive of changes.set ?? []) {
       const logicalKey = operationLogicalKey(factionId, directive.key);
       if (directive.kind === "DEFENSE_PRIORITY") {
-        this.pendingOperationTransitions.push(Object.freeze({ logicalKey, kind: "END" as const }));
+        this.pendingOperationTransitions.push(
+          Object.freeze({ logicalKey, kind: "END" as const }),
+        );
         continue;
       }
       this.pendingOperationTransitions.push(
@@ -216,9 +298,16 @@ export class ControllerReferenceSession {
     }
   }
 
+  /** Synchronizes current incarnation bindings to one canonical match state. */
   reconcile(state: MatchState): void {
-    this.reconcileSimpleDomain("UNIT", state.mobileUnits.map((unit) => unit.id));
-    this.reconcileSimpleDomain("STRUCTURE", state.structures.map((structure) => structure.id));
+    this.reconcileSimpleDomain(
+      "UNIT",
+      state.mobileUnits.map((unit) => unit.id),
+    );
+    this.reconcileSimpleDomain(
+      "STRUCTURE",
+      state.structures.map((structure) => structure.id),
+    );
     this.pendingEntityLifecycleTransitions = [];
     this.reconcileOperations(state);
   }
@@ -231,9 +320,14 @@ export class ControllerReferenceSession {
     return JSON.stringify([viewerFactionId, domain, incarnation]);
   }
 
-  private nextReferenceToken(viewerFactionId: string, domain: ControllerReferenceDomain): string {
+  private nextReferenceToken(
+    viewerFactionId: string,
+    domain: ControllerReferenceDomain,
+  ): string {
     const viewerOrdinal = this.viewers.get(viewerFactionId);
-    if (viewerOrdinal === undefined) throw new Error(`unknown controller reference viewer ${viewerFactionId}`);
+    if (viewerOrdinal === undefined) {
+      throw new Error(`unknown controller reference viewer ${viewerFactionId}`);
+    }
     const counterKey = JSON.stringify([viewerFactionId, domain]);
     const ordinal = this.nextRefOrdinalByViewerDomain.get(counterKey) ?? 0;
     if (!Number.isSafeInteger(ordinal) || ordinal < 0) {
@@ -243,25 +337,47 @@ export class ControllerReferenceSession {
     return `ofr1:${this.encodedNamespace}:${viewerOrdinal.toString(36)}:${DOMAIN_CODES[domain]}:${ordinal.toString(36)}`;
   }
 
+  /**
+   * Returns the stable ref previously issued for this viewer/incarnation, or
+   * issues one now. Unknown/non-current authoritative identities are unavailable.
+   */
   issue(
     viewerFactionId: string,
     domain: ControllerReferenceDomain,
     authoritativeId: string,
   ): string | undefined {
     if (!this.viewers.has(viewerFactionId)) return undefined;
-    const incarnation = this.domains[domain].currentByAuthoritativeId.get(authoritativeId);
+    const incarnation =
+      this.domains[domain].currentByAuthoritativeId.get(authoritativeId);
     if (incarnation === undefined) return undefined;
-    const identityKey = this.issuedIdentityKey(viewerFactionId, domain, incarnation);
+
+    const identityKey = this.issuedIdentityKey(
+      viewerFactionId,
+      domain,
+      incarnation,
+    );
     const existing = this.issuedRefByIdentity.get(identityKey);
     if (existing !== undefined) return existing;
+
     let ref = this.nextReferenceToken(viewerFactionId, domain);
-    while (ref === authoritativeId) ref = this.nextReferenceToken(viewerFactionId, domain);
-    if (this.issuedIdentityByRef.has(ref)) throw new Error("controller reference token collision");
+    while (ref === authoritativeId) {
+      ref = this.nextReferenceToken(viewerFactionId, domain);
+    }
+    if (this.issuedIdentityByRef.has(ref)) {
+      throw new Error("controller reference token collision");
+    }
     this.issuedRefByIdentity.set(identityKey, ref);
-    this.issuedIdentityByRef.set(ref, Object.freeze({ viewerFactionId, domain, incarnation }));
+    this.issuedIdentityByRef.set(
+      ref,
+      Object.freeze({ viewerFactionId, domain, incarnation }),
+    );
     return ref;
   }
 
+  /**
+   * Resolves identity only. Callers must still apply canonical requester-relative
+   * visibility and legality before materializing any differentiated public result.
+   */
   resolve(
     viewerFactionId: string,
     domain: ControllerReferenceDomain,
@@ -275,6 +391,8 @@ export class ControllerReferenceSession {
     ) {
       return undefined;
     }
-    return this.domains[domain].authoritativeIdByIncarnation.get(issued.incarnation);
+    return this.domains[domain].authoritativeIdByIncarnation.get(
+      issued.incarnation,
+    );
   }
 }
