@@ -22,6 +22,7 @@ import {
   createMobileUnit,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
+import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
 import type { SimulationMap, SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
@@ -76,6 +77,18 @@ export interface TankTerrainMovementTiming {
   readonly edgeWeight: number;
 }
 
+export interface TankNavigationRoute {
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+  readonly totalWeight: number;
+  readonly movementWorkPerTick: number;
+}
+
+export type TankNavigationRouteResult =
+  | { readonly status: "FOUND"; readonly route: TankNavigationRoute }
+  | { readonly status: "UNREACHABLE" }
+  | { readonly status: "LIMIT_REACHED" };
+
 interface ExactRatio {
   readonly numerator: bigint;
   readonly denominator: bigint;
@@ -84,6 +97,7 @@ interface ExactRatio {
 const BASE_TANK_BUILD_TICKS = 50;
 const HEAVY_ARTILLERY_BUILD_TICKS = 100;
 const TANK_MOVEMENT_TICKS_PER_SECOND = 10n;
+const TANK_NAVIGATION_BASE_WORK = 468n;
 const TANK_OPERATING_LEASH_CELLS = 100;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
@@ -345,15 +359,11 @@ function tankTerrainBaseSpeed(terrain: SimulationTerrain): ExactRatio | undefine
   }
 }
 
-export function tankTerrainMovementTiming(
+function tankMovementProfile(
   state: MatchState,
   ownerId: string,
   chassisType: TankChassisType,
-  terrain: SimulationTerrain,
-): TankTerrainMovementTiming | undefined {
-  const baseSpeed = tankTerrainBaseSpeed(terrain);
-  if (baseSpeed === undefined) return undefined;
-
+): Readonly<{ scale: ExactRatio; chassisDenominator: bigint }> {
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
   if (chassisType !== "TANK" && chassisType !== "HEAVY_ARTILLERY") {
@@ -374,10 +384,33 @@ export function tankTerrainMovementTiming(
     RULE_AXIS_REGISTRY.UNIT_MOVEMENT_SPEED,
     terms,
   );
-  const chassisDenominator = chassisType === "HEAVY_ARTILLERY" ? 2n : 1n;
+  if (scale.numerator <= 0n || scale.denominator <= 0n) {
+    throw new Error("Tank movement speed must resolve to a positive value");
+  }
+  return Object.freeze({
+    scale: Object.freeze({
+      numerator: scale.numerator,
+      denominator: scale.denominator,
+    }),
+    chassisDenominator: chassisType === "HEAVY_ARTILLERY" ? 2n : 1n,
+  });
+}
+
+export function tankTerrainMovementTiming(
+  state: MatchState,
+  ownerId: string,
+  chassisType: TankChassisType,
+  terrain: SimulationTerrain,
+): TankTerrainMovementTiming | undefined {
+  const baseSpeed = tankTerrainBaseSpeed(terrain);
+  if (baseSpeed === undefined) return undefined;
+
+  const profile = tankMovementProfile(state, ownerId, chassisType);
   const speed = reducedRational(
-    baseSpeed.numerator * scale.numerator,
-    baseSpeed.denominator * scale.denominator * chassisDenominator,
+    baseSpeed.numerator * profile.scale.numerator,
+    baseSpeed.denominator *
+      profile.scale.denominator *
+      profile.chassisDenominator,
   );
   if (speed.numerator <= 0n || speed.denominator <= 0n) {
     throw new Error("Tank movement speed must resolve to a positive value");
@@ -394,6 +427,23 @@ export function tankTerrainMovementTiming(
   });
 }
 
+function tankCellCorridorPermitsTraversal(
+  state: MatchState,
+  ownerId: string,
+  cellId: number,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  if (owner.status !== "ACTIVE") return false;
+
+  const territoryOwnerId = state.ownership[cellId] ?? null;
+  if (territoryOwnerId === null) return false;
+  const territoryOwner = state.factions.find(
+    (faction) => faction.id === territoryOwnerId,
+  );
+  return territoryOwner !== undefined && territoryOwner.status === "ACTIVE";
+}
+
 export function tankCellTraversalTiming(
   state: MatchState,
   ownerId: string,
@@ -403,16 +453,7 @@ export function tankCellTraversalTiming(
   if (!state.map.isValidCellId(cellId)) {
     throw new Error("Tank traversal query requires a valid map cell");
   }
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
-  if (owner.status !== "ACTIVE") return undefined;
-
-  const territoryOwnerId = state.ownership[cellId] ?? null;
-  if (territoryOwnerId === null) return undefined;
-  const territoryOwner = state.factions.find(
-    (faction) => faction.id === territoryOwnerId,
-  );
-  if (territoryOwner === undefined || territoryOwner.status !== "ACTIVE") {
+  if (!tankCellCorridorPermitsTraversal(state, ownerId, cellId)) {
     return undefined;
   }
   return tankTerrainMovementTiming(
@@ -421,6 +462,108 @@ export function tankCellTraversalTiming(
     chassisType,
     state.map.terrainAt(cellId),
   );
+}
+
+function tankTerrainHalfEdgeBaseWork(
+  terrain: SimulationTerrain,
+): bigint | undefined {
+  const baseSpeed = tankTerrainBaseSpeed(terrain);
+  if (baseSpeed === undefined) return undefined;
+  const numerator =
+    (TANK_MOVEMENT_TICKS_PER_SECOND / 2n) *
+    TANK_NAVIGATION_BASE_WORK *
+    baseSpeed.denominator;
+  if (numerator % baseSpeed.numerator !== 0n) {
+    throw new Error("Tank half-edge work normalization is not exact");
+  }
+  const work = numerator / baseSpeed.numerator;
+  if (work <= 0n || work > MAX_SAFE_BIGINT) {
+    throw new Error("Tank navigation timing exceeds the safe-integer range");
+  }
+  return work;
+}
+
+export function tankNavigationRoute(
+  state: MatchState,
+  ownerId: string,
+  chassisType: TankChassisType,
+  startCellId: number,
+  destinationCellId: number,
+): TankNavigationRouteResult {
+  if (
+    !state.map.isValidCellId(startCellId) ||
+    !state.map.isValidCellId(destinationCellId)
+  ) {
+    throw new Error("Tank navigation query requires valid map cells");
+  }
+
+  const profile = tankMovementProfile(state, ownerId, chassisType);
+  const movementWork = TANK_NAVIGATION_BASE_WORK * profile.scale.numerator;
+  if (movementWork <= 0n || movementWork > MAX_SAFE_BIGINT) {
+    throw new Error("Tank navigation timing exceeds the safe-integer range");
+  }
+  const edgeMultiplier =
+    profile.scale.denominator * profile.chassisDenominator;
+
+  const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
+    if (
+      !tankCellCorridorPermitsTraversal(state, ownerId, fromCellId) ||
+      !tankCellCorridorPermitsTraversal(state, ownerId, toCellId)
+    ) {
+      return undefined;
+    }
+    const fromHalf = tankTerrainHalfEdgeBaseWork(
+      state.map.terrainAt(fromCellId),
+    );
+    const toHalf = tankTerrainHalfEdgeBaseWork(
+      state.map.terrainAt(toCellId),
+    );
+    if (fromHalf === undefined || toHalf === undefined) return undefined;
+    const work = (fromHalf + toHalf) * edgeMultiplier;
+    if (work <= 0n || work > MAX_SAFE_BIGINT) {
+      throw new Error("Tank navigation timing exceeds the safe-integer range");
+    }
+    return Number(work);
+  };
+
+  if (
+    !tankCellCorridorPermitsTraversal(state, ownerId, startCellId) ||
+    !tankCellCorridorPermitsTraversal(state, ownerId, destinationCellId) ||
+    tankTerrainHalfEdgeBaseWork(state.map.terrainAt(startCellId)) === undefined ||
+    tankTerrainHalfEdgeBaseWork(state.map.terrainAt(destinationCellId)) === undefined
+  ) {
+    return Object.freeze({ status: "UNREACHABLE" as const });
+  }
+
+  const policy: NavigationTraversalPolicy = { traversalWeight: edgeWeight };
+  const result = createNavigation(state.map).path(
+    startCellId,
+    destinationCellId,
+    policy,
+  );
+  if (result.status !== "FOUND") {
+    return Object.freeze({ status: result.status });
+  }
+
+  const cells = Object.freeze([...result.path.cells]);
+  const edgeWeights = Object.freeze(
+    cells.slice(1).map((cellId, index) => {
+      const weight = edgeWeight(cells[index]!, cellId);
+      if (weight === undefined) {
+        throw new Error("Tank navigation returned an unavailable route edge");
+      }
+      return weight;
+    }),
+  );
+  return Object.freeze({
+    status: "FOUND" as const,
+    route: Object.freeze({
+      cells,
+      edgeWeights,
+      totalWeight: result.path.totalWeight,
+      movementWorkPerTick: Number(movementWork),
+    }),
+  });
 }
 
 export function tankOperatingLeashContains(
