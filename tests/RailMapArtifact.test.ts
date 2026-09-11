@@ -11,8 +11,10 @@ import {
   releaseFactoryRailLoopSnapshot,
   retainFactoryRailLoopSnapshot,
   stageFactoryRailLoopRegeneration,
-  type FactoryRailLoopPlan,
-  type FactoryRailLoopPlanningInput,
+} from "../src/simulation/FactoryRailLifecycle";
+import type {
+  FactoryRailLoopPlan,
+  FactoryRailLoopPlanningInput,
 } from "../src/simulation/RailNetwork";
 
 const CELL_COUNT = 4_800_000;
