@@ -1,7 +1,11 @@
-import type { DecisionReceipt } from "../core/controller/ControllerApi";
+import type {
+  DecisionFailure,
+  DecisionReceipt,
+} from "../core/controller/ControllerApi";
 import {
   evaluateControllerRound,
   type ControllerHost,
+  type ControllerProposedAction,
   type ControllerRoundEvaluation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
@@ -41,6 +45,7 @@ import {
 import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
+  type StructurePurchaseFailureCode,
 } from "./Structures";
 import {
   TickEngine,
@@ -374,6 +379,86 @@ function freezeAcceptedInput(
   });
 }
 
+function decisionFailure(
+  code: DecisionFailure["code"],
+  key?: string,
+): DecisionFailure {
+  return Object.freeze({
+    code,
+    ...(key === undefined ? {} : { key }),
+  });
+}
+
+function mapStructureBuildFailure(
+  code: StructurePurchaseFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+    case "OWNERSHIP_CAP":
+      return decisionFailure("OWNERSHIP_CAP", key);
+    case "CELL_NOT_OWNED":
+      return decisionFailure("NO_LONGER_OWNED", key);
+    case "CELL_OCCUPIED":
+      return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
+    case "BUILD_NOT_PERMITTED":
+    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
+      return decisionFailure("INVALID_TARGET", key);
+    case "INVALID_REQUEST":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "UNKNOWN_OWNER":
+    case "STRUCTURE_ID_CONFLICT":
+      throw new Error(`controller build invariant failed: ${code}`);
+    case "UNKNOWN_STRUCTURE":
+    case "NOT_OWNER":
+    case "NOT_COMPLETED":
+    case "CONSTRUCTION_IN_PROGRESS":
+    case "MAX_LEVEL":
+    case "UPGRADE_NOT_PERMITTED":
+      throw new Error(`unexpected build transaction failure: ${code}`);
+  }
+}
+
+function controllerActionFailure(
+  state: MatchState,
+  proposed: ControllerProposedAction,
+  action: SimulationAction,
+): DecisionFailure | undefined {
+  switch (action.type) {
+    case "CAPITULATE_FACTION": {
+      const target = state.factions.find(
+        (candidate) => candidate.id === action.factionId,
+      );
+      return target === undefined || target.status !== "ACTIVE"
+        ? decisionFailure("INVALID_TARGET", proposed.key)
+        : undefined;
+    }
+    case "APPLY_PERSISTENT_DIRECTIVES": {
+      const applied = tryApplyPersistentDirectiveChanges(
+        state,
+        action.factionId,
+        action.changes,
+      );
+      return applied.ok ? undefined : applied.failure;
+    }
+    case "PURCHASE_STRUCTURE_BUILD": {
+      const purchased = tryPurchaseStructureBuild(state, {
+        structureId: action.structureId,
+        ownerId: action.ownerId,
+        type: action.structureType,
+        cellId: action.cellId,
+      });
+      return purchased.ok
+        ? undefined
+        : mapStructureBuildFailure(purchased.failure.code, proposed.key);
+    }
+    default:
+      validateAction(state, action);
+      return undefined;
+  }
+}
+
 export class MatchRuntime {
   private readonly engine = new TickEngine();
   private state: MatchState;
@@ -443,22 +528,46 @@ export class MatchRuntime {
     return accepted;
   }
 
-  private acceptControllerActionsAtomically(
-    actions: readonly SimulationAction[],
-  ): void {
+  private materializeControllerAction(
+    proposed: ControllerProposedAction,
+    sequence: number,
+  ): SimulationAction {
+    if (proposed.action.type !== "CONTROLLER_PURCHASE_STRUCTURE_BUILD") {
+      return proposed.action;
+    }
+    return Object.freeze({
+      type: "PURCHASE_STRUCTURE_BUILD" as const,
+      structureId: `structure:purchase:${this.spec.seed}:${this.state.tick + 1}:${sequence}`,
+      ownerId: proposed.action.ownerId,
+      structureType: proposed.action.structureType,
+      cellId: proposed.action.cellId,
+    });
+  }
+
+  private acceptControllerProposalAtomically(
+    actions: readonly ControllerProposedAction[],
+  ): DecisionFailure | undefined {
     const acceptedBatch: AcceptedSimulationInput[] = [];
 
-    for (const action of actions) {
+    for (const proposed of actions) {
+      const sequence = this.nextSequence + acceptedBatch.length;
+      const action = this.materializeControllerAction(proposed, sequence);
       const priorInputs = [...this.pendingInputs, ...acceptedBatch];
       const validationState =
         priorInputs.length === 0
           ? this.state
           : this.engine.applyAcceptedInputs(this.state, priorInputs);
+      const failure = controllerActionFailure(validationState, proposed, action);
+      if (failure !== undefined) return failure;
+
+      // This second canonical check is intentionally strict: a successful
+      // structured controller validation followed by a normal validator failure
+      // would be an engine inconsistency rather than an ordinary gameplay result.
       validateAction(validationState, action);
       acceptedBatch.push(
         freezeAcceptedInput({
           tick: this.state.tick + 1,
-          sequence: this.nextSequence + acceptedBatch.length,
+          sequence,
           action,
         }),
       );
@@ -467,15 +576,42 @@ export class MatchRuntime {
     this.nextSequence += acceptedBatch.length;
     this.pendingInputs.push(...acceptedBatch);
     this.acceptedInputLog.push(...acceptedBatch);
+    return undefined;
   }
 
   private commitControllerRound(
     evaluated: ControllerRoundEvaluation,
   ): readonly ControllerRoundReceipt[] {
-    this.acceptControllerActionsAtomically(evaluated.actions);
+    const receipts = [...evaluated.receipts];
+    const receiptIndexByFaction = new Map(
+      receipts.map((entry, index) => [entry.factionId, index] as const),
+    );
 
-    const receipts = Object.freeze([...evaluated.receipts]);
-    for (const entry of receipts) {
+    for (const proposal of evaluated.proposals) {
+      const receiptIndex = receiptIndexByFaction.get(proposal.factionId);
+      if (receiptIndex === undefined) {
+        throw new Error(
+          `controller proposal has no receipt for faction ${proposal.factionId}`,
+        );
+      }
+      const existing = receipts[receiptIndex];
+      if (existing === undefined || !existing.receipt.accepted) continue;
+
+      const failure = this.acceptControllerProposalAtomically(proposal.actions);
+      if (failure === undefined) continue;
+
+      receipts[receiptIndex] = Object.freeze({
+        factionId: existing.factionId,
+        receipt: Object.freeze({
+          ...existing.receipt,
+          accepted: false,
+          failure,
+        }),
+      });
+    }
+
+    const frozenReceipts = Object.freeze(receipts);
+    for (const entry of frozenReceipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
@@ -485,7 +621,7 @@ export class MatchRuntime {
     this.controllerFaultedFactionIds = new Set(evaluated.faultedFactionIds);
     this.lastControllerRoundTick = this.state.tick;
     this.nextControllerDecisionNumber += 1;
-    return receipts;
+    return frozenReceipts;
   }
 
   runControllerRound(
