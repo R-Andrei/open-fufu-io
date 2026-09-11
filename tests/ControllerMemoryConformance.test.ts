@@ -219,7 +219,7 @@ describe("canonical controller-memory conformance", () => {
     const first = await runtime.runControllerRound(host);
     expect(first.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
       accepted: false,
-      failure: { code: "INVALID_COMMAND", key: "unsupported" },
+      failure: { code: "CELL_NOT_OWNED", key: "unsupported" },
     });
 
     runtime.tick();

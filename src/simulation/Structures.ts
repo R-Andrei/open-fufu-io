@@ -213,6 +213,14 @@ export type StructurePurchaseResult =
       readonly failure: Readonly<{ code: StructurePurchaseFailureCode }>;
     };
 
+export interface StructurePurchaseFfyPreview {
+  readonly affordable: boolean;
+  readonly ffyRequired: number;
+  readonly ffySpent: number;
+  readonly balanceAfterPurchase: number;
+  readonly consumesFirstPurchaseType: boolean;
+}
+
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -862,6 +870,83 @@ function effectiveStructureCost(
   });
 }
 
+export function structureBuildPurchaseTargetLevel(
+  state: MatchState,
+  ownerId: string,
+  type: StructureType,
+): StructureLevel {
+  return type === "CITY" &&
+    factionHasCustomRuleDomain(state, ownerId, "DIRECT_LEVEL5_CITY_PURCHASE")
+    ? 5
+    : 1;
+}
+
+export function structureBuildPurchaseFfyPreview(
+  state: MatchState,
+  ownerId: string,
+  type: StructureType,
+): StructurePurchaseFfyPreview {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const targetLevel = structureBuildPurchaseTargetLevel(state, ownerId, type);
+  const baseCost =
+    type === "CITY" && targetLevel === 5
+      ? P41_DIRECT_LEVEL5_CITY_PURCHASE_COST
+      : BASE_STRUCTURE_COST_BY_TARGET_LEVEL[type][1];
+  const debit = tryDebitFfy(
+    owner.ffy,
+    effectiveStructureCost(
+      state,
+      ownerId,
+      type,
+      "STRUCTURE_BUILD_COST",
+      baseCost,
+    ),
+  );
+  const p21Available =
+    factionHasCustomRuleDomain(
+      state,
+      ownerId,
+      "FIRST_STRUCTURE_PURCHASE_ZERO_FFY",
+    ) && !owner.successfulStructurePurchaseTypes.includes(type);
+  const affordable = debit.ok;
+  return Object.freeze({
+    affordable,
+    ffyRequired: debit.cost,
+    ffySpent: affordable && !p21Available ? debit.cost : 0,
+    balanceAfterPurchase:
+      affordable && !p21Available ? debit.balance : owner.ffy,
+    consumesFirstPurchaseType: affordable && p21Available,
+  });
+}
+
+export function structureUpgradePurchaseFfyPreview(
+  state: MatchState,
+  ownerId: string,
+  type: StructureType,
+  targetLevel: StructureLevel,
+): StructurePurchaseFfyPreview {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const debit = tryDebitFfy(
+    owner.ffy,
+    effectiveStructureCost(
+      state,
+      ownerId,
+      type,
+      "STRUCTURE_UPGRADE_COST",
+      BASE_STRUCTURE_COST_BY_TARGET_LEVEL[type][targetLevel],
+    ),
+  );
+  return Object.freeze({
+    affordable: debit.ok,
+    ffyRequired: debit.cost,
+    ffySpent: debit.ok ? debit.cost : 0,
+    balanceAfterPurchase: debit.ok ? debit.balance : owner.ffy,
+    consumesFirstPurchaseType: false,
+  });
+}
+
 function purchaseFactions(
   state: MatchState,
   ownerId: string,
@@ -891,15 +976,11 @@ export function tryPurchaseStructureBuild(
   request: StructureBuildPurchaseRequest,
 ): StructurePurchaseResult {
   const owner = state.factions.find((faction) => faction.id === request.ownerId);
-  const directLevel5City =
-    request.type === "CITY" &&
-    owner !== undefined &&
-    factionHasCustomRuleDomain(
-      state,
-      request.ownerId,
-      "DIRECT_LEVEL5_CITY_PURCHASE",
-    );
-  const targetLevel: StructureLevel = directLevel5City ? 5 : 1;
+  const targetLevel = structureBuildPurchaseTargetLevel(
+    state,
+    request.ownerId,
+    request.type,
+  );
   const build = tryMaterializeStructureBuild(state, {
     structureId: request.structureId,
     ownerId: request.ownerId,
@@ -910,34 +991,20 @@ export function tryPurchaseStructureBuild(
   if (!build.ok) return build;
   if (owner === undefined) return purchaseFailure("UNKNOWN_OWNER");
 
-  const baseCost = directLevel5City
-    ? P41_DIRECT_LEVEL5_CITY_PURCHASE_COST
-    : BASE_STRUCTURE_COST_BY_TARGET_LEVEL[request.type][1];
-  const debit = tryDebitFfy(
-    owner.ffy,
-    effectiveStructureCost(
-      state,
-      request.ownerId,
-      request.type,
-      "STRUCTURE_BUILD_COST",
-      baseCost,
-    ),
+  const preview = structureBuildPurchaseFfyPreview(
+    state,
+    request.ownerId,
+    request.type,
   );
-  if (!debit.ok) return purchaseFailure("INSUFFICIENT_FFY");
+  if (!preview.affordable) return purchaseFailure("INSUFFICIENT_FFY");
 
-  const p21Available =
-    factionHasCustomRuleDomain(
-      state,
-      request.ownerId,
-      "FIRST_STRUCTURE_PURCHASE_ZERO_FFY",
-    ) && !owner.successfulStructurePurchaseTypes.includes(request.type);
   return Object.freeze({
     ok: true,
     factions: purchaseFactions(
       state,
       request.ownerId,
-      p21Available ? owner.ffy : debit.balance,
-      p21Available ? request.type : undefined,
+      preview.balanceAfterPurchase,
+      preview.consumesFirstPurchaseType ? request.type : undefined,
     ),
     structures: build.structures,
   });
@@ -955,20 +1022,20 @@ export function tryPurchaseStructureUpgrade(
   if (targetLevel === undefined) {
     throw new Error("accepted structure upgrade is missing construction target state");
   }
-  const debit = tryDebitFfy(
-    owner.ffy,
-    effectiveStructureCost(
-      state,
-      request.ownerId,
-      upgrade.structure.type,
-      "STRUCTURE_UPGRADE_COST",
-      BASE_STRUCTURE_COST_BY_TARGET_LEVEL[upgrade.structure.type][targetLevel],
-    ),
+  const preview = structureUpgradePurchaseFfyPreview(
+    state,
+    request.ownerId,
+    upgrade.structure.type,
+    targetLevel,
   );
-  if (!debit.ok) return purchaseFailure("INSUFFICIENT_FFY");
+  if (!preview.affordable) return purchaseFailure("INSUFFICIENT_FFY");
   return Object.freeze({
     ok: true,
-    factions: purchaseFactions(state, request.ownerId, debit.balance),
+    factions: purchaseFactions(
+      state,
+      request.ownerId,
+      preview.balanceAfterPurchase,
+    ),
     structures: upgrade.structures,
   });
 }
