@@ -360,4 +360,118 @@ describe("authoritative Factory Train runtime state", () => {
       },
     ]);
   });
+
+  it("advances turnaround only on active Factory ticks and dispatches exactly when the final active wait tick is consumed", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "factory-train-runtime-turnaround",
+        width: 12,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const loopCells = Object.freeze(
+      Array.from({ length: 11 }, (_, index) => index + 1),
+    );
+    const loop = createFactoryRailLoopLifecycleState("factory-a", {
+      factoryId: "factory-a",
+      targetStructureIds: Object.freeze(["city-a"]),
+      servicedStructureIds: Object.freeze(["city-a"]),
+      cells: loopCells,
+      sharedExistingEdgeCount: 0,
+    });
+    const city = {
+      id: "city-a",
+      ownerId: "alpha",
+      type: "CITY" as const,
+      cellId: 10,
+      completedLevel: 1,
+      active: true,
+      acquisitionPath: "GRANT" as const,
+    };
+    const activeFactory = {
+      id: "factory-a",
+      ownerId: "alpha",
+      type: "FACTORY" as const,
+      cellId: 0,
+      completedLevel: 1,
+      active: true,
+      acquisitionPath: "GRANT" as const,
+    };
+    const inactiveFactory = { ...activeFactory, active: false };
+
+    const activeBeforeFinalTick = createProspectiveMatchState(base, {
+      structures: [activeFactory, city],
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [
+        {
+          factoryId: "factory-a",
+          ownerId: "alpha",
+          activePrimaryTrainId: null,
+          turnaroundRemainingActiveTicks: 2,
+          p07PrimaryDispatchPhase: 0,
+        },
+      ],
+    });
+    const afterActiveTick = new TickEngine().advance(activeBeforeFinalTick, []);
+    expect(afterActiveTick.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 1,
+    });
+    expect(afterActiveTick.mobileUnits).toEqual([]);
+    expect(afterActiveTick.trainServices).toEqual([]);
+
+    const inactiveBeforeFinalTick = createProspectiveMatchState(base, {
+      structures: [inactiveFactory, city],
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [
+        {
+          factoryId: "factory-a",
+          ownerId: "alpha",
+          activePrimaryTrainId: null,
+          turnaroundRemainingActiveTicks: 1,
+          p07PrimaryDispatchPhase: 0,
+        },
+      ],
+    });
+    const afterInactiveTick = new TickEngine().advance(
+      inactiveBeforeFinalTick,
+      [],
+    );
+    expect(afterInactiveTick.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 1,
+    });
+    expect(afterInactiveTick.mobileUnits).toEqual([]);
+    expect(afterInactiveTick.trainServices).toEqual([]);
+
+    const activeFinalTick = createProspectiveMatchState(base, {
+      structures: [activeFactory, city],
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [
+        {
+          factoryId: "factory-a",
+          ownerId: "alpha",
+          activePrimaryTrainId: null,
+          turnaroundRemainingActiveTicks: 1,
+          p07PrimaryDispatchPhase: 0,
+        },
+      ],
+    });
+    const replacementDispatched = new TickEngine().advance(activeFinalTick, []);
+    expect(replacementDispatched.factoryTrainEpochs[0]).toMatchObject({
+      ownerId: "alpha",
+      turnaroundRemainingActiveTicks: 0,
+    });
+    expect(replacementDispatched.factoryTrainEpochs[0]?.activePrimaryTrainId).not.toBeNull();
+    expect(replacementDispatched.mobileUnits).toHaveLength(1);
+    expect(replacementDispatched.trainServices).toHaveLength(1);
+    expect(replacementDispatched.trainServices[0]?.trainId).toBe(
+      replacementDispatched.factoryTrainEpochs[0]?.activePrimaryTrainId,
+    );
+  });
 });
