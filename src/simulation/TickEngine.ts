@@ -4,7 +4,10 @@ import type {
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
 import { reconcileHostilityGrace } from "./HostilityState";
-import { tryApplyPersistentDirectiveChanges } from "./LandOperations";
+import {
+  resolveLandTick,
+  tryApplyPersistentDirectiveChanges,
+} from "./LandOperations";
 import {
   createAdvancedMatchState,
   createProspectiveMatchState,
@@ -20,10 +23,7 @@ import {
   type PopulationState,
 } from "./Population";
 import {
-  resolveLandTickWithEvents,
-  resolvePersistentStructureLifecycleFromEvents,
-} from "./SimulationEventRouting";
-import {
+  resolvePersistentStructureLifecycleTick,
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
@@ -320,7 +320,7 @@ export class TickEngine {
       factions: resolvePassiveFfyTick(prospective),
     });
     const nextTick = earningSnapshot.tick + 1;
-    const land = resolveLandTickWithEvents(earningSnapshot, nextTick);
+    const land = resolveLandTick(earningSnapshot, nextTick);
     const postLandState = createProspectiveMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
@@ -330,7 +330,7 @@ export class TickEngine {
       captureProgress: land.captureProgress,
       counterResponseResiduals: land.counterResponseResiduals,
     });
-    const structures = resolvePersistentStructureLifecycleFromEvents(
+    const structures = resolvePersistentStructureLifecycleTick(
       postLandState,
       land.events,
       nextTick,
