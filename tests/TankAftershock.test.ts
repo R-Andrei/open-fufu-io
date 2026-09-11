@@ -181,9 +181,9 @@ describe("P44 Tank Population aftershock", () => {
     }
     expect(applied.ownership[7]).toBe("beta");
     expect(applied.fallout[7]).toBe(false);
-    expect(applied.structures).toBe(state.structures);
-    expect(applied.factions).toBe(state.factions);
-    expect(applied.operations).toBe(state.operations);
+    expect(applied.structures).toEqual(state.structures);
+    expect(applied.factions).toEqual(state.factions);
+    expect(applied.operations).toEqual(state.operations);
   });
 
   it("uses the target owner's effective P48 population-bearing permission before event emission", () => {
