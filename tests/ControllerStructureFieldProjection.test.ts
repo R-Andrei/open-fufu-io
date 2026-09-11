@@ -26,6 +26,57 @@ describe("controller structure-field projection", () => {
     expect(CONTROLLER_FIELD_IDS).not.toContain("SAM" as never);
   });
 
+  it("defines #149 construction addressing as requester-scoped and cell-addressed", () => {
+    const source = readFileSync(
+      "src/core/controller/ControllerApi.ts",
+      "utf8",
+    );
+
+    const upgradeCommandStart = source.indexOf(
+      "export interface UpgradeStructureCommand",
+    );
+    const upgradeCommandEnd = source.indexOf(
+      "export interface BuildUnitCommand",
+      upgradeCommandStart,
+    );
+    const upgradeCommand = source.slice(upgradeCommandStart, upgradeCommandEnd);
+    expect(upgradeCommand).toContain("readonly cellId: CellId;");
+    expect(upgradeCommand).not.toContain("structureId");
+
+    const buildQuoteStart = source.indexOf("structureBuildQuote(");
+    const buildQuoteEnd = source.indexOf(
+      "): StructureBuildQuote;",
+      buildQuoteStart,
+    );
+    const buildQuote = source.slice(
+      buildQuoteStart,
+      buildQuoteEnd + "): StructureBuildQuote;".length,
+    );
+    expect(buildQuote).toContain("structureType: StructureType");
+    expect(buildQuote).toContain("cellId: CellId");
+    expect(buildQuote).not.toContain("factionId");
+
+    const upgradeQuoteStart = source.indexOf("structureUpgradeQuote(");
+    const upgradeQuoteEnd = source.indexOf(
+      "): StructureUpgradeQuote;",
+      upgradeQuoteStart,
+    );
+    const upgradeQuote = source.slice(
+      upgradeQuoteStart,
+      upgradeQuoteEnd + "): StructureUpgradeQuote;".length,
+    );
+    expect(upgradeQuote).toContain("cellId: CellId");
+    expect(upgradeQuote).not.toContain("structureId");
+
+    const failureCodeStart = source.indexOf("export type DecisionFailureCode");
+    const failureCodeEnd = source.indexOf(
+      "export interface DecisionFailure",
+      failureCodeStart,
+    );
+    const failureCodes = source.slice(failureCodeStart, failureCodeEnd);
+    expect(failureCodes).toContain('| "MAX_LEVEL"');
+  });
+
   it("surfaces one opaque authoritative STRUCTURE_FIELD selector", () => {
     const source = readFileSync(
       "src/core/controller/ControllerApi.ts",
