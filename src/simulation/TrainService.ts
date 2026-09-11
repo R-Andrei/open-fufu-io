@@ -1,14 +1,26 @@
-import type { CellId } from "../core/controller/ControllerApi";
+import type {
+  CellId,
+  StructureAcquisitionPath,
+} from "../core/controller/ControllerApi";
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
+import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import {
   reducedRational,
   type RuleCondition,
 } from "../core/rules/RuleComposition";
+import {
+  materializeCompiledScalarRule,
+  materializeCompiledScalarScaleFactor,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
 import type { ExactFfyValue, PositiveFfyEventInput } from "./Economy";
 import {
   advanceMobileUnit,
   type MobileUnitRouteInput,
   type MobileUnitState,
 } from "./MobileUnits";
+import { grantPopulation, type PopulationState } from "./Population";
+import type { PersistentStructureState } from "./Structures";
 
 export const TRAIN_RAIL_EDGE_WORK = 2 as const;
 export const TRAIN_MOVEMENT_WORK_PER_TICK = 5 as const;
@@ -23,6 +35,14 @@ const FACTORY_TRAIN_EVENT_BASE_FFY = Object.freeze({
   5: 15_000,
 } as const);
 const EXACT_ONE = Object.freeze({ numerator: 1n, denominator: 1n });
+const EXACT_HALF = Object.freeze({ numerator: 1n, denominator: 2n });
+const GLOBAL_RULE_SCOPE = Object.freeze({ kind: "GLOBAL" as const });
+const FACTORY_RULE_SCOPE = Object.freeze({
+  kind: "STRUCTURE" as const,
+  structure: "FACTORY" as const,
+});
+const TRAIN_CITY_POPULATION_PER_LEVEL = 20;
+const TRAIN_CITY_POPULATION_GRANT_DOMAIN = "TRAIN_CITY_POPULATION_GRANT";
 
 export type P07PrimaryDispatchPhase = 0 | 1 | 2 | 3;
 
@@ -61,6 +81,11 @@ export interface TrainStationFfyEventInput {
   readonly eventId: string;
   readonly externalWartimeMultiplier?: ExactFfyValue;
   readonly conditionApplies?: (condition: RuleCondition) => boolean;
+}
+
+export interface TrainCityPopulationGrantResult {
+  readonly population: PopulationState;
+  readonly grantedPopulation: number;
 }
 
 function freezeEpoch(
@@ -246,6 +271,49 @@ export function createFactoryTrainDispatchRoutes(
   });
 }
 
+export function resolveTrainExternalWartimeMultiplier(
+  trainOwnerRules: CompiledRuleProfile,
+  ruleDynamicState: RuleDynamicState,
+  currentlyAtWar: boolean,
+): ExactFfyValue {
+  if (!currentlyAtWar) return EXACT_ONE;
+
+  const resolved = materializeCompiledScalarRule(
+    0.5,
+    trainOwnerRules,
+    RULE_AXIS_REGISTRY,
+    "EXTERNAL_TRADE_WARTIME_MULTIPLIER",
+    GLOBAL_RULE_SCOPE,
+    ruleDynamicState,
+  );
+  if (resolved === 0.5) return EXACT_HALF;
+  if (resolved === 1) return EXACT_ONE;
+  throw new Error(
+    "Train external wartime multiplier must resolve to canonical 0.5 or 1.0",
+  );
+}
+
+export function resolveFactoryTrainEventBaseMultiplier(
+  trainOwnerRules: CompiledRuleProfile,
+  ruleDynamicState: RuleDynamicState,
+  acquisitionPath: StructureAcquisitionPath,
+): ExactFfyValue {
+  const scale = materializeCompiledScalarScaleFactor(
+    trainOwnerRules,
+    RULE_AXIS_REGISTRY,
+    "FACTORY_TRAIN_EVENT_BASE_VALUE",
+    FACTORY_RULE_SCOPE,
+    ruleDynamicState,
+    (conditions) =>
+      conditions.every(
+        (condition) =>
+          condition.kind === "STRUCTURE_ACQUISITION_PATH_IS" &&
+          condition.path === acquisitionPath,
+      ),
+  );
+  return Object.freeze(reducedRational(scale.numerator, scale.denominator));
+}
+
 export function createTrainDispatchEconomicSnapshot(
   factoryId: string,
   dispatchOwnerId: string,
@@ -294,6 +362,54 @@ export function createTrainStationFfyEvent(
     ...(input.conditionApplies === undefined
       ? {}
       : { conditionApplies: input.conditionApplies }),
+  });
+}
+
+export function applyTrainCityPopulationGrant(
+  cityOwnerRules: CompiledRuleProfile,
+  station: PersistentStructureState,
+  cityOwnerPopulation: PopulationState,
+  cityOwnerPopulationCapacity: number,
+): TrainCityPopulationGrantResult {
+  if (
+    !Number.isSafeInteger(cityOwnerPopulationCapacity) ||
+    cityOwnerPopulationCapacity < 0
+  ) {
+    throw new Error("Train City Population Capacity must be a non-negative safe integer");
+  }
+
+  const p33Active = cityOwnerRules.customDomains.some(
+    (entry) => entry.domain === TRAIN_CITY_POPULATION_GRANT_DOMAIN,
+  );
+  if (
+    !p33Active ||
+    station.type !== "CITY" ||
+    !station.active ||
+    station.completedLevel === undefined
+  ) {
+    return Object.freeze({
+      population: cityOwnerPopulation,
+      grantedPopulation: 0,
+    });
+  }
+
+  const capacityHeadroom = Math.max(
+    0,
+    cityOwnerPopulationCapacity - cityOwnerPopulation.total,
+  );
+  const authoredGrant =
+    TRAIN_CITY_POPULATION_PER_LEVEL * station.completedLevel;
+  const grantedPopulation = Math.min(authoredGrant, capacityHeadroom);
+  if (grantedPopulation === 0) {
+    return Object.freeze({
+      population: cityOwnerPopulation,
+      grantedPopulation: 0,
+    });
+  }
+
+  return Object.freeze({
+    population: grantPopulation(cityOwnerPopulation, grantedPopulation),
+    grantedPopulation,
   });
 }
 
