@@ -96,8 +96,8 @@ function validateOwnershipEventBatch(
 
     const cellId = event.payload.cellId;
     if (
-      !Number.isSafeInteger(cellId) ||
       typeof cellId !== "number" ||
+      !Number.isSafeInteger(cellId) ||
       cellId < 0 ||
       Object.is(cellId, -0) ||
       cellId >= state.ownership.length
@@ -136,18 +136,22 @@ export function resolvePersistentStructureLifecycleFromEvents(
 ): readonly PersistentStructureState[] {
   assertTransitionTick(currentTick, "structure lifecycle tick");
   const validated = validateOwnershipEventBatch(state, events, currentTick);
-  const previousOwnership = [...state.ownership];
-  for (const event of validated) {
-    previousOwnership[event.payload.cellId] = event.payload.previousOwnerId;
+  const eventCells = new Set(validated.map((event) => event.payload.cellId));
+
+  // The legacy structure core still accepts a whole ownership raster internally.
+  // Mask mismatches that were not explicitly delivered as ownership facts so the
+  // cross-system boundary cannot rediscover an occurrence from current state.
+  const routedOwnership = [...state.ownership];
+  for (const structure of state.structures) {
+    if (eventCells.has(structure.cellId)) continue;
+    if ((routedOwnership[structure.cellId] ?? null) !== structure.ownerId) {
+      routedOwnership[structure.cellId] = structure.ownerId;
+    }
   }
 
-  const preOwnershipState = {
-    ...state,
-    ownership: Object.freeze(previousOwnership),
-  } as MatchState;
   return resolvePersistentStructureLifecycleTick(
-    preOwnershipState,
-    state.ownership,
+    state,
+    Object.freeze(routedOwnership),
     currentTick,
   );
 }

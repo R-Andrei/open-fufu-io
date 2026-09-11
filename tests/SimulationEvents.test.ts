@@ -110,10 +110,10 @@ function readyParallelNeutralCaptures(): MatchState {
   const match = new MatchRuntime(
     createMicroSimulationSpec({
       seed: "simulation-event-land-producer",
-      width: 3,
+      width: 4,
       height: 1,
-      terrain: ["TEST", "TEST", "TEST"],
-      initialOwners: ["alpha", null, null],
+      terrain: ["TEST", "TEST", "TEST", "TEST"],
+      initialOwners: ["alpha", null, null, "beta"],
       factions: [
         { id: "alpha", rules: emptyRules() },
         { id: "beta", rules: emptyRules() },
@@ -123,7 +123,12 @@ function readyParallelNeutralCaptures(): MatchState {
   match.acceptAction({
     type: "GRANT_POPULATION",
     factionId: "alpha",
-    amount: 2,
+    amount: 1,
+  });
+  match.acceptAction({
+    type: "GRANT_POPULATION",
+    factionId: "beta",
+    amount: 1,
   });
   match.tick();
   const receipts = match.runControllerRound(
@@ -132,14 +137,6 @@ function readyParallelNeutralCaptures(): MatchState {
         return {
           directives: {
             set: [
-              {
-                kind: "LAND_OPERATION",
-                key: "capture-two",
-                operation: "NEUTRAL_EXPANSION",
-                population: 1,
-                source: { kind: "CELLS", ids: [0] },
-                target: { kind: "CELLS", ids: [2] },
-              },
               {
                 kind: "LAND_OPERATION",
                 key: "capture-one",
@@ -152,19 +149,33 @@ function readyParallelNeutralCaptures(): MatchState {
           },
         };
       },
+      beta() {
+        return {
+          directives: {
+            set: [
+              {
+                kind: "LAND_OPERATION",
+                key: "capture-two",
+                operation: "NEUTRAL_EXPANSION",
+                population: 1,
+                source: { kind: "CELLS", ids: [3] },
+                target: { kind: "CELLS", ids: [2] },
+              },
+            ],
+          },
+        };
+      },
     }),
   );
-  expect(
-    receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted,
-  ).toBe(true);
+  expect(receipts.every((entry) => entry.receipt.accepted)).toBe(true);
   match.tick();
   const snapshot = match.snapshot() as MatchState;
-  expect(snapshot.ownership).toEqual(["alpha", null, null]);
+  expect(snapshot.ownership).toEqual(["alpha", null, null, "beta"]);
   return createProspectiveMatchState(snapshot, {
     captureProgress: [
       {
         cellId: 2,
-        claimantFactionId: "alpha",
+        claimantFactionId: "beta",
         progressMicros: 999_999,
       },
       {
@@ -321,7 +332,7 @@ describe("deterministic simulation events", () => {
     expect(first.events.map((event) => event.payload.cellId)).toEqual([1, 2]);
     expect(first.events.every((event) => event.tick === transitionTick)).toBe(true);
     expect(new Set(first.events.map((event) => event.id)).size).toBe(2);
-    expect(first.ownership).toEqual(["alpha", "alpha", "alpha"]);
+    expect(first.ownership).toEqual(["alpha", "alpha", "beta", "beta"]);
   });
 
   it("makes persistent-structure capture depend on the explicit ownership event batch", () => {
