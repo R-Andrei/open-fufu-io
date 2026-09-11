@@ -67,21 +67,24 @@ describe("controller structure-field projection", () => {
       RULE_AXIS_REGISTRY,
       originRuleProfileInput(["P45"]),
     );
+    const width = 11;
+    const height = 11;
+    const cellCount = width * height;
     const terrain = [
       "PLAINS",
-      ...Array.from({ length: 24 }, () => "FOREST" as const),
+      ...Array.from({ length: cellCount - 1 }, () => "FOREST" as const),
     ] as const;
     const initialOwners = [
       "alpha",
-      ...Array.from({ length: 24 }, () => "beta" as const),
+      ...Array.from({ length: cellCount - 1 }, () => "beta" as const),
     ] as const;
 
     const makeState = (betaRules: typeof betaOrdinaryRules) =>
       new MatchRuntime(
         createMicroSimulationSpec({
           seed: "controller-field-visibility-red",
-          width: 5,
-          height: 5,
+          width,
+          height,
           terrain,
           initialOwners,
           factions: [
@@ -100,7 +103,7 @@ describe("controller structure-field projection", () => {
               structureId: "beta-fort",
               ownerId: "beta",
               type: "FORT",
-              cellId: 12,
+              cellId: 10,
               level: 1,
             },
           ],
@@ -132,7 +135,7 @@ describe("controller structure-field projection", () => {
 
     const visible = createControllerQuerySession(visibleState, "alpha", limits);
     expect((await visible.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
-      Array.from({ length: 25 }, (_, id) => id),
+      Array.from({ length: cellCount }, (_, id) => id),
     );
 
     const concealed = createControllerQuerySession(
@@ -173,7 +176,7 @@ describe("controller structure-field projection", () => {
 
     const self = createControllerQuerySession(concealedState, "beta", limits);
     expect((await self.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
-      Array.from({ length: 25 }, (_, id) => id),
+      Array.from({ length: cellCount }, (_, id) => id),
     );
   });
 
