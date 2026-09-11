@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
+import { retainFactoryRailLoopSnapshot } from "./FactoryRailLifecycle";
 import { reconcileHostilityGrace } from "./HostilityState";
 import {
   resolveLandTick,
@@ -14,6 +15,10 @@ import {
   type MatchFactionState,
   type MatchState,
 } from "./MatchState";
+import {
+  assignMobileUnitRoute,
+  createMobileUnit,
+} from "./MobileUnits";
 import {
   grantPopulation,
   removePopulation,
@@ -27,6 +32,13 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  advanceTrainMovementTick,
+  createFactoryTrainServiceEpoch,
+  createTrainDispatchEconomicSnapshot,
+  createTrainRouteInput,
+  markFactoryPrimaryTrainDispatched,
+} from "./TrainService";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -118,6 +130,132 @@ function updateFactionPopulation(
   });
   if (!found) throw new Error(`unknown faction: ${factionId}`);
   return result;
+}
+
+function compareIds(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
+function reconcileStoredFactoryTrainDispatches(
+  state: MatchState,
+  currentTick: number,
+): Readonly<
+  Pick<
+    MatchState,
+    | "mobileUnits"
+    | "nextMobileUnitOrdinal"
+    | "factoryRailLoops"
+    | "factoryTrainEpochs"
+    | "trainServices"
+  >
+> {
+  let mobileUnits = [...state.mobileUnits];
+  let nextMobileUnitOrdinal = state.nextMobileUnitOrdinal;
+  let factoryRailLoops = [...state.factoryRailLoops];
+  let factoryTrainEpochs = [...state.factoryTrainEpochs];
+  const trainServices = [...state.trainServices];
+
+  const ownerIds = state.factions.map((faction) => faction.id);
+  const epochsByFactory = new Map(
+    factoryTrainEpochs.map((epoch) => [epoch.factoryId, epoch]),
+  );
+  const loopsByFactory = new Map(
+    factoryRailLoops.map((lifecycle) => [lifecycle.factoryId, lifecycle]),
+  );
+  const qualifyingStationCellIds = state.structures
+    .filter(
+      (structure) =>
+        (structure.type === "CITY" || structure.type === "PORT") &&
+        structure.active &&
+        structure.completedLevel !== undefined,
+    )
+    .map((structure) => structure.cellId);
+
+  const factories = state.structures
+    .filter(
+      (structure) =>
+        structure.type === "FACTORY" &&
+        structure.active &&
+        structure.completedLevel !== undefined,
+    )
+    .slice()
+    .sort((left, right) => compareIds(left.id, right.id));
+
+  for (const factory of factories) {
+    if (epochsByFactory.has(factory.id)) continue;
+
+    let epoch = createFactoryTrainServiceEpoch(factory.id, factory.ownerId);
+    const lifecycle = loopsByFactory.get(factory.id);
+    const loop = lifecycle?.currentLoop ?? null;
+    if (loop === null || loop.cells.length === 0) {
+      factoryTrainEpochs.push(epoch);
+      epochsByFactory.set(factory.id, epoch);
+      continue;
+    }
+
+    const created = createMobileUnit(
+      state.map,
+      ownerIds,
+      { mobileUnits, nextMobileUnitOrdinal },
+      {
+        ownerId: factory.ownerId,
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: loop.cells[0]!,
+      },
+    );
+    const routed = assignMobileUnitRoute(
+      state.map,
+      created.unit,
+      createTrainRouteInput(loop.cells),
+    );
+    const moved = advanceTrainMovementTick(
+      routed,
+      currentTick,
+      null,
+      qualifyingStationCellIds,
+    );
+
+    mobileUnits = created.mobileUnits.map((unit) =>
+      unit.id === moved.unit.id ? moved.unit : unit,
+    );
+    nextMobileUnitOrdinal = created.nextMobileUnitOrdinal;
+
+    const retainedLifecycle = retainFactoryRailLoopSnapshot(
+      lifecycle!,
+      moved.unit.id,
+    );
+    factoryRailLoops = factoryRailLoops.map((entry) =>
+      entry.factoryId === factory.id ? retainedLifecycle : entry,
+    );
+    loopsByFactory.set(factory.id, retainedLifecycle);
+
+    epoch = markFactoryPrimaryTrainDispatched(epoch, moved.unit.id);
+    factoryTrainEpochs.push(epoch);
+    epochsByFactory.set(factory.id, epoch);
+    trainServices.push({
+      trainId: moved.unit.id,
+      factoryId: factory.id,
+      loopSnapshotId: moved.unit.id,
+      isPrimary: true,
+      dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+        factory.id,
+        factory.ownerId,
+        factory.completedLevel!,
+      ),
+      resumeAtTick: moved.resumeAtTick,
+    });
+  }
+
+  return Object.freeze({
+    mobileUnits: Object.freeze(mobileUnits),
+    nextMobileUnitOrdinal,
+    factoryRailLoops: Object.freeze(factoryRailLoops),
+    factoryTrainEpochs: Object.freeze(factoryTrainEpochs),
+    trainServices: Object.freeze(trainServices),
+  });
 }
 
 export class TickEngine {
@@ -334,7 +472,7 @@ export class TickEngine {
       earningSnapshot.hostilityGrace,
       nextTick,
     );
-    return createAdvancedMatchState(earningSnapshot, {
+    const postStructureState = createProspectiveMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,
@@ -345,5 +483,10 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
+    const factoryTrains = reconcileStoredFactoryTrainDispatches(
+      postStructureState,
+      nextTick,
+    );
+    return createAdvancedMatchState(postStructureState, factoryTrains);
   }
 }
