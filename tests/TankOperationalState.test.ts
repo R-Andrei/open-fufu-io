@@ -13,12 +13,25 @@ import {
   tryStartTankProduction,
 } from "../src/simulation/Tanks";
 
+type TankRetainedTargetProbe =
+  | Readonly<{
+      targetClass: "TANK_CHASSIS" | "WARSHIP" | "TRAIN";
+      unitId: string;
+    }>
+  | Readonly<{
+      targetClass: "POPULATION";
+      cellId: number;
+    }>;
+
 type TankOperationalStateProbe = Readonly<{
   unitId: string;
   health: Readonly<{ numerator: bigint; denominator: bigint }>;
   operatingAnchorCellId: number;
   eligibleFromTick: number;
   attackReadyAtTick: number;
+  retainedTarget?: TankRetainedTargetProbe;
+  repairFactoryId?: string;
+  repairArrivalTick?: number;
 }>;
 
 type MatchStateWithTankOperationalStates = MatchState &
@@ -138,5 +151,47 @@ describe("Tank authoritative operational state", () => {
       ],
     });
     expect(canonicalMatchStateSerialization(damaged)).not.toBe(fingerprint);
+  });
+
+  it("preserves sticky target and repair queue state as fingerprint-relevant authoritative state", () => {
+    const completed = completeBaselineTank(fixture());
+    const operational = completed.tankOperationalStates[0]!;
+    const persistent: TankOperationalStateProbe = {
+      ...operational,
+      retainedTarget: { targetClass: "POPULATION", cellId: 2 },
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: completed.tick,
+    };
+    const withPersistentState = createProspectiveMatchState(completed, {
+      tankOperationalStates: [persistent] as unknown as MatchState["tankOperationalStates"],
+    });
+
+    expect(
+      (withPersistentState as MatchStateWithTankOperationalStates)
+        .tankOperationalStates?.[0],
+    ).toMatchObject({
+      retainedTarget: { targetClass: "POPULATION", cellId: 2 },
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: completed.tick,
+    });
+
+    const fingerprint = canonicalMatchStateSerialization(withPersistentState);
+    const serialized = JSON.parse(fingerprint) as {
+      tankOperationalStates: readonly TankOperationalStateProbe[];
+    };
+    expect(serialized.tankOperationalStates[0]).toMatchObject({
+      retainedTarget: { targetClass: "POPULATION", cellId: 2 },
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: completed.tick,
+    });
+
+    const changedTarget: TankOperationalStateProbe = {
+      ...persistent,
+      retainedTarget: { targetClass: "POPULATION", cellId: 1 },
+    };
+    const retargeted = createProspectiveMatchState(completed, {
+      tankOperationalStates: [changedTarget] as unknown as MatchState["tankOperationalStates"],
+    });
+    expect(canonicalMatchStateSerialization(retargeted)).not.toBe(fingerprint);
   });
 });
