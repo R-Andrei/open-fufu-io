@@ -27,6 +27,7 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import { advanceTankProductionPhase } from "./Tanks";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -334,7 +335,7 @@ export class TickEngine {
       earningSnapshot.hostilityGrace,
       nextTick,
     );
-    return createAdvancedMatchState(earningSnapshot, {
+    const advanced = createAdvancedMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,
@@ -345,5 +346,6 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
+    return advanceTankProductionPhase(advanced);
   }
 }
