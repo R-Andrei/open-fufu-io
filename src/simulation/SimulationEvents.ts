@@ -54,6 +54,17 @@ export type UnitDestroyedEvent = SimulationEvent<
   UnitDestroyedPayload
 >;
 
+export interface RadioactiveAttackAftershockResolvedPayload {
+  readonly attacker: UnitEventSubject;
+  readonly targetCellId: CellId;
+  readonly affectedCellIds: readonly CellId[];
+}
+
+export type RadioactiveAttackAftershockResolvedEvent = SimulationEvent<
+  "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED",
+  RadioactiveAttackAftershockResolvedPayload
+>;
+
 export type PhysicalUnitSimulationEvent =
   | UnitAttackResolvedEvent
   | UnitDestroyedEvent;
@@ -70,6 +81,14 @@ export interface CreateUnitDestroyedEventInput {
   readonly tick: number;
   readonly unit: UnitEventSubject;
   readonly causes: readonly UnitAttackDestructionCause[];
+}
+
+export interface CreateRadioactiveAttackAftershockResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly attacker: UnitEventSubject;
+  readonly targetCellId: CellId;
+  readonly affectedCellIds: readonly CellId[];
 }
 
 function compareIds(left: string, right: string): number {
@@ -90,19 +109,19 @@ function assertTick(tick: number): void {
   }
 }
 
+function assertCellId(cellId: number, label: string): void {
+  if (!Number.isSafeInteger(cellId) || cellId < 0 || Object.is(cellId, -0)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+}
+
 function freezeUnitSubject(subject: UnitEventSubject): UnitEventSubject {
   assertNonEmptyId(subject.unitId, "unit event subject unitId");
   assertNonEmptyId(subject.ownerId, "unit event subject ownerId");
   if (!MOBILE_UNIT_TYPES.has(subject.unitType)) {
     throw new Error(`unsupported unit event subject type: ${String(subject.unitType)}`);
   }
-  if (
-    !Number.isSafeInteger(subject.cellId) ||
-    subject.cellId < 0 ||
-    Object.is(subject.cellId, -0)
-  ) {
-    throw new Error("unit event subject cellId must be a non-negative safe integer");
-  }
+  assertCellId(subject.cellId, "unit event subject cellId");
   return Object.freeze({
     unitId: subject.unitId,
     ownerId: subject.ownerId,
@@ -157,6 +176,29 @@ export function createUnitDestroyedEvent(
     payload: Object.freeze({
       unit: freezeUnitSubject(input.unit),
       causes: Object.freeze(causes),
+    }),
+  });
+}
+
+export function createRadioactiveAttackAftershockResolvedEvent(
+  input: CreateRadioactiveAttackAftershockResolvedEventInput,
+): RadioactiveAttackAftershockResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertCellId(input.targetCellId, "radioactive aftershock targetCellId");
+  const affectedCellIds = input.affectedCellIds.map((cellId) => {
+    assertCellId(cellId, "radioactive aftershock affected cellId");
+    return cellId;
+  });
+
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED" as const,
+    payload: Object.freeze({
+      attacker: freezeUnitSubject(input.attacker),
+      targetCellId: input.targetCellId,
+      affectedCellIds: Object.freeze(affectedCellIds),
     }),
   });
 }
