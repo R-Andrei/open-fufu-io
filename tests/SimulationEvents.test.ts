@@ -1,7 +1,6 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
-import { resolveLandTick } from "../src/simulation/LandOperations";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import {
   createInitialMatchState,
@@ -9,11 +8,17 @@ import {
   type MatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
-import * as SimulationEvents from "../src/simulation/SimulationEvents";
 import {
-  materializePersistentStructureState,
-  resolvePersistentStructureLifecycleTick,
-} from "../src/simulation/Structures";
+  resolveLandTickWithEvents,
+  resolvePersistentStructureLifecycleFromEvents,
+} from "../src/simulation/SimulationEventRouting";
+import {
+  createCellOwnershipChangedEvent,
+  createUnitAttackResolvedEvent,
+  createUnitDestroyedEvent,
+  type CellOwnershipChangedEvent,
+} from "../src/simulation/SimulationEvents";
+import { materializePersistentStructureState } from "../src/simulation/Structures";
 
 const train = Object.freeze({
   unitId: "unit:train",
@@ -34,25 +39,6 @@ const greenTank = Object.freeze({
   cellId: 2,
 });
 
-type CellOwnershipChangedEventLike = Readonly<{
-  id: string;
-  tick: number;
-  kind: "CELL_OWNERSHIP_CHANGED";
-  payload: Readonly<{
-    cellId: number;
-    previousOwnerId: string | null;
-    nextOwnerId: string | null;
-  }>;
-}>;
-
-type CreateCellOwnershipChangedEventLike = (input: {
-  readonly id: string;
-  readonly tick: number;
-  readonly cellId: number;
-  readonly previousOwnerId: string | null;
-  readonly nextOwnerId: string | null;
-}) => CellOwnershipChangedEventLike;
-
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
@@ -65,16 +51,13 @@ function manualOwnershipEvent(
     previousOwnerId: string | null;
     nextOwnerId: string | null;
   }> = {},
-): CellOwnershipChangedEventLike {
-  return Object.freeze({
+): CellOwnershipChangedEvent {
+  return createCellOwnershipChangedEvent({
     id: overrides.id ?? "ownership-change",
     tick: overrides.tick ?? 1,
-    kind: "CELL_OWNERSHIP_CHANGED" as const,
-    payload: Object.freeze({
-      cellId: overrides.cellId ?? 0,
-      previousOwnerId: overrides.previousOwnerId ?? "beta",
-      nextOwnerId: overrides.nextOwnerId ?? "alpha",
-    }),
+    cellId: overrides.cellId ?? 0,
+    previousOwnerId: overrides.previousOwnerId ?? "beta",
+    nextOwnerId: overrides.nextOwnerId ?? "alpha",
   });
 }
 
@@ -193,24 +176,9 @@ function readyParallelNeutralCaptures(): MatchState {
   });
 }
 
-const resolveLandTickWithEvents = resolveLandTick as unknown as (
-  state: MatchState,
-  transitionTick: number,
-) => {
-  readonly ownership: readonly (string | null)[];
-  readonly events: readonly CellOwnershipChangedEventLike[];
-};
-
-const resolveStructureLifecycleFromEvents =
-  resolvePersistentStructureLifecycleTick as unknown as (
-    state: MatchState,
-    events: readonly CellOwnershipChangedEventLike[],
-    currentTick: number,
-  ) => ReturnType<typeof resolvePersistentStructureLifecycleTick>;
-
 describe("deterministic simulation events", () => {
   it("materializes an immutable lifecycle-safe resolved attack fact", () => {
-    const event = SimulationEvents.createUnitAttackResolvedEvent({
+    const event = createUnitAttackResolvedEvent({
       id: "opaque attack id",
       tick: 42,
       attacker: blueTank,
@@ -251,7 +219,7 @@ describe("deterministic simulation events", () => {
       },
     ];
 
-    const event = SimulationEvents.createUnitDestroyedEvent({
+    const event = createUnitDestroyedEvent({
       id: "opaque destruction id",
       tick: 42,
       unit: train,
@@ -292,13 +260,7 @@ describe("deterministic simulation events", () => {
   });
 
   it("materializes immutable cell-ownership facts and rejects no-op ownership", () => {
-    const factory = (
-      SimulationEvents as unknown as Record<string, unknown>
-    ).createCellOwnershipChangedEvent;
-    expect(typeof factory).toBe("function");
-    const create = factory as CreateCellOwnershipChangedEventLike;
-
-    const event = create({
+    const event = createCellOwnershipChangedEvent({
       id: "opaque ownership id",
       tick: 9,
       cellId: 4,
@@ -324,7 +286,7 @@ describe("deterministic simulation events", () => {
     expect(Object.isFrozen(event.payload)).toBe(true);
 
     expect(
-      create({
+      createCellOwnershipChangedEvent({
         id: "to-neutral",
         tick: 10,
         cellId: 4,
@@ -333,7 +295,7 @@ describe("deterministic simulation events", () => {
       }).payload.nextOwnerId,
     ).toBeNull();
     expect(() =>
-      create({
+      createCellOwnershipChangedEvent({
         id: "no-change",
         tick: 10,
         cellId: 4,
@@ -355,7 +317,6 @@ describe("deterministic simulation events", () => {
     const first = resolveLandTickWithEvents(ready, transitionTick);
     const second = resolveLandTickWithEvents(reversed, transitionTick);
 
-    expect(Array.isArray(first.events)).toBe(true);
     expect(first.events).toEqual(second.events);
     expect(first.events.map((event) => event.payload.cellId)).toEqual([1, 2]);
     expect(first.events.every((event) => event.tick === transitionTick)).toBe(true);
@@ -366,7 +327,11 @@ describe("deterministic simulation events", () => {
   it("makes persistent-structure capture depend on the explicit ownership event batch", () => {
     const postLand = postLandStructureState();
 
-    const withoutEvent = resolveStructureLifecycleFromEvents(postLand, [], 1);
+    const withoutEvent = resolvePersistentStructureLifecycleFromEvents(
+      postLand,
+      [],
+      1,
+    );
     expect(withoutEvent).toEqual([
       expect.objectContaining({
         id: "captured-city",
@@ -375,7 +340,7 @@ describe("deterministic simulation events", () => {
       }),
     ]);
 
-    const withEvent = resolveStructureLifecycleFromEvents(
+    const withEvent = resolvePersistentStructureLifecycleFromEvents(
       postLand,
       [manualOwnershipEvent()],
       1,
@@ -394,17 +359,17 @@ describe("deterministic simulation events", () => {
     const event = manualOwnershipEvent();
 
     expect(() =>
-      resolveStructureLifecycleFromEvents(postLand, [event, event], 1),
+      resolvePersistentStructureLifecycleFromEvents(postLand, [event, event], 1),
     ).toThrow(/duplicate/i);
     expect(() =>
-      resolveStructureLifecycleFromEvents(
+      resolvePersistentStructureLifecycleFromEvents(
         postLand,
         [manualOwnershipEvent({ tick: 2 })],
         1,
       ),
     ).toThrow(/tick/i);
     expect(() =>
-      resolveStructureLifecycleFromEvents(
+      resolvePersistentStructureLifecycleFromEvents(
         postLand,
         [
           manualOwnershipEvent({
@@ -419,7 +384,7 @@ describe("deterministic simulation events", () => {
 
   it("applies capture disposition before same-tick construction progress", () => {
     const postLand = postLandStructureState({ remainingTicks: 1 });
-    const resolved = resolveStructureLifecycleFromEvents(
+    const resolved = resolvePersistentStructureLifecycleFromEvents(
       postLand,
       [manualOwnershipEvent()],
       1,
