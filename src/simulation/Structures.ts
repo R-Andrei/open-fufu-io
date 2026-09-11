@@ -13,10 +13,14 @@ import {
   type RuleScope,
 } from "../core/rules/RuleComposition";
 import {
+  conditionEligibleRuleTerms,
   materializeCompiledCapRule,
   materializeCompiledScalarRule,
+  materializeScalarScaleFactorTerms,
+  resolvedRuleTermsForScope,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
+import { tryDebitFfy, type ExactFfyValue } from "./Economy";
 import type { MatchState } from "./MatchState";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
@@ -60,6 +64,21 @@ const BASE_STRUCTURE_CONSTRUCTION_TICKS: Readonly<Record<StructureType, number>>
     OBSERVATION_POST: 50,
     COMMAND_POST: 100,
   });
+
+const BASE_STRUCTURE_COST_BY_TARGET_LEVEL: Readonly<
+  Record<StructureType, Readonly<Record<StructureLevel, number>>>
+> = Object.freeze({
+  CITY: Object.freeze({ 1: 100_000, 2: 200_000, 3: 400_000, 4: 600_000, 5: 800_000 }),
+  FORT: Object.freeze({ 1: 50_000, 2: 100_000, 3: 150_000, 4: 200_000, 5: 250_000 }),
+  PORT: Object.freeze({ 1: 100_000, 2: 200_000, 3: 400_000, 4: 600_000, 5: 800_000 }),
+  FACTORY: Object.freeze({ 1: 150_000, 2: 300_000, 3: 600_000, 4: 900_000, 5: 1_200_000 }),
+  MISSILE_SILO: Object.freeze({ 1: 1_000_000, 2: 2_000_000, 3: 3_000_000, 4: 4_000_000, 5: 5_000_000 }),
+  SAM_LAUNCHER: Object.freeze({ 1: 1_000_000, 2: 2_000_000, 3: 3_000_000, 4: 4_000_000, 5: 5_000_000 }),
+  OBSERVATION_POST: Object.freeze({ 1: 50_000, 2: 100_000, 3: 200_000, 4: 300_000, 5: 400_000 }),
+  COMMAND_POST: Object.freeze({ 1: 100_000, 2: 200_000, 3: 400_000, 4: 600_000, 5: 800_000 }),
+});
+
+const P41_DIRECT_LEVEL5_CITY_PURCHASE_COST = 1_995_000;
 
 const BASE_STRUCTURE_RECHARGE_TICKS = Object.freeze({
   MISSILE_SILO: 90,
@@ -118,6 +137,18 @@ export interface StructureUpgradeRequest {
   readonly ownerId: string;
 }
 
+export interface StructureBuildPurchaseRequest {
+  readonly structureId: string;
+  readonly ownerId: string;
+  readonly type: StructureType;
+  readonly cellId: number;
+}
+
+export interface StructureUpgradePurchaseRequest {
+  readonly structureId: string;
+  readonly ownerId: string;
+}
+
 export type StructureAdmissionFailureCode =
   | "INVALID_REQUEST"
   | "UNKNOWN_OWNER"
@@ -164,6 +195,22 @@ export type StructureUpgradeResult =
   | {
       readonly ok: false;
       readonly failure: Readonly<{ code: StructureUpgradeFailureCode }>;
+    };
+
+export type StructurePurchaseFailureCode =
+  | StructureAdmissionFailureCode
+  | StructureUpgradeFailureCode
+  | "INSUFFICIENT_FFY";
+
+export type StructurePurchaseResult =
+  | {
+      readonly ok: true;
+      readonly factions: MatchState["factions"];
+      readonly structures: MatchState["structures"];
+    }
+  | {
+      readonly ok: false;
+      readonly failure: Readonly<{ code: StructurePurchaseFailureCode }>;
     };
 
 function compareIds(left: string, right: string): number {
@@ -358,6 +405,10 @@ function failure(code: StructureAdmissionFailureCode): StructureAdmissionResult 
 }
 
 function upgradeFailure(code: StructureUpgradeFailureCode): StructureUpgradeResult {
+  return Object.freeze({ ok: false, failure: Object.freeze({ code }) });
+}
+
+function purchaseFailure(code: StructurePurchaseFailureCode): StructurePurchaseResult {
   return Object.freeze({ ok: false, failure: Object.freeze({ code }) });
 }
 
@@ -767,6 +818,168 @@ export function tryBeginStructureUpgrade(
         candidate.id === structure.id ? upgraded : candidate,
       ),
     ),
+  });
+}
+
+function factionHasCustomOriginDomain(
+  state: MatchState,
+  ownerId: string,
+  sourceId: string,
+  domain: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  return (
+    owner?.rules.customDomains.some(
+      (entry) =>
+        entry.sourceKind === "ORIGIN" &&
+        entry.sourceId === sourceId &&
+        entry.domain === domain,
+    ) ?? false
+  );
+}
+
+function effectiveStructureCost(
+  state: MatchState,
+  ownerId: string,
+  type: StructureType,
+  axis: "STRUCTURE_BUILD_COST" | "STRUCTURE_UPGRADE_COST",
+  baseCost: number,
+): ExactFfyValue {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "STRUCTURE", structure: type } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      axis,
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  if (terms.some((term) => term.stage === "TERMINAL")) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY[axis],
+    terms,
+  );
+  return Object.freeze({
+    numerator: BigInt(baseCost) * scale.numerator,
+    denominator: scale.denominator,
+  });
+}
+
+function purchaseFactions(
+  state: MatchState,
+  ownerId: string,
+  ffy: number,
+  consumePurchaseType?: StructureType,
+): MatchState["factions"] {
+  return Object.freeze(
+    state.factions.map((faction) => {
+      if (faction.id !== ownerId) return faction;
+      const successfulStructurePurchaseTypes =
+        consumePurchaseType === undefined
+          ? faction.successfulStructurePurchaseTypes
+          : Object.freeze(
+              [...faction.successfulStructurePurchaseTypes, consumePurchaseType].sort(),
+            );
+      return Object.freeze({
+        ...faction,
+        ffy,
+        successfulStructurePurchaseTypes,
+      });
+    }),
+  );
+}
+
+export function tryPurchaseStructureBuild(
+  state: MatchState,
+  request: StructureBuildPurchaseRequest,
+): StructurePurchaseResult {
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  const directLevel5City =
+    request.type === "CITY" &&
+    owner !== undefined &&
+    factionHasCustomOriginDomain(
+      state,
+      request.ownerId,
+      "P41",
+      "DIRECT_LEVEL5_CITY_PURCHASE",
+    );
+  const targetLevel: StructureLevel = directLevel5City ? 5 : 1;
+  const build = tryMaterializeStructureBuild(state, {
+    structureId: request.structureId,
+    ownerId: request.ownerId,
+    type: request.type,
+    cellId: request.cellId,
+    level: targetLevel,
+  });
+  if (!build.ok) return build;
+  if (owner === undefined) return purchaseFailure("UNKNOWN_OWNER");
+
+  const baseCost = directLevel5City
+    ? P41_DIRECT_LEVEL5_CITY_PURCHASE_COST
+    : BASE_STRUCTURE_COST_BY_TARGET_LEVEL[request.type][1];
+  const debit = tryDebitFfy(
+    owner.ffy,
+    effectiveStructureCost(
+      state,
+      request.ownerId,
+      request.type,
+      "STRUCTURE_BUILD_COST",
+      baseCost,
+    ),
+  );
+  if (!debit.ok) return purchaseFailure("INSUFFICIENT_FFY");
+
+  const p21Available =
+    factionHasCustomOriginDomain(
+      state,
+      request.ownerId,
+      "P21",
+      "FIRST_STRUCTURE_PURCHASE_ZERO_FFY",
+    ) && !owner.successfulStructurePurchaseTypes.includes(request.type);
+  return Object.freeze({
+    ok: true,
+    factions: purchaseFactions(
+      state,
+      request.ownerId,
+      p21Available ? owner.ffy : debit.balance,
+      p21Available ? request.type : undefined,
+    ),
+    structures: build.structures,
+  });
+}
+
+export function tryPurchaseStructureUpgrade(
+  state: MatchState,
+  request: StructureUpgradePurchaseRequest,
+): StructurePurchaseResult {
+  const upgrade = tryBeginStructureUpgrade(state, request);
+  if (!upgrade.ok) return upgrade;
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  if (owner === undefined) return purchaseFailure("UNKNOWN_OWNER");
+  const targetLevel = upgrade.structure.construction?.targetLevel;
+  if (targetLevel === undefined) {
+    throw new Error("accepted structure upgrade is missing construction target state");
+  }
+  const debit = tryDebitFfy(
+    owner.ffy,
+    effectiveStructureCost(
+      state,
+      request.ownerId,
+      upgrade.structure.type,
+      "STRUCTURE_UPGRADE_COST",
+      BASE_STRUCTURE_COST_BY_TARGET_LEVEL[upgrade.structure.type][targetLevel],
+    ),
+  );
+  if (!debit.ok) return purchaseFailure("INSUFFICIENT_FFY");
+  return Object.freeze({
+    ok: true,
+    factions: purchaseFactions(state, request.ownerId, debit.balance),
+    structures: upgrade.structures,
   });
 }
 
