@@ -10,6 +10,7 @@ import {
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createCellOwnershipChangedEvent } from "../src/simulation/SimulationEvents";
 import {
   effectiveStructureConstructionTicks,
   evaluateStructureAcquisitionAdmission,
@@ -191,13 +192,24 @@ describe("persistent structure adversarial certification", () => {
     ).toBe(31);
 
     const nextOwnership = terrain.map(() => "alpha");
-    const transferredStructures = resolvePersistentStructureLifecycleTick(
-      withFort,
-      nextOwnership,
-      1,
-    );
-    const transferred = createProspectiveMatchState(withFort, {
+    const transitionTick = 1;
+    const postLand = createProspectiveMatchState(withFort, {
       ownership: nextOwnership,
+    });
+    const transferredStructures = resolvePersistentStructureLifecycleTick(
+      postLand,
+      nextOwnership.map((nextOwnerId, cellId) =>
+        createCellOwnershipChangedEvent({
+          id: `test:cell-ownership:${transitionTick}:${cellId}`,
+          tick: transitionTick,
+          cellId,
+          previousOwnerId: "beta",
+          nextOwnerId,
+        }),
+      ),
+      transitionTick,
+    );
+    const transferred = createProspectiveMatchState(postLand, {
       structures: transferredStructures,
     });
     const after = createControllerQuerySession(transferred, "alpha", {
