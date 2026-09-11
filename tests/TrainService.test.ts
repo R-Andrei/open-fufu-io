@@ -9,6 +9,7 @@ import {
   createMobileUnit,
   type MobileUnitCollectionState,
 } from "../src/simulation/MobileUnits";
+import { createPopulationState } from "../src/simulation/Population";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   TRAIN_MOVEMENT_WORK_PER_TICK,
@@ -17,6 +18,7 @@ import {
   TRAIN_TURNAROUND_ACTIVE_TICKS,
   advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
+  applyTrainCityPopulationGrant,
   canDispatchFactoryPrimaryTrain,
   createFactoryTrainDispatchRoutes,
   createFactoryTrainServiceEpoch,
@@ -26,6 +28,8 @@ import {
   dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
+  resolveFactoryTrainEventBaseMultiplier,
+  resolveTrainExternalWartimeMultiplier,
   transferFactoryTrainServiceEpoch,
 } from "../src/simulation/TrainService";
 
@@ -45,7 +49,9 @@ function railTestMap() {
   });
 }
 
-function rulesWithTraits(traitIds: readonly ("P14" | "N11")[] = []) {
+function rulesWithTraits(
+  traitIds: readonly ("P08" | "P14" | "P33" | "P34" | "N11")[] = [],
+) {
   const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
     contributions: origin.contributions,
@@ -367,5 +373,178 @@ describe("Factory Train service timing and movement", () => {
     );
     expect(ordinary.bonusTrainRequired).toBe(false);
     expect(ordinary.epoch.p07PrimaryDispatchPhase).toBe(0);
+  });
+
+  it("composes P08 wartime yield, P34 captured-Factory snapshot, and P33 City Population independently", () => {
+    const baselineRules = rulesWithTraits();
+    const trainOwnerRules = rulesWithTraits(["P08", "P34"]);
+    const cityOwnerRules = rulesWithTraits(["P33"]);
+
+    expect(
+      resolveTrainExternalWartimeMultiplier(baselineRules, RULE_STATE, true),
+    ).toEqual({ numerator: 1n, denominator: 2n });
+    expect(
+      resolveTrainExternalWartimeMultiplier(trainOwnerRules, RULE_STATE, true),
+    ).toEqual({ numerator: 1n, denominator: 1n });
+    expect(
+      resolveTrainExternalWartimeMultiplier(trainOwnerRules, RULE_STATE, false),
+    ).toEqual({ numerator: 1n, denominator: 1n });
+
+    const domesticMultiplier = resolveFactoryTrainEventBaseMultiplier(
+      trainOwnerRules,
+      RULE_STATE,
+      "PURCHASE_BUILD",
+    );
+    const capturedMultiplier = resolveFactoryTrainEventBaseMultiplier(
+      trainOwnerRules,
+      RULE_STATE,
+      "CAPTURE_TRANSFER",
+    );
+    expect(domesticMultiplier).toEqual({ numerator: 1n, denominator: 1n });
+    expect(capturedMultiplier).toEqual({ numerator: 3n, denominator: 2n });
+
+    const capturedDispatch = createTrainDispatchEconomicSnapshot(
+      "factory-captured",
+      "alpha",
+      1,
+      capturedMultiplier,
+    );
+    expect(capturedDispatch.baseCargoFfy).toEqual({
+      numerator: 15_000n,
+      denominator: 1n,
+    });
+    expect(
+      resolveFactoryTrainEventBaseMultiplier(
+        trainOwnerRules,
+        RULE_STATE,
+        "PURCHASE_BUILD",
+      ),
+    ).toEqual({ numerator: 1n, denominator: 1n });
+    expect(capturedDispatch.baseCargoFfy).toEqual({
+      numerator: 15_000n,
+      denominator: 1n,
+    });
+
+    const wartimeEvent = createTrainStationFfyEvent(capturedDispatch, {
+      eventId: "train:p08-p34:wartime",
+      externalWartimeMultiplier: resolveTrainExternalWartimeMultiplier(
+        trainOwnerRules,
+        RULE_STATE,
+        true,
+      ),
+    });
+    const wartimeResult = resolveFfyEconomicStage({
+      balance: 0,
+      rules: trainOwnerRules,
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [wartimeEvent],
+      signedFacts: [],
+    });
+    expect(wartimeResult.positiveEvents[0]?.award).toBe(15_000);
+
+    const city = Object.freeze({
+      id: "city-beta",
+      ownerId: "beta",
+      type: "CITY" as const,
+      cellId: 4,
+      completedLevel: 3 as const,
+      active: true,
+      acquisitionPath: "PURCHASE_BUILD" as const,
+    });
+    const population = createPopulationState({
+      total: 100,
+      available: 100,
+      committedOffensive: 0,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 100,
+      neutralSettlementHalfResidual: 0,
+    });
+    const populationGrant = applyTrainCityPopulationGrant(
+      cityOwnerRules,
+      city,
+      population,
+      200,
+    );
+    expect(populationGrant.grantedPopulation).toBe(60);
+    expect(populationGrant.population.total).toBe(160);
+    expect(populationGrant.population.available).toBe(160);
+
+    const cappedGrant = applyTrainCityPopulationGrant(
+      cityOwnerRules,
+      city,
+      population,
+      110,
+    );
+    expect(cappedGrant.grantedPopulation).toBe(10);
+    expect(cappedGrant.population.total).toBe(110);
+
+    const portGrant = applyTrainCityPopulationGrant(
+      cityOwnerRules,
+      { ...city, type: "PORT" },
+      population,
+      200,
+    );
+    expect(portGrant.grantedPopulation).toBe(0);
+    expect(portGrant.population).toBe(population);
+
+    const noTraitGrant = applyTrainCityPopulationGrant(
+      baselineRules,
+      city,
+      population,
+      200,
+    );
+    expect(noTraitGrant.grantedPopulation).toBe(0);
+    expect(noTraitGrant.population).toBe(population);
+  });
+
+  it("keeps P33 Population consequence independent when the Train FFY award is hard-zeroed", () => {
+    const trainOwnerRules = rulesWithTraits(["N11"]);
+    const cityOwnerRules = rulesWithTraits(["P33"]);
+    const dispatch = createTrainDispatchEconomicSnapshot(
+      "factory-a",
+      "alpha",
+      1,
+    );
+    const hardZeroEvent = createTrainStationFfyEvent(dispatch, {
+      eventId: "train:p33:hard-zero",
+      conditionApplies: () => true,
+    });
+    const hardZeroResult = resolveFfyEconomicStage({
+      balance: 0,
+      rules: trainOwnerRules,
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [hardZeroEvent],
+      signedFacts: [],
+    });
+    expect(hardZeroResult.positiveEvents[0]?.award).toBe(0);
+
+    const city = Object.freeze({
+      id: "city-beta",
+      ownerId: "beta",
+      type: "CITY" as const,
+      cellId: 4,
+      completedLevel: 2 as const,
+      active: true,
+      acquisitionPath: "PURCHASE_BUILD" as const,
+    });
+    const population = createPopulationState({
+      total: 50,
+      available: 50,
+      committedOffensive: 0,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 50,
+      neutralSettlementHalfResidual: 0,
+    });
+    const populationGrant = applyTrainCityPopulationGrant(
+      cityOwnerRules,
+      city,
+      population,
+      100,
+    );
+    expect(populationGrant.grantedPopulation).toBe(40);
+    expect(populationGrant.population.total).toBe(90);
+    expect(populationGrant.population.available).toBe(90);
   });
 });
