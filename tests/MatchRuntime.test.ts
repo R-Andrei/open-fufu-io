@@ -260,7 +260,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "NO_LONGER_OWNED", key: "unsupported-second" },
+      failure: { code: "CELL_NOT_OWNED", key: "unsupported-second" },
       faultCount: 0,
       faulted: false,
     });
@@ -330,7 +330,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(seen?.lastDecision).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "NO_LONGER_OWNED", key: "unsupported" },
+      failure: { code: "CELL_NOT_OWNED", key: "unsupported" },
       faultCount: 0,
       faulted: false,
     });
