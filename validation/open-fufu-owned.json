@@ -50,6 +50,7 @@
     "tests/Segments.test.ts",
     "tests/SegmentsProduction.test.ts",
     "tests/SimulationDependencyFirewall.test.ts",
+    "tests/SimulationEvents.test.ts",
     "tests/SpawnHardening.test.ts",
     "tests/SpawnInitialization.test.ts",
     "tests/SpawnModeResolution.test.ts",
