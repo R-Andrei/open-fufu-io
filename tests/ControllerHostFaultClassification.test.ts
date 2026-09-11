@@ -234,4 +234,50 @@ describe("controller-host internal fault classification", () => {
       ),
     ).toEqual(Array.from({ length: malformedOutputs.length }, () => false));
   });
+
+  it("rejects malformed construction CellIds before authoritative admission", () => {
+    const malformedCellIds = [-1, 0.5, Number.MAX_SAFE_INTEGER + 1];
+    const malformedOutputs = malformedCellIds.flatMap((cellId) => [
+      {
+        commands: [
+          {
+            kind: "BUILD_STRUCTURE",
+            key: `build-${cellId}`,
+            structure: "CITY",
+            cellId,
+          },
+        ],
+      },
+      {
+        commands: [
+          {
+            kind: "UPGRADE_STRUCTURE",
+            key: `upgrade-${cellId}`,
+            cellId,
+          },
+        ],
+      },
+    ]);
+
+    expect(
+      malformedOutputs.map((output) =>
+        controllerOutputHasExpectedStructure("DECIDE", output),
+      ),
+    ).toEqual(Array.from({ length: malformedOutputs.length }, () => false));
+
+    for (const cellId of [0, Number.MAX_SAFE_INTEGER]) {
+      expect(
+        controllerOutputHasExpectedStructure("DECIDE", {
+          commands: [
+            {
+              kind: "BUILD_STRUCTURE",
+              key: `structurally-valid-${cellId}`,
+              structure: "CITY",
+              cellId,
+            },
+          ],
+        }),
+      ).toBe(true);
+    }
+  });
 });
