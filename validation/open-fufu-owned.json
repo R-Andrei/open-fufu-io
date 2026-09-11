@@ -113,6 +113,7 @@
     {"path":"src/simulation/Population.ts","validators":["tests/Population.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/RailNetwork.ts","validators":["tests/Navigation.test.ts","tests/RailMapArtifact.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/Segments.ts","validators":["tests/Segments.test.ts","tests/SegmentsProduction.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/SimulationEvents.ts","validators":["tests/SimulationEvents.test.ts"]},
     {"path":"src/simulation/SimulationMap.ts","validators":["tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/RailMapArtifact.test.ts","tests/Segments.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/SpawnInitialization.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts","tests/SpawnInitialization.test.ts"]},
     {"path":"src/simulation/SpawnModeResolution.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnModeResolution.test.ts"]},
