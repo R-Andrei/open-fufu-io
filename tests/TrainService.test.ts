@@ -8,13 +8,16 @@ import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   TRAIN_MOVEMENT_WORK_PER_TICK,
   TRAIN_RAIL_EDGE_WORK,
+  TRAIN_STATION_DWELL_TICKS,
   TRAIN_TURNAROUND_ACTIVE_TICKS,
   advanceFactoryTrainServiceSchedulerTick,
+  advanceTrainMovementTick,
   canDispatchFactoryPrimaryTrain,
   createFactoryTrainServiceEpoch,
   createTrainRouteInput,
   finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
+  transferFactoryTrainServiceEpoch,
 } from "../src/simulation/TrainService";
 
 function emptyCollection(): MobileUnitCollectionState {
@@ -95,5 +98,74 @@ describe("Factory Train service timing and movement", () => {
     expect(afterTwoTicks.unit.cellId).toBe(5);
     expect(afterTwoTicks.unit.route).toBeUndefined();
     expect(afterTwoTicks.unusedWork).toBe(0);
+  });
+
+  it("stops on station entry, dwells through arrival+14, resumes at arrival+15, and pays again only after re-entry", () => {
+    expect(TRAIN_STATION_DWELL_TICKS).toBe(15);
+
+    const map = railTestMap();
+    const created = createMobileUnit(map, ["alpha"], emptyCollection(), {
+      ownerId: "alpha",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 0,
+    });
+    const routed = assignMobileUnitRoute(
+      map,
+      created.unit,
+      createTrainRouteInput([0, 1, 2, 1, 0]),
+    );
+
+    const arrival = advanceTrainMovementTick(routed, 100, null, [1]);
+    expect(arrival.unit.cellId).toBe(1);
+    expect(arrival.stationEntryCellId).toBe(1);
+    expect(arrival.resumeAtTick).toBe(115);
+    expect(arrival.unit.route).toMatchObject({ nextCellIndex: 2, edgeProgress: 0 });
+
+    const duringDwell = advanceTrainMovementTick(
+      arrival.unit,
+      114,
+      arrival.resumeAtTick,
+      [1],
+    );
+    expect(duringDwell.unit).toBe(arrival.unit);
+    expect(duringDwell.stationEntryCellId).toBeNull();
+    expect(duringDwell.resumeAtTick).toBe(115);
+
+    const reentry = advanceTrainMovementTick(
+      duringDwell.unit,
+      115,
+      duringDwell.resumeAtTick,
+      [1],
+    );
+    expect(reentry.unit.cellId).toBe(1);
+    expect(reentry.stationEntryCellId).toBe(1);
+    expect(reentry.resumeAtTick).toBe(130);
+    expect(reentry.unit.route).toMatchObject({ nextCellIndex: 4, edgeProgress: 0 });
+  });
+
+  it("creates a fresh new-owner Factory epoch while an old-owner primary remains isolated", () => {
+    const oldFresh = createFactoryTrainServiceEpoch("factory-a", "alpha");
+    const oldActive = markFactoryPrimaryTrainDispatched(oldFresh, "train-old");
+
+    const newFresh = transferFactoryTrainServiceEpoch(oldActive, "beta");
+    expect(newFresh).toEqual({
+      factoryId: "factory-a",
+      ownerId: "beta",
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 0,
+    });
+    expect(canDispatchFactoryPrimaryTrain(newFresh, true, true)).toBe(true);
+
+    const newActive = markFactoryPrimaryTrainDispatched(newFresh, "train-new");
+    const oldReturned = finishFactoryPrimaryTrain(oldActive, "train-old");
+
+    expect(oldReturned.ownerId).toBe("alpha");
+    expect(oldReturned.turnaroundRemainingActiveTicks).toBe(50);
+    expect(newActive.ownerId).toBe("beta");
+    expect(newActive.activePrimaryTrainId).toBe("train-new");
+    expect(() => finishFactoryPrimaryTrain(newActive, "train-old")).toThrow(
+      /not active/i,
+    );
   });
 });
