@@ -1,5 +1,7 @@
 import type { SpawnInfluenceDecision } from "../src/core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../src/core/controller/ControllerOutputValidation";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
@@ -7,8 +9,12 @@ import {
 } from "../src/server/controller-runtime/ProductionControllerHost";
 import {
   InProcessTestControllerHost,
+  projectLawfulControllerObservation,
   type ControllerHostInvocationResult,
 } from "../src/simulation/ControllerRuntime";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createProspectiveMatchState } from "../src/simulation/MatchState";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
 const spawnArtifact: ControllerRuntimeArtifact = Object.freeze({
   moduleSource: "export function decide() {} export function chooseInfluence() {}",
@@ -279,5 +285,36 @@ describe("controller-host internal fault classification", () => {
         }),
       ).toBe(true);
     }
+  });
+
+  it("projects passive FFY rate independently of current balance headroom", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const match = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-passive-rate-balance-independence-red",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["alpha"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const base = match.snapshot();
+    const state = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha"
+          ? Object.freeze({ ...faction, ffy: Number.MAX_SAFE_INTEGER })
+          : faction,
+      ),
+    });
+
+    const observation = projectLawfulControllerObservation(state, "alpha", 0);
+    expect(observation.economy).toEqual({
+      ffy: Number.MAX_SAFE_INTEGER,
+      passiveFfyPerSecond: 1_000,
+    });
   });
 });
