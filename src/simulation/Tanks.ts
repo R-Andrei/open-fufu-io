@@ -84,6 +84,7 @@ interface ExactRatio {
 const BASE_TANK_BUILD_TICKS = 50;
 const HEAVY_ARTILLERY_BUILD_TICKS = 100;
 const TANK_MOVEMENT_TICKS_PER_SECOND = 10n;
+const TANK_OPERATING_LEASH_CELLS = 100;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 function failure(
@@ -391,6 +392,50 @@ export function tankTerrainMovementTiming(
     movementWorkPerTick: Number(movementWorkPerTick),
     edgeWeight: Number(edgeWeight),
   });
+}
+
+export function tankCellTraversalTiming(
+  state: MatchState,
+  ownerId: string,
+  chassisType: TankChassisType,
+  cellId: number,
+): TankTerrainMovementTiming | undefined {
+  if (!state.map.isValidCellId(cellId)) {
+    throw new Error("Tank traversal query requires a valid map cell");
+  }
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  if (owner.status !== "ACTIVE") return undefined;
+
+  const territoryOwnerId = state.ownership[cellId] ?? null;
+  if (territoryOwnerId === null) return undefined;
+  const territoryOwner = state.factions.find(
+    (faction) => faction.id === territoryOwnerId,
+  );
+  if (territoryOwner === undefined || territoryOwner.status !== "ACTIVE") {
+    return undefined;
+  }
+  return tankTerrainMovementTiming(
+    state,
+    ownerId,
+    chassisType,
+    state.map.terrainAt(cellId),
+  );
+}
+
+export function tankOperatingLeashContains(
+  map: SimulationMap,
+  anchorCellId: number,
+  candidateCellId: number,
+): boolean {
+  if (!map.isValidCellId(anchorCellId) || !map.isValidCellId(candidateCellId)) {
+    throw new Error("Tank operating-leash query requires valid map cells");
+  }
+  const anchor = map.positionOf(anchorCellId);
+  const candidate = map.positionOf(candidateCellId);
+  const dx = candidate.x - anchor.x;
+  const dy = candidate.y - anchor.y;
+  return dx * dx + dy * dy <= TANK_OPERATING_LEASH_CELLS ** 2;
 }
 
 export function tankWeaponRangeContains(
