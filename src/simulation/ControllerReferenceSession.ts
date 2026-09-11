@@ -4,11 +4,18 @@ import type { MatchState } from "./MatchState";
 export type ControllerReferenceDomain = "UNIT" | "STRUCTURE" | "OPERATION";
 
 type IncarnationOrdinal = number;
+type OperationDirectiveKind = "LAND_OPERATION" | "COUNTER_RESPONSE";
 
-type OperationTransition = Readonly<{
-  logicalKey: string;
-  kind: "END" | "ENSURE_OPERATION";
-}>;
+type OperationTransition =
+  | Readonly<{
+      logicalKey: string;
+      kind: "END";
+    }>
+  | Readonly<{
+      logicalKey: string;
+      kind: "ENSURE_OPERATION";
+      directiveKind: OperationDirectiveKind;
+    }>;
 
 interface DomainIncarnationState {
   nextIncarnation: number;
@@ -45,6 +52,14 @@ function operationLogicalKey(ownerId: string, controllerKey: string): string {
   return JSON.stringify([ownerId, controllerKey]);
 }
 
+function operationDirectiveKind(
+  operation: MatchState["operations"][number],
+): OperationDirectiveKind {
+  return operation.kind === "COUNTER_RESPONSE"
+    ? "COUNTER_RESPONSE"
+    : "LAND_OPERATION";
+}
+
 /**
  * Trusted live-match identity state for controller-facing opaque references.
  *
@@ -70,6 +85,10 @@ export class ControllerReferenceSession {
   private operationIncarnationByLogicalKey = new Map<
     string,
     IncarnationOrdinal
+  >();
+  private operationDirectiveKindByLogicalKey = new Map<
+    string,
+    OperationDirectiveKind
   >();
   private pendingOperationTransitions: OperationTransition[] = [];
   private readonly issuedRefByIdentity = new Map<string, string>();
@@ -134,18 +153,33 @@ export class ControllerReferenceSession {
 
   private reconcileOperations(state: MatchState): void {
     const activeByLogicalKey = new Map(this.operationIncarnationByLogicalKey);
+    const activeDirectiveKindByLogicalKey = new Map(
+      this.operationDirectiveKindByLogicalKey,
+    );
 
     for (const transition of this.pendingOperationTransitions) {
       if (transition.kind === "END") {
         activeByLogicalKey.delete(transition.logicalKey);
+        activeDirectiveKindByLogicalKey.delete(transition.logicalKey);
         continue;
       }
-      if (!activeByLogicalKey.has(transition.logicalKey)) {
+      const currentIncarnation = activeByLogicalKey.get(transition.logicalKey);
+      const currentDirectiveKind = activeDirectiveKindByLogicalKey.get(
+        transition.logicalKey,
+      );
+      if (
+        currentIncarnation === undefined ||
+        currentDirectiveKind !== transition.directiveKind
+      ) {
         activeByLogicalKey.set(
           transition.logicalKey,
           this.allocateIncarnation("OPERATION"),
         );
       }
+      activeDirectiveKindByLogicalKey.set(
+        transition.logicalKey,
+        transition.directiveKind,
+      );
     }
 
     const operations = [...state.operations].sort(
@@ -155,6 +189,7 @@ export class ControllerReferenceSession {
         compareText(left.id, right.id),
     );
     const nextLogical = new Map<string, IncarnationOrdinal>();
+    const nextDirectiveKind = new Map<string, OperationDirectiveKind>();
     const nextById = new Map<string, IncarnationOrdinal>();
     const nextByIncarnation = new Map<IncarnationOrdinal, string>();
 
@@ -169,15 +204,21 @@ export class ControllerReferenceSession {
       if (nextById.has(operation.id)) {
         throw new Error(`duplicate OPERATION authoritative identity ${operation.id}`);
       }
+      const directiveKind = operationDirectiveKind(operation);
+      const activeIncarnation = activeByLogicalKey.get(logicalKey);
       const incarnation =
-        activeByLogicalKey.get(logicalKey) ??
-        this.allocateIncarnation("OPERATION");
+        activeIncarnation !== undefined &&
+        activeDirectiveKindByLogicalKey.get(logicalKey) === directiveKind
+          ? activeIncarnation
+          : this.allocateIncarnation("OPERATION");
       nextLogical.set(logicalKey, incarnation);
+      nextDirectiveKind.set(logicalKey, directiveKind);
       nextById.set(operation.id, incarnation);
       nextByIncarnation.set(incarnation, operation.id);
     }
 
     this.operationIncarnationByLogicalKey = nextLogical;
+    this.operationDirectiveKindByLogicalKey = nextDirectiveKind;
     this.domains.OPERATION.currentByAuthoritativeId = nextById;
     this.domains.OPERATION.authoritativeIdByIncarnation = nextByIncarnation;
     this.pendingOperationTransitions = [];
@@ -199,13 +240,18 @@ export class ControllerReferenceSession {
     }
 
     for (const directive of changes.set ?? []) {
+      const logicalKey = operationLogicalKey(factionId, directive.key);
+      if (directive.kind === "DEFENSE_PRIORITY") {
+        this.pendingOperationTransitions.push(
+          Object.freeze({ logicalKey, kind: "END" as const }),
+        );
+        continue;
+      }
       this.pendingOperationTransitions.push(
         Object.freeze({
-          logicalKey: operationLogicalKey(factionId, directive.key),
-          kind:
-            directive.kind === "DEFENSE_PRIORITY"
-              ? ("END" as const)
-              : ("ENSURE_OPERATION" as const),
+          logicalKey,
+          kind: "ENSURE_OPERATION" as const,
+          directiveKind: directive.kind,
         }),
       );
     }
