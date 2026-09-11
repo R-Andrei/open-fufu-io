@@ -2,6 +2,7 @@ import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/Or
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { resolveTankPopulationAftershocks } from "../src/simulation/TankCombat";
+import { applyRadioactiveAttackAftershockEvents } from "../src/simulation/LandOperations";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
@@ -88,6 +89,26 @@ function shot(
   });
 }
 
+function applyAftershocks(
+  state: MatchState,
+  events: ReturnType<typeof resolveTankPopulationAftershocks>["events"],
+): MatchState {
+  const territorial = applyRadioactiveAttackAftershockEvents(
+    {
+      ownership: state.ownership,
+      fallout: state.fallout,
+    },
+    events,
+  );
+  if (
+    territorial.ownership === state.ownership &&
+    territorial.fallout === state.fallout
+  ) {
+    return state;
+  }
+  return createProspectiveMatchState(state, territorial);
+}
+
 function orderedManhattanCells(
   state: MatchState,
   centerCellId: number,
@@ -109,7 +130,7 @@ function orderedManhattanCells(
 }
 
 describe("P44 Tank Population aftershock", () => {
-  it("uses baseline radius/cap ordering and excludes structure-occupied cells", () => {
+  it("emits the resolved baseline footprint before the territorial consumer applies Fallout", () => {
     let state = fixture({
       width: 5,
       height: 5,
@@ -126,25 +147,46 @@ describe("P44 Tank Population aftershock", () => {
     });
     const attacker = addAttacker(state, "TANK");
     state = attacker.state;
+    const originalOwnership = state.ownership;
+    const originalFallout = state.fallout;
 
     const result = resolveTankPopulationAftershocks(state, [shot(attacker.unit, 12)]);
 
-    expect(result.effects).toEqual([
-      {
-        attackerUnitId: attacker.unit.id,
+    expect(result.state).toBe(state);
+    expect(state.ownership).toBe(originalOwnership);
+    expect(state.fallout).toBe(originalFallout);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]).toMatchObject({
+      tick: state.tick,
+      kind: "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED",
+      payload: {
+        attacker: {
+          unitId: attacker.unit.id,
+          ownerId: attacker.unit.ownerId,
+          unitType: "TANK",
+          cellId: attacker.unit.cellId,
+        },
         targetCellId: 12,
         affectedCellIds: [12, 11, 13, 17, 2, 6, 8, 10, 14, 16],
       },
-    ]);
-    for (const cellId of result.effects[0]!.affectedCellIds) {
-      expect(result.state.ownership[cellId]).toBeNull();
-      expect(result.state.fallout[cellId]).toBe(true);
+    });
+    expect(Object.isFrozen(result.events[0])).toBe(true);
+    expect(Object.isFrozen(result.events[0]?.payload)).toBe(true);
+    expect(Object.isFrozen(result.events[0]?.payload.affectedCellIds)).toBe(true);
+
+    const applied = applyAftershocks(state, result.events);
+    for (const cellId of result.events[0]!.payload.affectedCellIds) {
+      expect(applied.ownership[cellId]).toBeNull();
+      expect(applied.fallout[cellId]).toBe(true);
     }
-    expect(result.state.ownership[7]).toBe("beta");
-    expect(result.state.fallout[7]).toBe(false);
+    expect(applied.ownership[7]).toBe("beta");
+    expect(applied.fallout[7]).toBe(false);
+    expect(applied.structures).toBe(state.structures);
+    expect(applied.factions).toBe(state.factions);
+    expect(applied.operations).toBe(state.operations);
   });
 
-  it("uses the target owner's effective P48 population-bearing permission", () => {
+  it("uses the target owner's effective P48 population-bearing permission before event emission", () => {
     const terrain = ["PLAINS", "SHALLOW_WATER", "PLAINS"];
 
     let ordinary = fixture({ width: 3, height: 1, terrain, alphaTraits: ["P44"] });
@@ -152,7 +194,7 @@ describe("P44 Tank Population aftershock", () => {
     ordinary = ordinaryAttacker.state;
     expect(
       resolveTankPopulationAftershocks(ordinary, [shot(ordinaryAttacker.unit, 0)])
-        .effects[0]?.affectedCellIds,
+        .events[0]?.payload.affectedCellIds,
     ).toEqual([0, 2]);
 
     let blessed = fixture({
@@ -166,11 +208,11 @@ describe("P44 Tank Population aftershock", () => {
     blessed = blessedAttacker.state;
     expect(
       resolveTankPopulationAftershocks(blessed, [shot(blessedAttacker.unit, 0)])
-        .effects[0]?.affectedCellIds,
+        .events[0]?.payload.affectedCellIds,
     ).toEqual([0, 1, 2]);
   });
 
-  it("uses P43 Heavy Artillery radius 5 and cap 50", () => {
+  it("uses P43 Heavy Artillery radius 5 and cap 50 before event emission", () => {
     let state = fixture({
       width: 11,
       height: 11,
@@ -182,11 +224,11 @@ describe("P44 Tank Population aftershock", () => {
 
     const result = resolveTankPopulationAftershocks(state, [shot(attacker.unit, 60)]);
 
-    expect(result.effects[0]?.affectedCellIds).toEqual(expected);
-    expect(result.effects[0]?.affectedCellIds).toHaveLength(50);
+    expect(result.events[0]?.payload.affectedCellIds).toEqual(expected);
+    expect(result.events[0]?.payload.affectedCellIds).toHaveLength(50);
   });
 
-  it("computes overlapping shots from one frozen snapshot and unions final mutation independent of shot order", () => {
+  it("computes overlapping events from one frozen snapshot and applies their union independent of shot order", () => {
     let state = fixture({ width: 5, height: 5, alphaTraits: ["P44"] });
     const first = addAttacker(state, "TANK");
     state = first.state;
@@ -198,7 +240,14 @@ describe("P44 Tank Population aftershock", () => {
     const reversed = resolveTankPopulationAftershocks(state, [...shots].reverse());
 
     expect(reversed).toEqual(forward);
-    expect(forward.effects).toEqual([
+    expect(forward.state).toBe(state);
+    expect(
+      forward.events.map((event) => ({
+        attackerUnitId: event.payload.attacker.unitId,
+        targetCellId: event.payload.targetCellId,
+        affectedCellIds: event.payload.affectedCellIds,
+      })),
+    ).toEqual([
       {
         attackerUnitId: first.unit.id,
         targetCellId: 12,
@@ -210,20 +259,26 @@ describe("P44 Tank Population aftershock", () => {
         affectedCellIds: [13, 8, 12, 14, 18, 3, 7, 9, 11, 17],
       },
     ]);
-    const neutralized = forward.state.ownership.filter((ownerId) => ownerId === null);
+
+    const forwardApplied = applyAftershocks(state, forward.events);
+    const reversedApplied = applyAftershocks(state, [...forward.events].reverse());
+    expect(reversedApplied.ownership).toEqual(forwardApplied.ownership);
+    expect(reversedApplied.fallout).toEqual(forwardApplied.fallout);
+    const neutralized = forwardApplied.ownership.filter((ownerId) => ownerId === null);
     expect(neutralized).toHaveLength(13);
-    expect(forward.effects[0]?.affectedCellIds).toContain(12);
-    expect(forward.effects[1]?.affectedCellIds).toContain(12);
+    expect(forward.events[0]?.payload.affectedCellIds).toContain(12);
+    expect(forward.events[1]?.payload.affectedCellIds).toContain(12);
   });
 
-  it("does nothing for a successful Population shot when the attacker lacks P44", () => {
+  it("emits no aftershock and performs no territorial mutation when the attacker lacks P44", () => {
     let state = fixture({ width: 3, height: 1 });
     const attacker = addAttacker(state, "TANK");
     state = attacker.state;
 
     const result = resolveTankPopulationAftershocks(state, [shot(attacker.unit, 1)]);
 
-    expect(result.effects).toEqual([]);
+    expect(result.events).toEqual([]);
     expect(result.state).toBe(state);
+    expect(applyAftershocks(state, result.events)).toBe(state);
   });
 });
