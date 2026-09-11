@@ -673,6 +673,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           },
     );
 
+  const tankOperationalStates = [...state.tankOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      health: {
+        numerator: entry.health.numerator.toString(),
+        denominator: entry.health.denominator.toString(),
+      },
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+    }));
+
   const operations = [...state.operations]
     .sort((left, right) =>
       compareIds(left.ownerId, right.ownerId) ||
@@ -735,6 +748,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
     tankProductionJobs,
+    tankOperationalStates,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(
