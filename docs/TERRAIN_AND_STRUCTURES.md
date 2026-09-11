@@ -493,7 +493,9 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 | **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
 | **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
 | **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
-| **Factory — simultaneous Tank repair capacity** | 1 | 2 | 3 | 4 | **5** |
+| **Factory — broad armored-unit repair radius** | 20 | 40 | 60 | 80 | **100** |
+| **Factory — broad armored-unit repair rate** | 10 HP/s | 20 HP/s | 30 HP/s | 40 HP/s | **50 HP/s** |
+| **Factory — fast armored-unit repair rate** | 100 HP/s | 137.5 HP/s | 175 HP/s | 212.5 HP/s | **250 HP/s** |
 | **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — interception range** | 70 | 80 | 90 | 100 | **105** |
@@ -533,15 +535,19 @@ Factories produce Trains and Tanks and repair Tank chassis.
 
 Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
-Baseline Tank repair:
+Factory armored-unit repair has two non-stacking service tiers. The completed-level broad profile is listed in Section 2.6. Broad repair applies only to a chassis already assigned to that Factory for repair; while inside the Factory's current effective broad field, that chassis may continue moving toward fast service and receives the broad rate. Broad service has no Factory-level simultaneous-count cap: every chassis assigned to that Factory and currently inside its broad field is eligible unless that same chassis is receiving fast service that tick.
+
+Fast service is the stationary queue tier:
 
 ```text
-repair radius = 5 cells
-repair rate = 100 HP/s per repairing Tank chassis
-simultaneous repair capacity = completed Factory level
+fast-service radius = 10 cells at every Factory level
+fast-service capacity = 1 chassis at every Factory level
+fast-service rate = completed-level rate from Section 2.6
 ```
 
-Factory consumers must request an **effective Factory profile** rather than infer a generic `Factory effect multiplier`. The current P34 conquest transformation is explicitly axis-specific: a qualifying conquered Factory uses `1.50×` Train-event base value, `1.50×` Tank-chassis construction speed, `150 HP/s` Tank repair, and an `8-cell` repair radius. Its primary Train-service capacity, turnaround, Tank-build concurrency, Tank purchase price, simultaneous repair capacity, Factory level, and Factory construction/upgrade rules remain ordinary. Exact Origin semantics and interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+A chassis selected for fast service receives the fast rate only; broad and fast repair never stack on the same chassis in one tick. A queued chassis not selected for the one fast slot receives broad repair when it lies inside the broad field. Repair from one assigned Factory does not stack with another Factory.
+
+The ordinary Factory repair-radius rule axis modifies **broad repair radius only**. The ordinary Factory repair-rate axis scales **both broad and fast repair rates**. Fast-service radius and one-slot capacity are fixed baseline parameters rather than those axes. Factory consumers must request the effective typed repair profile rather than infer a generic `Factory effect multiplier`. Exact P34 transformation values and Origin interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`; Echo identities/scopes are owned by `ECHO_CATALOGUE.md`.
 
 ### Missile Silo
 
@@ -794,11 +800,13 @@ Health and repair may retain deterministic fractional values where effective mod
 
 At the intent phase, a living Tank-derived chassis at or below **50% of its current effective maximum health** enters automatic repair retreat unless an explicit effective rule changes that threshold. Repair retreat outranks combat pursuit and strategic movement.
 
-Choose among reachable active owned Factories by least expected legal traversal time under the chassis's current effective movement profile; ties use stable ascending `structureId`. The selected Factory assignment is persistent rather than recomputed opportunistically. It is cleared/reselected only if that Factory is destroyed, changes owner, becomes ineligible, or becomes unreachable.
+Choose among active owned Factories whose current fast-service field contains at least one legally reachable cell. For each Factory, the route destination is the reachable cell inside that current fast-service field with the least expected legal traversal time under the chassis's current effective movement profile; equal-time destination cells tie by ascending stable `cellId`. Choose the Factory with the least such traversal time; Factory ties use stable ascending `structureId`. The selected Factory assignment is persistent rather than recomputed opportunistically. It is cleared/reselected only if that Factory is destroyed, changes owner, becomes ineligible, or no cell in its current fast-service field remains reachable.
 
-A chassis is eligible for that Factory's repair queue once it reaches the Factory's current effective repair field. Its stable queue key is `(repairArrivalTick, unitId)`. Each Tank repair phase, the first `completed Factory level` queued chassis receive service. A queued chassis keeps its arrival position while waiting; a later arrival cannot jump ahead because of insertion/enumeration order. One chassis may be assigned to and repaired by only one Factory in a tick even when repair fields overlap.
+Once assigned, the chassis receives that Factory's broad repair whenever it is inside the Factory's current effective broad field, including while it is still moving toward fast service. Broad repair does not stop movement. One chassis is assigned to at most one Factory, so overlapping Factory fields never stack repair from multiple Factories.
 
-The Factory's current effective repair radius/rate is read when service is applied. P34 and Factory-repair Echoes therefore alter their owned radius/rate axes without changing the Factory-level simultaneous-repair capacity. Repair is capped at the chassis's current effective maximum health.
+A chassis enters the Factory's fast-service queue when it reaches its selected eligible cell in the current fast-service field. Its stable queue key is `(repairArrivalTick, unitId)`. Queued chassis hold their arrival position while waiting; later arrivals cannot jump ahead because of insertion/enumeration order. Each Tank repair phase, exactly the first queued chassis receives the Factory's one fast-service slot regardless of Factory level. Other queued chassis continue to receive broad repair when they are within the broad field. The fast-serviced chassis receives fast repair only; broad and fast repair never stack in the same tick.
+
+Service reads the Factory's current effective broad radius and repair-rate scale when repair is applied. The broad-radius axis changes broad geometry only; the repair-rate axis scales both broad and fast rates. The fast-service radius remains **10 cells** and fast-service capacity remains **1 chassis** unless a future explicit rule creates separate axes for those parameters. Repair is capped at the chassis's current effective maximum health.
 
 On reaching full health, the chassis exits repair mode/queue and resumes ordinary intent toward its unchanged operating anchor. Factory repair never changes that anchor.
 

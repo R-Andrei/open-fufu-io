@@ -247,7 +247,7 @@ Counter-response Echoes modify the **response-side** effectiveness hook only unl
 
 `Industrial FFY` applies to ordinary industrial FFY events, including Factory-driven industrial/train FFY event values. There is no second Factory-specific FFY Echo layer.
 
-Factory repair-radius/rate Echoes affect the canonical Tank/Heavy-Artillery repair service provided by Factories. They do not alter simultaneous repair capacity.
+Factory repair-radius Echoes affect the canonical **broad** armored-unit repair radius provided by Factories. Factory repair-rate Echoes scale **both broad and fast** Factory armored-unit repair rates. Neither changes the fixed fast-service radius or the fixed one-chassis fast-service capacity.
 
 A Tank-scoped mobile-unit Echo applies to the faction's canonical Tank chassis **after Origin transformation**. If P43 transforms Tanks into Heavy Artillery, Tank cost/speed/range/damage/health Echoes specialize the resulting Heavy-Artillery profile; there is no separate Heavy-Artillery Echo scope.
 
@@ -1063,7 +1063,7 @@ The following are intentionally **not** part of the normal Echo pool at this sta
 - split spawning, extra spawn origins, Initial Territory topology transformations, or other strategic-spawn rule changes;
 - free structures/weapons, structure ownership caps, structure grants on landing, defender survival on capture, alternate Population-growth curves, Port-only Transport requirements, armored-Transport conversion, or equivalent structural Origin mechanics;
 - direct creation of special FFY/Population event types that do not exist for ordinary factions;
-- discrete structure capacities such as Factory simultaneous armored-unit repair count;
+- discrete Factory fast-service parameters such as its fixed service radius or one-chassis service-slot capacity;
 - Tank/Heavy-Artillery firing cooldown/reload, operational leash, automatic repair-retreat threshold, terrain traversal permissions, or similar doctrine-defining control axes;
 - P44 radioactive footprint size/radius/cell count or other niche modifiers whose underlying mechanic exists only because one specific Origin enables it.
 
