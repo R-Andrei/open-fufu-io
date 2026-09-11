@@ -20,6 +20,7 @@ import {
   type MobileUnitState,
 } from "./MobileUnits";
 import { grantPopulation, type PopulationState } from "./Population";
+import type { UnitDestroyedEvent } from "./SimulationEvents";
 import type { PersistentStructureState } from "./Structures";
 
 export const TRAIN_RAIL_EDGE_WORK = 2 as const;
@@ -514,5 +515,52 @@ export function resolveTrainInterceptionEconomicOutcome(
         ? {}
         : { conditionApplies: input.conditionApplies }),
     }),
+  });
+}
+
+export interface TrainDestroyedEconomicService {
+  readonly trainId: string;
+  readonly dispatchSnapshot: TrainDispatchEconomicSnapshot;
+}
+
+export interface TrainDestroyedEconomicResolution {
+  readonly trainId: string;
+  readonly raiderOwnerId: string;
+  readonly economic: TrainInterceptionEconomicOutcome;
+}
+
+export function resolveTrainDestroyedEconomicOutcome(
+  services: readonly TrainDestroyedEconomicService[],
+  destructionEvent: UnitDestroyedEvent,
+  input: TrainInterceptionEconomicInput,
+): TrainDestroyedEconomicResolution | null {
+  if (destructionEvent.payload.unit.unitType !== "TRAIN") return null;
+
+  const service = services.find(
+    (candidate) => candidate.trainId === destructionEvent.payload.unit.unitId,
+  );
+  if (service === undefined) return null;
+
+  let creditedCause = destructionEvent.payload.causes.find(
+    (cause) => cause.attacker.unitType === "TANK",
+  );
+  if (creditedCause === undefined) return null;
+
+  for (const cause of destructionEvent.payload.causes) {
+    if (
+      cause.attacker.unitType === "TANK" &&
+      cause.attacker.unitId < creditedCause.attacker.unitId
+    ) {
+      creditedCause = cause;
+    }
+  }
+
+  return Object.freeze({
+    trainId: service.trainId,
+    raiderOwnerId: creditedCause.attacker.ownerId,
+    economic: resolveTrainInterceptionEconomicOutcome(
+      service.dispatchSnapshot,
+      input,
+    ),
   });
 }
