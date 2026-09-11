@@ -14,8 +14,26 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "./MatchState";
+import type { MobileUnitState } from "./MobileUnits";
+import {
+  createUnitAttackResolvedEvent,
+  createUnitDestroyedEvent,
+  type PhysicalUnitSimulationEvent,
+  type UnitAttackDestructionCause,
+  type UnitEventSubject,
+} from "./SimulationEvents";
 import type { SimulationTerrain } from "./SimulationMap";
 import type { SuccessfulTankPopulationShot } from "./Tanks";
+
+export interface AdmittedTankUnitAttack {
+  readonly attackerUnitId: string;
+  readonly targetUnitId: string;
+}
+
+export interface TankUnitAttackResolution {
+  readonly state: MatchState;
+  readonly events: readonly PhysicalUnitSimulationEvent[];
+}
 
 export interface TankPopulationAftershockEffect {
   readonly attackerUnitId: string;
@@ -40,6 +58,156 @@ function relationIdentity(
     ...(faction.fixedTeamId === undefined
       ? {}
       : { fixedTeamId: faction.fixedTeamId }),
+  });
+}
+
+function unitEventSubject(unit: MobileUnitState): UnitEventSubject {
+  return Object.freeze({
+    unitId: unit.id,
+    ownerId: unit.ownerId,
+    unitType: unit.type,
+    cellId: unit.cellId,
+  });
+}
+
+function tankCombatEventId(
+  kind: "ATTACK" | "DESTROYED",
+  tick: number,
+  ordinal: number,
+  subjectUnitId: string,
+  targetUnitId?: string,
+): string {
+  return JSON.stringify([
+    "TANK_COMBAT",
+    kind,
+    tick,
+    ordinal,
+    subjectUnitId,
+    ...(targetUnitId === undefined ? [] : [targetUnitId]),
+  ]);
+}
+
+function compareAdmittedTankUnitAttacks(
+  left: AdmittedTankUnitAttack,
+  right: AdmittedTankUnitAttack,
+): number {
+  return (
+    compareIds(left.attackerUnitId, right.attackerUnitId) ||
+    compareIds(left.targetUnitId, right.targetUnitId)
+  );
+}
+
+export function resolveAdmittedTankUnitAttacks(
+  state: MatchState,
+  attacks: readonly AdmittedTankUnitAttack[],
+): TankUnitAttackResolution {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const factionsById = new Map(state.factions.map((faction) => [faction.id, faction]));
+  const causesByDestroyedTrain = new Map<
+    string,
+    readonly UnitAttackDestructionCause[]
+  >();
+  const attackEvents: PhysicalUnitSimulationEvent[] = [];
+
+  const orderedAttacks = [...attacks].sort(compareAdmittedTankUnitAttacks);
+  for (let index = 0; index < orderedAttacks.length; index += 1) {
+    const attack = orderedAttacks[index]!;
+    const attacker = unitsById.get(attack.attackerUnitId);
+    const target = unitsById.get(attack.targetUnitId);
+    if (
+      attacker === undefined ||
+      (attacker.type !== "TANK" && attacker.type !== "HEAVY_ARTILLERY")
+    ) {
+      throw new Error(
+        `admitted Tank unit attack requires a Tank-derived attacker: ${attack.attackerUnitId}`,
+      );
+    }
+    if (target === undefined) {
+      throw new Error(
+        `admitted Tank unit attack requires an existing target: ${attack.targetUnitId}`,
+      );
+    }
+    if (target.type !== "TRAIN") {
+      throw new Error(
+        `Tank unit attack physical resolver does not yet support target type ${target.type}`,
+      );
+    }
+    if (attacker.type === "HEAVY_ARTILLERY") {
+      throw new Error("Heavy Artillery cannot resolve an admitted Train attack");
+    }
+
+    const attackerOwner = factionsById.get(attacker.ownerId);
+    const targetOwner = factionsById.get(target.ownerId);
+    if (attackerOwner === undefined || targetOwner === undefined) {
+      throw new Error("admitted Tank unit attack references an unknown unit owner");
+    }
+    if (
+      factionRelationBetween(
+        relationIdentity(attackerOwner),
+        relationIdentity(targetOwner),
+      ) !== "ENEMY"
+    ) {
+      throw new Error("admitted Tank unit attack requires an enemy target");
+    }
+
+    const event = createUnitAttackResolvedEvent({
+      id: tankCombatEventId(
+        "ATTACK",
+        state.tick,
+        index,
+        attacker.id,
+        target.id,
+      ),
+      tick: state.tick,
+      attacker: unitEventSubject(attacker),
+      target: unitEventSubject(target),
+    });
+    attackEvents.push(event);
+
+    const existingCauses = causesByDestroyedTrain.get(target.id) ?? [];
+    causesByDestroyedTrain.set(
+      target.id,
+      Object.freeze([
+        ...existingCauses,
+        Object.freeze({
+          kind: "UNIT_ATTACK" as const,
+          attackEventId: event.id,
+          attacker: event.payload.attacker,
+        }),
+      ]),
+    );
+  }
+
+  const destroyedTrainIds = [...causesByDestroyedTrain.keys()].sort(compareIds);
+  const destructionEvents: PhysicalUnitSimulationEvent[] = [];
+  for (let index = 0; index < destroyedTrainIds.length; index += 1) {
+    const trainId = destroyedTrainIds[index]!;
+    const train = unitsById.get(trainId);
+    if (train === undefined || train.type !== "TRAIN") {
+      throw new Error(`destroyed Train is missing from combat snapshot: ${trainId}`);
+    }
+    destructionEvents.push(
+      createUnitDestroyedEvent({
+        id: tankCombatEventId("DESTROYED", state.tick, index, train.id),
+        tick: state.tick,
+        unit: unitEventSubject(train),
+        causes: causesByDestroyedTrain.get(trainId) ?? [],
+      }),
+    );
+  }
+
+  const nextState =
+    destroyedTrainIds.length === 0
+      ? state
+      : createProspectiveMatchState(state, {
+          mobileUnits: state.mobileUnits.filter(
+            (unit) => !causesByDestroyedTrain.has(unit.id),
+          ),
+        });
+
+  return Object.freeze({
+    state: nextState,
+    events: Object.freeze([...attackEvents, ...destructionEvents]),
   });
 }
 
