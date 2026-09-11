@@ -24,11 +24,24 @@ const FACTORY_TRAIN_EVENT_BASE_FFY = Object.freeze({
 } as const);
 const EXACT_ONE = Object.freeze({ numerator: 1n, denominator: 1n });
 
+export type P07PrimaryDispatchPhase = 0 | 1 | 2 | 3;
+
 export interface FactoryTrainServiceEpochState {
   readonly factoryId: string;
   readonly ownerId: string;
   readonly activePrimaryTrainId: string | null;
   readonly turnaroundRemainingActiveTicks: number;
+  readonly p07PrimaryDispatchPhase: P07PrimaryDispatchPhase;
+}
+
+export interface FactoryTrainPrimaryDispatchResult {
+  readonly epoch: FactoryTrainServiceEpochState;
+  readonly bonusTrainRequired: boolean;
+}
+
+export interface FactoryTrainDispatchRoutes {
+  readonly primary: MobileUnitRouteInput;
+  readonly bonus: MobileUnitRouteInput | null;
 }
 
 export interface TrainMovementTickResult {
@@ -58,6 +71,7 @@ function freezeEpoch(
     ownerId: state.ownerId,
     activePrimaryTrainId: state.activePrimaryTrainId,
     turnaroundRemainingActiveTicks: state.turnaroundRemainingActiveTicks,
+    p07PrimaryDispatchPhase: state.p07PrimaryDispatchPhase,
   });
 }
 
@@ -105,6 +119,7 @@ export function createFactoryTrainServiceEpoch(
     ownerId,
     activePrimaryTrainId: null,
     turnaroundRemainingActiveTicks: 0,
+    p07PrimaryDispatchPhase: 0,
   });
 }
 
@@ -145,6 +160,31 @@ export function markFactoryPrimaryTrainDispatched(
   return freezeEpoch({
     ...state,
     activePrimaryTrainId: trainId,
+  });
+}
+
+export function dispatchFactoryPrimaryTrain(
+  state: FactoryTrainServiceEpochState,
+  trainId: string,
+  p07Active: boolean,
+): FactoryTrainPrimaryDispatchResult {
+  const dispatched = markFactoryPrimaryTrainDispatched(state, trainId);
+  if (!p07Active) {
+    return Object.freeze({
+      epoch: dispatched,
+      bonusTrainRequired: false,
+    });
+  }
+
+  const bonusTrainRequired = state.p07PrimaryDispatchPhase === 3;
+  const p07PrimaryDispatchPhase = ((state.p07PrimaryDispatchPhase + 1) %
+    4) as P07PrimaryDispatchPhase;
+  return Object.freeze({
+    epoch: freezeEpoch({
+      ...dispatched,
+      p07PrimaryDispatchPhase,
+    }),
+    bonusTrainRequired,
   });
 }
 
@@ -193,6 +233,16 @@ export function createTrainRouteInput(
         () => TRAIN_RAIL_EDGE_WORK,
       ),
     ),
+  });
+}
+
+export function createFactoryTrainDispatchRoutes(
+  cells: readonly CellId[],
+  bonusTrainRequired: boolean,
+): FactoryTrainDispatchRoutes {
+  return Object.freeze({
+    primary: createTrainRouteInput(cells),
+    bonus: bonusTrainRequired ? createTrainRouteInput(cells) : null,
   });
 }
 
