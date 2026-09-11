@@ -681,7 +681,9 @@ describe("transactional persistent-structure purchases", () => {
         { id: "beta", rules: rulesWith() },
       ],
     });
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "structure-purchase-replay",
+    });
     for (let tick = 0; tick < 250; tick += 1) runtime.tick();
     expect(alphaFfy(runtime.snapshot())).toBe(50_000);
 
@@ -744,6 +746,7 @@ describe("transactional persistent-structure purchases", () => {
       spec,
       runtime.acceptedInputs(),
       finalState.tick,
+      { controllerReferenceNamespace: "structure-purchase-replay:replay" },
     );
     expect(regenerated.snapshot()).toEqual(finalState);
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
