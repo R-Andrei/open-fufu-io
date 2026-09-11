@@ -657,17 +657,21 @@ export function tryDebitFfy(
 }
 
 /**
- * Resolve the canonical passive earning snapshot after accepted inputs and before
- * autonomous tick systems. Every passive source is finalized independently.
+ * Resolve finalized per-faction passive awards from the canonical earning snapshot
+ * without applying those awards to current FFY balances.
  */
-export function resolvePassiveFfyTick(
+export function resolvePassiveFfyAwards(
   state: MatchState,
-): readonly MatchFactionState[] {
+): ReadonlyMap<string, number> {
   const terrainCounts = derivePassiveTerrainCounts(state);
   const structures = structureCounts(state);
+  const awards = new Map<string, number>();
 
-  return state.factions.map((faction) => {
-    if (faction.status !== "ACTIVE") return faction;
+  for (const faction of state.factions) {
+    if (faction.status !== "ACTIVE") {
+      awards.set(faction.id, 0);
+      continue;
+    }
 
     const terrain = terrainCounts.get(faction.id);
     if (terrain === undefined) {
@@ -699,6 +703,27 @@ export function resolvePassiveFfyTick(
     if (!Number.isSafeInteger(award)) {
       throw new Error("combined passive FFY award exceeds the safe-integer range");
     }
+    awards.set(faction.id, award);
+  }
+
+  return awards;
+}
+
+/**
+ * Resolve the canonical passive earning snapshot after accepted inputs and before
+ * autonomous tick systems. Every passive source is finalized independently.
+ */
+export function resolvePassiveFfyTick(
+  state: MatchState,
+): readonly MatchFactionState[] {
+  const awards = resolvePassiveFfyAwards(state);
+
+  return state.factions.map((faction) => {
+    const award = awards.get(faction.id);
+    if (award === undefined) {
+      throw new Error(`missing passive FFY award for faction ${faction.id}`);
+    }
+    if (faction.status !== "ACTIVE") return faction;
     return { ...faction, ffy: checkedCredit(faction.ffy, award) };
   });
 }

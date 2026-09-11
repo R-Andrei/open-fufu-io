@@ -3,6 +3,7 @@ import type {
   ControllerMemory,
   DecisionFailure,
   DecisionReceipt,
+  EconomyView,
   FactionStatus,
   PopulationView,
   SpawnInfluenceContext,
@@ -10,6 +11,7 @@ import type {
   SpawnOriginContext,
   SpawnOriginDecision,
   SpawnReconsiderContext,
+  StructureType,
 } from "../core/controller/ControllerApi";
 import {
   controllerOutputHasExpectedStructure,
@@ -23,6 +25,10 @@ import {
   createControllerSpatialSurface,
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
+import {
+  ECONOMY_TICKS_PER_SECOND,
+  resolvePassiveFfyAwards,
+} from "./Economy";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
@@ -41,6 +47,10 @@ export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
+const passiveFfyPerSecondCache = new WeakMap<
+  MatchState,
+  ReadonlyMap<string, number>
+>();
 
 export const CONTROLLER_QUERY_LIMITS = Object.freeze({
   queriesPerDecision: 128,
@@ -68,6 +78,7 @@ export type LawfulPopulationObservation = Readonly<
 
 export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
   readonly population: LawfulPopulationObservation;
+  readonly ffy: number;
 }
 
 export interface LawfulControllerObservation {
@@ -75,6 +86,7 @@ export interface LawfulControllerObservation {
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
+  readonly economy: Readonly<EconomyView>;
   readonly lastDecision?: DecisionReceipt;
 }
 
@@ -83,6 +95,7 @@ export interface LawfulInProcessControllerObservation
   readonly map?: ControllerSpatialSurface["map"];
   readonly cells?: ControllerSpatialSurface["cells"];
   readonly segments?: ControllerSpatialSurface["segments"];
+  readonly mechanics?: ControllerQuerySession["mechanics"];
 }
 
 export interface HostedLawfulControllerObservation
@@ -330,6 +343,7 @@ function projectInProcessObservation(
   return Object.freeze({
     ...observation,
     ...createControllerSpatialSurface(querySession),
+    mechanics: querySession.mechanics,
   });
 }
 
@@ -581,8 +595,37 @@ export interface ControllerRoundReceipt {
   readonly receipt: DecisionReceipt;
 }
 
+export interface DeferredControllerStructureBuildAction {
+  readonly type: "CONTROLLER_PURCHASE_STRUCTURE_BUILD";
+  readonly ownerId: string;
+  readonly structureType: StructureType;
+  readonly cellId: number;
+}
+
+export interface DeferredControllerStructureUpgradeAction {
+  readonly type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE";
+  readonly ownerId: string;
+  readonly cellId: number;
+}
+
+export type ControllerProposedSimulationAction =
+  | SimulationAction
+  | DeferredControllerStructureBuildAction
+  | DeferredControllerStructureUpgradeAction;
+
+export interface ControllerProposedAction {
+  readonly key?: string;
+  readonly action: ControllerProposedSimulationAction;
+}
+
+export interface ControllerProposalActions {
+  readonly factionId: string;
+  readonly actions: readonly ControllerProposedAction[];
+}
+
 export interface ControllerRoundEvaluation {
   readonly actions: readonly SimulationAction[];
+  readonly proposals: readonly ControllerProposalActions[];
   readonly receipts: readonly ControllerRoundReceipt[];
   readonly faultCounts: ReadonlyMap<string, number>;
   readonly consecutiveFaultCounts: ReadonlyMap<string, number>;
@@ -590,7 +633,7 @@ export interface ControllerRoundEvaluation {
 }
 
 interface ProposalEvaluation {
-  readonly actions: readonly SimulationAction[];
+  readonly actions: readonly ControllerProposedAction[];
   readonly failure?: DecisionFailure;
 }
 
@@ -638,13 +681,35 @@ function freezePopulationObservation(
 function freezeSelfFactionObservation(
   id: string,
   status: FactionStatus,
+  ffy: number,
   population: PopulationState,
 ): LawfulSelfFactionObservation {
   return Object.freeze({
     id,
     status,
+    ffy,
     population: freezePopulationObservation(population),
   });
+}
+
+function realizedPassiveFfyPerSecondByFaction(
+  state: MatchState,
+): ReadonlyMap<string, number> {
+  const cached = passiveFfyPerSecondCache.get(state);
+  if (cached !== undefined) return cached;
+
+  const rates = new Map<string, number>();
+  for (const [factionId, perTick] of resolvePassiveFfyAwards(state)) {
+    const perSecond = perTick * ECONOMY_TICKS_PER_SECOND;
+    if (!Number.isSafeInteger(perSecond) || perSecond < 0) {
+      throw new Error(
+        `passive FFY projection is outside the safe non-negative integer range for ${factionId}`,
+      );
+    }
+    rates.set(factionId, perSecond);
+  }
+  passiveFfyPerSecondCache.set(state, rates);
+  return rates;
 }
 
 export function projectLawfulControllerObservation(
@@ -663,12 +728,23 @@ export function projectLawfulControllerObservation(
       .sort((left, right) => compareIds(left.id, right.id))
       .map((faction) => freezeFactionObservation(faction.id, faction.status)),
   );
+  const passiveFfyPerSecond = realizedPassiveFfyPerSecondByFaction(state).get(
+    factionId,
+  );
+  if (passiveFfyPerSecond === undefined) {
+    throw new Error(`missing passive FFY projection for faction ${factionId}`);
+  }
+  const economy = Object.freeze({
+    ffy: me.ffy,
+    passiveFfyPerSecond,
+  });
 
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
-    me: freezeSelfFactionObservation(me.id, me.status, me.population),
+    me: freezeSelfFactionObservation(me.id, me.status, me.ffy, me.population),
     factions,
+    economy,
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
@@ -692,7 +768,7 @@ function evaluateProposal(
     return Object.freeze({ actions: Object.freeze([]) });
   }
 
-  const actions: SimulationAction[] = [];
+  const actions: ControllerProposedAction[] = [];
   const directiveSet = decision.directives?.set ?? [];
   const directiveEnd = decision.directives?.end ?? [];
   if (directiveSet.length > 0 || directiveEnd.length > 0) {
@@ -714,16 +790,18 @@ function evaluateProposal(
     }
     actions.push(
       Object.freeze({
-        type: "APPLY_PERSISTENT_DIRECTIVES" as const,
-        factionId,
-        changes,
+        action: Object.freeze({
+          type: "APPLY_PERSISTENT_DIRECTIVES" as const,
+          factionId,
+          changes,
+        }),
       }),
     );
   }
 
   const commands = decision.commands ?? [];
   const seenKeys = new Set<string>();
-  let capitulateKey: string | undefined;
+  let hasCapitulation = false;
 
   for (const command of commands) {
     if (seenKeys.has(command.key)) {
@@ -731,26 +809,57 @@ function evaluateProposal(
     }
     seenKeys.add(command.key);
 
-    if (command.kind !== "CAPITULATE") {
-      return invalid("INVALID_COMMAND", command.key);
+    if (command.kind === "CAPITULATE") {
+      if (hasCapitulation) {
+        return invalid("CONFLICTING_PROPOSAL", command.key);
+      }
+      const faction = state.factions.find((candidate) => candidate.id === factionId);
+      if (faction === undefined || faction.status !== "ACTIVE") {
+        return invalid("INVALID_TARGET", command.key);
+      }
+      hasCapitulation = true;
+      actions.push(
+        Object.freeze({
+          key: command.key,
+          action: Object.freeze({
+            type: "CAPITULATE_FACTION" as const,
+            factionId,
+          }),
+        }),
+      );
+      continue;
     }
-    if (capitulateKey !== undefined) {
-      return invalid("CONFLICTING_PROPOSAL", command.key);
-    }
-    capitulateKey = command.key;
-  }
 
-  if (capitulateKey !== undefined) {
-    const faction = state.factions.find((candidate) => candidate.id === factionId);
-    if (faction === undefined || faction.status !== "ACTIVE") {
-      return invalid("INVALID_TARGET", capitulateKey);
+    if (command.kind === "BUILD_STRUCTURE") {
+      actions.push(
+        Object.freeze({
+          key: command.key,
+          action: Object.freeze({
+            type: "CONTROLLER_PURCHASE_STRUCTURE_BUILD" as const,
+            ownerId: factionId,
+            structureType: command.structure,
+            cellId: command.cellId,
+          }),
+        }),
+      );
+      continue;
     }
-    actions.push(
-      Object.freeze({
-        type: "CAPITULATE_FACTION" as const,
-        factionId,
-      }),
-    );
+
+    if (command.kind === "UPGRADE_STRUCTURE") {
+      actions.push(
+        Object.freeze({
+          key: command.key,
+          action: Object.freeze({
+            type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE" as const,
+            ownerId: factionId,
+            cellId: command.cellId,
+          }),
+        }),
+      );
+      continue;
+    }
+
+    return invalid("INVALID_COMMAND", command.key);
   }
 
   return Object.freeze({ actions: Object.freeze(actions) });
@@ -831,21 +940,23 @@ function finalizeControllerRound(
   }
 
   const actions: SimulationAction[] = [];
+  const proposalActions: ControllerProposalActions[] = [];
   const receipts: ControllerRoundReceipt[] = [];
   const reservations = new Set<string>();
 
   for (const factionId of orderedFactionIds) {
     let failure = invocationFailures.get(factionId);
-    let proposalActions: readonly SimulationAction[] = Object.freeze([]);
+    let evaluatedActions: readonly ControllerProposedAction[] = Object.freeze([]);
 
     if (failure === undefined) {
       const evaluated = evaluateProposal(state, factionId, proposals.get(factionId));
       failure = evaluated.failure;
-      proposalActions = evaluated.actions;
+      evaluatedActions = evaluated.actions;
     }
 
     if (failure === undefined) {
-      for (const action of proposalActions) {
+      for (const proposed of evaluatedActions) {
+        const action = proposed.action;
         const reservation =
           action.type === "CAPITULATE_FACTION"
             ? `faction-status:${action.factionId}`
@@ -857,14 +968,28 @@ function finalizeControllerRound(
       }
     }
 
+    const acceptedActions =
+      failure === undefined ? evaluatedActions : Object.freeze([]);
     if (failure === undefined) {
-      for (const action of proposalActions) {
+      for (const proposed of acceptedActions) {
+        const action = proposed.action;
         if (action.type === "CAPITULATE_FACTION") {
           reservations.add(`faction-status:${action.factionId}`);
         }
-        actions.push(action);
+        if (
+          action.type !== "CONTROLLER_PURCHASE_STRUCTURE_BUILD" &&
+          action.type !== "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE"
+        ) {
+          actions.push(action);
+        }
       }
     }
+    proposalActions.push(
+      Object.freeze({
+        factionId,
+        actions: Object.freeze([...acceptedActions]),
+      }),
+    );
 
     const receipt = Object.freeze({
       decisionNumber,
@@ -878,6 +1003,7 @@ function finalizeControllerRound(
 
   return Object.freeze({
     actions: Object.freeze(actions),
+    proposals: Object.freeze(proposalActions),
     receipts: Object.freeze(receipts),
     faultCounts,
     consecutiveFaultCounts,

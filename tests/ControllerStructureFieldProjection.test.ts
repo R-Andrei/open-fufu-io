@@ -12,7 +12,9 @@ import {
 } from "../src/core/rules/RuleComposition";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createProspectiveMatchState } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { materializePersistentStructureState } from "../src/simulation/Structures";
 
 describe("controller structure-field projection", () => {
   it("re-exports the exact canonical rule-condition field vocabulary", () => {
@@ -24,6 +26,187 @@ describe("controller structure-field projection", () => {
       "COMMAND_POST",
     ]);
     expect(CONTROLLER_FIELD_IDS).not.toContain("SAM" as never);
+  });
+
+  it("defines #149 construction addressing as requester-scoped and cell-addressed", () => {
+    const source = readFileSync(
+      "src/core/controller/ControllerApi.ts",
+      "utf8",
+    );
+
+    const upgradeCommandStart = source.indexOf(
+      "export interface UpgradeStructureCommand",
+    );
+    const upgradeCommandEnd = source.indexOf(
+      "export interface BuildUnitCommand",
+      upgradeCommandStart,
+    );
+    const upgradeCommand = source.slice(upgradeCommandStart, upgradeCommandEnd);
+    expect(upgradeCommand).toContain("readonly cellId: CellId;");
+    expect(upgradeCommand).not.toContain("structureId");
+
+    const buildQuoteStart = source.indexOf("structureBuildQuote(");
+    const buildQuoteEnd = source.indexOf(
+      "): StructureBuildQuote;",
+      buildQuoteStart,
+    );
+    const buildQuote = source.slice(
+      buildQuoteStart,
+      buildQuoteEnd + "): StructureBuildQuote;".length,
+    );
+    expect(buildQuote).toContain("structureType: StructureType");
+    expect(buildQuote).toContain("cellId: CellId");
+    expect(buildQuote).not.toContain("factionId");
+
+    const upgradeQuoteStart = source.indexOf("structureUpgradeQuote(");
+    const upgradeQuoteEnd = source.indexOf(
+      "): StructureUpgradeQuote;",
+      upgradeQuoteStart,
+    );
+    const upgradeQuote = source.slice(
+      upgradeQuoteStart,
+      upgradeQuoteEnd + "): StructureUpgradeQuote;".length,
+    );
+    expect(upgradeQuote).toContain("cellId: CellId");
+    expect(upgradeQuote).not.toContain("structureId");
+
+    const failureCodeStart = source.indexOf("export type DecisionFailureCode");
+    const failureCodeEnd = source.indexOf(
+      "export interface DecisionFailure",
+      failureCodeStart,
+    );
+    const failureCodes = source.slice(failureCodeStart, failureCodeEnd);
+    expect(failureCodes).toContain('| "MAX_LEVEL"');
+  });
+
+  it("defines #149 structure observation as optional ID-less CellView data", () => {
+    const source = readFileSync(
+      "src/core/controller/ControllerApi.ts",
+      "utf8",
+    );
+    const structureStart = source.indexOf(
+      "export interface ControllerStructureView",
+    );
+    const structureEnd = source.indexOf(
+      "export interface StructureView",
+      structureStart,
+    );
+    const structureView = source.slice(structureStart, structureEnd);
+    expect(structureStart).toBeGreaterThanOrEqual(0);
+    expect(structureView).toContain("readonly ownerId: FactionId;");
+    expect(structureView).toContain("readonly type: StructureType;");
+    expect(structureView).toContain("readonly cellId: CellId;");
+    expect(structureView).toContain("readonly completedLevel?: StructureLevel;");
+    expect(structureView).toContain("readonly active: boolean;");
+    expect(structureView).toContain(
+      "readonly construction?: StructureConstructionView;",
+    );
+    expect(structureView).toContain("readonly chargeState?: ChargeStateView;");
+    expect(structureView).not.toContain("readonly id:");
+    expect(structureView).not.toContain("health");
+
+    const cellStart = source.indexOf("export interface CellView");
+    const cellEnd = source.indexOf("export interface SegmentView", cellStart);
+    const cellView = source.slice(cellStart, cellEnd);
+    expect(cellView).toContain("readonly structure?: ControllerStructureView;");
+  });
+
+  it("projects fresh, upgrading, and Silo lifecycle state without internal structure identity", async () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-cell-structure-lifecycle-red",
+        width: 21,
+        height: 1,
+        terrain: Array.from({ length: 21 }, () => "PLAINS" as const),
+        initialOwners: Array.from({ length: 21 }, () => "alpha" as const),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    ).snapshot();
+    const state = createProspectiveMatchState(base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "fresh-city-internal",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 0,
+          active: false,
+          construction: { targetLevel: 1, remainingTicks: 17 },
+          acquisitionPath: "PURCHASE_BUILD",
+        }),
+        materializePersistentStructureState({
+          id: "upgrading-fort-internal",
+          ownerId: "alpha",
+          type: "FORT",
+          cellId: 10,
+          completedLevel: 1,
+          active: true,
+          construction: { targetLevel: 2, remainingTicks: 9 },
+          acquisitionPath: "GRANT",
+        }),
+        materializePersistentStructureState({
+          id: "silo-internal",
+          ownerId: "alpha",
+          type: "MISSILE_SILO",
+          cellId: 20,
+          completedLevel: 2,
+          active: true,
+          chargeSlots: [
+            { slotId: 0, state: "READY" },
+            { slotId: 1, state: "RECHARGING", readyAtTick: base.tick + 7 },
+          ],
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const session = createControllerQuerySession(state, "alpha", {
+      queriesPerDecision: 16,
+      materializedCellsPerDecision: 16,
+    });
+
+    const fresh = (await session.cells.get(0))?.structure;
+    expect(fresh).toEqual({
+      ownerId: "alpha",
+      type: "CITY",
+      cellId: 0,
+      active: false,
+      construction: { targetLevel: 1, remainingTicks: 17 },
+    });
+    expect(fresh).not.toHaveProperty("id");
+    expect(fresh).not.toHaveProperty("completedLevel");
+    expect(Object.isFrozen(fresh)).toBe(true);
+    expect(Object.isFrozen(fresh?.construction)).toBe(true);
+
+    const upgrading = (await session.cells.get(10))?.structure;
+    expect(upgrading).toEqual({
+      ownerId: "alpha",
+      type: "FORT",
+      cellId: 10,
+      completedLevel: 1,
+      active: true,
+      construction: { targetLevel: 2, remainingTicks: 9 },
+    });
+    expect(upgrading).not.toHaveProperty("id");
+
+    const silo = (await session.cells.get(20))?.structure;
+    expect(silo).toEqual({
+      ownerId: "alpha",
+      type: "MISSILE_SILO",
+      cellId: 20,
+      completedLevel: 2,
+      active: true,
+      chargeState: {
+        ready: 1,
+        capacity: 2,
+        rechargeRemainingTicks: [7],
+      },
+    });
+    expect(silo).not.toHaveProperty("id");
+    expect(Object.isFrozen(silo?.chargeState)).toBe(true);
+    expect(Object.isFrozen(silo?.chargeState?.rechargeRemainingTicks)).toBe(true);
   });
 
   it("surfaces one opaque authoritative STRUCTURE_FIELD selector", () => {
@@ -137,6 +320,15 @@ describe("controller structure-field projection", () => {
     expect((await visible.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
       Array.from({ length: cellCount }, (_, id) => id),
     );
+    const visibleFortCell = await visible.cells.get(10);
+    expect(visibleFortCell?.structure).toEqual({
+      ownerId: "beta",
+      type: "FORT",
+      cellId: 10,
+      completedLevel: 1,
+      active: true,
+    });
+    expect(visibleFortCell?.structure).not.toHaveProperty("id");
 
     const concealed = createControllerQuerySession(
       concealedState,
@@ -173,11 +365,21 @@ describe("controller structure-field projection", () => {
       items: [],
       truncated: false,
     });
+    const concealedFortCell = await concealed.cells.get(10);
+    expect(concealedFortCell).toMatchObject({ id: 10, ownerId: "beta" });
+    expect(concealedFortCell).not.toHaveProperty("structure");
 
     const self = createControllerQuerySession(concealedState, "beta", limits);
     expect((await self.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
       Array.from({ length: cellCount }, (_, id) => id),
     );
+    expect((await self.cells.get(10))?.structure).toEqual({
+      ownerId: "beta",
+      type: "FORT",
+      cellId: 10,
+      completedLevel: 1,
+      active: true,
+    });
   });
 
   it("makes a P49 blackout field public while suppressing remote observation through it", async () => {
