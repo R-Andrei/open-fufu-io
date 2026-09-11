@@ -11,6 +11,7 @@
     "tests/ControllerHostFaultClassification.test.ts",
     "tests/ControllerMemoryConformance.test.ts",
     "tests/ControllerPublicSpatialRuntime.test.ts",
+    "tests/ControllerReferenceSession.test.ts",
     "tests/ControllerRoundAtomicityAdversarial.test.ts",
     "tests/ControllerRuntime.test.ts",
     "tests/ControllerSandbox.test.ts",
