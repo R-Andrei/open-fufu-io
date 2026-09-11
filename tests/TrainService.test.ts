@@ -1,3 +1,8 @@
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { RuleCondition } from "../src/core/rules/RuleComposition";
+import { resolveFfyEconomicStage } from "../src/simulation/Economy";
 import {
   advanceMobileUnit,
   assignMobileUnitRoute,
@@ -14,7 +19,9 @@ import {
   advanceTrainMovementTick,
   canDispatchFactoryPrimaryTrain,
   createFactoryTrainServiceEpoch,
+  createTrainDispatchEconomicSnapshot,
   createTrainRouteInput,
+  createTrainStationFfyEvent,
   finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
   transferFactoryTrainServiceEpoch,
@@ -34,6 +41,27 @@ function railTestMap() {
     height: 1,
     terrain: Array.from({ length: 6 }, () => "TEST" as const),
   });
+}
+
+function rulesWithTraits(traitIds: readonly ("P14" | "N11")[] = []) {
+  const origin = originRuleProfileInput(traitIds);
+  return compileRuleProfile(RULE_AXIS_REGISTRY, {
+    contributions: origin.contributions,
+    dynamicProviders: origin.dynamicProviders,
+    customDomains: origin.customDomains,
+  });
+}
+
+const RULE_STATE = Object.freeze({
+  ownedPersistentStructureCount: 0,
+  territorialContactCount: 0,
+  peakTotalPopulation: 0,
+});
+
+function desertEventCondition(condition: RuleCondition): boolean {
+  return (
+    condition.kind === "EVENT_TERRAIN_IS" && condition.terrain === "DESERT"
+  );
 }
 
 describe("Factory Train service timing and movement", () => {
@@ -167,5 +195,84 @@ describe("Factory Train service timing and movement", () => {
     expect(() => finishFactoryPrimaryTrain(newActive, "train-old")).toThrow(
       /not active/i,
     );
+  });
+
+  it("freezes Factory-side base cargo at dispatch while spatial yield and wartime scaling remain event-time current", () => {
+    const dispatch = createTrainDispatchEconomicSnapshot(
+      "factory-a",
+      "alpha",
+      1,
+      { numerator: 3n, denominator: 2n },
+    );
+    expect(dispatch).toEqual({
+      factoryId: "factory-a",
+      dispatchOwnerId: "alpha",
+      factoryLevel: 1,
+      baseCargoFfy: { numerator: 15_000n, denominator: 1n },
+    });
+
+    // A later Factory upgrade/transfer can create a different profile, but it
+    // must not mutate the already-dispatched Train snapshot.
+    const laterFactoryProfile = createTrainDispatchEconomicSnapshot(
+      "factory-a",
+      "beta",
+      2,
+    );
+    expect(laterFactoryProfile.baseCargoFfy).toEqual({
+      numerator: 11_250n,
+      denominator: 1n,
+    });
+    expect(dispatch.dispatchOwnerId).toBe("alpha");
+    expect(dispatch.baseCargoFfy).toEqual({
+      numerator: 15_000n,
+      denominator: 1n,
+    });
+
+    const wartimeDesert = createTrainStationFfyEvent(dispatch, {
+      eventId: "train:station:war-desert",
+      externalWartimeMultiplier: { numerator: 1n, denominator: 2n },
+      conditionApplies: desertEventCondition,
+    });
+    const wartimeDesertResult = resolveFfyEconomicStage({
+      balance: 0,
+      rules: rulesWithTraits(["P14"]),
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [wartimeDesert],
+      signedFacts: [],
+    });
+    // 15,000 dispatch cargo × current 0.50 wartime × current Desert +33%.
+    expect(wartimeDesertResult.positiveEvents[0]).toEqual({
+      id: "train:station:war-desert",
+      family: "INDUSTRIAL",
+      award: 9_975,
+    });
+
+    const peacefulDesert = createTrainStationFfyEvent(dispatch, {
+      eventId: "train:station:peace-desert",
+      externalWartimeMultiplier: { numerator: 1n, denominator: 1n },
+      conditionApplies: desertEventCondition,
+    });
+    const peacefulDesertResult = resolveFfyEconomicStage({
+      balance: 0,
+      rules: rulesWithTraits(["P14"]),
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [peacefulDesert],
+      signedFacts: [],
+    });
+    expect(peacefulDesertResult.positiveEvents[0]?.award).toBe(19_950);
+
+    const wartimeNonDesert = createTrainStationFfyEvent(dispatch, {
+      eventId: "train:station:war-plain",
+      externalWartimeMultiplier: { numerator: 1n, denominator: 2n },
+      conditionApplies: () => false,
+    });
+    const wartimeNonDesertResult = resolveFfyEconomicStage({
+      balance: 0,
+      rules: rulesWithTraits(["P14"]),
+      ruleDynamicState: RULE_STATE,
+      positiveEvents: [wartimeNonDesert],
+      signedFacts: [],
+    });
+    expect(wartimeNonDesertResult.positiveEvents[0]?.award).toBe(7_500);
   });
 });
