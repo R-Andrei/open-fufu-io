@@ -24,6 +24,7 @@ function baseState(seed = "controller-reference-session"): MatchState {
       seed,
       width: 3,
       height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
       initialOwners: ["alpha", "alpha", "alpha"],
       factions: [
         { id: "alpha", rules },
