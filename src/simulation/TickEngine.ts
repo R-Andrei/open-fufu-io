@@ -36,7 +36,9 @@ import {
   tryPurchaseStructureUpgrade,
 } from "./Structures";
 import {
+  advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
+  canDispatchFactoryPrimaryTrain,
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
   createTrainRouteInput,
@@ -180,22 +182,41 @@ function reconcileStoredFactoryTrainDispatches(
   const factories = state.structures
     .filter(
       (structure) =>
-        structure.type === "FACTORY" &&
-        structure.active &&
-        structure.completedLevel !== undefined,
+        structure.type === "FACTORY" && structure.completedLevel !== undefined,
     )
     .slice()
     .sort((left, right) => compareIds(left.id, right.id));
 
   for (const factory of factories) {
-    if (epochsByFactory.has(factory.id)) continue;
-
-    let epoch = createFactoryTrainServiceEpoch(factory.id, factory.ownerId);
-    const lifecycle = loopsByFactory.get(factory.id);
-    const loop = lifecycle?.currentLoop ?? null;
-    if (loop === null || loop.cells.length === 0) {
+    let epoch = epochsByFactory.get(factory.id);
+    if (epoch === undefined) {
+      epoch = createFactoryTrainServiceEpoch(factory.id, factory.ownerId);
       factoryTrainEpochs.push(epoch);
       epochsByFactory.set(factory.id, epoch);
+    } else {
+      if (epoch.ownerId !== factory.ownerId) continue;
+      const advancedEpoch = advanceFactoryTrainServiceSchedulerTick(
+        epoch,
+        factory.active,
+      );
+      if (advancedEpoch !== epoch) {
+        factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+          entry.factoryId === factory.id ? advancedEpoch : entry,
+        );
+        epoch = advancedEpoch;
+        epochsByFactory.set(factory.id, epoch);
+      }
+    }
+
+    const lifecycle = loopsByFactory.get(factory.id);
+    const loop = lifecycle?.currentLoop ?? null;
+    if (
+      !canDispatchFactoryPrimaryTrain(
+        epoch,
+        factory.active,
+        loop !== null && loop.cells.length > 0,
+      )
+    ) {
       continue;
     }
 
@@ -207,13 +228,13 @@ function reconcileStoredFactoryTrainDispatches(
         ownerId: factory.ownerId,
         type: "TRAIN",
         movementClass: "RAIL",
-        cellId: loop.cells[0]!,
+        cellId: loop!.cells[0]!,
       },
     );
     const routed = assignMobileUnitRoute(
       state.map,
       created.unit,
-      createTrainRouteInput(loop.cells),
+      createTrainRouteInput(loop!.cells),
     );
 
     mobileUnits = created.mobileUnits.map((unit) =>
@@ -231,7 +252,9 @@ function reconcileStoredFactoryTrainDispatches(
     loopsByFactory.set(factory.id, retainedLifecycle);
 
     epoch = markFactoryPrimaryTrainDispatched(epoch, routed.id);
-    factoryTrainEpochs.push(epoch);
+    factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+      entry.factoryId === factory.id ? epoch : entry,
+    );
     epochsByFactory.set(factory.id, epoch);
     trainServices.push({
       trainId: routed.id,
