@@ -40,6 +40,7 @@ import {
   tryMaterializeStructureGrant,
   type PersistentStructureState,
 } from "./Structures";
+import type { TankProductionJobState } from "./Tanks";
 
 export interface MatchFactionState {
   readonly id: string;
@@ -61,6 +62,7 @@ export interface MatchState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -75,6 +77,7 @@ export interface MatchStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -186,6 +189,63 @@ function freezeHostilityGrace(
   );
 }
 
+function freezeTankProductionJobs(
+  entries: readonly TankProductionJobState[],
+): readonly TankProductionJobState[] {
+  const seenFactories = new Set<string>();
+  const jobs = entries.map((job) => {
+    if (job === null || typeof job !== "object" || Array.isArray(job)) {
+      throw new Error("Tank production job must be an object");
+    }
+    if (typeof job.factoryId !== "string" || job.factoryId.length === 0) {
+      throw new Error("Tank production factoryId must be a non-empty string");
+    }
+    if (seenFactories.has(job.factoryId)) {
+      throw new Error(`duplicate Tank production Factory: ${job.factoryId}`);
+    }
+    seenFactories.add(job.factoryId);
+    if (typeof job.ownerId !== "string" || job.ownerId.length === 0) {
+      throw new Error("Tank production ownerId must be a non-empty string");
+    }
+    if (job.chassisType !== "TANK" && job.chassisType !== "HEAVY_ARTILLERY") {
+      throw new Error("Tank production chassis type is invalid");
+    }
+    if (job.state === "BUILDING") {
+      if (
+        !Number.isSafeInteger(job.remainingTicks) ||
+        job.remainingTicks <= 0 ||
+        Object.is(job.remainingTicks, -0)
+      ) {
+        throw new Error(
+          "Tank production remainingTicks must be a positive safe integer",
+        );
+      }
+      return Object.freeze({
+        factoryId: job.factoryId,
+        ownerId: job.ownerId,
+        chassisType: job.chassisType,
+        state: "BUILDING" as const,
+        remainingTicks: job.remainingTicks,
+      });
+    }
+    if (job.state !== "WAITING_DEPLOYMENT") {
+      throw new Error("Tank production job state is invalid");
+    }
+    return Object.freeze({
+      factoryId: job.factoryId,
+      ownerId: job.ownerId,
+      chassisType: job.chassisType,
+      state: "WAITING_DEPLOYMENT" as const,
+    });
+  });
+  jobs.sort(
+    (left, right) =>
+      compareIds(left.factoryId, right.factoryId) ||
+      compareIds(left.ownerId, right.ownerId),
+  );
+  return Object.freeze(jobs);
+}
+
 function createState(
   previous: MatchState,
   tick: number,
@@ -222,6 +282,9 @@ function createState(
     ),
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    tankProductionJobs: freezeTankProductionJobs(
+      update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
+    ),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -294,6 +357,7 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    tankProductionJobs: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -453,6 +517,29 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const tankProductionJobs = [...state.tankProductionJobs]
+    .sort(
+      (left, right) =>
+        compareIds(left.factoryId, right.factoryId) ||
+        compareIds(left.ownerId, right.ownerId),
+    )
+    .map((job) =>
+      job.state === "BUILDING"
+        ? {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            state: job.state,
+            remainingTicks: job.remainingTicks,
+          }
+        : {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            state: job.state,
+          },
+    );
+
   const operations = [...state.operations]
     .sort((left, right) =>
       compareIds(left.ownerId, right.ownerId) ||
@@ -514,6 +601,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    tankProductionJobs,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(
