@@ -2,6 +2,7 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import {
+  canonicalMatchStateSerialization,
   createInitialMatchState,
   createProspectiveMatchState,
   type MatchState,
@@ -110,5 +111,32 @@ describe("Tank authoritative operational state", () => {
     expect(operational?.[0]).not.toHaveProperty("ownerId");
     expect(operational?.[0]).not.toHaveProperty("type");
     expect(operational?.[0]).not.toHaveProperty("cellId");
+  });
+
+  it("reconstructs keyed state deterministically and makes operational state fingerprint-relevant", () => {
+    const completed = completeBaselineTank(fixture());
+    const regenerated = completeBaselineTank(fixture());
+
+    expect(regenerated.tankOperationalStates).toEqual(
+      completed.tankOperationalStates,
+    );
+
+    const fingerprint = canonicalMatchStateSerialization(completed);
+    expect(canonicalMatchStateSerialization(regenerated)).toBe(fingerprint);
+    expect(
+      (JSON.parse(fingerprint) as { tankOperationalStates?: unknown })
+        .tankOperationalStates,
+    ).toBeDefined();
+
+    const operational = completed.tankOperationalStates[0]!;
+    const damaged = createProspectiveMatchState(completed, {
+      tankOperationalStates: [
+        {
+          ...operational,
+          health: { numerator: 1_000n, denominator: 1n },
+        },
+      ],
+    });
+    expect(canonicalMatchStateSerialization(damaged)).not.toBe(fingerprint);
   });
 });
