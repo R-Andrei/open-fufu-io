@@ -39,8 +39,11 @@ describe("persistent Silo grant lifecycle", () => {
         { id: "beta", rules },
       ],
     });
+    const dependencies = {
+      controllerReferenceNamespace: "silo-grant-charge-bank",
+    } as const;
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, dependencies);
     const structure = runtime.snapshot().structures[0] as
       | SiloWithChargeSlots
       | undefined;
@@ -50,7 +53,7 @@ describe("persistent Silo grant lifecycle", () => {
       { slotId: 0, state: "READY" },
     ]);
 
-    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+    const regenerated = MatchRuntime.regenerate(spec, [], 0, dependencies);
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
   });

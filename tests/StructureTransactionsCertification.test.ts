@@ -43,6 +43,7 @@ function controllerConstructionRuntime(
         { id: "beta", rules: rulesWithTraits() },
       ],
     }),
+    { controllerReferenceNamespace: `structure-transaction-cert:${seed}` },
   );
 }
 

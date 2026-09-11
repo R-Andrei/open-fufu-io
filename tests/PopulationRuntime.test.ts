@@ -32,6 +32,7 @@ function runtime(seed = "population-runtime") {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -45,9 +46,10 @@ function economyRuntime(options: {
   readonly initialStructureGrants?: readonly StructureGrantRequest[];
 } = {}) {
   const emptyRules = rulesWith();
+  const seed = options.seed ?? "economy-runtime";
   return new MatchRuntime(
     createMicroSimulationSpec({
-      seed: options.seed ?? "economy-runtime",
+      seed,
       width: options.width,
       height: options.height,
       terrain: options.terrain,
@@ -58,6 +60,7 @@ function economyRuntime(options: {
         { id: "beta", rules: emptyRules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -181,6 +184,7 @@ describe("Population integration through MatchRuntime", () => {
       original.spec,
       original.acceptedInputs(),
       original.snapshot().tick,
+      { controllerReferenceNamespace: original.spec.seed },
     );
     expect(regenerated.snapshot()).toEqual(original.snapshot());
     expect(regenerated.stateFingerprint()).toBe(original.stateFingerprint());
@@ -363,6 +367,7 @@ describe("FFY economy integration through MatchRuntime", () => {
       original.spec,
       original.acceptedInputs(),
       original.snapshot().tick,
+      { controllerReferenceNamespace: original.spec.seed },
     );
     expect(factionFfy(original)).toBe(25_900);
     expect(regenerated.snapshot()).toEqual(original.snapshot());

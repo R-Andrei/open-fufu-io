@@ -46,6 +46,9 @@ function authoritativeQuerySession() {
         { id: "beta", rules },
       ],
     }),
+    {
+      controllerReferenceNamespace: "controller-sandbox-concurrent-query-order",
+    },
   );
   return createControllerQuerySession(runtime.snapshot(), "alpha", {
     queriesPerDecision: 128,
