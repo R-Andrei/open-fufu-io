@@ -421,6 +421,159 @@ describe("controller-round transaction adversarial behavior", () => {
     expect(match.snapshot().structures).toEqual([]);
   });
 
+  it("does not address a structure built earlier in the same proposal and rolls the proposal back", () => {
+    const match = structureRuntime("controller-build-then-upgrade-proof");
+    for (let tick = 0; tick < 1_250; tick += 1) match.tick();
+    const host = new InProcessTestControllerHost({
+      alpha() {
+        return {
+          commands: [
+            {
+              kind: "BUILD_STRUCTURE" as const,
+              key: "build-new-fort",
+              structure: "FORT" as const,
+              cellId: 0,
+            },
+            {
+              kind: "UPGRADE_STRUCTURE" as const,
+              key: "upgrade-new-fort",
+              cellId: 0,
+            },
+          ],
+        };
+      },
+    });
+
+    const receipts = syncReceipts(match.runControllerRound(host));
+
+    expect(receiptFor(receipts, "alpha")).toMatchObject({
+      accepted: false,
+      failure: { code: "INVALID_TARGET", key: "upgrade-new-fort" },
+    });
+    expect(match.acceptedInputs()).toEqual([]);
+    expect(match.snapshot().structures).toEqual([]);
+  });
+
+  it("rejects map-out-of-range construction cells as structured gameplay failures without mutation", () => {
+    const outOfRangeCell = Number.MAX_SAFE_INTEGER;
+    const buildMatch = structureRuntime("controller-out-of-range-build-proof");
+    const buildReceipts = syncReceipts(
+      buildMatch.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha() {
+            return {
+              commands: [
+                {
+                  kind: "BUILD_STRUCTURE" as const,
+                  key: "out-of-range-build",
+                  structure: "FORT" as const,
+                  cellId: outOfRangeCell,
+                },
+              ],
+            };
+          },
+        }),
+      ),
+    );
+    const buildReceipt = receiptFor(buildReceipts, "alpha");
+    expect(buildReceipt.accepted).toBe(false);
+    expect(buildReceipt.failure?.key).toBe("out-of-range-build");
+    expect(buildReceipt.failure?.code).not.toBe("RUNTIME_ERROR");
+    expect(buildMatch.acceptedInputs()).toEqual([]);
+    expect(buildMatch.snapshot().structures).toEqual([]);
+
+    const upgradeMatch = structureRuntime("controller-out-of-range-upgrade-proof");
+    const upgradeReceipts = syncReceipts(
+      upgradeMatch.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha() {
+            return {
+              commands: [
+                {
+                  kind: "UPGRADE_STRUCTURE" as const,
+                  key: "out-of-range-upgrade",
+                  cellId: outOfRangeCell,
+                },
+              ],
+            };
+          },
+        }),
+      ),
+    );
+    const upgradeReceipt = receiptFor(upgradeReceipts, "alpha");
+    expect(upgradeReceipt.accepted).toBe(false);
+    expect(upgradeReceipt.failure?.key).toBe("out-of-range-upgrade");
+    expect(upgradeReceipt.failure?.code).not.toBe("RUNTIME_ERROR");
+    expect(upgradeMatch.acceptedInputs()).toEqual([]);
+    expect(upgradeMatch.snapshot().structures).toEqual([]);
+  });
+
+  it("replays accepted controller build and upgrade actions exactly like ordinary authoritative inputs", () => {
+    const buildController = structureRuntime("controller-build-replay-proof");
+    const buildDirect = structureRuntime("controller-build-replay-proof");
+    for (let tick = 0; tick < 250; tick += 1) {
+      buildController.tick();
+      buildDirect.tick();
+    }
+    expect(
+      receiptFor(
+        syncReceipts(
+          buildController.runControllerRound(buildFortHost("replay-build")),
+        ),
+        "alpha",
+      ),
+    ).toMatchObject({ accepted: true });
+    const acceptedBuild = buildController.acceptedInputs()[0];
+    if (acceptedBuild === undefined) throw new Error("missing accepted build input");
+    buildDirect.acceptAction(acceptedBuild.action);
+    buildController.tick();
+    buildDirect.tick();
+    expect(buildController.stateFingerprint()).toBe(buildDirect.stateFingerprint());
+    const regeneratedBuild = MatchRuntime.regenerate(
+      buildController.spec,
+      buildController.acceptedInputs(),
+      buildController.snapshot().tick,
+    );
+    expect(regeneratedBuild.stateFingerprint()).toBe(
+      buildController.stateFingerprint(),
+    );
+
+    const upgradeController = grantedFortRuntime(
+      "controller-upgrade-replay-proof",
+    );
+    const upgradeDirect = grantedFortRuntime("controller-upgrade-replay-proof");
+    for (let tick = 0; tick < 750; tick += 1) {
+      upgradeController.tick();
+      upgradeDirect.tick();
+    }
+    expect(
+      receiptFor(
+        syncReceipts(
+          upgradeController.runControllerRound(upgradeFortHost("replay-upgrade")),
+        ),
+        "alpha",
+      ),
+    ).toMatchObject({ accepted: true });
+    const acceptedUpgrade = upgradeController.acceptedInputs()[0];
+    if (acceptedUpgrade === undefined) {
+      throw new Error("missing accepted upgrade input");
+    }
+    upgradeDirect.acceptAction(acceptedUpgrade.action);
+    upgradeController.tick();
+    upgradeDirect.tick();
+    expect(upgradeController.stateFingerprint()).toBe(
+      upgradeDirect.stateFingerprint(),
+    );
+    const regeneratedUpgrade = MatchRuntime.regenerate(
+      upgradeController.spec,
+      upgradeController.acceptedInputs(),
+      upgradeController.snapshot().tick,
+    );
+    expect(regeneratedUpgrade.stateFingerprint()).toBe(
+      upgradeController.stateFingerprint(),
+    );
+  });
+
   it("turns commit-time stale gameplay rejection into a structured per-controller receipt without partial proposal admission", () => {
     const match = runtime();
     const preexisting = match.acceptAction({
