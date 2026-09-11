@@ -4,12 +4,17 @@ import type {
   CellSelector,
   CellView,
   ControllerStructureFieldId,
+  DecisionFailure,
+  MechanicsApi,
   QueryPage,
   SegmentId,
   SegmentView,
+  StructureBuildQuote,
   StructureFieldAffiliation,
   StructureFieldId,
+  StructureLevel,
   StructureType,
+  StructureUpgradeQuote,
   TerrainType,
 } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
@@ -31,7 +36,16 @@ import {
 import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type { SimulationTerrain } from "./SimulationMap";
-import type { PersistentStructureState } from "./Structures";
+import {
+  effectiveStructureConstructionTicks,
+  structureBuildPurchaseFfyPreview,
+  structureBuildPurchaseTargetLevel,
+  structureUpgradePurchaseFfyPreview,
+  tryPurchaseStructureBuild,
+  tryPurchaseStructureUpgrade,
+  type PersistentStructureState,
+  type StructurePurchaseFailureCode,
+} from "./Structures";
 
 export interface ControllerQueryBudgetLimits {
   readonly queriesPerDecision: number;
@@ -43,6 +57,10 @@ export interface ControllerQueryUsage {
   readonly materializedCells: number;
 }
 
+export type ControllerConstructionMechanics = Readonly<
+  Pick<MechanicsApi, "structureBuildQuote" | "structureUpgradeQuote">
+>;
+
 /** Internal same-process source for cheap public spatial projection. */
 export interface ControllerPublicSpatialSource {
   readonly map: MatchState["map"];
@@ -51,6 +69,7 @@ export interface ControllerPublicSpatialSource {
 
 export interface ControllerQuerySession {
   readonly publicSpatial: ControllerPublicSpatialSource;
+  readonly mechanics: ControllerConstructionMechanics;
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -523,6 +542,258 @@ function structureIsLawfullyVisible(
   }).visible;
 }
 
+function decisionFailure(
+  code: DecisionFailure["code"],
+  key?: string,
+): DecisionFailure {
+  return Object.freeze({
+    code,
+    ...(key === undefined ? {} : { key }),
+  });
+}
+
+function structureVisibleToRequester(
+  state: MatchState,
+  requesterFactionId: string,
+  structure: PersistentStructureState | undefined,
+): boolean {
+  return (
+    structure !== undefined &&
+    structureIsLawfullyVisible(
+      state,
+      createStructureVisibilityContext(state, requesterFactionId),
+      structure,
+    )
+  );
+}
+
+export function mapControllerStructureBuildFailure(
+  state: MatchState,
+  requesterFactionId: string,
+  cellId: CellId,
+  code: StructurePurchaseFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+    case "OWNERSHIP_CAP":
+    case "CELL_NOT_OWNED":
+    case "BUILD_NOT_PERMITTED":
+    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
+      return decisionFailure(code, key);
+    case "CELL_OCCUPIED": {
+      const occupying = state.structures.find(
+        (structure) => structure.cellId === cellId,
+      );
+      return decisionFailure(
+        structureVisibleToRequester(state, requesterFactionId, occupying)
+          ? "CELL_OCCUPIED"
+          : "INVALID_TARGET",
+        key,
+      );
+    }
+    case "INVALID_REQUEST":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "UNKNOWN_OWNER":
+    case "STRUCTURE_ID_CONFLICT":
+      throw new Error(`controller build invariant failed: ${code}`);
+    case "UNKNOWN_STRUCTURE":
+    case "NOT_OWNER":
+    case "NOT_COMPLETED":
+    case "CONSTRUCTION_IN_PROGRESS":
+    case "MAX_LEVEL":
+    case "UPGRADE_NOT_PERMITTED":
+      throw new Error(`unexpected build transaction failure: ${code}`);
+  }
+}
+
+export function mapControllerStructureUpgradeFailure(
+  state: MatchState,
+  requesterFactionId: string,
+  structureId: string,
+  code: StructurePurchaseFailureCode,
+  key?: string,
+): DecisionFailure {
+  const structure = state.structures.find(
+    (candidate) => candidate.id === structureId,
+  );
+  const visible = structureVisibleToRequester(
+    state,
+    requesterFactionId,
+    structure,
+  );
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+    case "INVALID_REQUEST":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "UNKNOWN_STRUCTURE":
+      return decisionFailure("INVALID_TARGET", key);
+    case "NOT_OWNER":
+    case "NOT_COMPLETED":
+    case "CONSTRUCTION_IN_PROGRESS":
+    case "MAX_LEVEL":
+    case "UPGRADE_NOT_PERMITTED":
+      return decisionFailure(visible ? code : "INVALID_TARGET", key);
+    case "UNKNOWN_OWNER":
+      throw new Error(`controller upgrade invariant failed: ${code}`);
+    case "STRUCTURE_ID_CONFLICT":
+    case "OWNERSHIP_CAP":
+    case "CELL_NOT_OWNED":
+    case "CELL_OCCUPIED":
+    case "BUILD_NOT_PERMITTED":
+    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
+      throw new Error(`unexpected upgrade transaction failure: ${code}`);
+  }
+}
+
+function quoteStructureId(state: MatchState): string {
+  let id = "controller:quote:structure";
+  while (state.structures.some((structure) => structure.id === id)) id += ":";
+  return id;
+}
+
+function quoteCost(
+  ffyRequired: number,
+  ffySpent: number,
+): StructureBuildQuote["cost"] {
+  return Object.freeze({
+    ffyRequired,
+    ffySpent,
+    populationSpent: 0,
+  });
+}
+
+function createConstructionMechanics(
+  state: MatchState,
+  requesterFactionId: string,
+  visibility: StructureVisibilityContext,
+): ControllerConstructionMechanics {
+  const structureBuildQuote = (
+    structureType: StructureType,
+    cellId: CellId,
+  ): StructureBuildQuote => {
+    const targetLevel = structureBuildPurchaseTargetLevel(
+      state,
+      requesterFactionId,
+      structureType,
+    );
+    const buildTicks = effectiveStructureConstructionTicks(
+      state,
+      requesterFactionId,
+      structureType,
+    );
+    const result = tryPurchaseStructureBuild(state, {
+      structureId: quoteStructureId(state),
+      ownerId: requesterFactionId,
+      type: structureType,
+      cellId,
+    });
+    const preview =
+      result.ok || result.failure.code === "INSUFFICIENT_FFY"
+        ? structureBuildPurchaseFfyPreview(
+            state,
+            requesterFactionId,
+            structureType,
+          )
+        : undefined;
+    const failure = result.ok
+      ? undefined
+      : mapControllerStructureBuildFailure(
+          state,
+          requesterFactionId,
+          cellId,
+          result.failure.code,
+        );
+    return Object.freeze({
+      legal: result.ok,
+      ...(failure === undefined ? {} : { failureCode: failure.code }),
+      cost: quoteCost(
+        preview?.ffyRequired ?? 0,
+        result.ok ? (preview?.ffySpent ?? 0) : 0,
+      ),
+      structure: structureType,
+      cellId,
+      resultingLevel: targetLevel,
+      buildTicks,
+    });
+  };
+
+  const unavailableUpgradeQuote = (cellId: CellId): StructureUpgradeQuote =>
+    Object.freeze({
+      legal: false,
+      failureCode: "INVALID_TARGET" as const,
+      cost: quoteCost(0, 0),
+      cellId,
+    });
+
+  const structureUpgradeQuote = (cellId: CellId): StructureUpgradeQuote => {
+    const structure = state.structures.find(
+      (candidate) => candidate.cellId === cellId,
+    );
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return unavailableUpgradeQuote(cellId);
+    }
+
+    const result = tryPurchaseStructureUpgrade(state, {
+      structureId: structure.id,
+      ownerId: requesterFactionId,
+    });
+    if (result.ok || result.failure.code === "INSUFFICIENT_FFY") {
+      if (structure.completedLevel === undefined || structure.completedLevel >= 5) {
+        throw new Error(
+          "affordability-stage upgrade result requires a completed non-max structure",
+        );
+      }
+      const targetLevel = (structure.completedLevel + 1) as StructureLevel;
+      const buildTicks = effectiveStructureConstructionTicks(
+        state,
+        requesterFactionId,
+        structure.type,
+      );
+      const preview = structureUpgradePurchaseFfyPreview(
+        state,
+        requesterFactionId,
+        structure.type,
+        targetLevel,
+      );
+      return Object.freeze({
+        legal: result.ok,
+        ...(result.ok ? {} : { failureCode: "INSUFFICIENT_FFY" as const }),
+        cost: quoteCost(
+          preview.ffyRequired,
+          result.ok ? preview.ffySpent : 0,
+        ),
+        cellId,
+        currentLevel: structure.completedLevel,
+        resultingLevel: targetLevel,
+        buildTicks,
+      });
+    }
+
+    const failure = mapControllerStructureUpgradeFailure(
+      state,
+      requesterFactionId,
+      structure.id,
+      result.failure.code,
+    );
+    return Object.freeze({
+      legal: false,
+      failureCode: failure.code,
+      cost: quoteCost(0, 0),
+      cellId,
+      ...(structure.completedLevel === undefined
+        ? {}
+        : { currentLevel: structure.completedLevel }),
+    });
+  };
+
+  return Object.freeze({ structureBuildQuote, structureUpgradeQuote });
+}
+
 function ownerMatchesFieldAffiliation(
   state: MatchState,
   referenceFactionId: string,
@@ -775,6 +1046,11 @@ export function createControllerQuerySession(
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
   }
   const visibility = createStructureVisibilityContext(state, requesterFactionId);
+  const mechanics = createConstructionMechanics(
+    state,
+    requesterFactionId,
+    visibility,
+  );
 
   let queries = 0;
   let materializedCells = 0;
@@ -926,6 +1202,7 @@ export function createControllerQuerySession(
       map: state.map,
       ownership: state.ownership,
     }),
+    mechanics,
     cells: Object.freeze({
       get,
       query,

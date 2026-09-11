@@ -539,9 +539,9 @@ export interface StructureBuildQuote extends ActionQuote {
 
 export interface StructureUpgradeQuote extends ActionQuote {
   readonly cellId: CellId;
-  readonly currentLevel: StructureLevel;
-  readonly resultingLevel: StructureLevel;
-  readonly buildTicks: number;
+  readonly currentLevel?: StructureLevel;
+  readonly resultingLevel?: StructureLevel;
+  readonly buildTicks?: number;
 }
 
 export interface UnitBuildQuote extends ActionQuote {
@@ -897,7 +897,15 @@ export type DecisionFailureCode =
   | "COMMITMENT_LIMIT"
   | "OWNERSHIP_CAP"
   | "PERSISTENT_STRUCTURE_PRESENT"
+  | "CELL_NOT_OWNED"
+  | "CELL_OCCUPIED"
+  | "BUILD_NOT_PERMITTED"
+  | "PLACEMENT_GEOMETRY_UNAVAILABLE"
+  | "NOT_OWNER"
+  | "NOT_COMPLETED"
+  | "CONSTRUCTION_IN_PROGRESS"
   | "MAX_LEVEL"
+  | "UPGRADE_NOT_PERMITTED"
   | "CONFLICTING_PROPOSAL"
   | "INVALID_DIRECTIVE"
   | "INVALID_COMMAND"

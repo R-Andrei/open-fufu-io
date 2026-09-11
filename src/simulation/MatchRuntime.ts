@@ -3,6 +3,10 @@ import type {
   DecisionReceipt,
 } from "../core/controller/ControllerApi";
 import {
+  mapControllerStructureBuildFailure,
+  mapControllerStructureUpgradeFailure,
+} from "./ControllerQueryProjection";
+import {
   evaluateControllerRound,
   type ControllerHost,
   type ControllerProposedAction,
@@ -45,7 +49,6 @@ import {
 import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
-  type StructurePurchaseFailureCode,
 } from "./Structures";
 import {
   TickEngine,
@@ -389,66 +392,6 @@ function decisionFailure(
   });
 }
 
-function mapStructureBuildFailure(
-  code: StructurePurchaseFailureCode,
-  key?: string,
-): DecisionFailure {
-  switch (code) {
-    case "INSUFFICIENT_FFY":
-      return decisionFailure("INSUFFICIENT_FFY", key);
-    case "OWNERSHIP_CAP":
-      return decisionFailure("OWNERSHIP_CAP", key);
-    case "CELL_NOT_OWNED":
-      return decisionFailure("NO_LONGER_OWNED", key);
-    case "CELL_OCCUPIED":
-      return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
-    case "BUILD_NOT_PERMITTED":
-    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
-      return decisionFailure("INVALID_TARGET", key);
-    case "INVALID_REQUEST":
-      return decisionFailure("INVALID_COMMAND", key);
-    case "UNKNOWN_OWNER":
-    case "STRUCTURE_ID_CONFLICT":
-      throw new Error(`controller build invariant failed: ${code}`);
-    case "UNKNOWN_STRUCTURE":
-    case "NOT_OWNER":
-    case "NOT_COMPLETED":
-    case "CONSTRUCTION_IN_PROGRESS":
-    case "MAX_LEVEL":
-    case "UPGRADE_NOT_PERMITTED":
-      throw new Error(`unexpected build transaction failure: ${code}`);
-  }
-}
-
-function mapStructureUpgradeFailure(
-  code: StructurePurchaseFailureCode,
-  key?: string,
-): DecisionFailure {
-  switch (code) {
-    case "INSUFFICIENT_FFY":
-      return decisionFailure("INSUFFICIENT_FFY", key);
-    case "MAX_LEVEL":
-      return decisionFailure("MAX_LEVEL", key);
-    case "INVALID_REQUEST":
-      return decisionFailure("INVALID_COMMAND", key);
-    case "UNKNOWN_STRUCTURE":
-    case "NOT_OWNER":
-    case "NOT_COMPLETED":
-    case "CONSTRUCTION_IN_PROGRESS":
-    case "UPGRADE_NOT_PERMITTED":
-      return decisionFailure("INVALID_TARGET", key);
-    case "UNKNOWN_OWNER":
-      throw new Error(`controller upgrade invariant failed: ${code}`);
-    case "STRUCTURE_ID_CONFLICT":
-    case "OWNERSHIP_CAP":
-    case "CELL_NOT_OWNED":
-    case "CELL_OCCUPIED":
-    case "BUILD_NOT_PERMITTED":
-    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
-      throw new Error(`unexpected upgrade transaction failure: ${code}`);
-  }
-}
-
 function controllerActionFailure(
   state: MatchState,
   proposed: ControllerProposedAction,
@@ -480,7 +423,13 @@ function controllerActionFailure(
       });
       return purchased.ok
         ? undefined
-        : mapStructureBuildFailure(purchased.failure.code, proposed.key);
+        : mapControllerStructureBuildFailure(
+            state,
+            action.ownerId,
+            action.cellId,
+            purchased.failure.code,
+            proposed.key,
+          );
     }
     case "PURCHASE_STRUCTURE_UPGRADE": {
       const purchased = tryPurchaseStructureUpgrade(state, {
@@ -489,7 +438,13 @@ function controllerActionFailure(
       });
       return purchased.ok
         ? undefined
-        : mapStructureUpgradeFailure(purchased.failure.code, proposed.key);
+        : mapControllerStructureUpgradeFailure(
+            state,
+            action.ownerId,
+            action.structureId,
+            purchased.failure.code,
+            proposed.key,
+          );
     }
     default:
       validateAction(state, action);

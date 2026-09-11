@@ -95,6 +95,7 @@ export interface LawfulInProcessControllerObservation
   readonly map?: ControllerSpatialSurface["map"];
   readonly cells?: ControllerSpatialSurface["cells"];
   readonly segments?: ControllerSpatialSurface["segments"];
+  readonly mechanics?: ControllerQuerySession["mechanics"];
 }
 
 export interface HostedLawfulControllerObservation
@@ -342,6 +343,7 @@ function projectInProcessObservation(
   return Object.freeze({
     ...observation,
     ...createControllerSpatialSurface(querySession),
+    mechanics: querySession.mechanics,
   });
 }
 
