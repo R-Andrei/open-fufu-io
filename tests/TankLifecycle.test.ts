@@ -10,6 +10,8 @@ import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarn
 import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   advanceTankProductionPhase,
+  tankCellTraversalTiming,
+  tankOperatingLeashContains,
   tankPurchaseCost,
   tankTerrainMovementTiming,
   tankWeaponRangeContains,
@@ -117,6 +119,31 @@ function movementFixture(
   );
 }
 
+function corridorFixture() {
+  const state = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-corridor-red",
+      width: 5,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "ally", "beta", null, "inactive"],
+      factions: [
+        { id: "alpha", fixedTeamId: "team-a", rules: emptyRules() },
+        { id: "ally", fixedTeamId: "team-a", rules: emptyRules() },
+        { id: "beta", rules: emptyRules() },
+        { id: "inactive", rules: emptyRules() },
+      ],
+    }),
+  );
+  return createProspectiveMatchState(state, {
+    factions: state.factions.map((faction) =>
+      faction.id === "inactive"
+        ? { ...faction, status: "DEFEATED" as const }
+        : faction,
+    ),
+  });
+}
+
 function expectExactTankSpeed(
   timing: ReturnType<typeof tankTerrainMovementTiming>,
   numerator: bigint,
@@ -212,6 +239,40 @@ describe("baseline Tank lifecycle", () => {
       13n,
       5n,
     );
+  });
+
+  it("allows owned, allied, and enemy active Tank corridor cells without requiring atWar", () => {
+    const state = corridorFixture();
+
+    expect(tankCellTraversalTiming(state, "alpha", "TANK", 0)).toBeDefined();
+    expect(tankCellTraversalTiming(state, "alpha", "TANK", 1)).toBeDefined();
+    expect(tankCellTraversalTiming(state, "alpha", "TANK", 2)).toBeDefined();
+    expect(state.operations).toHaveLength(0);
+    expect(state.hostilityGrace).toHaveLength(0);
+  });
+
+  it("does not treat neutral or inactive-faction territory as a Tank corridor", () => {
+    const state = corridorFixture();
+
+    expect(tankCellTraversalTiming(state, "alpha", "TANK", 3)).toBeUndefined();
+    expect(tankCellTraversalTiming(state, "alpha", "TANK", 4)).toBeUndefined();
+  });
+
+  it("uses the exact inclusive 100-cell operating leash", () => {
+    const width = 102;
+    const height = 82;
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width,
+      height,
+      terrain: Array.from({ length: width * height }, () => "PLAINS" as const),
+    });
+    const anchor = 0;
+
+    expect(tankOperatingLeashContains(map, anchor, 100)).toBe(true);
+    expect(tankOperatingLeashContains(map, anchor, 101)).toBe(false);
+    expect(tankOperatingLeashContains(map, anchor, 80 * width + 60)).toBe(true);
+    expect(tankOperatingLeashContains(map, anchor, 81 * width + 60)).toBe(false);
   });
 
   it("atomically admits an affordable Factory build and rejects cost - 1 without mutation", () => {
