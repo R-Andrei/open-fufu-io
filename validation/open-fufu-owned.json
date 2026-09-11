@@ -61,6 +61,7 @@
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/TacticalVisibility.test.ts",
+    "tests/TankLifecycle.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
