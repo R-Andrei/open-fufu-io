@@ -821,21 +821,13 @@ export function tryBeginStructureUpgrade(
   });
 }
 
-function factionHasCustomOriginDomain(
+function factionHasCustomRuleDomain(
   state: MatchState,
   ownerId: string,
-  sourceId: string,
   domain: string,
 ): boolean {
   const owner = state.factions.find((faction) => faction.id === ownerId);
-  return (
-    owner?.rules.customDomains.some(
-      (entry) =>
-        entry.sourceKind === "ORIGIN" &&
-        entry.sourceId === sourceId &&
-        entry.domain === domain,
-    ) ?? false
-  );
+  return owner?.rules.customDomains.some((entry) => entry.domain === domain) ?? false;
 }
 
 function effectiveStructureCost(
@@ -902,10 +894,9 @@ export function tryPurchaseStructureBuild(
   const directLevel5City =
     request.type === "CITY" &&
     owner !== undefined &&
-    factionHasCustomOriginDomain(
+    factionHasCustomRuleDomain(
       state,
       request.ownerId,
-      "P41",
       "DIRECT_LEVEL5_CITY_PURCHASE",
     );
   const targetLevel: StructureLevel = directLevel5City ? 5 : 1;
@@ -935,10 +926,9 @@ export function tryPurchaseStructureBuild(
   if (!debit.ok) return purchaseFailure("INSUFFICIENT_FFY");
 
   const p21Available =
-    factionHasCustomOriginDomain(
+    factionHasCustomRuleDomain(
       state,
       request.ownerId,
-      "P21",
       "FIRST_STRUCTURE_PURCHASE_ZERO_FFY",
     ) && !owner.successfulStructurePurchaseTypes.includes(request.type);
   return Object.freeze({
