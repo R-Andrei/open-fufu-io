@@ -18,10 +18,12 @@ import {
   advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
   canDispatchFactoryPrimaryTrain,
+  createFactoryTrainDispatchRoutes,
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
   createTrainRouteInput,
   createTrainStationFfyEvent,
+  dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
   transferFactoryTrainServiceEpoch,
@@ -62,6 +64,17 @@ function desertEventCondition(condition: RuleCondition): boolean {
   return (
     condition.kind === "EVENT_TERRAIN_IS" && condition.terrain === "DESERT"
   );
+}
+
+function completeFactoryTurnaround(
+  state: ReturnType<typeof createFactoryTrainServiceEpoch>,
+  primaryTrainId: string,
+) {
+  let current = finishFactoryPrimaryTrain(state, primaryTrainId);
+  for (let tick = 0; tick < TRAIN_TURNAROUND_ACTIVE_TICKS; tick += 1) {
+    current = advanceFactoryTrainServiceSchedulerTick(current, true);
+  }
+  return current;
 }
 
 describe("Factory Train service timing and movement", () => {
@@ -182,6 +195,7 @@ describe("Factory Train service timing and movement", () => {
       ownerId: "beta",
       activePrimaryTrainId: null,
       turnaroundRemainingActiveTicks: 0,
+      p07PrimaryDispatchPhase: 0,
     });
     expect(canDispatchFactoryPrimaryTrain(newFresh, true, true)).toBe(true);
 
@@ -211,8 +225,6 @@ describe("Factory Train service timing and movement", () => {
       baseCargoFfy: { numerator: 15_000n, denominator: 1n },
     });
 
-    // A later Factory upgrade/transfer can create a different profile, but it
-    // must not mutate the already-dispatched Train snapshot.
     const laterFactoryProfile = createTrainDispatchEconomicSnapshot(
       "factory-a",
       "beta",
@@ -240,7 +252,6 @@ describe("Factory Train service timing and movement", () => {
       positiveEvents: [wartimeDesert],
       signedFacts: [],
     });
-    // 15,000 dispatch cargo × current 0.50 wartime × current Desert +33%.
     expect(wartimeDesertResult.positiveEvents[0]).toEqual({
       id: "train:station:war-desert",
       family: "INDUSTRIAL",
@@ -274,5 +285,87 @@ describe("Factory Train service timing and movement", () => {
       signedFacts: [],
     });
     expect(wartimeNonDesertResult.positiveEvents[0]?.award).toBe(7_500);
+  });
+
+  it("advances P07 only on primary dispatches, emits one fourth-primary bonus on the same loop, and resets on transfer", () => {
+    const fresh = createFactoryTrainServiceEpoch("factory-p07", "alpha");
+    expect(fresh.p07PrimaryDispatchPhase).toBe(0);
+
+    const transferAfterOne = dispatchFactoryPrimaryTrain(
+      fresh,
+      "transfer-primary",
+      true,
+    );
+    expect(transferAfterOne.epoch.p07PrimaryDispatchPhase).toBe(1);
+    expect(transferAfterOne.bonusTrainRequired).toBe(false);
+    expect(
+      transferFactoryTrainServiceEpoch(transferAfterOne.epoch, "beta")
+        .p07PrimaryDispatchPhase,
+    ).toBe(0);
+
+    let ready = createFactoryTrainServiceEpoch("factory-p07", "alpha");
+    let fourth: ReturnType<typeof dispatchFactoryPrimaryTrain> | undefined;
+    for (let dispatchNumber = 1; dispatchNumber <= 4; dispatchNumber += 1) {
+      const primaryId = `primary-${dispatchNumber}`;
+      const result = dispatchFactoryPrimaryTrain(ready, primaryId, true);
+      expect(result.bonusTrainRequired).toBe(dispatchNumber === 4);
+      expect(result.epoch.p07PrimaryDispatchPhase).toBe(dispatchNumber % 4);
+
+      if (dispatchNumber < 4) {
+        const paused = advanceFactoryTrainServiceSchedulerTick(
+          finishFactoryPrimaryTrain(result.epoch, primaryId),
+          false,
+        );
+        expect(paused.p07PrimaryDispatchPhase).toBe(dispatchNumber % 4);
+        ready = paused;
+        for (let tick = 0; tick < TRAIN_TURNAROUND_ACTIVE_TICKS; tick += 1) {
+          ready = advanceFactoryTrainServiceSchedulerTick(ready, true);
+        }
+      } else {
+        fourth = result;
+      }
+    }
+
+    expect(fourth).toBeDefined();
+    expect(fourth!.epoch.activePrimaryTrainId).toBe("primary-4");
+    expect(fourth!.epoch.p07PrimaryDispatchPhase).toBe(0);
+
+    const pairedRoutes = createFactoryTrainDispatchRoutes(
+      [0, 1, 2, 3, 4],
+      fourth!.bonusTrainRequired,
+    );
+    expect(pairedRoutes.bonus).not.toBeNull();
+    expect(pairedRoutes.primary.cells).toEqual(pairedRoutes.bonus!.cells);
+    expect(pairedRoutes.primary.edgeWeights).toEqual(
+      pairedRoutes.bonus!.edgeWeights,
+    );
+    expect(pairedRoutes.primary).not.toBe(pairedRoutes.bonus);
+    expect(pairedRoutes.primary.cells).not.toBe(pairedRoutes.bonus!.cells);
+
+    const map = railTestMap();
+    const primary = createMobileUnit(map, ["alpha"], emptyCollection(), {
+      ownerId: "alpha",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 0,
+    });
+    const bonus = createMobileUnit(map, ["alpha"], primary, {
+      ownerId: "alpha",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 0,
+    });
+    expect(primary.unit.id).not.toBe(bonus.unit.id);
+    expect(() =>
+      finishFactoryPrimaryTrain(fourth!.epoch, bonus.unit.id),
+    ).toThrow(/not active/i);
+
+    const ordinary = dispatchFactoryPrimaryTrain(
+      createFactoryTrainServiceEpoch("factory-ordinary", "alpha"),
+      "ordinary-primary",
+      false,
+    );
+    expect(ordinary.bonusTrainRequired).toBe(false);
+    expect(ordinary.epoch.p07PrimaryDispatchPhase).toBe(0);
   });
 });
