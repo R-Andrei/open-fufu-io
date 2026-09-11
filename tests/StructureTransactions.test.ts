@@ -306,7 +306,8 @@ describe("transactional persistent-structure purchases", () => {
 
   it("persists P21 per-type purchase entitlement, ignores grants, and requires affordability before a free spend", () => {
     const rules = rulesWith(["P21"]);
-    const initial = stateFor({ alphaRules: rules, ffy: 50_000 });
+    const terrain = Array.from({ length: 31 }, () => "PLAINS" as const);
+    const initial = stateFor({ alphaRules: rules, ffy: 50_000, terrain });
     const grant = StructureTransactions.tryMaterializeStructureGrant(initial, {
       structureId: "fort-grant",
       ownerId: "alpha",
@@ -324,7 +325,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-first-purchase",
       ownerId: "alpha",
       type: "FORT",
-      cellId: 1,
+      cellId: 10,
     });
     const afterFirst = commitTransaction(granted, firstPurchase);
     expect(alphaFfy(afterFirst)).toBe(50_000);
@@ -334,7 +335,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-second-purchase",
       ownerId: "alpha",
       type: "FORT",
-      cellId: 2,
+      cellId: 20,
     });
     const afterSecond = commitTransaction(afterFirst, secondPurchase);
     expect(alphaFfy(afterSecond)).toBe(0);
@@ -672,10 +673,12 @@ describe("transactional persistent-structure purchases", () => {
     const alphaRules = rulesWith(["P21"]);
     const spec = createMicroSimulationSpec({
       seed: "structure-purchase-replay",
-      width: 4,
+      width: 31,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "alpha", "alpha", "beta"],
+      terrain: Array.from({ length: 31 }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: 31 }, (_, index) =>
+        index === 30 ? "beta" : "alpha",
+      ),
       factions: [
         { id: "alpha", rules: alphaRules },
         { id: "beta", rules: rulesWith() },
@@ -697,7 +700,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-runtime-b",
       ownerId: "alpha",
       structureType: "FORT",
-      cellId: 1,
+      cellId: 10,
     } as never);
     expect(first.sequence).toBe(0);
     expect(second.sequence).toBe(1);
@@ -717,7 +720,7 @@ describe("transactional persistent-structure purchases", () => {
         structureId: "fort-runtime-balance-conflict",
         ownerId: "alpha",
         structureType: "FORT",
-        cellId: 2,
+        cellId: 20,
       } as never),
     ).toThrow(/INSUFFICIENT_FFY/i);
     expect(runtime.acceptedInputs()).toHaveLength(2);
