@@ -4,14 +4,17 @@ import type {
   ControllerEvent,
   FactionsApi,
   HostilityMechanicsSpec,
+  MechanicsApi,
   PersistentDirective,
   PurchasableUnitType,
   StructureAcquisitionPath,
   StructureBuildQuote,
   StructureMechanicsSpec,
+  StructureUpgradeQuote,
   StructureView,
   TransportMechanicsSpec,
   UnitAttackSpec,
+  UpgradeStructureCommand,
 } from "../../src/core/controller/ControllerApi";
 
 const tank: PurchasableUnitType = "TANK";
@@ -36,6 +39,52 @@ const buildTank: BuildUnitCommand = {
   producerId: "factory-1",
 };
 void buildTank;
+
+const upgradeFortByCell: UpgradeStructureCommand = {
+  kind: "UPGRADE_STRUCTURE",
+  key: "upgrade-fort",
+  cellId: 42,
+};
+void upgradeFortByCell;
+
+const structureBuildQuoteArgs: Parameters<MechanicsApi["structureBuildQuote"]> = [
+  "FORT",
+  42,
+];
+void structureBuildQuoteArgs;
+
+// @ts-expect-error Structure build quotes are requester-scoped; controllers cannot override faction identity.
+const invalidForeignBuildQuoteArgs: Parameters<
+  MechanicsApi["structureBuildQuote"]
+> = ["FORT", 42, "faction-b"];
+void invalidForeignBuildQuoteArgs;
+
+const structureUpgradeQuoteArgs: Parameters<
+  MechanicsApi["structureUpgradeQuote"]
+> = [42];
+void structureUpgradeQuoteArgs;
+
+// @ts-expect-error Controller structure upgrades are cell-addressed, never internal StructureId-addressed.
+const invalidUpgradeByInternalId: UpgradeStructureCommand = {
+  kind: "UPGRADE_STRUCTURE",
+  key: "upgrade-by-internal-id",
+  structureId: "fort-internal-1",
+};
+void invalidUpgradeByInternalId;
+
+const structureUpgradeQuote: StructureUpgradeQuote = {
+  legal: true,
+  cost: {
+    ffyRequired: 100_000,
+    ffySpent: 100_000,
+    populationSpent: 0,
+  },
+  cellId: 42,
+  currentLevel: 1,
+  resultingLevel: 2,
+  buildTicks: 50,
+};
+void structureUpgradeQuote;
 
 const capturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void capturedFactoryPath;

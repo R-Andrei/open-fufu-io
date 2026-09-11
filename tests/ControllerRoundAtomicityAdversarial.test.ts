@@ -45,6 +45,49 @@ function structureRuntime(seed: string) {
   );
 }
 
+function grantedFortRuntime(seed: string, level: 1 | 2 | 3 | 4 | 5 = 1) {
+  const rules = emptyRules();
+  return new MatchRuntime(
+    createMicroSimulationSpec({
+      seed,
+      width: 2,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "beta"],
+      initialStructureGrants: [
+        {
+          structureId: "fort-alpha-internal",
+          ownerId: "alpha",
+          type: "FORT",
+          cellId: 0,
+          level,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    }),
+  );
+}
+
+function twoBuildRuntime(seed: string) {
+  const rules = emptyRules();
+  return new MatchRuntime(
+    createMicroSimulationSpec({
+      seed,
+      width: 3,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta"],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    }),
+  );
+}
+
 function hostWithInvoke(
   invoke: ControllerHost["invoke"],
 ): ControllerHost {
@@ -102,6 +145,38 @@ function buildFortHost(key: string) {
   });
 }
 
+function upgradeFortHost(key: string) {
+  return new InProcessTestControllerHost({
+    alpha() {
+      return {
+        commands: [
+          {
+            kind: "UPGRADE_STRUCTURE",
+            key,
+            cellId: 0,
+          },
+        ],
+      } as unknown as ControllerDecision;
+    },
+  });
+}
+
+function legacyUpgradeHost(key: string) {
+  return new InProcessTestControllerHost({
+    alpha() {
+      return {
+        commands: [
+          {
+            kind: "UPGRADE_STRUCTURE",
+            key,
+            structureId: "fort-alpha-internal",
+          },
+        ],
+      } as unknown as ControllerDecision;
+    },
+  });
+}
+
 function buildAction(match: MatchRuntime) {
   const action = match
     .acceptedInputs()
@@ -109,6 +184,17 @@ function buildAction(match: MatchRuntime) {
     .find((candidate) => candidate.type === "PURCHASE_STRUCTURE_BUILD");
   if (action === undefined || action.type !== "PURCHASE_STRUCTURE_BUILD") {
     throw new Error("missing accepted structure build action");
+  }
+  return action;
+}
+
+function upgradeAction(match: MatchRuntime) {
+  const action = match
+    .acceptedInputs()
+    .map((input) => input.action)
+    .find((candidate) => candidate.type === "PURCHASE_STRUCTURE_UPGRADE");
+  if (action === undefined || action.type !== "PURCHASE_STRUCTURE_UPGRADE") {
+    throw new Error("missing accepted structure upgrade action");
   }
   return action;
 }
@@ -247,6 +333,89 @@ describe("controller-round transaction adversarial behavior", () => {
         code: "INSUFFICIENT_FFY",
         key: "unaffordable-fort",
       },
+    });
+    expect(match.acceptedInputs()).toEqual([]);
+    expect(match.snapshot().structures).toEqual([]);
+  });
+
+  it("accepts UPGRADE_STRUCTURE by public cell and resolves the authoritative internal structure identity", () => {
+    const match = grantedFortRuntime("controller-upgrade-cell-route-red");
+    for (let tick = 0; tick < 750; tick += 1) match.tick();
+
+    const receipts = syncReceipts(
+      match.runControllerRound(upgradeFortHost("upgrade-fort-by-cell")),
+    );
+
+    expect(receiptFor(receipts, "alpha")).toMatchObject({ accepted: true });
+    expect(upgradeAction(match)).toEqual({
+      type: "PURCHASE_STRUCTURE_UPGRADE",
+      structureId: "fort-alpha-internal",
+      ownerId: "alpha",
+    });
+  });
+
+  it("returns precise MAX_LEVEL for an owned completed L5 structure targeted by cell", () => {
+    const match = grantedFortRuntime("controller-upgrade-max-level-red", 5);
+
+    const receipts = syncReceipts(
+      match.runControllerRound(upgradeFortHost("upgrade-max-level-fort")),
+    );
+
+    expect(receiptFor(receipts, "alpha")).toMatchObject({
+      accepted: false,
+      failure: {
+        code: "MAX_LEVEL",
+        key: "upgrade-max-level-fort",
+      },
+    });
+    expect(match.acceptedInputs()).toEqual([]);
+  });
+
+  it("treats legacy internal-ID UPGRADE_STRUCTURE output as malformed controller output", () => {
+    const match = grantedFortRuntime("controller-upgrade-legacy-id-red");
+
+    const receipts = syncReceipts(
+      match.runControllerRound(legacyUpgradeHost("legacy-id-upgrade")),
+    );
+
+    expect(receiptFor(receipts, "alpha")).toMatchObject({
+      accepted: false,
+      faultCount: 1,
+      faulted: false,
+    });
+    expect(receiptFor(receipts, "alpha").failure).toBeUndefined();
+    expect(match.acceptedInputs()).toEqual([]);
+  });
+
+  it("rolls back an entire proposal when an earlier affordable build consumes FFY needed by a later build", () => {
+    const match = twoBuildRuntime("controller-two-build-aggregate-red");
+    for (let tick = 0; tick < 250; tick += 1) match.tick();
+    const host = new InProcessTestControllerHost({
+      alpha() {
+        return {
+          commands: [
+            {
+              kind: "BUILD_STRUCTURE" as const,
+              key: "first-fort",
+              structure: "FORT" as const,
+              cellId: 0,
+            },
+            {
+              kind: "BUILD_STRUCTURE" as const,
+              key: "second-fort",
+              structure: "FORT" as const,
+              cellId: 1,
+            },
+          ],
+        };
+      },
+    });
+
+    const receipts = syncReceipts(match.runControllerRound(host));
+
+    expect(receiptFor(receipts, "alpha")).toMatchObject({
+      accepted: false,
+      failure: { code: "INSUFFICIENT_FFY", key: "second-fort" },
     });
     expect(match.acceptedInputs()).toEqual([]);
     expect(match.snapshot().structures).toEqual([]);
