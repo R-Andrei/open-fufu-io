@@ -60,6 +60,7 @@
     "tests/StructureConstructionLifecycle.test.ts",
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
+    "tests/StructureTransactions.test.ts",
     "tests/TacticalVisibility.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
