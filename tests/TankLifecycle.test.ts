@@ -1,6 +1,7 @@
 import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/OriginRuleManifest";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
@@ -10,6 +11,7 @@ import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   advanceTankProductionPhase,
   tankPurchaseCost,
+  tankTerrainMovementTiming,
   tankWeaponRangeContains,
   tryStartTankProduction,
 } from "../src/simulation/Tanks";
@@ -19,8 +21,20 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
+function rulesWithTraitsAndAdditional(
+  traits: readonly OriginTraitId[],
+  additional: readonly RuleContribution[] = [],
+) {
+  const origin = originRuleProfileInput(traits);
+  return compileRuleProfile(RULE_AXIS_REGISTRY, {
+    contributions: [...origin.contributions, ...additional],
+    dynamicProviders: origin.dynamicProviders,
+    customDomains: origin.customDomains,
+  });
+}
+
 function rulesWithTraits(traits: readonly OriginTraitId[]) {
-  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
+  return rulesWithTraitsAndAdditional(traits);
 }
 
 function productionFixture(
@@ -72,6 +86,53 @@ function productionFixture(
   });
 }
 
+function movementFixture(
+  traits: readonly OriginTraitId[] = [],
+  tankMovementEchoBasisPoints?: number,
+) {
+  const additional: RuleContribution[] = [];
+  if (tankMovementEchoBasisPoints !== undefined) {
+    additional.push({
+      axis: "UNIT_MOVEMENT_SPEED",
+      scope: { kind: "UNIT", unit: "TANK" },
+      stage: "ECHO_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ECHO",
+      sourceId: "echo:test-tank-movement",
+      valueUnit: "BASIS_POINTS",
+      value: tankMovementEchoBasisPoints,
+    });
+  }
+  return createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-movement-red",
+      width: 1,
+      height: 1,
+      terrain: ["PLAINS"],
+      initialOwners: ["alpha"],
+      factions: [
+        { id: "alpha", rules: rulesWithTraitsAndAdditional(traits, additional) },
+      ],
+    }),
+  );
+}
+
+function expectExactTankSpeed(
+  timing: ReturnType<typeof tankTerrainMovementTiming>,
+  numerator: bigint,
+  denominator: bigint,
+) {
+  expect(timing).toBeDefined();
+  if (timing === undefined) throw new Error("expected traversable Tank terrain");
+  expect(Number.isSafeInteger(timing.movementWorkPerTick)).toBe(true);
+  expect(timing.movementWorkPerTick).toBeGreaterThan(0);
+  expect(Number.isSafeInteger(timing.edgeWeight)).toBe(true);
+  expect(timing.edgeWeight).toBeGreaterThan(0);
+  expect(BigInt(timing.movementWorkPerTick) * 10n * denominator).toBe(
+    BigInt(timing.edgeWeight) * numerator,
+  );
+}
+
 function runProductionPhases(state: ReturnType<typeof productionFixture>, count: number) {
   let current = state;
   for (let tick = 0; tick < count; tick += 1) {
@@ -99,6 +160,58 @@ describe("baseline Tank lifecycle", () => {
 
     expect(tankWeaponRangeContains(map, 0, 30, 30)).toBe(true);
     expect(tankWeaponRangeContains(map, 0, 61, 30)).toBe(false);
+  });
+
+  it.each([
+    ["PLAINS", 5n, 1n],
+    ["HIGHLAND", 4n, 1n],
+    ["DESERT", 9n, 2n],
+    ["FOREST", 13n, 4n],
+    ["TUNDRA", 15n, 4n],
+    ["MARSH", 5n, 2n],
+  ] as const)(
+    "uses the exact baseline Tank movement speed on %s",
+    (terrain, numerator, denominator) => {
+      expectExactTankSpeed(
+        tankTerrainMovementTiming(movementFixture(), "alpha", "TANK", terrain),
+        numerator,
+        denominator,
+      );
+    },
+  );
+
+  it.each([
+    "MOUNTAIN",
+    "SHALLOW_WATER",
+    "DEEP_WATER",
+    "IMPASSABLE",
+  ] as const)("blocks Tank traversal on %s", (terrain) => {
+    expect(
+      tankTerrainMovementTiming(movementFixture(), "alpha", "TANK", terrain),
+    ).toBeUndefined();
+  });
+
+  it("applies P43 movement before a later Tank movement-speed Echo", () => {
+    expectExactTankSpeed(
+      tankTerrainMovementTiming(
+        movementFixture(["P43"]),
+        "alpha",
+        "HEAVY_ARTILLERY",
+        "PLAINS",
+      ),
+      5n,
+      2n,
+    );
+    expectExactTankSpeed(
+      tankTerrainMovementTiming(
+        movementFixture(["P43"], 400),
+        "alpha",
+        "HEAVY_ARTILLERY",
+        "PLAINS",
+      ),
+      13n,
+      5n,
+    );
   });
 
   it("atomically admits an affordable Factory build and rejects cost - 1 without mutation", () => {
