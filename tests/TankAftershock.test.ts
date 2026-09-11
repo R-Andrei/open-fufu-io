@@ -2,7 +2,7 @@ import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/Or
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { resolveTankPopulationAftershocks } from "../src/simulation/TankCombat";
-import { applyRadioactiveAttackAftershockEvents } from "../src/simulation/LandOperations";
+import { applyRadioactiveAttackAftershockEvents } from "../src/simulation/TerritoryEffects";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
