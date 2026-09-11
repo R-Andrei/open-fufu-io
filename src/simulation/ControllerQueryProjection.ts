@@ -4,6 +4,7 @@ import type {
   CellSelector,
   CellView,
   ControllerStructureFieldId,
+  ControllerStructureView,
   DecisionFailure,
   MechanicsApi,
   QueryPage,
@@ -241,6 +242,7 @@ function isShoreline(state: MatchState, id: CellId): boolean {
 
 function materializeCellView(
   state: MatchState,
+  visibility: StructureVisibilityContext,
   id: CellId,
 ): CellView | undefined {
   if (!state.map.isValidCellId(id)) return undefined;
@@ -251,6 +253,12 @@ function materializeCellView(
   const ownerId = state.ownership[id] ?? null;
   const segmentId = state.map.segments?.segmentIdOf(id);
   const base = landTerrainBaseSpec(terrain);
+  const structure = state.structures.find((candidate) => candidate.cellId === id);
+  const structureView =
+    structure !== undefined &&
+    structureIsLawfullyVisible(state, visibility, structure)
+      ? materializeControllerStructureView(state, structure)
+      : undefined;
   return Object.freeze({
     id,
     position: state.map.positionOf(id),
@@ -262,6 +270,7 @@ function materializeCellView(
     ...(segmentId === undefined ? {} : { segmentId }),
     isCoast: isCoast(state, id),
     isShoreline: isShoreline(state, id),
+    ...(structureView === undefined ? {} : { structure: structureView }),
   });
 }
 
@@ -540,6 +549,44 @@ function structureIsLawfullyVisible(
     concealed,
     remotelyObserved,
   }).visible;
+}
+
+function materializeControllerStructureView(
+  state: MatchState,
+  structure: PersistentStructureState,
+): ControllerStructureView {
+  const construction =
+    structure.construction === undefined
+      ? undefined
+      : Object.freeze({
+          targetLevel: structure.construction.targetLevel,
+          remainingTicks: structure.construction.remainingTicks,
+        });
+  const chargeState =
+    structure.type === "MISSILE_SILO" && structure.chargeSlots !== undefined
+      ? Object.freeze({
+          ready: structure.chargeSlots.filter((slot) => slot.state === "READY").length,
+          capacity: structure.chargeSlots.length,
+          rechargeRemainingTicks: Object.freeze(
+            structure.chargeSlots.flatMap((slot) =>
+              slot.state === "RECHARGING"
+                ? [slot.readyAtTick - state.tick]
+                : [],
+            ),
+          ),
+        })
+      : undefined;
+  return Object.freeze({
+    ownerId: structure.ownerId,
+    type: structure.type,
+    cellId: structure.cellId,
+    ...(structure.completedLevel === undefined
+      ? {}
+      : { completedLevel: structure.completedLevel }),
+    active: structure.active,
+    ...(construction === undefined ? {} : { construction }),
+    ...(chargeState === undefined ? {} : { chargeState }),
+  });
 }
 
 function decisionFailure(
@@ -1078,7 +1125,7 @@ export function createControllerQuerySession(
     const selected = ids.slice(0, requested);
     const items = Object.freeze(
       selected.map((id) => {
-        const cell = materializeCellView(state, id);
+        const cell = materializeCellView(state, visibility, id);
         if (cell === undefined) throw new Error(`invalid materialized cell ${id}`);
         return cell;
       }),
@@ -1096,7 +1143,7 @@ export function createControllerQuerySession(
     if (remainingMaterialization() === 0) {
       throw new Error("controller materialization budget exhausted");
     }
-    const cell = materializeCellView(state, id);
+    const cell = materializeCellView(state, visibility, id);
     if (cell === undefined) throw new Error(`invalid materialized cell ${id}`);
     materializedCells += 1;
     return cell;
