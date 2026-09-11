@@ -148,6 +148,26 @@ then attackEventId ascending
 
 This order exists only for deterministic serialization/replay and stable comparison. Array position does not mean first hit, last hit, primary cause, or reward credit. Same-tick simultaneous attacks remain simultaneous.
 
+### 5.3 `RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED`
+
+When a focused combat owner resolves an attack-triggered radioactive aftershock whose physical consequence belongs to the territorial/Fallout subsystem, it emits:
+
+```ts
+RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED {
+  attacker: UnitEventSubject;
+  targetCellId: number;
+  affectedCellIds: readonly number[];
+}
+```
+
+The combat owner resolves the aftershock's legality, trigger, footprint, eligibility, cap, and canonical affected-cell ordering from its authoritative combat snapshot before emitting the fact. Those mechanics remain with the focused gameplay/Origin owners and are not restated here.
+
+`affectedCellIds` is therefore the already-resolved authoritative footprint for this occurrence. A downstream territorial/Fallout consumer applies that exact set and **must not** reselect cells or re-evaluate combat-side eligibility against later state.
+
+The event may contain an empty `affectedCellIds` set when the focused combat rule resolves a qualifying occurrence with no eligible territorial cells. It records the resolved occurrence rather than inventing a second suppression rule at the event boundary.
+
+The payload does not carry ownership snapshots, Fallout snapshots, capture results, Population accounting, structure-capture consequences, or other consumer-owned state. Applying the territorial consequence is not a capture operation merely because political ownership changes.
+
 ---
 
 ## 6. Consumer attribution and policy
