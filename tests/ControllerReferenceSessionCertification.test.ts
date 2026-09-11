@@ -6,6 +6,7 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "../src/simulation/MatchState";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
 function collidingStructureState(structureId: string) {
@@ -61,6 +62,21 @@ describe("controller reference session certification", () => {
     expect(ref).toBeDefined();
     expect(ref).not.toBe(authoritativeId);
     expect(session.resolve("alpha", "STRUCTURE", ref!)).toBe(authoritativeId);
+  });
+
+  it("requires every MatchRuntime to receive an explicit live-match reference namespace", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const spec = createMicroSimulationSpec({
+      seed: "controller-reference-runtime-ownership",
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules },
+      ],
+    });
+
+    expect(() => new MatchRuntime(spec)).toThrow(
+      "controller reference namespace is required",
+    );
   });
 
   it("ends an operation incarnation when the same key is replaced by another directive kind", () => {
