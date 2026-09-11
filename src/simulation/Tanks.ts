@@ -18,7 +18,11 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "./MatchState";
-import type { SimulationMap } from "./SimulationMap";
+import {
+  createMobileUnit,
+  type MobileUnitCollectionState,
+} from "./MobileUnits";
+import type { SimulationMap, SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
 export type TankChassisType = "TANK" | "HEAVY_ARTILLERY";
@@ -401,5 +405,116 @@ export function tryStartTankProduction(
     cost: debit.cost,
     job,
     state: next,
+  });
+}
+
+function tankChassisCanTraverse(terrain: SimulationTerrain): boolean {
+  switch (terrain) {
+    case "PLAINS":
+    case "HIGHLAND":
+    case "DESERT":
+    case "FOREST":
+    case "TUNDRA":
+    case "MARSH":
+      return true;
+    case "MOUNTAIN":
+    case "SHALLOW_WATER":
+    case "DEEP_WATER":
+    case "IMPASSABLE":
+    case "TEST":
+      return false;
+  }
+}
+
+function tankDeploymentCell(
+  state: MatchState,
+  factory: PersistentStructureState,
+  job: TankProductionJobState,
+): number | undefined {
+  return [...state.map.cardinalNeighbors(factory.cellId)]
+    .filter(
+      (cellId) =>
+        state.ownership[cellId] === job.ownerId &&
+        tankChassisCanTraverse(state.map.terrainAt(cellId)),
+    )
+    .sort((left, right) => left - right)[0];
+}
+
+function waitingDeploymentJob(
+  job: TankProductionJobState,
+): TankProductionJobState {
+  return Object.freeze({
+    factoryId: job.factoryId,
+    ownerId: job.ownerId,
+    chassisType: job.chassisType,
+    state: "WAITING_DEPLOYMENT" as const,
+  });
+}
+
+export function advanceTankProductionPhase(state: MatchState): MatchState {
+  let units: MobileUnitCollectionState = Object.freeze({
+    mobileUnits: state.mobileUnits,
+    nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+  });
+  const nextJobs: TankProductionJobState[] = [];
+  const ownerIds = state.factions.map((faction) => faction.id);
+  const jobs = [...state.tankProductionJobs].sort((left, right) =>
+    compareIds(left.factoryId, right.factoryId),
+  );
+
+  for (const job of jobs) {
+    const factory = state.structures.find(
+      (structure) => structure.id === job.factoryId,
+    );
+    if (
+      factory === undefined ||
+      factory.type !== "FACTORY" ||
+      factory.ownerId !== job.ownerId
+    ) {
+      continue;
+    }
+
+    if (!factory.active || factory.completedLevel === undefined) {
+      nextJobs.push(job);
+      continue;
+    }
+
+    const deploy = (): boolean => {
+      const cellId = tankDeploymentCell(state, factory, job);
+      if (cellId === undefined) return false;
+      units = createMobileUnit(state.map, ownerIds, units, {
+        ownerId: job.ownerId,
+        type: job.chassisType,
+        movementClass: job.chassisType,
+        cellId,
+      });
+      return true;
+    };
+
+    if (job.state === "WAITING_DEPLOYMENT") {
+      if (!deploy()) nextJobs.push(job);
+      continue;
+    }
+
+    if (job.remainingTicks > 1) {
+      nextJobs.push(
+        Object.freeze({
+          factoryId: job.factoryId,
+          ownerId: job.ownerId,
+          chassisType: job.chassisType,
+          state: "BUILDING" as const,
+          remainingTicks: job.remainingTicks - 1,
+        }),
+      );
+      continue;
+    }
+
+    if (!deploy()) nextJobs.push(waitingDeploymentJob(job));
+  }
+
+  return createProspectiveMatchState(state, {
+    mobileUnits: units.mobileUnits,
+    nextMobileUnitOrdinal: units.nextMobileUnitOrdinal,
+    tankProductionJobs: nextJobs,
   });
 }
