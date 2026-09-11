@@ -16,9 +16,11 @@ import {
 } from "./MatchState";
 import type { MobileUnitState } from "./MobileUnits";
 import {
+  createRadioactiveAttackAftershockResolvedEvent,
   createUnitAttackResolvedEvent,
   createUnitDestroyedEvent,
   type PhysicalUnitSimulationEvent,
+  type RadioactiveAttackAftershockResolvedEvent,
   type UnitAttackDestructionCause,
   type UnitEventSubject,
 } from "./SimulationEvents";
@@ -35,15 +37,9 @@ export interface TankUnitAttackResolution {
   readonly events: readonly PhysicalUnitSimulationEvent[];
 }
 
-export interface TankPopulationAftershockEffect {
-  readonly attackerUnitId: string;
-  readonly targetCellId: number;
-  readonly affectedCellIds: readonly number[];
-}
-
 export interface TankPopulationAftershockResolution {
   readonly state: MatchState;
-  readonly effects: readonly TankPopulationAftershockEffect[];
+  readonly events: readonly RadioactiveAttackAftershockResolvedEvent[];
 }
 
 function compareIds(left: string, right: string): number {
@@ -84,6 +80,22 @@ function tankCombatEventId(
     ordinal,
     subjectUnitId,
     ...(targetUnitId === undefined ? [] : [targetUnitId]),
+  ]);
+}
+
+function tankAftershockEventId(
+  tick: number,
+  ordinal: number,
+  attackerUnitId: string,
+  targetCellId: number,
+): string {
+  return JSON.stringify([
+    "TANK_COMBAT",
+    "AFTERSHOCK",
+    tick,
+    ordinal,
+    attackerUnitId,
+    targetCellId,
   ]);
 }
 
@@ -328,8 +340,7 @@ export function resolveTankPopulationAftershocks(
     state.structures.map((structure) => structure.cellId),
   );
   const dynamicStateByFaction = new Map<string, RuleDynamicState>();
-  const aftershockCells = new Set<number>();
-  const effects: TankPopulationAftershockEffect[] = [];
+  const events: RadioactiveAttackAftershockResolvedEvent[] = [];
 
   const dynamicStateFor = (ownerId: string): RuleDynamicState => {
     const existing = dynamicStateByFaction.get(ownerId);
@@ -405,29 +416,24 @@ export function resolveTankPopulationAftershocks(
     const affectedCellIds = Object.freeze(
       candidates.slice(0, cap).map((candidate) => candidate.cellId),
     );
-    for (const cellId of affectedCellIds) aftershockCells.add(cellId);
-    effects.push(
-      Object.freeze({
-        attackerUnitId: shot.attackerUnitId,
+    events.push(
+      createRadioactiveAttackAftershockResolvedEvent({
+        id: tankAftershockEventId(
+          state.tick,
+          events.length,
+          attackerUnit.id,
+          shot.targetCellId,
+        ),
+        tick: state.tick,
+        attacker: unitEventSubject(attackerUnit),
         targetCellId: shot.targetCellId,
         affectedCellIds,
       }),
     );
   }
 
-  let nextState = state;
-  if (aftershockCells.size > 0) {
-    const ownership = [...state.ownership];
-    const fallout = [...state.fallout];
-    for (const cellId of [...aftershockCells].sort((left, right) => left - right)) {
-      ownership[cellId] = null;
-      fallout[cellId] = true;
-    }
-    nextState = createProspectiveMatchState(state, { ownership, fallout });
-  }
-
   return Object.freeze({
-    state: nextState,
-    effects: Object.freeze(effects),
+    state,
+    events: Object.freeze(events),
   });
 }
