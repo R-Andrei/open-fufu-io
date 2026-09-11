@@ -59,6 +59,7 @@ function structureRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -85,6 +86,7 @@ function grantedFortRuntime(seed: string, level: 1 | 2 | 3 | 4 | 5 = 1) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -111,6 +113,7 @@ function hiddenForeignFortRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -144,6 +147,7 @@ function observedForeignFortRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
