@@ -38,9 +38,6 @@ export function applyRadioactiveAttackAftershockEvents(
   const affectedCellIds = new Set<number>();
 
   for (const event of events) {
-    if (event.kind !== "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED") {
-      throw new Error(`unsupported territorial simulation event: ${String(event.kind)}`);
-    }
     for (const cellId of event.payload.affectedCellIds) {
       assertCellIdInState(state, cellId);
       affectedCellIds.add(cellId);
