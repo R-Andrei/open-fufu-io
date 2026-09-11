@@ -69,7 +69,7 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 | **Forest** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **90%** | **`-5%`** | **`+10%`** | — |
 | **Tundra** | Yes | **No** | **`0`** | Yes | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
 | **Marsh** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
-| **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
+| **Shallow Water** | **Yes** | **No** | `0` | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
 | **Deep Water** | No | No | `0` | No | No | No | — | — | — | — |
 | **Impassable** | No | No | `0` | No | No | No | — | — | — | — |
 
@@ -144,11 +144,9 @@ Origin-specific Fallout interactions are defined in `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ## 1.8 Physical rail topology overlay
 
-Rail is an immutable physical overlay on the simulation raster for the V1 baseline. The authoritative production rail topology is supplied by the bound production map artifact. Exact artifact package, manifest, encoding, serialization, content-identity, and validation details are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts), not duplicated here.
+Rail is a physical overlay on the simulation raster. Immutable baseline rail may be supplied by the bound production map artifact; exact artifact package, manifest, encoding, serialization, content identity, and validation are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts). Runtime Factory service may additionally contribute generated rail under this section.
 
-Each rail node is exactly an existing simulation `cellId`; V1 creates no second rail coordinate or node space. Rail occupancy is a separate overlay field from base-terrain identity. This section does not add or infer terrain-specific rail purchase, build, placement, capture, removal, or generation rules.
-
-Rail edges are explicit cardinal connections. A connection is legal only when both endpoint cells are valid rail cells, are cardinally adjacent on the raster, and both endpoints encode the reciprocal connection. Connections may not cross a map edge or wrap between raster rows. Every legal rail edge costs exactly one rail-cell step.
+Each rail node is exactly an existing simulation `cellId`; V1 creates no second rail coordinate or node space. Rail occupancy remains distinct from base-terrain identity. Rail edges are explicit cardinal connections. A connection is legal only when both endpoint cells are valid rail cells, are cardinally adjacent on the raster, and both endpoints encode the reciprocal connection. Connections may not cross a map edge or wrap between raster rows. Every legal rail edge costs exactly one rail-cell step.
 
 For deterministic rail adjacency and shortest-path enumeration, the canonical direction order is:
 
@@ -156,9 +154,19 @@ For deterministic rail adjacency and shortest-path enumeration, the canonical di
 top -> right -> bottom -> left
 ```
 
-This ordering breaks equal-cost shortest-path ties. Rail routing must not derive ties from `Map`/`Set` insertion order, artifact enumeration order, or another incidental runtime order.
+This ordering breaks equal-cost physical-path ties. Rail routing must not derive ties from `Map`/`Set` insertion order, artifact enumeration order, or another incidental runtime order.
 
-A City, Port, or Factory is attached to the rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
+Authoritative physical rail is the union of:
+
+```text
+immutable artifact rail
++ current Factory-loop generated-rail contributions
++ generated-rail contributions retained by in-flight Train loop snapshots
+```
+
+Generated rail therefore has deterministic contributor provenance at cell/edge granularity. Regenerating, destroying, or otherwise releasing one Factory loop removes a generated cell/edge only when no current Factory loop and no still-live in-flight Train snapshot requires it, and it never removes immutable artifact rail. Reference/provenance state is authoritative serialized/replay state; replay must not infer it from current visual geometry alone.
+
+A City, Port, or Factory is attached to the current physical rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
 
 A rail route query distinguishes three outcomes:
 
@@ -168,11 +176,75 @@ A rail route query distinguishes three outcomes:
 
 For a valid rail source equal to its destination, the found path contains exactly that one cell and has distance `0`. Otherwise route distance is the number of traversed rail edges in rail-cell steps.
 
-Natural retracing uses the same physical rail cells in reverse. The routing substrate must not fabricate a synthetic closure edge to close a higher-level Train tour.
+### 1.8.1 Factory service-loop generation
 
-Rail topology is immutable after map materialization in V1. Its authoritative identity is therefore bound through the production map artifact and the match's existing artifact/replay binding; this registry defines no mutable runtime rail state.
+Every active completed Factory may own one canonical ordered physical **service loop**. Loop generation consumes deterministic physical inputs supplied by the Factory/structure geometry layer:
 
-Factory Train target selection, dispatch, dwell, economic events, ownership epochs, turnaround, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume this physical topology rather than redefining it.
+- the Factory's persistent `structureId`;
+- its fixed outbound and inbound rail-port cells, established by the Factory's physical geometry/orientation rather than selected by route optimization;
+- the deterministic membership set for that Factory's current area of influence;
+- current rail-buildable/pathable cells available to the generator;
+- current active completed City/Port structures and existing physical/generated rail.
+
+This contract intentionally does **not** invent a numeric Factory influence radius. The authoritative influence membership supplied to the generator is an input; a future owner may define/change that geometry without changing the loop algorithm here.
+
+Eligible deliberate construction targets are active completed Cities and Ports whose occupied cells lie inside the Factory's supplied influence membership. Target ownership is irrelevant to physical eligibility.
+
+The external ordered loop path is:
+
+```text
+Factory outbound port
+-> zero or more selected City/Port target cells
+-> Factory inbound port
+```
+
+The Factory closes the circuit internally between its fixed inbound/outbound ports. External generation must not fabricate another closure edge through unrelated terrain.
+
+Selection rules are exact:
+
+- with zero eligible targets, no service loop exists and the Factory dispatches no Train;
+- with one through five eligible targets, the minimum valid loop deliberately includes all of them;
+- with more than five eligible targets, select exactly five **and** their visit order jointly to minimize total valid loop length.
+
+Five is only the deliberate construction-target cap. Any additional active completed City/Port whose occupied cell lies exactly on the generated ordered loop is an incidental serviced station and may raise the serviced-station count above five.
+
+Among equal-length valid target/order choices, compare the selected structures by their canonical `structureId` sequence; then use the canonical physical path order `top -> right -> bottom -> left` for equal physical-path choices. No RNG or incidental enumeration order resolves loop ties.
+
+The generated result is stored as one ordered rail-cell sequence. Outside the Factory, the generator must not add arbitrary repeated cells, branches, or loops merely to manufacture station events. When a valid simple/non-branching minimum solution exists, that solution class is required.
+
+### 1.8.2 Regeneration and newly eligible stations
+
+Loop maintenance uses the Factory's **current serviced-station count**, including incidental on-loop stations, rather than remembering only the historical construction targets.
+
+When a newly completed eligible City/Port appears inside the Factory influence membership:
+
+- if its occupied cell is already on the current loop, it joins service immediately with no geometry regeneration;
+- if it is off-loop and the current loop services fewer than five stations, schedule full loop regeneration against the complete current eligible set;
+- if it is off-loop and the current loop already services at least five stations, it does not by itself trigger regeneration.
+
+A regeneration recomputes the entire current eligible set under §1.8.1; old target identities are not pinned merely because they were selected before.
+
+If no Train still depends on the current loop snapshot, a pending regeneration may commit immediately. If one or more moving/dwelling Trains still use the old loop snapshot, the regeneration remains pending until all old-loop users release it. Those Trains finish their snapshotted old loop; required generated rail remains referenced until their snapshots terminate. The replacement loop then commits atomically.
+
+### 1.8.3 Multiple Factories and shared rail
+
+Each Factory owns its own ordered service loop even where physical rail overlaps. Physical generated rail is shared through contributor provenance rather than copied into collision-isolated networks.
+
+When a new or regenerated Factory can reach existing generated Factory rail inside its supplied influence membership, its chosen loop **must share at least one existing rail edge** whenever a valid loop satisfying its ordinary required-station rules can do so. Sharing a single cell without a shared edge does not satisfy this preference/requirement.
+
+If enforcing one shared existing edge makes every otherwise-required valid loop impossible, the Factory may generate an independent valid loop rather than becoming unusable.
+
+Candidate ordering is:
+
+1. satisfy required target/station inclusion;
+2. when any such valid intersecting solution exists, require at least one shared existing edge;
+3. minimize total loop length;
+4. among equal lengths, prefer the candidate sharing more existing generated rail edges;
+5. if still tied, use the §1.8.1 canonical structure-ID sequence and physical path tie order.
+
+When several Factory loop creations/regenerations are committed in the same authoritative reconciliation stage, process Factories by ascending persistent `structureId`; each later Factory sees generated rail already committed by earlier Factories in that stage. Regenerating one Factory never recursively forces another Factory to regenerate merely because their overlap changed. A City/Port lying on several Factory loops is independently serviceable by every such loop.
+
+Train dispatch, movement/dwell, station-event economics, Factory ownership epochs, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume these stored physical loop snapshots.
 
 ---
 
@@ -343,6 +415,14 @@ Hard **ownership** constraints apply to every acquisition path. Examples include
 Hard **build/purchase** constraints apply only to paths that actually build/purchase. For example, a rule that forbids building Factories prevents `PURCHASE_BUILD` but does not prevent a Factory from being acquired through an otherwise legal `CAPTURE_TRANSFER`.
 
 Likewise, ordinary terrain/build permission, Port-interface requirements, construction-site occupancy, and purchase affordability are build/grant inputs; they are not retroactively re-applied to a physical structure already present during `CAPTURE_TRANSFER`.
+
+Every `PURCHASE_BUILD` or `GRANT` also obeys the global persistent-structure spacing invariant. Let `(dx, dy)` be the integer cell-center offset from the requested structure cell to each existing persistent structure cell. Admission requires, for **every** existing persistent structure regardless of owner, type, activity, level, or construction state:
+
+```text
+dx² + dy² >= 100
+```
+
+Thus structures must be at least **10 cells center-to-center** apart; exact distance 10 is legal. `CAPTURE_TRANSFER` does not revalidate this build/grant spacing for a structure that already physically exists. Upgrades and other non-moving lifecycle transitions likewise do not rerun it.
 
 ### 2.2.2 Ownership-slot occupancy and reservations
 
@@ -531,7 +611,7 @@ Trade Ship service/economics are defined in `FFY_ECONOMY.md`. Warship production
 
 Factories produce Trains and Tanks and repair Tank chassis.
 
-Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
+Factory-loop physical geometry/generation is owned by Section 1.8. Train dispatch, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
 Baseline Tank repair:
 

@@ -116,10 +116,10 @@ describe("controller structure-field projection", () => {
     const base = new MatchRuntime(
       createMicroSimulationSpec({
         seed: "controller-cell-structure-lifecycle-red",
-        width: 3,
+        width: 21,
         height: 1,
-        terrain: ["PLAINS", "PLAINS", "PLAINS"],
-        initialOwners: ["alpha", "alpha", "alpha"],
+        terrain: Array.from({ length: 21 }, () => "PLAINS" as const),
+        initialOwners: Array.from({ length: 21 }, () => "alpha" as const),
         factions: [
           { id: "alpha", rules },
           { id: "beta", rules },
@@ -141,7 +141,7 @@ describe("controller structure-field projection", () => {
           id: "upgrading-fort-internal",
           ownerId: "alpha",
           type: "FORT",
-          cellId: 1,
+          cellId: 10,
           completedLevel: 1,
           active: true,
           construction: { targetLevel: 2, remainingTicks: 9 },
@@ -151,7 +151,7 @@ describe("controller structure-field projection", () => {
           id: "silo-internal",
           ownerId: "alpha",
           type: "MISSILE_SILO",
-          cellId: 2,
+          cellId: 20,
           completedLevel: 2,
           active: true,
           chargeSlots: [
@@ -180,22 +180,22 @@ describe("controller structure-field projection", () => {
     expect(Object.isFrozen(fresh)).toBe(true);
     expect(Object.isFrozen(fresh?.construction)).toBe(true);
 
-    const upgrading = (await session.cells.get(1))?.structure;
+    const upgrading = (await session.cells.get(10))?.structure;
     expect(upgrading).toEqual({
       ownerId: "alpha",
       type: "FORT",
-      cellId: 1,
+      cellId: 10,
       completedLevel: 1,
       active: true,
       construction: { targetLevel: 2, remainingTicks: 9 },
     });
     expect(upgrading).not.toHaveProperty("id");
 
-    const silo = (await session.cells.get(2))?.structure;
+    const silo = (await session.cells.get(20))?.structure;
     expect(silo).toEqual({
       ownerId: "alpha",
       type: "MISSILE_SILO",
-      cellId: 2,
+      cellId: 20,
       completedLevel: 2,
       active: true,
       chargeState: {
@@ -250,21 +250,24 @@ describe("controller structure-field projection", () => {
       RULE_AXIS_REGISTRY,
       originRuleProfileInput(["P45"]),
     );
+    const width = 11;
+    const height = 11;
+    const cellCount = width * height;
     const terrain = [
       "PLAINS",
-      ...Array.from({ length: 24 }, () => "FOREST" as const),
+      ...Array.from({ length: cellCount - 1 }, () => "FOREST" as const),
     ] as const;
     const initialOwners = [
       "alpha",
-      ...Array.from({ length: 24 }, () => "beta" as const),
+      ...Array.from({ length: cellCount - 1 }, () => "beta" as const),
     ] as const;
 
     const makeState = (betaRules: typeof betaOrdinaryRules) =>
       new MatchRuntime(
         createMicroSimulationSpec({
           seed: "controller-field-visibility-red",
-          width: 5,
-          height: 5,
+          width,
+          height,
           terrain,
           initialOwners,
           factions: [
@@ -283,7 +286,7 @@ describe("controller structure-field projection", () => {
               structureId: "beta-fort",
               ownerId: "beta",
               type: "FORT",
-              cellId: 12,
+              cellId: 10,
               level: 1,
             },
           ],
@@ -315,13 +318,13 @@ describe("controller structure-field projection", () => {
 
     const visible = createControllerQuerySession(visibleState, "alpha", limits);
     expect((await visible.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
-      Array.from({ length: 25 }, (_, id) => id),
+      Array.from({ length: cellCount }, (_, id) => id),
     );
-    const visibleFortCell = await visible.cells.get(12);
+    const visibleFortCell = await visible.cells.get(10);
     expect(visibleFortCell?.structure).toEqual({
       ownerId: "beta",
       type: "FORT",
-      cellId: 12,
+      cellId: 10,
       completedLevel: 1,
       active: true,
     });
@@ -362,18 +365,18 @@ describe("controller structure-field projection", () => {
       items: [],
       truncated: false,
     });
-    const concealedFortCell = await concealed.cells.get(12);
-    expect(concealedFortCell).toMatchObject({ id: 12, ownerId: "beta" });
+    const concealedFortCell = await concealed.cells.get(10);
+    expect(concealedFortCell).toMatchObject({ id: 10, ownerId: "beta" });
     expect(concealedFortCell).not.toHaveProperty("structure");
 
     const self = createControllerQuerySession(concealedState, "beta", limits);
     expect((await self.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
-      Array.from({ length: 25 }, (_, id) => id),
+      Array.from({ length: cellCount }, (_, id) => id),
     );
-    expect((await self.cells.get(12))?.structure).toEqual({
+    expect((await self.cells.get(10))?.structure).toEqual({
       ownerId: "beta",
       type: "FORT",
-      cellId: 12,
+      cellId: 10,
       completedLevel: 1,
       active: true,
     });

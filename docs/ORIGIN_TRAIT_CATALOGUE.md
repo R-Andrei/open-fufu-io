@@ -343,6 +343,8 @@ P33PopulationGain = 20 × completedCityLevel
 
 The gain is Capacity-capped and enters Available Population. P33 follows the canonical Train event identity from `FFY_ECONOMY.md`; it does not create a second route/station event definition.
 
+That event identity exists for P33 only if the Train station event survives the interception-before-settlement boundary owned by `FFY_ECONOMY.md`. A surviving event still triggers P33 when its finalized FFY award is `0`, including a terminal hard-zero such as N11; a pending station event canceled before settlement never triggers P33.
+
 ### P34 — conquered Factories
 
 Only Factories that **successfully transfer** to the holder through the canonical structure-capture resolver count as acquired through conquest for P34. Built or granted Factories remain ordinary. A Factory destroyed on capture by N17 or by failed ownership admission never becomes a P34 Factory. P34 + N09 remains legal, enabling conquest-only access to the transformed Factory behavior.
@@ -546,11 +548,11 @@ phase 2 -> primary dispatch -> 3
 phase 3 -> primary dispatch + one bonus Train -> 0
 ```
 
-Only normal primary Train dispatches advance the phase. A P07 bonus Train never advances it. The bonus Train does not occupy or delay the primary slot, uses an independently generated deterministic ordinary route, and behaves as an ordinary Train for station events, dwell, interception, destruction, and P33.
+Only normal primary Train dispatches advance the phase. A P07 bonus Train never advances it. The bonus Train does not occupy or delay the primary slot, snapshots and follows the same Factory physical service loop as the simultaneously dispatched primary Train, and otherwise behaves as an ordinary Train for station events, dwell, interception, destruction, and P33. The two Trains retain independent physical identities and lifecycles.
 
 The P07 phase is persistent authoritative Factory-scheduler state and is serialized/replayed directly; it must not be reconstructed from aggregate Train counts or event history. Temporary inactivity pauses/preserves the phase. Factory upgrade preserves it. Ordinary Train destruction does not reset it. Physical Factory destruction deletes it.
 
-A successful Factory ownership transfer closes the old owner's Train-service epoch and creates a fresh scheduler epoch for the new owner. The new epoch starts at P07 phase `0` if the new owner has P07; no latent phase is inherited from the prior owner or advanced on behalf of a non-P07 owner. An old-owner Train already in flight remains that old owner's Train and retains its dispatch-time route/economic snapshot, but it no longer occupies or blocks the new owner's primary service slot. Its later return or destruction cannot mutate the new ownership epoch's turnaround or P07 phase.
+A successful Factory ownership transfer closes the old owner's Train-service epoch and creates a fresh scheduler epoch for the new owner. The new epoch starts at P07 phase `0` if the new owner has P07; no latent phase is inherited from the prior owner or advanced on behalf of a non-P07 owner. An old-owner Train already in flight remains that old owner's Train and retains its dispatch-time loop/economic snapshot, but it no longer occupies or blocks the new owner's primary service slot. Its later return or destruction cannot mutate the new ownership epoch's turnaround or P07 phase.
 
 All ordinary Train routing/service/event semantics and dispatch-time Factory economic snapshots remain owned by `FFY_ECONOMY.md`.
 
