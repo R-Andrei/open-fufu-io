@@ -1,11 +1,16 @@
 import { createNavigation, type NavigationTraversalPolicy } from "../src/simulation/Navigation";
 import {
+  collectGeneratedRailReferences,
   createRailNetwork,
+  planFactoryRailLoop,
   RAIL_CELL_PRESENT,
   RAIL_CONNECTION_BOTTOM,
   RAIL_CONNECTION_LEFT,
   RAIL_CONNECTION_RIGHT,
   RAIL_CONNECTION_TOP,
+  shouldRegenerateFactoryRailLoop,
+  type FactoryRailLoopPlanningInput,
+  type FactoryRailStation,
 } from "../src/simulation/RailNetwork";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
 
@@ -26,6 +31,55 @@ function uniformPolicy(weight = 1): NavigationTraversalPolicy {
 
 function railNetwork(width: number, height: number, masks: readonly number[]) {
   return createRailNetwork(syntheticMap(width, height), Uint8Array.from(masks));
+}
+
+function gridCell(x: number, y: number, width: number): number {
+  return y * width + x;
+}
+
+function allGridCells(width: number, height: number): readonly number[] {
+  return Array.from({ length: width * height }, (_, cellId) => cellId);
+}
+
+function gridRow(width: number, y: number): readonly number[] {
+  return Array.from({ length: width }, (_, x) => gridCell(x, y, width));
+}
+
+function factoryStation(
+  id: string,
+  x: number,
+  y: number,
+  width: number,
+  type: "CITY" | "PORT" = "CITY",
+): FactoryRailStation {
+  return Object.freeze({
+    id,
+    type,
+    cellId: gridCell(x, y, width),
+    active: true,
+    completedLevel: 1,
+  });
+}
+
+function factoryPlanningInput(
+  width: number,
+  height: number,
+  stations: readonly FactoryRailStation[],
+  overrides: Partial<FactoryRailLoopPlanningInput> = {},
+): FactoryRailLoopPlanningInput {
+  const cells = allGridCells(width, height);
+  return {
+    factoryId: "factory-a",
+    width,
+    height,
+    outboundPortCellId: gridCell(0, Math.floor(height / 2), width),
+    inboundPortCellId: gridCell(width - 1, Math.floor(height / 2), width),
+    influenceCellIds: cells,
+    railBuildableCellIds: cells,
+    stations,
+    existingGeneratedEdges: [],
+    ...overrides,
+  };
 }
 
 describe("target-owned deterministic navigation", () => {
@@ -292,5 +346,171 @@ describe("target-owned deterministic rail routing", () => {
     expect(route.cells[0]).toBe(0);
     expect(route.cells.at(-1)).toBe(masks.length - 1);
     expect(rail.componentOf(masks.length - 1)).toBe(0);
+  });
+});
+
+describe("Factory generated rail-loop planning", () => {
+  it("creates no loop for zero eligible stations and includes every eligible station when at most five exist", () => {
+    const width = 13;
+    const height = 7;
+    expect(planFactoryRailLoop(factoryPlanningInput(width, height, []))).toBeNull();
+
+    const result = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [
+        factoryStation("city-a", 3, 3, width),
+        factoryStation("city-b", 6, 3, width, "PORT"),
+        factoryStation("city-c", 9, 3, width),
+        Object.freeze({
+          ...factoryStation("inactive", 4, 4, width),
+          active: false,
+        }),
+        Object.freeze({
+          ...factoryStation("unfinished", 8, 4, width),
+          completedLevel: undefined,
+        }),
+      ]),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.targetStructureIds).toEqual(["city-a", "city-b", "city-c"]);
+    expect(result?.servicedStructureIds).toEqual(["city-a", "city-b", "city-c"]);
+    expect(result?.cells[0]).toBe(gridCell(0, 3, width));
+    expect(result?.cells.at(-1)).toBe(gridCell(12, 3, width));
+  });
+
+  it("uses exactly five construction targets when more exist while servicing every additional station that lies on the chosen loop", () => {
+    const width = 31;
+    const height = 11;
+    const straightStations = [
+      factoryStation("line-a", 5, 5, width),
+      factoryStation("line-b", 10, 5, width),
+      factoryStation("line-c", 12, 5, width),
+      factoryStation("line-d", 15, 5, width),
+      factoryStation("line-e", 20, 5, width),
+      factoryStation("line-f", 25, 5, width),
+    ];
+    const far = factoryStation("far-detour", 15, 10, width);
+    const result = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [...straightStations, far]),
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.targetStructureIds).toHaveLength(5);
+    expect(result?.targetStructureIds).not.toContain("far-detour");
+    expect(result?.servicedStructureIds).toEqual(
+      straightStations.map((entry) => entry.id),
+    );
+    expect(result?.servicedStructureIds).toHaveLength(6);
+    expect(result?.servicedStructureIds).not.toContain("far-detour");
+  });
+
+  it("breaks equal-cost visit-order ties by canonical structure ID independent of input enumeration", () => {
+    const width = 5;
+    const height = 5;
+    const a = factoryStation("a-station", 2, 1, width);
+    const b = factoryStation("b-station", 2, 3, width);
+    const base = {
+      outboundPortCellId: gridCell(0, 2, width),
+      inboundPortCellId: gridCell(4, 2, width),
+    };
+
+    const forward = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [b, a], base),
+    );
+    const reversed = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [a, b], base),
+    );
+
+    expect(forward?.targetStructureIds).toEqual(["a-station", "b-station"]);
+    expect(reversed).toEqual(forward);
+  });
+
+  it("requires an existing generated rail edge when an intersecting valid loop exists, but falls back to an independent loop when intersection is impossible", () => {
+    const width = 9;
+    const height = 5;
+    const target = factoryStation("center", 4, 2, width);
+    const existingEdge = Object.freeze({
+      a: gridCell(4, 0, width),
+      b: gridCell(5, 0, width),
+    });
+    const common = {
+      outboundPortCellId: gridCell(0, 2, width),
+      inboundPortCellId: gridCell(8, 2, width),
+      existingGeneratedEdges: [existingEdge],
+    };
+
+    const intersecting = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [target], common),
+    );
+    expect(intersecting).not.toBeNull();
+    expect(intersecting?.sharedExistingEdgeCount).toBeGreaterThanOrEqual(1);
+    const edgeIndex = intersecting?.cells.findIndex(
+      (entry, index, cells) =>
+        index + 1 < cells.length &&
+        ((entry === existingEdge.a && cells[index + 1] === existingEdge.b) ||
+          (entry === existingEdge.b && cells[index + 1] === existingEdge.a)),
+    );
+    expect(edgeIndex).toBeGreaterThanOrEqual(0);
+
+    const disconnectedBuildable = [
+      ...gridRow(width, 2),
+      existingEdge.a,
+      existingEdge.b,
+    ];
+    const independent = planFactoryRailLoop(
+      factoryPlanningInput(width, height, [target], {
+        ...common,
+        railBuildableCellIds: disconnectedBuildable,
+      }),
+    );
+    expect(independent).not.toBeNull();
+    expect(independent?.sharedExistingEdgeCount).toBe(0);
+    expect(independent?.cells).toEqual(gridRow(width, 2));
+  });
+
+  it("regenerates only for a new off-loop eligible station while current service remains below five", () => {
+    expect(
+      shouldRegenerateFactoryRailLoop({
+        currentLoopCells: [10, 11, 12, 13],
+        currentServicedStructureIds: ["a", "b", "c", "d"],
+        newStationCellId: 99,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRegenerateFactoryRailLoop({
+        currentLoopCells: [10, 11, 12, 13],
+        currentServicedStructureIds: ["a", "b", "c", "d"],
+        newStationCellId: 12,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRegenerateFactoryRailLoop({
+        currentLoopCells: [10, 11, 12, 13],
+        currentServicedStructureIds: ["a", "b", "c", "d", "e"],
+        newStationCellId: 99,
+      }),
+    ).toBe(false);
+  });
+
+  it("reference-counts shared physical rail edges across Factory loops and retained in-flight snapshots", () => {
+    const references = collectGeneratedRailReferences([
+      { contributorId: "factory:a", cells: [0, 1, 2, 3] },
+      { contributorId: "factory:b", cells: [4, 1, 2, 5] },
+      { contributorId: "train:old-snapshot", cells: [2, 3] },
+    ]);
+
+    expect(references).toContainEqual({
+      a: 1,
+      b: 2,
+      referenceCount: 2,
+      contributorIds: ["factory:a", "factory:b"],
+    });
+    expect(references).toContainEqual({
+      a: 2,
+      b: 3,
+      referenceCount: 2,
+      contributorIds: ["factory:a", "train:old-snapshot"],
+    });
+    expect(references.find((edge) => edge.a === 0 && edge.b === 1)?.referenceCount).toBe(1);
   });
 });
