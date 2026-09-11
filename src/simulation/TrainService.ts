@@ -1,5 +1,10 @@
 import type { CellId } from "../core/controller/ControllerApi";
 import {
+  reducedRational,
+  type RuleCondition,
+} from "../core/rules/RuleComposition";
+import type { ExactFfyValue, PositiveFfyEventInput } from "./Economy";
+import {
   advanceMobileUnit,
   type MobileUnitRouteInput,
   type MobileUnitState,
@@ -9,6 +14,15 @@ export const TRAIN_RAIL_EDGE_WORK = 2 as const;
 export const TRAIN_MOVEMENT_WORK_PER_TICK = 5 as const;
 export const TRAIN_STATION_DWELL_TICKS = 15 as const;
 export const TRAIN_TURNAROUND_ACTIVE_TICKS = 50 as const;
+
+const FACTORY_TRAIN_EVENT_BASE_FFY = Object.freeze({
+  1: 10_000,
+  2: 11_250,
+  3: 12_500,
+  4: 13_750,
+  5: 15_000,
+} as const);
+const EXACT_ONE = Object.freeze({ numerator: 1n, denominator: 1n });
 
 export interface FactoryTrainServiceEpochState {
   readonly factoryId: string;
@@ -21,6 +35,19 @@ export interface TrainMovementTickResult {
   readonly unit: MobileUnitState;
   readonly stationEntryCellId: CellId | null;
   readonly resumeAtTick: number | null;
+}
+
+export interface TrainDispatchEconomicSnapshot {
+  readonly factoryId: string;
+  readonly dispatchOwnerId: string;
+  readonly factoryLevel: number;
+  readonly baseCargoFfy: ExactFfyValue;
+}
+
+export interface TrainStationFfyEventInput {
+  readonly eventId: string;
+  readonly externalWartimeMultiplier?: ExactFfyValue;
+  readonly conditionApplies?: (condition: RuleCondition) => boolean;
 }
 
 function freezeEpoch(
@@ -38,6 +65,35 @@ function assertCanonicalTick(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
+}
+
+function materializeExactNonNegative(
+  value: ExactFfyValue,
+  label: string,
+): ExactFfyValue {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    typeof value.numerator !== "bigint" ||
+    typeof value.denominator !== "bigint" ||
+    value.numerator < 0n ||
+    value.denominator <= 0n
+  ) {
+    throw new Error(`${label} must be a non-negative exact rational`);
+  }
+  return Object.freeze(reducedRational(value.numerator, value.denominator));
+}
+
+function multiplyExact(
+  left: ExactFfyValue,
+  right: ExactFfyValue,
+): ExactFfyValue {
+  return Object.freeze(
+    reducedRational(
+      left.numerator * right.numerator,
+      left.denominator * right.denominator,
+    ),
+  );
 }
 
 export function createFactoryTrainServiceEpoch(
@@ -137,6 +193,57 @@ export function createTrainRouteInput(
         () => TRAIN_RAIL_EDGE_WORK,
       ),
     ),
+  });
+}
+
+export function createTrainDispatchEconomicSnapshot(
+  factoryId: string,
+  dispatchOwnerId: string,
+  factoryLevel: number,
+  factoryBaseMultiplier: ExactFfyValue = EXACT_ONE,
+): TrainDispatchEconomicSnapshot {
+  if (
+    !Number.isSafeInteger(factoryLevel) ||
+    factoryLevel < 1 ||
+    factoryLevel > 5
+  ) {
+    throw new Error("Factory Train dispatch level must be an integer from 1 through 5");
+  }
+  const base = FACTORY_TRAIN_EVENT_BASE_FFY[
+    factoryLevel as keyof typeof FACTORY_TRAIN_EVENT_BASE_FFY
+  ];
+  const multiplier = materializeExactNonNegative(
+    factoryBaseMultiplier,
+    "Factory Train base multiplier",
+  );
+  const baseCargoFfy = multiplyExact(
+    Object.freeze({ numerator: BigInt(base), denominator: 1n }),
+    multiplier,
+  );
+  return Object.freeze({
+    factoryId,
+    dispatchOwnerId,
+    factoryLevel,
+    baseCargoFfy,
+  });
+}
+
+export function createTrainStationFfyEvent(
+  snapshot: TrainDispatchEconomicSnapshot,
+  input: TrainStationFfyEventInput,
+): PositiveFfyEventInput {
+  const externalWartimeMultiplier = materializeExactNonNegative(
+    input.externalWartimeMultiplier ?? EXACT_ONE,
+    "Train external wartime multiplier",
+  );
+  return Object.freeze({
+    id: input.eventId,
+    family: "INDUSTRIAL",
+    baseValue: snapshot.baseCargoFfy,
+    structuralMultiplier: externalWartimeMultiplier,
+    ...(input.conditionApplies === undefined
+      ? {}
+      : { conditionApplies: input.conditionApplies }),
   });
 }
 
