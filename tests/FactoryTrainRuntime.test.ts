@@ -474,4 +474,230 @@ describe("authoritative Factory Train runtime state", () => {
       replacementDispatched.factoryTrainEpochs[0]?.activePrimaryTrainId,
     );
   });
+
+  it("replaces inherited turnaround and P07 phase with a fresh new-owner epoch on Factory transfer", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "factory-train-runtime-transfer-reset",
+        width: 12,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const loopCells = Object.freeze(
+      Array.from({ length: 11 }, (_, index) => index + 1),
+    );
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-a",
+          ownerId: "beta",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "CAPTURE_TRANSFER",
+        },
+        {
+          id: "city-a",
+          ownerId: "beta",
+          type: "CITY",
+          cellId: 10,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "CAPTURE_TRANSFER",
+        },
+      ],
+      factoryRailLoops: [
+        createFactoryRailLoopLifecycleState("factory-a", {
+          factoryId: "factory-a",
+          targetStructureIds: Object.freeze(["city-a"]),
+          servicedStructureIds: Object.freeze(["city-a"]),
+          cells: loopCells,
+          sharedExistingEdgeCount: 0,
+        }),
+      ],
+      factoryTrainEpochs: [
+        {
+          factoryId: "factory-a",
+          ownerId: "alpha",
+          activePrimaryTrainId: null,
+          turnaroundRemainingActiveTicks: 17,
+          p07PrimaryDispatchPhase: 3,
+        },
+      ],
+    });
+
+    const transferred = new TickEngine().advance(prepared, []);
+    const newPrimaryId = transferred.factoryTrainEpochs[0]?.activePrimaryTrainId;
+
+    expect(transferred.factoryTrainEpochs).toHaveLength(1);
+    expect(transferred.factoryTrainEpochs[0]).toMatchObject({
+      factoryId: "factory-a",
+      ownerId: "beta",
+      turnaroundRemainingActiveTicks: 0,
+      p07PrimaryDispatchPhase: 0,
+    });
+    expect(newPrimaryId).not.toBeNull();
+    expect(transferred.mobileUnits).toHaveLength(1);
+    expect(transferred.mobileUnits[0]).toMatchObject({
+      id: newPrimaryId,
+      ownerId: "beta",
+      type: "TRAIN",
+    });
+    expect(transferred.trainServices).toHaveLength(1);
+    expect(transferred.trainServices[0]).toMatchObject({
+      trainId: newPrimaryId,
+      factoryId: "factory-a",
+      isPrimary: true,
+      dispatchSnapshot: { dispatchOwnerId: "beta" },
+    });
+  });
+
+  it("keeps an old-owner in-flight Train isolated from the fresh transfer epoch through later termination", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "factory-train-runtime-transfer-inflight",
+        width: 12,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const loopCells = Object.freeze(
+      Array.from({ length: 11 }, (_, index) => index + 1),
+    );
+    const created = createMobileUnit(
+      base.map,
+      base.factions.map((faction) => faction.id),
+      {
+        mobileUnits: base.mobileUnits,
+        nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: loopCells[0]!,
+      },
+    );
+    const routed = assignMobileUnitRoute(
+      base.map,
+      created.unit,
+      createTrainRouteInput(loopCells),
+    );
+    const oldOwnerTrain = advanceMobileUnit(routed, 13).unit;
+    const lifecycle = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+      oldOwnerTrain.id,
+    );
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-a",
+          ownerId: "beta",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "CAPTURE_TRANSFER",
+        },
+        {
+          id: "city-a",
+          ownerId: "beta",
+          type: "CITY",
+          cellId: 10,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "CAPTURE_TRANSFER",
+        },
+      ],
+      mobileUnits: [oldOwnerTrain],
+      nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      factoryRailLoops: [lifecycle],
+      factoryTrainEpochs: [
+        {
+          factoryId: "factory-a",
+          ownerId: "alpha",
+          activePrimaryTrainId: oldOwnerTrain.id,
+          turnaroundRemainingActiveTicks: 0,
+          p07PrimaryDispatchPhase: 3,
+        },
+      ],
+      trainServices: [
+        {
+          trainId: oldOwnerTrain.id,
+          factoryId: "factory-a",
+          loopSnapshotId: oldOwnerTrain.id,
+          isPrimary: true,
+          dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+            "factory-a",
+            "alpha",
+            1,
+          ),
+          resumeAtTick: null,
+        },
+      ],
+    });
+
+    const transferred = new TickEngine().advance(prepared, []);
+    const newPrimaryId = transferred.factoryTrainEpochs[0]?.activePrimaryTrainId;
+    const alphaTrain = transferred.mobileUnits.find(
+      (unit) => unit.ownerId === "alpha",
+    );
+    const betaTrain = transferred.mobileUnits.find(
+      (unit) => unit.ownerId === "beta",
+    );
+
+    expect(transferred.factoryTrainEpochs[0]).toMatchObject({
+      ownerId: "beta",
+      activePrimaryTrainId: newPrimaryId,
+      turnaroundRemainingActiveTicks: 0,
+      p07PrimaryDispatchPhase: 0,
+    });
+    expect(newPrimaryId).not.toBeNull();
+    expect(alphaTrain).toMatchObject({
+      id: oldOwnerTrain.id,
+      ownerId: "alpha",
+      type: "TRAIN",
+    });
+    expect(betaTrain).toMatchObject({
+      id: newPrimaryId,
+      ownerId: "beta",
+      type: "TRAIN",
+    });
+    expect(transferred.trainServices).toHaveLength(2);
+    expect(transferred.factoryRailLoops[0]?.retainedSnapshots.map(
+      (snapshot) => snapshot.snapshotId,
+    )).toEqual([oldOwnerTrain.id, newPrimaryId].sort());
+
+    const afterOldReturn = new TickEngine().advance(transferred, []);
+    expect(
+      afterOldReturn.mobileUnits.some((unit) => unit.id === oldOwnerTrain.id),
+    ).toBe(false);
+    expect(afterOldReturn.factoryTrainEpochs[0]).toMatchObject({
+      ownerId: "beta",
+      activePrimaryTrainId: newPrimaryId,
+      turnaroundRemainingActiveTicks: 0,
+      p07PrimaryDispatchPhase: 0,
+    });
+    expect(afterOldReturn.factoryRailLoops[0]?.retainedSnapshots).toEqual([
+      expect.objectContaining({ snapshotId: newPrimaryId }),
+    ]);
+    expect(afterOldReturn.trainServices).toHaveLength(1);
+    expect(afterOldReturn.trainServices[0]?.trainId).toBe(newPrimaryId);
+  });
 });
