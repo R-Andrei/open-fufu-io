@@ -114,6 +114,7 @@
     {"path":"src/simulation/Navigation.ts","validators":["tests/Navigation.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/Population.ts","validators":["tests/Population.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/RailNetwork.ts","validators":["tests/Navigation.test.ts","tests/RailMapArtifact.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
+    {"path":"src/simulation/RepairService.ts","validators":["tests/TankRepair.test.ts"]},
     {"path":"src/simulation/Segments.ts","validators":["tests/Segments.test.ts","tests/SegmentsProduction.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/SimulationEvents.ts","validators":["tests/SimulationEvents.test.ts","tests/TankAftershock.test.ts"]},
     {"path":"src/simulation/SimulationMap.ts","validators":["tests/MapArtifact.test.ts","tests/MatchRuntime.test.ts","tests/RailMapArtifact.test.ts","tests/Segments.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
