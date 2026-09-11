@@ -501,14 +501,6 @@ The replay/version binding for an accepted launch contains, directly or through 
 
 Replays consume those bound values; they do not infer historical in-flight mechanics from whatever Origin/Echo/ruleset configuration happens to be current when the replay is viewed.
 
-### 1.6.1 Controller/API projection boundary
-
-This mechanics contract does **not** require a separate Origin-specific controller API surface. Exact `launcherId` selection and aggregate charge-state projections are sufficient for controller intent/readiness; controller-facing projections are not a second canonical mechanics definition.
-
-Any radius-oriented `StrategicWeaponMechanicsSpec` compatibility fields such as `innerRadius`, `outerRadius`, or Water-Nukes presentation fields such as `deepWaterCoreRadius` must be derived from the same effective `STRATEGIC_BLAST_V1` CORE/FRINGE profile, or be replaced by a first-class effective-profile representation. They must never evolve into separately authoritative geometry.
-
-Likewise, controller-facing charge summaries may remain aggregate projections while simulation/replay state retains canonical per-slot identity. No Origin-specific parallel strategic-weapon API is introduced by this contract.
-
 ## 1.7 SAM charge arbitration and P27 anti-ship fire
 
 SAM Launcher construction, completed-level charge capacity, effective range, and recharge duration are owned by `TERRAIN_AND_STRUCTURES.md`; Origin transformations such as P40 are owned by `ORIGIN_TRAIT_CATALOGUE.md`. This section owns how automatic strategic-projectile interception and an effective anti-ship SAM capability share that one resolved SAM state.
@@ -539,7 +531,7 @@ During phase 2, process eligible SAMs in ascending stable structure ID. One SAM 
 
 ### 1.7.2 Physical eligibility and deterministic target choice
 
-P27 does not reuse predictive strategic-projectile preshot logic and does not define a second radial raster. A ship is eligible only when its **current physical cell** belongs to that physical SAM's current authoritative effective `SAM_LAUNCHER` structure field under `STRUCTURE_RADIAL_FIELD_V1`, as owned by `TERRAIN_AND_STRUCTURES.md`. P27 therefore consumes exactly the same effective SAM field profile as ordinary strategic-projectile interception, including completed level and effective range transformations such as P40 or applicable Echo specialization. A numeric controller-facing `interceptionRange`, when present, is ergonomic derived information only and must not be independently rasterized to decide P27 eligibility.
+P27 does not reuse predictive strategic-projectile preshot logic and does not define a second radial raster. A ship is eligible only when its **current physical cell** belongs to that physical SAM's current authoritative effective `SAM_LAUNCHER` structure field under `STRUCTURE_RADIAL_FIELD_V1`, as owned by `TERRAIN_AND_STRUCTURES.md`. P27 therefore consumes exactly the same effective SAM field profile as ordinary strategic-projectile interception, including completed level and effective range transformations such as P40 or applicable Echo specialization.
 
 There is no terrain line-of-sight/raycast rule, trajectory prediction, pursuit, target leading, or controller-assigned target.
 
@@ -675,7 +667,7 @@ The baseline cap is unbounded. P23 supplies an effective cap of one.
 
 A successful Warship build admission reserves its ownership slot at transaction commit and holds it through the five-second construction lifecycle. Destruction/cancellation before completion or later destruction/loss releases the slot at the authoritative state transition. A failed proposal consumes no FFY/Population and leaves no reservation.
 
-A mechanics quote is not a reservation. Consequently, with an effective cap of one and no existing Warship, two Port build quotes may each be legal against the same immutable snapshot while a decision containing both build commands is rejected atomically with `OWNERSHIP_CAP`. Command-array order must not decide which sibling purchase wins.
+A non-committing prospective build evaluation is not a reservation. Consequently, with an effective cap of one and no existing Warship, two separate prospective evaluations may each be legal against the same immutable snapshot while an aggregate decision containing both purchases is rejected atomically by the ownership cap. Source order must not decide which sibling purchase wins.
 
 Hard build prohibitions are evaluated before transaction resources are committed and remain effective even when another rule changes the payment resource or makes the purchase free. Alternate payment therefore never bypasses a Warship build prohibition or ownership cap.
 
@@ -857,14 +849,6 @@ Environmental/unowned destruction and administrative/lifecycle removal have no c
 
 Replay/save state must reproduce the exact destruction transition, payload snapshot, cause class, and credited destroyer rather than inferring them later from event presentation or aggregate statistics.
 
-## 5.5 Controller/mechanics projection boundary
-
-Transport landing, autonomous SAM interception, and P27 anti-ship fire remain simulation-owned. This contract introduces no manual controller command for choosing SAM targets or firing individual SAM charges.
-
-The public/effective mechanics projection must expose enough deterministic state for player controllers and Official AI to reason about the same mechanics without reconstructing hidden rules. Existing aggregate charge observation may remain aggregate; when P27 is effective, exact anti-ship spatial eligibility must be queryable through the same authoritative `SAM_LAUNCHER` structure-field projection owned by `TERRAIN_AND_STRUCTURES.md`, while any numeric `interceptionRange` remains ergonomic only. The same mechanics projection must also expose the anti-ship target classes, fixed damage, shared charge/recharge state, and strategic-projectile-first charge priority. The effective Transport landing-survival rule must likewise be surfaced through the ordinary effective-rule/mechanics projection rather than an Origin-specific parallel API. When a rule such as P28 consumes credited Transport destruction, that same projection must expose its effective trigger, frozen amount source, recipient/destination, same-side/uncredited exclusions, and Capacity handling through ordinary Transport-destruction mechanics rather than a trait-specific parallel API.
-
-`UnitView`/structure observations may expose resulting carried Population, health, and aggregate charge state, while authoritative simulation/replay state retains whatever finer internal identity is required. Controller-facing fields are projections of these mechanics, never separately authoritative definitions.
-
 ---
 
 # 6. Validation expectations
@@ -911,5 +895,4 @@ Before V1 release, accelerated/headless tests should benchmark at minimum:
 - `TRANSPORT_DESTROYED_EXACTLY_ONCE`: each active → destroyed transition freezes exactly one payload/cause/credit result and non-destruction terminal paths freeze none;
 - `P28_CREDITED_TRANSFER`: a qualifying hostile credited destruction transfers the frozen carried payload exactly once through the Population accounting owner, while uncredited/same-side destruction does not;
 - `P28_STRATEGIC_AND_P27_CREDIT`: lethal P27 fire and faction-owned strategic-blast destruction supply deterministic credit consumable by P28;
-- `P28_N13_TERMINAL_EXCLUSIVITY`: destruction before landing consumes the current aboard payload through destruction/P28 and never N13; a completed landing transition consumes N13 first and is not later reclassified as Transport destruction;
-- controller/effective-mechanics projections expose the same canonical P27 SAM field/profile, N13 landing result, and P28 destruction-transfer profile consumed by authoritative simulation without adding manual SAM targeting or Origin-specific parallel APIs.
+- `P28_N13_TERMINAL_EXCLUSIVITY`: destruction before landing consumes the current aboard payload through destruction/P28 and never N13; a completed landing transition consumes N13 first and is not later reclassified as Transport destruction.
