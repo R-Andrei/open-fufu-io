@@ -87,7 +87,10 @@ describe("controller structure-field projection", () => {
     const structureStart = source.indexOf(
       "export interface ControllerStructureView",
     );
-    const structureEnd = source.indexOf("export interface UnitView", structureStart);
+    const structureEnd = source.indexOf(
+      "export interface StructureView",
+      structureStart,
+    );
     const structureView = source.slice(structureStart, structureEnd);
     expect(structureStart).toBeGreaterThanOrEqual(0);
     expect(structureView).toContain("readonly ownerId: FactionId;");
