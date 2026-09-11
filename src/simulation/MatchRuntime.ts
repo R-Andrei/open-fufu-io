@@ -494,12 +494,13 @@ export class MatchRuntime {
       this.spawnSnapshot = initialized.snapshot;
       this.phase = "ACTIVE";
     }
-    if (dependencies.controllerReferenceNamespace !== undefined) {
-      this.controllerReferences = new ControllerReferenceSession(
-        dependencies.controllerReferenceNamespace,
-        this.state,
-      );
+    if (dependencies.controllerReferenceNamespace === undefined) {
+      throw new Error("controller reference namespace is required");
     }
+    this.controllerReferences = new ControllerReferenceSession(
+      dependencies.controllerReferenceNamespace,
+      this.state,
+    );
   }
 
   snapshot(): MatchState | SpawnAwareMatchState {
