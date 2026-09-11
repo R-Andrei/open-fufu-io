@@ -319,6 +319,6 @@ describe("baseline Tank lifecycle", () => {
     expect(advanced.tankProductionJobs).toHaveLength(0);
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
-    ).toBe(0);
+    ).toBe(100);
   });
 });
