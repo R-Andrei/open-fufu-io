@@ -124,6 +124,7 @@
     {"path":"src/simulation/Structures.ts","validators":["tests/ControllerConstructionQuotes.test.ts","tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionCertification.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/StructureGrantLifecycle.test.ts","tests/StructureTransactionsCertification.test.ts"]},
     {"path":"src/simulation/TerritoryEffects.ts","validators":["tests/TankAftershock.test.ts"]},
     {"path":"src/simulation/TankCombat.ts","validators":["tests/TankAftershock.test.ts","tests/TankCombatEvents.test.ts"]},
+    {"path":"src/simulation/TankRepair.ts","validators":["tests/TankRepair.test.ts"]},
     {"path":"src/simulation/TankTargeting.ts","validators":["tests/TankTargeting.test.ts"]},
     {"path":"src/simulation/Tanks.ts","validators":["tests/TankLifecycle.test.ts","tests/TankOperationalState.test.ts"]},
     {"path":"src/simulation/TickEngine.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/TankLifecycle.test.ts"]},
