@@ -1,7 +1,9 @@
 import { factionRelationBetween } from "../core/FactionRelations";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
+  isTerrainScopeId,
   reducedRational,
+  type RuleCondition,
   type RuleScope,
 } from "../core/rules/RuleComposition";
 import {
@@ -10,6 +12,8 @@ import {
   resolvedRuleTermsForScope,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
+import { matchStateAtWar } from "./HostilityState";
+import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchState } from "./MatchState";
 import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
 import type { SimulationMap, SimulationTerrain } from "./SimulationMap";
@@ -23,7 +27,13 @@ import {
 export type TankAutonomousUnitTargetClass =
   | "TANK_CHASSIS"
   | "WARSHIP"
-  | "TRAIN";
+  | "TRAIN"
+  | "POPULATION";
+
+type TankAutonomousMobileTargetClass = Exclude<
+  TankAutonomousUnitTargetClass,
+  "POPULATION"
+>;
 
 export interface TankAutonomousUnitTargetRequest {
   readonly ownerId: string;
@@ -32,23 +42,36 @@ export interface TankAutonomousUnitTargetRequest {
   readonly operatingAnchorCellId: number;
   /** Unit IDs already established as lawfully observed by the caller. */
   readonly observedUnitIds: readonly string[];
+  /** Cell IDs already established as lawfully observed by the caller. */
+  readonly observedCellIds: readonly number[];
 }
 
-export interface TankAutonomousUnitTargetSelection {
-  readonly targetClass: TankAutonomousUnitTargetClass;
-  readonly unitId: string;
-}
+export type TankAutonomousUnitTargetSelection =
+  | Readonly<{
+      targetClass: TankAutonomousMobileTargetClass;
+      unitId: string;
+    }>
+  | Readonly<{
+      targetClass: "POPULATION";
+      cellId: number;
+    }>;
 
 interface ExactRatio {
   readonly numerator: bigint;
   readonly denominator: bigint;
 }
 
-interface RankedTarget {
-  readonly targetClass: TankAutonomousUnitTargetClass;
-  readonly unitId: string;
-  readonly traversalWeight: number;
-}
+type RankedTarget =
+  | Readonly<{
+      targetClass: TankAutonomousMobileTargetClass;
+      unitId: string;
+      traversalWeight: number;
+    }>
+  | Readonly<{
+      targetClass: "POPULATION";
+      cellId: number;
+      traversalWeight: number;
+    }>;
 
 const TRAVERSABLE_TANK_TERRAINS = Object.freeze([
   "PLAINS",
@@ -283,7 +306,7 @@ function relationIdentity(
 function targetClassForUnit(
   unitType: MatchState["mobileUnits"][number]["type"],
   chassisType: TankChassisType,
-): TankAutonomousUnitTargetClass | undefined {
+): TankAutonomousMobileTargetClass | undefined {
   switch (unitType) {
     case "TANK":
     case "HEAVY_ARTILLERY":
@@ -306,6 +329,8 @@ function classRank(targetClass: TankAutonomousUnitTargetClass): number {
       return 1;
     case "TRAIN":
       return 2;
+    case "POPULATION":
+      return 3;
   }
 }
 
@@ -335,6 +360,80 @@ function minimumTraversalWeightToFiringPosition(
   return best;
 }
 
+function populationPermissionConditionApplies(
+  terrain: SimulationTerrain,
+  targetHasFallout: boolean,
+): (conditions: readonly RuleCondition[]) => boolean {
+  return (conditions) =>
+    conditions.every((condition) => {
+      switch (condition.kind) {
+        case "SOURCE_TERRAIN_IS":
+        case "TARGET_TERRAIN_IS":
+        case "EVENT_TERRAIN_IS":
+        case "BUILD_TERRAIN_IS":
+          return condition.terrain === terrain;
+        case "TARGET_HAS_FALLOUT":
+          return targetHasFallout;
+        case "TARGET_LACKS_FALLOUT":
+          return !targetHasFallout;
+        default:
+          return false;
+      }
+    });
+}
+
+function effectivePopulationBearing(
+  state: MatchState,
+  targetOwner: MatchState["factions"][number],
+  cellId: number,
+): boolean {
+  const terrain = state.map.terrainAt(cellId);
+  const base = landTerrainBaseSpec(terrain).populationBearing;
+  if (terrain === "TEST" || !isTerrainScopeId(terrain)) return base;
+
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      targetOwner.rules,
+      RULE_AXIS_REGISTRY,
+      "TERRAIN_POPULATION_BEARING_PERMISSION",
+      { kind: "TERRAIN", terrain },
+      ruleDynamicState(state, targetOwner.id),
+    ),
+    populationPermissionConditionApplies(
+      terrain,
+      state.fallout[cellId] ?? false,
+    ),
+  );
+
+  let allowed = base;
+  for (const term of terms) {
+    if (term.value.kind !== "PROHIBIT_WINS") continue;
+    if (term.value.decision === "PROHIBIT") return false;
+    allowed = true;
+  }
+  return allowed;
+}
+
+function shouldReplaceBest(
+  candidate: RankedTarget,
+  best: RankedTarget | undefined,
+): boolean {
+  if (best === undefined) return true;
+  const candidateRank = classRank(candidate.targetClass);
+  const bestRank = classRank(best.targetClass);
+  if (candidateRank !== bestRank) return candidateRank < bestRank;
+  if (candidate.traversalWeight !== best.traversalWeight) {
+    return candidate.traversalWeight < best.traversalWeight;
+  }
+  if (candidate.targetClass === "POPULATION" && best.targetClass === "POPULATION") {
+    return candidate.cellId < best.cellId;
+  }
+  if (candidate.targetClass !== "POPULATION" && best.targetClass !== "POPULATION") {
+    return compareIds(candidate.unitId, best.unitId) < 0;
+  }
+  return false;
+}
+
 export function selectTankAutonomousUnitTarget(
   state: MatchState,
   request: TankAutonomousUnitTargetRequest,
@@ -358,7 +457,8 @@ export function selectTankAutonomousUnitTarget(
     return undefined;
   }
 
-  const observed = new Set(request.observedUnitIds);
+  const observedUnits = new Set(request.observedUnitIds);
+  const observedCells = new Set(request.observedCellIds);
   const range = effectiveAttackRange(
     state,
     request.ownerId,
@@ -377,7 +477,7 @@ export function selectTankAutonomousUnitTarget(
 
   let best: RankedTarget | undefined;
   for (const unit of state.mobileUnits) {
-    if (!observed.has(unit.id)) continue;
+    if (!observedUnits.has(unit.id)) continue;
     const targetClass = targetClassForUnit(unit.type, request.chassisType);
     if (targetClass === undefined) continue;
     const targetOwner = state.factions.find(
@@ -405,24 +505,64 @@ export function selectTankAutonomousUnitTarget(
       range,
     );
     if (traversalWeight === undefined) continue;
-    const candidate = Object.freeze({
+    const candidate: RankedTarget = Object.freeze({
       targetClass,
       unitId: unit.id,
       traversalWeight,
     });
+    if (shouldReplaceBest(candidate, best)) best = candidate;
+  }
+
+  for (const cellId of observedCells) {
     if (
-      best === undefined ||
-      classRank(candidate.targetClass) < classRank(best.targetClass) ||
-      (candidate.targetClass === best.targetClass &&
-        (candidate.traversalWeight < best.traversalWeight ||
-          (candidate.traversalWeight === best.traversalWeight &&
-            compareIds(candidate.unitId, best.unitId) < 0)))
+      !state.map.isValidCellId(cellId) ||
+      !tankOperatingLeashContains(
+        state.map,
+        request.operatingAnchorCellId,
+        cellId,
+      )
     ) {
-      best = candidate;
+      continue;
     }
+    const targetOwnerId = state.ownership[cellId] ?? null;
+    if (targetOwnerId === null) continue;
+    const targetOwner = state.factions.find(
+      (faction) => faction.id === targetOwnerId,
+    );
+    if (
+      targetOwner === undefined ||
+      factionRelationBetween(
+        relationIdentity(owner),
+        relationIdentity(targetOwner),
+      ) !== "ENEMY" ||
+      !matchStateAtWar(state, request.ownerId, targetOwner.id) ||
+      !effectivePopulationBearing(state, targetOwner, cellId)
+    ) {
+      continue;
+    }
+    const traversalWeight = minimumTraversalWeightToFiringPosition(
+      state,
+      reachable,
+      request.operatingAnchorCellId,
+      cellId,
+      range,
+    );
+    if (traversalWeight === undefined) continue;
+    const candidate: RankedTarget = Object.freeze({
+      targetClass: "POPULATION",
+      cellId,
+      traversalWeight,
+    });
+    if (shouldReplaceBest(candidate, best)) best = candidate;
   }
 
   if (best === undefined) return undefined;
+  if (best.targetClass === "POPULATION") {
+    return Object.freeze({
+      targetClass: "POPULATION",
+      cellId: best.cellId,
+    });
+  }
   return Object.freeze({
     targetClass: best.targetClass,
     unitId: best.unitId,
