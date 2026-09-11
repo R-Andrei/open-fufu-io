@@ -44,6 +44,7 @@ import {
   createTrainRouteInput,
   finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
+  transferFactoryTrainServiceEpoch,
 } from "./TrainService";
 
 export interface SetTestMarkerAction {
@@ -193,8 +194,17 @@ function reconcileStoredFactoryTrainDispatches(
       epoch = createFactoryTrainServiceEpoch(factory.id, factory.ownerId);
       factoryTrainEpochs.push(epoch);
       epochsByFactory.set(factory.id, epoch);
+    } else if (epoch.ownerId !== factory.ownerId) {
+      const transferredEpoch = transferFactoryTrainServiceEpoch(
+        epoch,
+        factory.ownerId,
+      );
+      factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+        entry.factoryId === factory.id ? transferredEpoch : entry,
+      );
+      epoch = transferredEpoch;
+      epochsByFactory.set(factory.id, epoch);
     } else {
-      if (epoch.ownerId !== factory.ownerId) continue;
       const advancedEpoch = advanceFactoryTrainServiceSchedulerTick(
         epoch,
         factory.active,
