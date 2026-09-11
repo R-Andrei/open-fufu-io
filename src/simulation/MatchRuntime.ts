@@ -721,11 +721,22 @@ export class MatchRuntime {
       for (const input of [...executing].sort(
         (left, right) => left.sequence - right.sequence,
       )) {
-        if (input.action.type !== "APPLY_PERSISTENT_DIRECTIVES") continue;
-        this.controllerReferences.applyDirectiveChanges(
-          input.action.factionId,
-          input.action.changes,
-        );
+        switch (input.action.type) {
+          case "APPLY_PERSISTENT_DIRECTIVES":
+            this.controllerReferences.applyDirectiveChanges(
+              input.action.factionId,
+              input.action.changes,
+            );
+            break;
+          case "PURCHASE_STRUCTURE_BUILD":
+          case "PURCHASE_STRUCTURE_UPGRADE":
+            this.controllerReferences.applyEntityLifecycleTransition(
+              "STRUCTURE",
+              input.action.structureId,
+              "START",
+            );
+            break;
+        }
       }
       this.controllerReferences.reconcile(nextState);
     }
