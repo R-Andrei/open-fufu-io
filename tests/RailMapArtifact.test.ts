@@ -4,6 +4,16 @@ import {
   type MapArtifactFile,
   type MapArtifactPackage,
 } from "../src/simulation/MapArtifact";
+import {
+  canonicalFactoryRailLoopLifecycleSerialization,
+  createFactoryRailLoopLifecycleState,
+  planFactoryRailLoopsInCanonicalOrder,
+  releaseFactoryRailLoopSnapshot,
+  retainFactoryRailLoopSnapshot,
+  stageFactoryRailLoopRegeneration,
+  type FactoryRailLoopPlan,
+  type FactoryRailLoopPlanningInput,
+} from "../src/simulation/RailNetwork";
 
 const CELL_COUNT = 4_800_000;
 const WIDTH = 2_400;
@@ -145,6 +155,47 @@ type TestRailMap = ReturnType<typeof materialize> & {
   };
 };
 
+function loopPlan(factoryId: string, cells: readonly number[]): FactoryRailLoopPlan {
+  return Object.freeze({
+    factoryId,
+    targetStructureIds: Object.freeze([`${factoryId}-target`]),
+    servicedStructureIds: Object.freeze([`${factoryId}-target`]),
+    cells: Object.freeze([...cells]),
+    sharedExistingEdgeCount: 0,
+  });
+}
+
+function factoryPlanningInput(options: {
+  readonly factoryId: string;
+  readonly outboundPortCellId: number;
+  readonly inboundPortCellId: number;
+  readonly stationId: string;
+  readonly stationCellId: number;
+}): FactoryRailLoopPlanningInput {
+  const width = 9;
+  const height = 5;
+  const cells = Object.freeze(Array.from({ length: width * height }, (_, cellId) => cellId));
+  return Object.freeze({
+    factoryId: options.factoryId,
+    width,
+    height,
+    outboundPortCellId: options.outboundPortCellId,
+    inboundPortCellId: options.inboundPortCellId,
+    influenceCellIds: cells,
+    railBuildableCellIds: cells,
+    stations: Object.freeze([
+      Object.freeze({
+        id: options.stationId,
+        type: "CITY" as const,
+        cellId: options.stationCellId,
+        active: true,
+        completedLevel: 1,
+      }),
+    ]),
+    existingGeneratedEdges: Object.freeze([]),
+  });
+}
+
 describe("production rail topology map-artifact source", () => {
   it(
     "materializes V3 rail bytes into the authoritative immutable map substrate",
@@ -218,4 +269,81 @@ describe("production rail topology map-artifact source", () => {
     },
     60_000,
   );
+});
+
+describe("Factory generated rail lifecycle state", () => {
+  it("defers regeneration while old-loop snapshots remain, serializes them canonically, and commits atomically after the final release", () => {
+    const oldLoop = loopPlan("factory-a", [18, 19, 20, 21, 22, 23, 24, 25, 26]);
+    const nextLoop = loopPlan("factory-a", [18, 9, 10, 11, 12, 13, 14, 15, 16, 17, 26]);
+
+    const immediate = stageFactoryRailLoopRegeneration(
+      createFactoryRailLoopLifecycleState("factory-a", oldLoop),
+      nextLoop,
+    );
+    expect(immediate.currentLoop).toEqual(nextLoop);
+    expect(immediate.pendingLoop).toBeNull();
+
+    let state = createFactoryRailLoopLifecycleState("factory-a", oldLoop);
+    state = retainFactoryRailLoopSnapshot(state, "train-z");
+    state = retainFactoryRailLoopSnapshot(state, "train-a");
+    state = stageFactoryRailLoopRegeneration(state, nextLoop);
+
+    expect(state.currentLoop).toEqual(oldLoop);
+    expect(state.pendingLoop).toEqual(nextLoop);
+    expect(state.retainedSnapshots.map((snapshot) => snapshot.snapshotId)).toEqual([
+      "train-a",
+      "train-z",
+    ]);
+    expect(state.retainedSnapshots.every((snapshot) => snapshot.cells === oldLoop.cells)).toBe(
+      true,
+    );
+
+    let reordered = createFactoryRailLoopLifecycleState("factory-a", oldLoop);
+    reordered = retainFactoryRailLoopSnapshot(reordered, "train-a");
+    reordered = retainFactoryRailLoopSnapshot(reordered, "train-z");
+    reordered = stageFactoryRailLoopRegeneration(reordered, nextLoop);
+    expect(canonicalFactoryRailLoopLifecycleSerialization(reordered)).toBe(
+      canonicalFactoryRailLoopLifecycleSerialization(state),
+    );
+
+    state = releaseFactoryRailLoopSnapshot(state, "train-a");
+    expect(state.currentLoop).toEqual(oldLoop);
+    expect(state.pendingLoop).toEqual(nextLoop);
+    expect(state.retainedSnapshots.map((snapshot) => snapshot.snapshotId)).toEqual([
+      "train-z",
+    ]);
+
+    state = releaseFactoryRailLoopSnapshot(state, "train-z");
+    expect(state.currentLoop).toEqual(nextLoop);
+    expect(state.pendingLoop).toBeNull();
+    expect(state.retainedSnapshots).toEqual([]);
+  });
+
+  it("plans simultaneous Factory loops by ascending persistent ID so later Factories see earlier generated rail independent of input enumeration", () => {
+    const factoryA = factoryPlanningInput({
+      factoryId: "factory-a",
+      outboundPortCellId: 18,
+      inboundPortCellId: 26,
+      stationId: "city-a",
+      stationCellId: 22,
+    });
+    const factoryB = factoryPlanningInput({
+      factoryId: "factory-b",
+      outboundPortCellId: 4,
+      inboundPortCellId: 40,
+      stationId: "city-b",
+      stationCellId: 13,
+    });
+
+    const reversedInput = planFactoryRailLoopsInCanonicalOrder([factoryB, factoryA]);
+    const forwardInput = planFactoryRailLoopsInCanonicalOrder([factoryA, factoryB]);
+
+    expect(reversedInput).toEqual(forwardInput);
+    expect(reversedInput.map((plan) => plan.factoryId)).toEqual([
+      "factory-a",
+      "factory-b",
+    ]);
+    expect(reversedInput[0]?.sharedExistingEdgeCount).toBe(0);
+    expect(reversedInput[1]?.sharedExistingEdgeCount).toBeGreaterThan(0);
+  });
 });
