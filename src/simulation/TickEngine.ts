@@ -3,7 +3,10 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
-import { retainFactoryRailLoopSnapshot } from "./FactoryRailLifecycle";
+import {
+  releaseFactoryRailLoopSnapshot,
+  retainFactoryRailLoopSnapshot,
+} from "./FactoryRailLifecycle";
 import { reconcileHostilityGrace } from "./HostilityState";
 import {
   resolveLandTick,
@@ -37,6 +40,7 @@ import {
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
   createTrainRouteInput,
+  finishFactoryPrimaryTrain,
   markFactoryPrimaryTrainDispatched,
 } from "./TrainService";
 
@@ -155,7 +159,7 @@ function reconcileStoredFactoryTrainDispatches(
   let nextMobileUnitOrdinal = state.nextMobileUnitOrdinal;
   let factoryRailLoops = [...state.factoryRailLoops];
   let factoryTrainEpochs = [...state.factoryTrainEpochs];
-  const trainServices = [...state.trainServices];
+  let trainServices = [...state.trainServices];
 
   const ownerIds = state.factions.map((faction) => faction.id);
   const epochsByFactory = new Map(
@@ -211,43 +215,99 @@ function reconcileStoredFactoryTrainDispatches(
       created.unit,
       createTrainRouteInput(loop.cells),
     );
-    const moved = advanceTrainMovementTick(
-      routed,
-      currentTick,
-      null,
-      qualifyingStationCellIds,
-    );
 
     mobileUnits = created.mobileUnits.map((unit) =>
-      unit.id === moved.unit.id ? moved.unit : unit,
+      unit.id === routed.id ? routed : unit,
     );
     nextMobileUnitOrdinal = created.nextMobileUnitOrdinal;
 
     const retainedLifecycle = retainFactoryRailLoopSnapshot(
       lifecycle!,
-      moved.unit.id,
+      routed.id,
     );
     factoryRailLoops = factoryRailLoops.map((entry) =>
       entry.factoryId === factory.id ? retainedLifecycle : entry,
     );
     loopsByFactory.set(factory.id, retainedLifecycle);
 
-    epoch = markFactoryPrimaryTrainDispatched(epoch, moved.unit.id);
+    epoch = markFactoryPrimaryTrainDispatched(epoch, routed.id);
     factoryTrainEpochs.push(epoch);
     epochsByFactory.set(factory.id, epoch);
     trainServices.push({
-      trainId: moved.unit.id,
+      trainId: routed.id,
       factoryId: factory.id,
-      loopSnapshotId: moved.unit.id,
+      loopSnapshotId: routed.id,
       isPrimary: true,
       dispatchSnapshot: createTrainDispatchEconomicSnapshot(
         factory.id,
         factory.ownerId,
         factory.completedLevel!,
       ),
+      resumeAtTick: null,
+    });
+  }
+
+  const survivingTrainServices: typeof trainServices = [];
+  for (const service of trainServices
+    .slice()
+    .sort((left, right) => compareIds(left.trainId, right.trainId))) {
+    const unit = mobileUnits.find((candidate) => candidate.id === service.trainId);
+    if (unit === undefined) {
+      throw new Error(`Train service ${service.trainId} has no physical Train`);
+    }
+
+    const moved = advanceTrainMovementTick(
+      unit,
+      currentTick,
+      service.resumeAtTick,
+      qualifyingStationCellIds,
+    );
+
+    if (moved.unit.route === undefined) {
+      mobileUnits = mobileUnits.filter(
+        (candidate) => candidate.id !== service.trainId,
+      );
+
+      const lifecycle = loopsByFactory.get(service.factoryId);
+      if (lifecycle === undefined) {
+        throw new Error(
+          `Train service ${service.trainId} has no Factory rail lifecycle`,
+        );
+      }
+      const releasedLifecycle = releaseFactoryRailLoopSnapshot(
+        lifecycle,
+        service.loopSnapshotId,
+      );
+      factoryRailLoops = factoryRailLoops.map((entry) =>
+        entry.factoryId === service.factoryId ? releasedLifecycle : entry,
+      );
+      loopsByFactory.set(service.factoryId, releasedLifecycle);
+
+      if (service.isPrimary) {
+        const epoch = epochsByFactory.get(service.factoryId);
+        if (epoch?.activePrimaryTrainId === service.trainId) {
+          const finishedEpoch = finishFactoryPrimaryTrain(
+            epoch,
+            service.trainId,
+          );
+          factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+            entry.factoryId === service.factoryId ? finishedEpoch : entry,
+          );
+          epochsByFactory.set(service.factoryId, finishedEpoch);
+        }
+      }
+      continue;
+    }
+
+    mobileUnits = mobileUnits.map((candidate) =>
+      candidate.id === service.trainId ? moved.unit : candidate,
+    );
+    survivingTrainServices.push({
+      ...service,
       resumeAtTick: moved.resumeAtTick,
     });
   }
+  trainServices = survivingTrainServices;
 
   return Object.freeze({
     mobileUnits: Object.freeze(mobileUnits),
