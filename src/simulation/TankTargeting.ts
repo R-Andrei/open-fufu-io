@@ -205,46 +205,45 @@ function targetingTraversalPolicy(
   operatingAnchorCellId: number,
 ): NavigationTraversalPolicy {
   const scale = traversalWeightScale(state, ownerId, chassisType);
+  const halfWeightByCell = new Map<number, bigint | undefined>();
+  const halfWeightForCell = (cellId: number): bigint | undefined => {
+    if (halfWeightByCell.has(cellId)) return halfWeightByCell.get(cellId);
+    if (
+      !tankOperatingLeashContains(
+        state.map,
+        operatingAnchorCellId,
+        cellId,
+      )
+    ) {
+      halfWeightByCell.set(cellId, undefined);
+      return undefined;
+    }
+    const timing = tankCellTraversalTiming(
+      state,
+      ownerId,
+      chassisType,
+      cellId,
+    );
+    const halfWeight =
+      timing === undefined
+        ? undefined
+        : scaledHalfTraversalWeight(
+            timing.movementWorkPerTick,
+            timing.edgeWeight,
+            scale,
+          );
+    halfWeightByCell.set(cellId, halfWeight);
+    return halfWeight;
+  };
+
   return Object.freeze({
     traversalWeight: (fromCellId: number, toCellId: number) => {
-      if (
-        !tankOperatingLeashContains(
-          state.map,
-          operatingAnchorCellId,
-          fromCellId,
-        ) ||
-        !tankOperatingLeashContains(
-          state.map,
-          operatingAnchorCellId,
-          toCellId,
-        )
-      ) {
+      const fromHalfWeight = halfWeightForCell(fromCellId);
+      const toHalfWeight = halfWeightForCell(toCellId);
+      if (fromHalfWeight === undefined || toHalfWeight === undefined) {
         return undefined;
       }
-      const fromTiming = tankCellTraversalTiming(
-        state,
-        ownerId,
-        chassisType,
-        fromCellId,
-      );
-      const toTiming = tankCellTraversalTiming(
-        state,
-        ownerId,
-        chassisType,
-        toCellId,
-      );
-      if (fromTiming === undefined || toTiming === undefined) return undefined;
-      const weight =
-        scaledHalfTraversalWeight(
-          fromTiming.movementWorkPerTick,
-          fromTiming.edgeWeight,
-          scale,
-        ) +
-        scaledHalfTraversalWeight(
-          toTiming.movementWorkPerTick,
-          toTiming.edgeWeight,
-          scale,
-        );
+      const weight = fromHalfWeight + toHalfWeight;
       if (weight <= 0n || weight > MAX_SAFE_BIGINT) {
         throw new Error("Tank targeting traversal weight exceeds the safe-integer range");
       }
