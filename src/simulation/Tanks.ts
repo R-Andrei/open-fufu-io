@@ -71,8 +71,20 @@ export type StartTankProductionResult =
       readonly state: MatchState;
     };
 
+export interface TankTerrainMovementTiming {
+  readonly movementWorkPerTick: number;
+  readonly edgeWeight: number;
+}
+
+interface ExactRatio {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
 const BASE_TANK_BUILD_TICKS = 50;
 const HEAVY_ARTILLERY_BUILD_TICKS = 100;
+const TANK_MOVEMENT_TICKS_PER_SECOND = 10n;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 function failure(
   state: MatchState,
@@ -307,6 +319,78 @@ function effectiveTankBuildTicks(
     throw new Error("Tank build duration must resolve to a positive safe integer");
   }
   return Number(ticks);
+}
+
+function tankTerrainBaseSpeed(terrain: SimulationTerrain): ExactRatio | undefined {
+  switch (terrain) {
+    case "PLAINS":
+      return Object.freeze({ numerator: 5n, denominator: 1n });
+    case "HIGHLAND":
+      return Object.freeze({ numerator: 4n, denominator: 1n });
+    case "DESERT":
+      return Object.freeze({ numerator: 9n, denominator: 2n });
+    case "FOREST":
+      return Object.freeze({ numerator: 13n, denominator: 4n });
+    case "TUNDRA":
+      return Object.freeze({ numerator: 15n, denominator: 4n });
+    case "MARSH":
+      return Object.freeze({ numerator: 5n, denominator: 2n });
+    case "MOUNTAIN":
+    case "SHALLOW_WATER":
+    case "DEEP_WATER":
+    case "IMPASSABLE":
+    case "TEST":
+      return undefined;
+  }
+}
+
+export function tankTerrainMovementTiming(
+  state: MatchState,
+  ownerId: string,
+  chassisType: TankChassisType,
+  terrain: SimulationTerrain,
+): TankTerrainMovementTiming | undefined {
+  const baseSpeed = tankTerrainBaseSpeed(terrain);
+  if (baseSpeed === undefined) return undefined;
+
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  if (chassisType !== "TANK" && chassisType !== "HEAVY_ARTILLERY") {
+    throw new Error(`unsupported Tank chassis type: ${String(chassisType)}`);
+  }
+
+  const scope = { kind: "UNIT", unit: "TANK" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MOVEMENT_SPEED",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MOVEMENT_SPEED,
+    terms,
+  );
+  const chassisDenominator = chassisType === "HEAVY_ARTILLERY" ? 2n : 1n;
+  const speed = reducedRational(
+    baseSpeed.numerator * scale.numerator,
+    baseSpeed.denominator * scale.denominator * chassisDenominator,
+  );
+  if (speed.numerator <= 0n || speed.denominator <= 0n) {
+    throw new Error("Tank movement speed must resolve to a positive value");
+  }
+
+  const movementWorkPerTick = speed.numerator;
+  const edgeWeight = speed.denominator * TANK_MOVEMENT_TICKS_PER_SECOND;
+  if (movementWorkPerTick > MAX_SAFE_BIGINT || edgeWeight > MAX_SAFE_BIGINT) {
+    throw new Error("Tank movement timing exceeds the safe-integer range");
+  }
+  return Object.freeze({
+    movementWorkPerTick: Number(movementWorkPerTick),
+    edgeWeight: Number(edgeWeight),
+  });
 }
 
 export function tankWeaponRangeContains(
