@@ -321,6 +321,39 @@ function assertNonNegativeSafeInteger(value: number, label: string): void {
   }
 }
 
+function freezeTankRetainedTarget(
+  target: TankOperationalState["retainedTarget"],
+  map: SimulationMap,
+): TankOperationalState["retainedTarget"] {
+  if (target === undefined) return undefined;
+  if (target === null || typeof target !== "object" || Array.isArray(target)) {
+    throw new Error("Tank retained target must be an object");
+  }
+  if (target.targetClass === "POPULATION") {
+    if (!map.isValidCellId(target.cellId)) {
+      throw new Error("Tank retained Population target must be a valid map cell");
+    }
+    return Object.freeze({
+      targetClass: "POPULATION" as const,
+      cellId: target.cellId,
+    });
+  }
+  if (
+    target.targetClass !== "TANK_CHASSIS" &&
+    target.targetClass !== "WARSHIP" &&
+    target.targetClass !== "TRAIN"
+  ) {
+    throw new Error("Tank retained target class is invalid");
+  }
+  if (typeof target.unitId !== "string" || target.unitId.length === 0) {
+    throw new Error("Tank retained unit target must have a non-empty unitId");
+  }
+  return Object.freeze({
+    targetClass: target.targetClass,
+    unitId: target.unitId,
+  });
+}
+
 function freezeTankOperationalStates(
   entries: readonly TankOperationalState[],
   mobileUnits: readonly MobileUnitState[],
@@ -356,12 +389,35 @@ function freezeTankOperationalStates(
     }
     assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
     assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    const retainedTarget = freezeTankRetainedTarget(entry.retainedTarget, map);
+    if (
+      entry.repairFactoryId !== undefined &&
+      (typeof entry.repairFactoryId !== "string" || entry.repairFactoryId.length === 0)
+    ) {
+      throw new Error("Tank repairFactoryId must be a non-empty string");
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Tank repairArrivalTick",
+      );
+      if (entry.repairFactoryId === undefined) {
+        throw new Error("Tank repairArrivalTick requires repairFactoryId");
+      }
+    }
     return Object.freeze({
       unitId: entry.unitId,
       health: freezeTankHealth(entry.health),
       operatingAnchorCellId: entry.operatingAnchorCellId,
       eligibleFromTick: entry.eligibleFromTick,
       attackReadyAtTick: entry.attackReadyAtTick,
+      ...(retainedTarget === undefined ? {} : { retainedTarget }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
     });
   });
   states.sort((left, right) => compareIds(left.unitId, right.unitId));
@@ -684,6 +740,26 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       operatingAnchorCellId: entry.operatingAnchorCellId,
       eligibleFromTick: entry.eligibleFromTick,
       attackReadyAtTick: entry.attackReadyAtTick,
+      ...(entry.retainedTarget === undefined
+        ? {}
+        : {
+            retainedTarget:
+              entry.retainedTarget.targetClass === "POPULATION"
+                ? {
+                    targetClass: "POPULATION" as const,
+                    cellId: entry.retainedTarget.cellId,
+                  }
+                : {
+                    targetClass: entry.retainedTarget.targetClass,
+                    unitId: entry.retainedTarget.unitId,
+                  },
+          }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
   const operations = [...state.operations]

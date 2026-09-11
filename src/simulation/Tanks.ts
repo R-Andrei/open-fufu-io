@@ -34,12 +34,25 @@ export interface TankExactHealth {
   readonly denominator: bigint;
 }
 
+export type TankRetainedTargetState =
+  | Readonly<{
+      targetClass: "TANK_CHASSIS" | "WARSHIP" | "TRAIN";
+      unitId: string;
+    }>
+  | Readonly<{
+      targetClass: "POPULATION";
+      cellId: number;
+    }>;
+
 export interface TankOperationalState {
   readonly unitId: string;
   readonly health: TankExactHealth;
   readonly operatingAnchorCellId: number;
   readonly eligibleFromTick: number;
   readonly attackReadyAtTick: number;
+  readonly retainedTarget?: TankRetainedTargetState;
+  readonly repairFactoryId?: string;
+  readonly repairArrivalTick?: number;
 }
 
 export type TankProductionJobState =
