@@ -433,7 +433,7 @@ function createState(
   });
 }
 
-type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "factions">>;
+type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "map" | "factions">>;
 
 function assertResolvedArtifactMapMatches(
   spec: InitialMatchStateSpec,
