@@ -320,11 +320,20 @@ export class TickEngine {
     const earningSnapshot = createProspectiveMatchState(prospective, {
       factions: resolvePassiveFfyTick(prospective),
     });
-    const land = resolveLandTick(earningSnapshot);
     const nextTick = earningSnapshot.tick + 1;
+    const land = resolveLandTick(earningSnapshot, nextTick);
+    const postLandState = createProspectiveMatchState(earningSnapshot, {
+      factions: land.factions,
+      ownership: land.ownership,
+      fallout: land.fallout,
+      operations: land.operations,
+      defensePriorities: land.defensePriorities,
+      captureProgress: land.captureProgress,
+      counterResponseResiduals: land.counterResponseResiduals,
+    });
     const structures = resolvePersistentStructureLifecycleTick(
-      earningSnapshot,
-      land.ownership,
+      postLandState,
+      land.events,
       nextTick,
     );
     const hostilityGrace = reconcileHostilityGrace(

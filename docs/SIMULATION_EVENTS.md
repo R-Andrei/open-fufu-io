@@ -101,9 +101,9 @@ The snapshot records the authoritative identity/location facts relevant at event
 
 ---
 
-## 5. Initial physical-combat vocabulary
+## 5. Initial shared event vocabulary
 
-The first concrete event vocabulary is the shared physical-combat seam.
+The first concrete event vocabulary covers the shared physical-combat seam and cell-level political-ownership transitions that have downstream consumers.
 
 ### 5.1 `UNIT_ATTACK_RESOLVED`
 
@@ -167,6 +167,24 @@ The combat owner resolves the aftershock's legality, trigger, footprint, eligibi
 The event may contain an empty `affectedCellIds` set when the focused combat rule resolves a qualifying occurrence with no eligible territorial cells. It records the resolved occurrence rather than inventing a second suppression rule at the event boundary.
 
 The payload does not carry ownership snapshots, Fallout snapshots, capture results, Population accounting, structure-capture consequences, or other consumer-owned state. Applying the territorial consequence is not a capture operation merely because political ownership changes.
+
+### 5.4 `CELL_OWNERSHIP_CHANGED`
+
+When an authoritative producer changes the political owner of a simulation cell, it emits exactly one fact for that changed cell:
+
+```ts
+CELL_OWNERSHIP_CHANGED {
+  cellId: CellId;
+  previousOwnerId: FactionId | null;
+  nextOwnerId: FactionId | null;
+}
+```
+
+`previousOwnerId` and `nextOwnerId` must be distinct. `null` means politically neutral. The event reports only the ownership transition that already resolved; it does not decide downstream persistent-structure disposition, economic rewards, Population consequences, or other consumer policy.
+
+When one producer phase changes multiple cells, its `CELL_OWNERSHIP_CHANGED` batch is ordered by `cellId` ascending and contains exactly one fact per changed cell. The producer owns deterministic event identity under the common envelope; consumers must continue to treat the identity string as opaque.
+
+The fact is an in-tick delivery value rather than persistent `MatchState` residual state. Downstream consumers receive it after the producer-owned ownership state has been committed and may query that current authoritative state for facts they own. A consumer that applies one-time consequences must reject duplicate changed-cell facts within the same delivered batch rather than silently applying the same occurrence twice.
 
 ---
 
