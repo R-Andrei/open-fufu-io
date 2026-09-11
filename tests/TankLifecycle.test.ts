@@ -1,3 +1,4 @@
+import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/OriginRuleManifest";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
@@ -7,6 +8,7 @@ import {
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
+  advanceTankProductionPhase,
   tankPurchaseCost,
   tankWeaponRangeContains,
   tryStartTankProduction,
@@ -16,15 +18,26 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
-function productionFixture(ffy: number) {
-  const rules = emptyRules();
+function rulesWithTraits(traits: readonly OriginTraitId[]) {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
+}
+
+function productionFixture(
+  ffy: number,
+  options: {
+    readonly traits?: readonly OriginTraitId[];
+    readonly capturedFactory?: boolean;
+    readonly initialOwners?: readonly (string | null)[];
+  } = {},
+) {
+  const alphaRules = rulesWithTraits(options.traits ?? []);
   const state = createInitialMatchState(
     createMicroSimulationSpec({
       seed: "tank-production-red",
       width: 4,
       height: 1,
       terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "alpha", "alpha", "beta"],
+      initialOwners: options.initialOwners ?? ["alpha", "alpha", "alpha", "beta"],
       initialStructureGrants: [
         {
           structureId: "alpha-factory",
@@ -35,17 +48,35 @@ function productionFixture(ffy: number) {
         },
       ],
       factions: [
-        { id: "alpha", rules },
-        { id: "beta", rules },
+        { id: "alpha", rules: alphaRules },
+        { id: "beta", rules: emptyRules() },
       ],
     }),
   );
 
-  return createProspectiveMatchState(state, {
-    factions: state.factions.map((faction) =>
+  const withFactoryProvenance = options.capturedFactory
+    ? createProspectiveMatchState(state, {
+        structures: state.structures.map((structure) =>
+          structure.id === "alpha-factory"
+            ? { ...structure, acquisitionPath: "CAPTURE_TRANSFER" as const }
+            : structure,
+        ),
+      })
+    : state;
+
+  return createProspectiveMatchState(withFactoryProvenance, {
+    factions: withFactoryProvenance.factions.map((faction) =>
       faction.id === "alpha" ? { ...faction, ffy } : faction,
     ),
   });
+}
+
+function runProductionPhases(state: ReturnType<typeof productionFixture>, count: number) {
+  let current = state;
+  for (let tick = 0; tick < count; tick += 1) {
+    current = advanceTankProductionPhase(current);
+  }
+  return current;
 }
 
 describe("baseline Tank lifecycle", () => {
@@ -98,5 +129,124 @@ describe("baseline Tank lifecycle", () => {
     expect(
       rejected.state.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(249_999);
+  });
+
+  it.each([
+    {
+      label: "baseline Tank",
+      traits: [] as OriginTraitId[],
+      capturedFactory: false,
+      expectedTicks: 50,
+      expectedChassis: "TANK" as const,
+      expectedMovementClass: "TANK" as const,
+    },
+    {
+      label: "P34 captured-Factory Tank",
+      traits: ["P34"] as OriginTraitId[],
+      capturedFactory: true,
+      expectedTicks: 34,
+      expectedChassis: "TANK" as const,
+      expectedMovementClass: "TANK" as const,
+    },
+    {
+      label: "P43 Heavy Artillery",
+      traits: ["P43"] as OriginTraitId[],
+      capturedFactory: false,
+      expectedTicks: 100,
+      expectedChassis: "HEAVY_ARTILLERY" as const,
+      expectedMovementClass: "HEAVY_ARTILLERY" as const,
+    },
+    {
+      label: "P34 + P43 captured-Factory Heavy Artillery",
+      traits: ["P34", "P43"] as OriginTraitId[],
+      capturedFactory: true,
+      expectedTicks: 67,
+      expectedChassis: "HEAVY_ARTILLERY" as const,
+      expectedMovementClass: "HEAVY_ARTILLERY" as const,
+    },
+  ])(
+    "progresses and deploys $label on the exact finalized build-tick boundary",
+    ({
+      traits,
+      capturedFactory,
+      expectedTicks,
+      expectedChassis,
+      expectedMovementClass,
+    }) => {
+      const initial = productionFixture(1_000_000, { traits, capturedFactory });
+      const accepted = tryStartTankProduction(initial, {
+        ownerId: "alpha",
+        factoryId: "alpha-factory",
+      });
+
+      expect(accepted.ok).toBe(true);
+      if (!accepted.ok) throw new Error("expected Tank production admission");
+      expect(accepted.job).toMatchObject({
+        state: "BUILDING",
+        chassisType: expectedChassis,
+        remainingTicks: expectedTicks,
+      });
+
+      const beforeCompletion = runProductionPhases(
+        accepted.state,
+        expectedTicks - 1,
+      );
+      expect(beforeCompletion.tankProductionJobs).toEqual([
+        expect.objectContaining({
+          state: "BUILDING",
+          chassisType: expectedChassis,
+          remainingTicks: 1,
+        }),
+      ]);
+      expect(beforeCompletion.mobileUnits).toHaveLength(0);
+
+      const completed = advanceTankProductionPhase(beforeCompletion);
+      expect(completed.tankProductionJobs).toHaveLength(0);
+      expect(completed.mobileUnits).toHaveLength(1);
+      expect(completed.mobileUnits[0]).toMatchObject({
+        ownerId: "alpha",
+        type: expectedChassis,
+        movementClass: expectedMovementClass,
+        cellId: 0,
+      });
+    },
+  );
+
+  it("holds completed output when deployment is blocked and deploys it later without more build work", () => {
+    const initial = productionFixture(250_000, {
+      initialOwners: ["beta", "alpha", "beta", "beta"],
+    });
+    const accepted = tryStartTankProduction(initial, {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+    });
+
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Tank production admission");
+
+    const blocked = runProductionPhases(accepted.state, 50);
+    expect(blocked.mobileUnits).toHaveLength(0);
+    expect(blocked.tankProductionJobs).toEqual([
+      {
+        factoryId: "alpha-factory",
+        ownerId: "alpha",
+        chassisType: "TANK",
+        state: "WAITING_DEPLOYMENT",
+      },
+    ]);
+
+    const opened = createProspectiveMatchState(blocked, {
+      ownership: ["alpha", "alpha", "beta", "beta"],
+    });
+    const deployed = advanceTankProductionPhase(opened);
+
+    expect(deployed.tankProductionJobs).toHaveLength(0);
+    expect(deployed.mobileUnits).toHaveLength(1);
+    expect(deployed.mobileUnits[0]).toMatchObject({
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
   });
 });
