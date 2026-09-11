@@ -23,6 +23,7 @@ import {
   type MobileUnitCollectionState,
 } from "./MobileUnits";
 import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
+import { removePopulation, type PopulationState } from "./Population";
 import type { SimulationMap, SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
@@ -46,6 +47,18 @@ export type TankProductionJobState =
 export interface StartTankProductionRequest {
   readonly ownerId: string;
   readonly factoryId: string;
+}
+
+export interface ResolveTankPopulationShotRequest {
+  readonly attackerOwnerId: string;
+  readonly chassisType: TankChassisType;
+  readonly targetFactionId: string;
+}
+
+export interface TankPopulationShotResolution {
+  readonly finalDamage: number;
+  readonly casualties: number;
+  readonly targetPopulation: PopulationState;
 }
 
 export type TankProductionFailureCode =
@@ -598,6 +611,57 @@ export function tankWeaponRangeContains(
   const dx = target.x - attacker.x;
   const dy = target.y - attacker.y;
   return dx * dx + dy * dy <= range * range;
+}
+
+export function resolveTankPopulationShot(
+  state: MatchState,
+  request: ResolveTankPopulationShotRequest,
+): TankPopulationShotResolution {
+  const attacker = state.factions.find(
+    (faction) => faction.id === request.attackerOwnerId,
+  );
+  if (attacker === undefined) {
+    throw new Error(`unknown faction: ${request.attackerOwnerId}`);
+  }
+  const target = state.factions.find(
+    (faction) => faction.id === request.targetFactionId,
+  );
+  if (target === undefined) {
+    throw new Error(`unknown faction: ${request.targetFactionId}`);
+  }
+  if (request.chassisType !== "TANK" && request.chassisType !== "HEAVY_ARTILLERY") {
+    throw new Error(`unsupported Tank chassis type: ${String(request.chassisType)}`);
+  }
+
+  const baseDamage = request.chassisType === "HEAVY_ARTILLERY" ? 1_000n : 250n;
+  const scope = { kind: "UNIT", unit: "TANK" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      attacker.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_DAMAGE",
+      scope,
+      ruleDynamicState(state, request.attackerOwnerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_DAMAGE,
+    terms,
+  );
+  const scaledNumerator = baseDamage * scale.numerator;
+  const finalDamageValue =
+    scaledNumerator <= 0n ? 0n : scaledNumerator / scale.denominator;
+  if (finalDamageValue > MAX_SAFE_BIGINT) {
+    throw new Error("Tank Population damage exceeds the safe-integer range");
+  }
+  const finalDamage = Number(finalDamageValue);
+  const casualties = Math.min(finalDamage, target.population.available);
+  const targetPopulation = removePopulation(
+    target.population,
+    "AVAILABLE",
+    casualties,
+  );
+  return Object.freeze({ finalDamage, casualties, targetPopulation });
 }
 
 export function tryStartTankProduction(
