@@ -2,6 +2,7 @@ import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
+import { resolveLandTick } from "../src/simulation/LandOperations";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import {
   createInitialMatchState,
@@ -10,16 +11,15 @@ import {
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
-  resolveLandTickWithEvents,
-  resolvePersistentStructureLifecycleFromEvents,
-} from "../src/simulation/SimulationEventRouting";
-import {
   createCellOwnershipChangedEvent,
   createUnitAttackResolvedEvent,
   createUnitDestroyedEvent,
   type CellOwnershipChangedEvent,
 } from "../src/simulation/SimulationEvents";
-import { materializePersistentStructureState } from "../src/simulation/Structures";
+import {
+  materializePersistentStructureState,
+  resolvePersistentStructureLifecycleTick,
+} from "../src/simulation/Structures";
 
 const train = Object.freeze({
   unitId: "unit:train",
@@ -191,6 +191,21 @@ function readyParallelNeutralCaptures(): MatchState {
     ],
   });
 }
+
+const resolveLandTickWithEvents = resolveLandTick as unknown as (
+  state: MatchState,
+  transitionTick: number,
+) => {
+  readonly ownership: readonly (string | null)[];
+  readonly events: readonly CellOwnershipChangedEvent[];
+};
+
+const resolvePersistentStructureLifecycleFromEvents =
+  resolvePersistentStructureLifecycleTick as unknown as (
+    state: MatchState,
+    events: readonly CellOwnershipChangedEvent[],
+    currentTick: number,
+  ) => ReturnType<typeof resolvePersistentStructureLifecycleTick>;
 
 describe("deterministic simulation events", () => {
   it("materializes an immutable lifecycle-safe resolved attack fact", () => {
