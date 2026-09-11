@@ -485,3 +485,34 @@ export function advanceTrainMovementTick(
     resumeAtTick: null,
   });
 }
+
+export interface TrainInterceptionEconomicInput {
+  readonly raiderEventId: string;
+  readonly pendingStationEvent?: PositiveFfyEventInput | null;
+  readonly conditionApplies?: (condition: RuleCondition) => boolean;
+}
+
+export interface TrainInterceptionEconomicOutcome {
+  readonly canceledStationEventId: string | null;
+  readonly pendingStationEvent: null;
+  readonly raiderEvent: PositiveFfyEventInput;
+}
+
+export function resolveTrainInterceptionEconomicOutcome(
+  snapshot: TrainDispatchEconomicSnapshot,
+  input: TrainInterceptionEconomicInput,
+): TrainInterceptionEconomicOutcome {
+  const pendingStationEvent = input.pendingStationEvent ?? null;
+  return Object.freeze({
+    canceledStationEventId: pendingStationEvent?.id ?? null,
+    pendingStationEvent: null,
+    raiderEvent: Object.freeze({
+      id: input.raiderEventId,
+      family: "MILITARY_CONQUEST",
+      baseValue: snapshot.baseCargoFfy,
+      ...(input.conditionApplies === undefined
+        ? {}
+        : { conditionApplies: input.conditionApplies }),
+    }),
+  });
+}
