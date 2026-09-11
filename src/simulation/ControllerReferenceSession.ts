@@ -271,7 +271,10 @@ export class ControllerReferenceSession {
     const existing = this.issuedRefByIdentity.get(identityKey);
     if (existing !== undefined) return existing;
 
-    const ref = this.nextReferenceToken(viewerFactionId, domain);
+    let ref = this.nextReferenceToken(viewerFactionId, domain);
+    while (ref === authoritativeId) {
+      ref = this.nextReferenceToken(viewerFactionId, domain);
+    }
     if (this.issuedIdentityByRef.has(ref)) {
       throw new Error("controller reference token collision");
     }
