@@ -529,14 +529,14 @@ function createState(
     },
   );
   const factoryRailLoops = freezeFactoryRailLoops(
-    update.factoryRailLoops ?? previous.factoryRailLoops,
+    update.factoryRailLoops ?? previous.factoryRailLoops ?? [],
     previous.map,
   );
   const factoryTrainEpochs = freezeFactoryTrainEpochs(
-    update.factoryTrainEpochs ?? previous.factoryTrainEpochs,
+    update.factoryTrainEpochs ?? previous.factoryTrainEpochs ?? [],
   );
   const trainServices = freezeTrainServices(
-    update.trainServices ?? previous.trainServices,
+    update.trainServices ?? previous.trainServices ?? [],
     mobileUnits.mobileUnits,
     factoryRailLoops,
   );
