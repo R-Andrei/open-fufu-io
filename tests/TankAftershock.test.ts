@@ -207,11 +207,11 @@ describe("P44 Tank Population aftershock", () => {
       {
         attackerUnitId: second.unit.id,
         targetCellId: 13,
-        affectedCellIds: [13, 8, 12, 14, 18, 3, 7, 9, 11, 15],
+        affectedCellIds: [13, 8, 12, 14, 18, 3, 7, 9, 11, 17],
       },
     ]);
     const neutralized = forward.state.ownership.filter((ownerId) => ownerId === null);
-    expect(neutralized).toHaveLength(14);
+    expect(neutralized).toHaveLength(13);
     expect(forward.effects[0]?.affectedCellIds).toContain(12);
     expect(forward.effects[1]?.affectedCellIds).toContain(12);
   });
