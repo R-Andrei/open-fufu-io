@@ -27,7 +27,7 @@ import {
 } from "./ControllerSpatialSurface";
 import {
   ECONOMY_TICKS_PER_SECOND,
-  resolvePassiveFfyTick,
+  resolvePassiveFfyAwards,
 } from "./Economy";
 import {
   materializeDirectiveChanges,
@@ -698,23 +698,15 @@ function realizedPassiveFfyPerSecondByFaction(
   const cached = passiveFfyPerSecondCache.get(state);
   if (cached !== undefined) return cached;
 
-  const currentById = new Map(
-    state.factions.map((faction) => [faction.id, faction] as const),
-  );
   const rates = new Map<string, number>();
-  for (const projected of resolvePassiveFfyTick(state)) {
-    const current = currentById.get(projected.id);
-    if (current === undefined) {
-      throw new Error(`passive FFY projection returned unknown faction ${projected.id}`);
-    }
-    const perTick = projected.ffy - current.ffy;
+  for (const [factionId, perTick] of resolvePassiveFfyAwards(state)) {
     const perSecond = perTick * ECONOMY_TICKS_PER_SECOND;
     if (!Number.isSafeInteger(perSecond) || perSecond < 0) {
       throw new Error(
-        `passive FFY projection is outside the safe non-negative integer range for ${projected.id}`,
+        `passive FFY projection is outside the safe non-negative integer range for ${factionId}`,
       );
     }
-    rates.set(projected.id, perSecond);
+    rates.set(factionId, perSecond);
   }
   passiveFfyPerSecondCache.set(state, rates);
   return rates;
