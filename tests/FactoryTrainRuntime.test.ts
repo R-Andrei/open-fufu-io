@@ -15,6 +15,7 @@ import {
   createMobileUnit,
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { TickEngine } from "../src/simulation/TickEngine";
 import {
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
@@ -152,5 +153,97 @@ describe("authoritative Factory Train runtime state", () => {
     expect(canonicalMatchStateSerialization(advanced)).not.toBe(
       canonicalMatchStateSerialization(materialized),
     );
+  });
+
+  it("reconciles a fresh Factory epoch, dispatches from its stored loop, snapshots it, and moves the Train in the same tick", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "factory-train-runtime-dispatch",
+        width: 12,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const loopCells = Object.freeze(
+      Array.from({ length: 11 }, (_, index) => index + 1),
+    );
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-a",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+        {
+          id: "city-a",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 10,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+      factoryRailLoops: [
+        createFactoryRailLoopLifecycleState("factory-a", {
+          factoryId: "factory-a",
+          targetStructureIds: Object.freeze(["city-a"]),
+          servicedStructureIds: Object.freeze(["city-a"]),
+          cells: loopCells,
+          sharedExistingEdgeCount: 0,
+        }),
+      ],
+    });
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(advanced.factoryTrainEpochs).toHaveLength(1);
+    expect(advanced.mobileUnits).toHaveLength(1);
+    expect(advanced.trainServices).toHaveLength(1);
+
+    const train = advanced.mobileUnits[0]!;
+    expect(train).toMatchObject({
+      ownerId: "alpha",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 3,
+    });
+    expect(train.route).toMatchObject({
+      cells: loopCells,
+      nextCellIndex: 3,
+      edgeProgress: 1,
+    });
+    expect(advanced.factoryTrainEpochs[0]).toMatchObject({
+      factoryId: "factory-a",
+      ownerId: "alpha",
+      activePrimaryTrainId: train.id,
+      turnaroundRemainingActiveTicks: 0,
+      p07PrimaryDispatchPhase: 0,
+    });
+    expect(advanced.factoryRailLoops[0]?.retainedSnapshots).toEqual([
+      { snapshotId: train.id, cells: loopCells },
+    ]);
+    expect(advanced.trainServices[0]).toMatchObject({
+      trainId: train.id,
+      factoryId: "factory-a",
+      loopSnapshotId: train.id,
+      isPrimary: true,
+      dispatchSnapshot: {
+        factoryId: "factory-a",
+        dispatchOwnerId: "alpha",
+        factoryLevel: 1,
+        baseCargoFfy: { numerator: 10_000n, denominator: 1n },
+      },
+      resumeAtTick: null,
+    });
   });
 });
