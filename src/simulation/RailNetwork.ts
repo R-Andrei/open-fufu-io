@@ -41,6 +41,51 @@ export interface RailNetwork {
   shortestRoute(from: CellId, to: CellId): RailRouteResult;
 }
 
+export interface FactoryRailStation {
+  readonly id: string;
+  readonly type: "CITY" | "PORT";
+  readonly cellId: CellId;
+  readonly active: boolean;
+  readonly completedLevel: number | undefined;
+}
+
+export interface FactoryGeneratedRailEdge {
+  readonly a: CellId;
+  readonly b: CellId;
+}
+
+export interface FactoryRailLoopPlanningInput {
+  readonly factoryId: string;
+  readonly width: number;
+  readonly height: number;
+  readonly outboundPortCellId: CellId;
+  readonly inboundPortCellId: CellId;
+  readonly influenceCellIds: readonly CellId[];
+  readonly railBuildableCellIds: readonly CellId[];
+  readonly stations: readonly FactoryRailStation[];
+  readonly existingGeneratedEdges: readonly FactoryGeneratedRailEdge[];
+}
+
+export interface FactoryRailLoopPlan {
+  readonly factoryId: string;
+  readonly targetStructureIds: readonly string[];
+  readonly servicedStructureIds: readonly string[];
+  readonly cells: readonly CellId[];
+  readonly sharedExistingEdgeCount: number;
+}
+
+export interface GeneratedRailContributor {
+  readonly contributorId: string;
+  readonly cells: readonly CellId[];
+}
+
+export interface GeneratedRailReference {
+  readonly a: CellId;
+  readonly b: CellId;
+  readonly referenceCount: number;
+  readonly contributorIds: readonly string[];
+}
+
 type Direction = Readonly<{
   bit: number;
   reciprocal: number;
@@ -324,4 +369,531 @@ export function createRailNetwork(
     componentOf,
     shortestRoute,
   });
+}
+
+interface FactoryPathSearchEntry {
+  readonly cellId: CellId;
+  readonly usedSharedEdge: boolean;
+  readonly distance: number;
+  readonly sharedEdgeCount: number;
+  readonly pathKey: string;
+  readonly previous: FactoryPathSearchEntry | undefined;
+}
+
+interface FactoryGridPath {
+  readonly cells: readonly CellId[];
+  readonly distance: number;
+  readonly sharedEdgeCount: number;
+  readonly pathKey: string;
+}
+
+interface FactoryLoopCandidate {
+  readonly targetStructureIds: readonly string[];
+  readonly cells: readonly CellId[];
+  readonly distance: number;
+  readonly sharedExistingEdgeCount: number;
+  readonly pathKey: string;
+}
+
+function normalizedEdgeKey(a: CellId, b: CellId): string {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function compareString(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareStringSequences(
+  left: readonly string[],
+  right: readonly string[],
+): number {
+  const count = Math.min(left.length, right.length);
+  for (let index = 0; index < count; index += 1) {
+    const compared = compareString(left[index]!, right[index]!);
+    if (compared !== 0) return compared;
+  }
+  return left.length - right.length;
+}
+
+function compareSearchEntries(
+  left: FactoryPathSearchEntry,
+  right: FactoryPathSearchEntry,
+): number {
+  if (left.distance !== right.distance) return left.distance - right.distance;
+  if (left.sharedEdgeCount !== right.sharedEdgeCount) {
+    return right.sharedEdgeCount - left.sharedEdgeCount;
+  }
+  const pathCompared = compareString(left.pathKey, right.pathKey);
+  if (pathCompared !== 0) return pathCompared;
+  if (left.cellId !== right.cellId) return left.cellId - right.cellId;
+  return Number(left.usedSharedEdge) - Number(right.usedSharedEdge);
+}
+
+class FactoryPathHeap {
+  readonly #entries: FactoryPathSearchEntry[] = [];
+
+  push(entry: FactoryPathSearchEntry): void {
+    const entries = this.#entries;
+    entries.push(entry);
+    let index = entries.length - 1;
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (compareSearchEntries(entries[parent]!, entry) <= 0) break;
+      entries[index] = entries[parent]!;
+      index = parent;
+    }
+    entries[index] = entry;
+  }
+
+  pop(): FactoryPathSearchEntry | undefined {
+    const entries = this.#entries;
+    if (entries.length === 0) return undefined;
+    const root = entries[0]!;
+    const tail = entries.pop()!;
+    if (entries.length === 0) return root;
+
+    let index = 0;
+    while (true) {
+      const left = index * 2 + 1;
+      if (left >= entries.length) break;
+      const right = left + 1;
+      const child =
+        right < entries.length &&
+        compareSearchEntries(entries[right]!, entries[left]!) < 0
+          ? right
+          : left;
+      if (compareSearchEntries(tail, entries[child]!) <= 0) break;
+      entries[index] = entries[child]!;
+      index = child;
+    }
+    entries[index] = tail;
+    return root;
+  }
+}
+
+function comparePathTuple(
+  left: Pick<FactoryPathSearchEntry, "distance" | "sharedEdgeCount" | "pathKey">,
+  right: Pick<FactoryPathSearchEntry, "distance" | "sharedEdgeCount" | "pathKey">,
+): number {
+  if (left.distance !== right.distance) return left.distance - right.distance;
+  if (left.sharedEdgeCount !== right.sharedEdgeCount) {
+    return right.sharedEdgeCount - left.sharedEdgeCount;
+  }
+  return compareString(left.pathKey, right.pathKey);
+}
+
+function reconstructFactoryPath(entry: FactoryPathSearchEntry): FactoryGridPath {
+  const reverseCells: CellId[] = [];
+  let cursor: FactoryPathSearchEntry | undefined = entry;
+  while (cursor !== undefined) {
+    reverseCells.push(cursor.cellId);
+    cursor = cursor.previous;
+  }
+  reverseCells.reverse();
+  return Object.freeze({
+    cells: Object.freeze(reverseCells),
+    distance: entry.distance,
+    sharedEdgeCount: entry.sharedEdgeCount,
+    pathKey: entry.pathKey,
+  });
+}
+
+function findFactoryGridPath(
+  geometry: RailMapGeometry,
+  pathableCells: ReadonlySet<CellId>,
+  sharedEdgeKeys: ReadonlySet<string>,
+  from: CellId,
+  to: CellId,
+  requireSharedEdge: boolean,
+): FactoryGridPath | null {
+  if (!pathableCells.has(from) || !pathableCells.has(to)) return null;
+  const initial: FactoryPathSearchEntry = Object.freeze({
+    cellId: from,
+    usedSharedEdge: false,
+    distance: 0,
+    sharedEdgeCount: 0,
+    pathKey: "",
+    previous: undefined,
+  });
+  const heap = new FactoryPathHeap();
+  heap.push(initial);
+  const best = new Map<
+    string,
+    Pick<FactoryPathSearchEntry, "distance" | "sharedEdgeCount" | "pathKey">
+  >();
+  best.set(`${from}:0`, initial);
+
+  while (true) {
+    const current = heap.pop();
+    if (current === undefined) return null;
+    const currentKey = `${current.cellId}:${current.usedSharedEdge ? 1 : 0}`;
+    const recorded = best.get(currentKey);
+    if (recorded === undefined || comparePathTuple(current, recorded) !== 0) {
+      continue;
+    }
+    if (
+      current.cellId === to &&
+      (!requireSharedEdge || current.usedSharedEdge)
+    ) {
+      return reconstructFactoryPath(current);
+    }
+
+    for (let directionIndex = 0; directionIndex < DIRECTIONS.length; directionIndex += 1) {
+      const neighbor = neighborForDirection(
+        geometry,
+        current.cellId,
+        DIRECTIONS[directionIndex]!,
+      );
+      if (neighbor === undefined || !pathableCells.has(neighbor)) continue;
+      const shared = sharedEdgeKeys.has(
+        normalizedEdgeKey(current.cellId, neighbor),
+      );
+      const candidate: FactoryPathSearchEntry = Object.freeze({
+        cellId: neighbor,
+        usedSharedEdge: current.usedSharedEdge || shared,
+        distance: current.distance + 1,
+        sharedEdgeCount: current.sharedEdgeCount + (shared ? 1 : 0),
+        pathKey: `${current.pathKey}${directionIndex}`,
+        previous: current,
+      });
+      const stateKey = `${neighbor}:${candidate.usedSharedEdge ? 1 : 0}`;
+      const previousBest = best.get(stateKey);
+      if (
+        previousBest !== undefined &&
+        comparePathTuple(candidate, previousBest) >= 0
+      ) {
+        continue;
+      }
+      best.set(stateKey, candidate);
+      heap.push(candidate);
+    }
+  }
+}
+
+function isCardinalEdge(
+  geometry: RailMapGeometry,
+  a: CellId,
+  b: CellId,
+): boolean {
+  if (!isValidCellId(geometry, a) || !isValidCellId(geometry, b)) return false;
+  const ax = a % geometry.width;
+  const ay = Math.floor(a / geometry.width);
+  const bx = b % geometry.width;
+  const by = Math.floor(b / geometry.width);
+  return Math.abs(ax - bx) + Math.abs(ay - by) === 1;
+}
+
+function countSharedEdges(
+  cells: readonly CellId[],
+  sharedEdgeKeys: ReadonlySet<string>,
+): number {
+  const found = new Set<string>();
+  for (let index = 1; index < cells.length; index += 1) {
+    const key = normalizedEdgeKey(cells[index - 1]!, cells[index]!);
+    if (sharedEdgeKeys.has(key)) found.add(key);
+  }
+  return found.size;
+}
+
+function combineFactoryPaths(paths: readonly FactoryGridPath[]): FactoryGridPath {
+  if (paths.length === 0) {
+    throw new Error("Factory loop candidate requires at least one path leg");
+  }
+  const cells: CellId[] = [];
+  let distance = 0;
+  let sharedEdgeCount = 0;
+  let pathKey = "";
+  for (let index = 0; index < paths.length; index += 1) {
+    const path = paths[index]!;
+    cells.push(...(index === 0 ? path.cells : path.cells.slice(1)));
+    distance += path.distance;
+    sharedEdgeCount += path.sharedEdgeCount;
+    pathKey += path.pathKey;
+  }
+  return Object.freeze({
+    cells: Object.freeze(cells),
+    distance,
+    sharedEdgeCount,
+    pathKey,
+  });
+}
+
+function compareLoopCandidates(
+  left: FactoryLoopCandidate,
+  right: FactoryLoopCandidate,
+): number {
+  if (left.distance !== right.distance) return left.distance - right.distance;
+  if (left.sharedExistingEdgeCount !== right.sharedExistingEdgeCount) {
+    return right.sharedExistingEdgeCount - left.sharedExistingEdgeCount;
+  }
+  const targetsCompared = compareStringSequences(
+    left.targetStructureIds,
+    right.targetStructureIds,
+  );
+  if (targetsCompared !== 0) return targetsCompared;
+  return compareString(left.pathKey, right.pathKey);
+}
+
+function enumerateOrderedSelections<T>(
+  values: readonly T[],
+  count: number,
+  visitor: (selection: readonly T[]) => void,
+): void {
+  const selected: T[] = [];
+  const used = new Array<boolean>(values.length).fill(false);
+  const visit = (): void => {
+    if (selected.length === count) {
+      visitor(selected.slice());
+      return;
+    }
+    for (let index = 0; index < values.length; index += 1) {
+      if (used[index]) continue;
+      used[index] = true;
+      selected.push(values[index]!);
+      visit();
+      selected.pop();
+      used[index] = false;
+    }
+  };
+  visit();
+}
+
+function servicedStationIds(
+  eligibleStations: readonly FactoryRailStation[],
+  cells: readonly CellId[],
+): readonly string[] {
+  const firstIndex = new Map<CellId, number>();
+  for (let index = 0; index < cells.length; index += 1) {
+    if (!firstIndex.has(cells[index]!)) firstIndex.set(cells[index]!, index);
+  }
+  return Object.freeze(
+    eligibleStations
+      .filter((station) => firstIndex.has(station.cellId))
+      .slice()
+      .sort((left, right) => {
+        const indexDifference =
+          firstIndex.get(left.cellId)! - firstIndex.get(right.cellId)!;
+        return indexDifference !== 0
+          ? indexDifference
+          : compareString(left.id, right.id);
+      })
+      .map((station) => station.id),
+  );
+}
+
+export function planFactoryRailLoop(
+  input: FactoryRailLoopPlanningInput,
+): FactoryRailLoopPlan | null {
+  const geometry: RailMapGeometry = Object.freeze({
+    width: input.width,
+    height: input.height,
+    cellCount: input.width * input.height,
+  });
+  assertGeometry(geometry);
+
+  const influenceCells = new Set<CellId>();
+  for (const cellId of input.influenceCellIds) {
+    if (!isValidCellId(geometry, cellId)) {
+      throw new Error(`Factory influence contains invalid CellId ${cellId}`);
+    }
+    influenceCells.add(cellId);
+  }
+  const pathableCells = new Set<CellId>();
+  for (const cellId of input.railBuildableCellIds) {
+    if (!isValidCellId(geometry, cellId)) {
+      throw new Error(`Factory rail-buildable set contains invalid CellId ${cellId}`);
+    }
+    pathableCells.add(cellId);
+  }
+
+  const eligibleStations = input.stations
+    .filter(
+      (station) =>
+        station.active &&
+        Number.isSafeInteger(station.completedLevel) &&
+        station.completedLevel !== undefined &&
+        station.completedLevel >= 1 &&
+        influenceCells.has(station.cellId),
+    )
+    .slice()
+    .sort((left, right) => compareString(left.id, right.id));
+  if (eligibleStations.length === 0) return null;
+
+  const seenStationIds = new Set<string>();
+  for (const station of eligibleStations) {
+    if (!isValidCellId(geometry, station.cellId)) {
+      throw new Error(`Factory station ${station.id} has invalid CellId`);
+    }
+    if (seenStationIds.has(station.id)) {
+      throw new Error(`Factory station ID must be unique: ${station.id}`);
+    }
+    seenStationIds.add(station.id);
+  }
+
+  const sharedEdgeKeys = new Set<string>();
+  for (const edge of input.existingGeneratedEdges) {
+    if (
+      isCardinalEdge(geometry, edge.a, edge.b) &&
+      pathableCells.has(edge.a) &&
+      pathableCells.has(edge.b) &&
+      influenceCells.has(edge.a) &&
+      influenceCells.has(edge.b)
+    ) {
+      sharedEdgeKeys.add(normalizedEdgeKey(edge.a, edge.b));
+    }
+  }
+
+  const pathCache = new Map<string, FactoryGridPath | null>();
+  const pathFor = (
+    from: CellId,
+    to: CellId,
+    requireShared: boolean,
+  ): FactoryGridPath | null => {
+    const key = `${from}>${to}:${requireShared ? 1 : 0}`;
+    if (pathCache.has(key)) return pathCache.get(key)!;
+    const path = findFactoryGridPath(
+      geometry,
+      pathableCells,
+      sharedEdgeKeys,
+      from,
+      to,
+      requireShared,
+    );
+    pathCache.set(key, path);
+    return path;
+  };
+
+  let bestIndependent: FactoryLoopCandidate | undefined;
+  let bestIntersecting: FactoryLoopCandidate | undefined;
+  const targetCount = Math.min(5, eligibleStations.length);
+
+  enumerateOrderedSelections(eligibleStations, targetCount, (targets) => {
+    const waypoints: CellId[] = [
+      input.outboundPortCellId,
+      ...targets.map((station) => station.cellId),
+      input.inboundPortCellId,
+    ];
+    const ordinaryLegs: FactoryGridPath[] = [];
+    const sharedLegs: (FactoryGridPath | null)[] = [];
+    for (let index = 1; index < waypoints.length; index += 1) {
+      const from = waypoints[index - 1]!;
+      const to = waypoints[index]!;
+      const ordinary = pathFor(from, to, false);
+      if (ordinary === null) return;
+      ordinaryLegs.push(ordinary);
+      sharedLegs.push(
+        sharedEdgeKeys.size === 0 ? null : pathFor(from, to, true),
+      );
+    }
+
+    const targetStructureIds = Object.freeze(targets.map((station) => station.id));
+    const ordinaryRoute = combineFactoryPaths(ordinaryLegs);
+    const ordinaryCandidate: FactoryLoopCandidate = Object.freeze({
+      targetStructureIds,
+      cells: ordinaryRoute.cells,
+      distance: ordinaryRoute.distance,
+      sharedExistingEdgeCount: countSharedEdges(
+        ordinaryRoute.cells,
+        sharedEdgeKeys,
+      ),
+      pathKey: ordinaryRoute.pathKey,
+    });
+    if (
+      bestIndependent === undefined ||
+      compareLoopCandidates(ordinaryCandidate, bestIndependent) < 0
+    ) {
+      bestIndependent = ordinaryCandidate;
+    }
+    if (ordinaryCandidate.sharedExistingEdgeCount > 0) {
+      if (
+        bestIntersecting === undefined ||
+        compareLoopCandidates(ordinaryCandidate, bestIntersecting) < 0
+      ) {
+        bestIntersecting = ordinaryCandidate;
+      }
+      return;
+    }
+
+    for (let forcedLeg = 0; forcedLeg < sharedLegs.length; forcedLeg += 1) {
+      const sharedLeg = sharedLegs[forcedLeg];
+      if (sharedLeg === null) continue;
+      const legs = ordinaryLegs.slice();
+      legs[forcedLeg] = sharedLeg;
+      const route = combineFactoryPaths(legs);
+      const candidate: FactoryLoopCandidate = Object.freeze({
+        targetStructureIds,
+        cells: route.cells,
+        distance: route.distance,
+        sharedExistingEdgeCount: countSharedEdges(route.cells, sharedEdgeKeys),
+        pathKey: route.pathKey,
+      });
+      if (candidate.sharedExistingEdgeCount === 0) continue;
+      if (
+        bestIntersecting === undefined ||
+        compareLoopCandidates(candidate, bestIntersecting) < 0
+      ) {
+        bestIntersecting = candidate;
+      }
+    }
+  });
+
+  const selected = bestIntersecting ?? bestIndependent;
+  if (selected === undefined) return null;
+  return Object.freeze({
+    factoryId: input.factoryId,
+    targetStructureIds: selected.targetStructureIds,
+    servicedStructureIds: servicedStationIds(eligibleStations, selected.cells),
+    cells: selected.cells,
+    sharedExistingEdgeCount: selected.sharedExistingEdgeCount,
+  });
+}
+
+export function shouldRegenerateFactoryRailLoop(input: {
+  readonly currentLoopCells: readonly CellId[];
+  readonly currentServicedStructureIds: readonly string[];
+  readonly newStationCellId: CellId;
+}): boolean {
+  if (input.currentLoopCells.includes(input.newStationCellId)) return false;
+  return input.currentServicedStructureIds.length < 5;
+}
+
+export function collectGeneratedRailReferences(
+  contributors: readonly GeneratedRailContributor[],
+): readonly GeneratedRailReference[] {
+  const edgeContributors = new Map<string, { a: CellId; b: CellId; ids: Set<string> }>();
+  for (const contributor of contributors) {
+    const contributedEdges = new Set<string>();
+    for (let index = 1; index < contributor.cells.length; index += 1) {
+      const left = contributor.cells[index - 1]!;
+      const right = contributor.cells[index]!;
+      if (left === right) continue;
+      const key = normalizedEdgeKey(left, right);
+      if (contributedEdges.has(key)) continue;
+      contributedEdges.add(key);
+      let entry = edgeContributors.get(key);
+      if (entry === undefined) {
+        entry = {
+          a: Math.min(left, right),
+          b: Math.max(left, right),
+          ids: new Set<string>(),
+        };
+        edgeContributors.set(key, entry);
+      }
+      entry.ids.add(contributor.contributorId);
+    }
+  }
+
+  return Object.freeze(
+    [...edgeContributors.values()]
+      .sort((left, right) => left.a - right.a || left.b - right.b)
+      .map((entry) => {
+        const contributorIds = Object.freeze([...entry.ids].sort(compareString));
+        return Object.freeze({
+          a: entry.a,
+          b: entry.b,
+          referenceCount: contributorIds.length,
+          contributorIds,
+        });
+      }),
+  );
 }
