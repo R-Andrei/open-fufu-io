@@ -15,6 +15,7 @@ import {
   type MatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createCellOwnershipChangedEvent } from "../src/simulation/SimulationEvents";
 import * as StructureTransactions from "../src/simulation/Structures";
 import type { PersistentStructureState } from "../src/simulation/Structures";
 import { TickEngine } from "../src/simulation/TickEngine";
@@ -605,13 +606,24 @@ describe("transactional persistent-structure purchases", () => {
 
     const nextOwnership = [...upgraded.ownership];
     nextOwnership[0] = "beta";
-    const structures = StructureTransactions.resolvePersistentStructureLifecycleTick(
-      upgraded,
-      nextOwnership,
-      upgraded.tick + 1,
-    );
-    const captured = createProspectiveMatchState(upgraded, {
+    const transitionTick = upgraded.tick + 1;
+    const postLand = createProspectiveMatchState(upgraded, {
       ownership: nextOwnership,
+    });
+    const structures = StructureTransactions.resolvePersistentStructureLifecycleTick(
+      postLand,
+      [
+        createCellOwnershipChangedEvent({
+          id: `test:cell-ownership:${transitionTick}:0`,
+          tick: transitionTick,
+          cellId: 0,
+          previousOwnerId: "alpha",
+          nextOwnerId: "beta",
+        }),
+      ],
+      transitionTick,
+    );
+    const captured = createProspectiveMatchState(postLand, {
       structures,
     });
 

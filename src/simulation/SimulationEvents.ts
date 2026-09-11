@@ -54,6 +54,17 @@ export type UnitDestroyedEvent = SimulationEvent<
   UnitDestroyedPayload
 >;
 
+export interface CellOwnershipChangedPayload {
+  readonly cellId: CellId;
+  readonly previousOwnerId: FactionId | null;
+  readonly nextOwnerId: FactionId | null;
+}
+
+export type CellOwnershipChangedEvent = SimulationEvent<
+  "CELL_OWNERSHIP_CHANGED",
+  CellOwnershipChangedPayload
+>;
+
 export type PhysicalUnitSimulationEvent =
   | UnitAttackResolvedEvent
   | UnitDestroyedEvent;
@@ -70,6 +81,14 @@ export interface CreateUnitDestroyedEventInput {
   readonly tick: number;
   readonly unit: UnitEventSubject;
   readonly causes: readonly UnitAttackDestructionCause[];
+}
+
+export interface CreateCellOwnershipChangedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly cellId: CellId;
+  readonly previousOwnerId: FactionId | null;
+  readonly nextOwnerId: FactionId | null;
 }
 
 function compareIds(left: string, right: string): number {
@@ -94,6 +113,10 @@ function assertCellId(cellId: number, label: string): void {
   if (!Number.isSafeInteger(cellId) || cellId < 0 || Object.is(cellId, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
+}
+
+function assertOptionalFactionId(value: FactionId | null, label: string): void {
+  if (value !== null) assertNonEmptyId(value, label);
 }
 
 function freezeUnitSubject(subject: UnitEventSubject): UnitEventSubject {
@@ -157,6 +180,29 @@ export function createUnitDestroyedEvent(
     payload: Object.freeze({
       unit: freezeUnitSubject(input.unit),
       causes: Object.freeze(causes),
+    }),
+  });
+}
+
+export function createCellOwnershipChangedEvent(
+  input: CreateCellOwnershipChangedEventInput,
+): CellOwnershipChangedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertCellId(input.cellId, "cell ownership event cellId");
+  assertOptionalFactionId(input.previousOwnerId, "cell ownership previous ownerId");
+  assertOptionalFactionId(input.nextOwnerId, "cell ownership next ownerId");
+  if (input.previousOwnerId === input.nextOwnerId) {
+    throw new Error("cell ownership change requires distinct previous and next owners");
+  }
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "CELL_OWNERSHIP_CHANGED" as const,
+    payload: Object.freeze({
+      cellId: input.cellId,
+      previousOwnerId: input.previousOwnerId,
+      nextOwnerId: input.nextOwnerId,
     }),
   });
 }
