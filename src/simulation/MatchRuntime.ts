@@ -39,6 +39,10 @@ import {
   type SpawnSnapshot,
 } from "./SpawnInitialization";
 import {
+  tryPurchaseStructureBuild,
+  tryPurchaseStructureUpgrade,
+} from "./Structures";
+import {
   TickEngine,
   type AcceptedSimulationInput,
   type SimulationAction,
@@ -325,6 +329,28 @@ function validateAction(state: MatchState, action: SimulationAction): void {
             applied.failure.key === undefined ? "" : `/${applied.failure.key}`
           }`,
         );
+      }
+      break;
+    }
+    case "PURCHASE_STRUCTURE_BUILD": {
+      const purchased = tryPurchaseStructureBuild(state, {
+        structureId: action.structureId,
+        ownerId: action.ownerId,
+        type: action.structureType,
+        cellId: action.cellId,
+      });
+      if (!purchased.ok) {
+        throw new Error(`invalid structure build purchase: ${purchased.failure.code}`);
+      }
+      break;
+    }
+    case "PURCHASE_STRUCTURE_UPGRADE": {
+      const purchased = tryPurchaseStructureUpgrade(state, {
+        structureId: action.structureId,
+        ownerId: action.ownerId,
+      });
+      if (!purchased.ok) {
+        throw new Error(`invalid structure upgrade purchase: ${purchased.failure.code}`);
       }
       break;
     }
