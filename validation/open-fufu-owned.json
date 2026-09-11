@@ -63,6 +63,7 @@
     "tests/StructureTransactions.test.ts",
     "tests/StructureTransactionsCertification.test.ts",
     "tests/TacticalVisibility.test.ts",
+    "tests/TrainService.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
