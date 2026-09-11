@@ -19,7 +19,10 @@ import {
   repartitionPopulation,
   transferPopulation,
 } from "../src/simulation/Population";
-import { resolveTankPopulationShot } from "../src/simulation/Tanks";
+import {
+  resolveTankPopulationShot,
+  resolveTankPopulationShotBatch,
+} from "../src/simulation/Tanks";
 
 const validState = {
   total: 10,
@@ -58,10 +61,10 @@ function tankPopulationShotFixture(options: {
   const state = createInitialMatchState(
     createMicroSimulationSpec({
       seed: "tank-population-shot-red",
-      width: 2,
+      width: 3,
       height: 1,
-      terrain: ["PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "beta"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "beta", "beta"],
       factions: [
         { id: "alpha", rules: alphaRules },
         {
@@ -334,5 +337,104 @@ describe("authoritative Population accounting", () => {
     );
     expect(noAvailable.casualties).toBe(0);
     expect(noAvailable.targetPopulation).toEqual(committedOnly);
+  });
+
+  it("aggregates simultaneous Tank Population overkill once per target faction without assigning casualties to attackers", () => {
+    const targetPopulation = {
+      total: 390,
+      available: 300,
+      committedOffensive: 20,
+      committedCounterResponse: 30,
+      aboardTransports: 40,
+      peakTotal: 500,
+      neutralSettlementHalfResidual: 1 as const,
+    };
+    const state = tankPopulationShotFixture({ targetPopulation });
+    const result = resolveTankPopulationShotBatch(state, [
+      {
+        attackerUnitId: "tank-b",
+        attackerOwnerId: "alpha",
+        chassisType: "TANK",
+        targetFactionId: "beta",
+        targetCellId: 2,
+      },
+      {
+        attackerUnitId: "tank-a",
+        attackerOwnerId: "alpha",
+        chassisType: "TANK",
+        targetFactionId: "beta",
+        targetCellId: 1,
+      },
+    ]);
+
+    expect(result.targets).toEqual([
+      {
+        targetFactionId: "beta",
+        totalDamage: 500,
+        casualties: 300,
+        targetPopulation: {
+          ...targetPopulation,
+          total: 90,
+          available: 0,
+        },
+      },
+    ]);
+    expect(result.successfulShots).toEqual([
+      {
+        attackerUnitId: "tank-a",
+        targetFactionId: "beta",
+        targetCellId: 1,
+        finalDamage: 250,
+      },
+      {
+        attackerUnitId: "tank-b",
+        targetFactionId: "beta",
+        targetCellId: 2,
+        finalDamage: 250,
+      },
+    ]);
+    expect(
+      result.successfulShots.some((shot) => "casualties" in shot),
+    ).toBe(false);
+  });
+
+  it("keeps simultaneous Population-shot aggregation invariant to admitted-shot enumeration order", () => {
+    const state = tankPopulationShotFixture({
+      targetPopulation: {
+        total: 300,
+        available: 300,
+        committedOffensive: 0,
+        committedCounterResponse: 0,
+        aboardTransports: 0,
+        peakTotal: 300,
+        neutralSettlementHalfResidual: 0,
+      },
+    });
+    const shots = [
+      {
+        attackerUnitId: "tank-z",
+        attackerOwnerId: "alpha",
+        chassisType: "TANK" as const,
+        targetFactionId: "beta",
+        targetCellId: 2,
+      },
+      {
+        attackerUnitId: "tank-a",
+        attackerOwnerId: "alpha",
+        chassisType: "TANK" as const,
+        targetFactionId: "beta",
+        targetCellId: 1,
+      },
+    ];
+
+    const forward = resolveTankPopulationShotBatch(state, shots);
+    const reversed = resolveTankPopulationShotBatch(state, [...shots].reverse());
+
+    expect(reversed).toEqual(forward);
+    expect(forward.targets[0]?.casualties).toBe(300);
+    expect(forward.successfulShots.map((shot) => shot.attackerUnitId)).toEqual([
+      "tank-a",
+      "tank-z",
+    ]);
   });
 });
