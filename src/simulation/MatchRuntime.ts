@@ -1,4 +1,5 @@
 import type { DecisionReceipt } from "../core/controller/ControllerApi";
+import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
   evaluateControllerRound,
   type ControllerHost,
@@ -73,6 +74,11 @@ const ARTIFACT_MAP_KEYS = ["kind", "mapId", "mapVersion", "mapHash"] as const;
 
 export interface MatchRuntimeDependencies {
   readonly mapArtifacts?: MapArtifactResolver;
+  /**
+   * Opaque live-match namespace for private controller refs. It is intentionally
+   * operational session state rather than canonical MatchSpec/replay state.
+   */
+  readonly controllerReferenceNamespace?: string;
 }
 
 export type MatchRuntimePhase = "INITIALIZING" | "ACTIVE";
@@ -389,6 +395,7 @@ export class MatchRuntime {
   private controllerFaultedFactionIds = new Set<string>();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
+  private readonly controllerReferences?: ControllerReferenceSession;
 
   constructor(
     readonly spec: MatchSpec,
@@ -409,6 +416,12 @@ export class MatchRuntime {
       this.spawnSnapshot = initialized.snapshot;
       this.phase = "ACTIVE";
     }
+    if (dependencies.controllerReferenceNamespace !== undefined) {
+      this.controllerReferences = new ControllerReferenceSession(
+        dependencies.controllerReferenceNamespace,
+        this.state,
+      );
+    }
   }
 
   snapshot(): MatchState | SpawnAwareMatchState {
@@ -420,6 +433,13 @@ export class MatchRuntime {
       phase: this.phase,
       spawnSnapshot: this.spawnSnapshot,
     });
+  }
+
+  controllerReferenceSession(): ControllerReferenceSession {
+    if (this.controllerReferences === undefined) {
+      throw new Error("controller reference session is not configured");
+    }
+    return this.controllerReferences;
   }
 
   private validationState(): MatchState {
@@ -546,7 +566,20 @@ export class MatchRuntime {
     this.pendingInputs = this.pendingInputs.filter(
       (input) => input.tick !== nextTick,
     );
-    this.state = this.engine.advance(this.state, executing);
+    const nextState = this.engine.advance(this.state, executing);
+    if (this.controllerReferences !== undefined) {
+      for (const input of [...executing].sort(
+        (left, right) => left.sequence - right.sequence,
+      )) {
+        if (input.action.type !== "APPLY_PERSISTENT_DIRECTIVES") continue;
+        this.controllerReferences.applyDirectiveChanges(
+          input.action.factionId,
+          input.action.changes,
+        );
+      }
+      this.controllerReferences.reconcile(nextState);
+    }
+    this.state = nextState;
     return this.state;
   }
 
