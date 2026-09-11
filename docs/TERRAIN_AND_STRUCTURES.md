@@ -692,6 +692,14 @@ Baseline Plains movement speed is **5 cells/s**.
 | **Deep Water** | Blocked | — | — |
 | **Impassable** | Blocked | — | — |
 
+For one legal cardinal Tank edge from traversable cell `A` to traversable cell `B`, let `vA` and `vB` be that chassis's current effective movement speeds on the two endpoint terrains after all applicable chassis/Origin/Echo movement effects. The edge traversal time is symmetric half-edge time:
+
+```text
+edgeTime(A, B) = 0.5 / vA + 0.5 / vB
+```
+
+Authoritative routing accumulates this value with exact rational arithmetic; it must not round each edge through floating point. Therefore `A -> B` and `B -> A` have the same terrain-derived traversal time, and a same-terrain edge reduces exactly to `1 / v`. If either endpoint terrain is blocked for the chassis, or the territorial-corridor predicate rejects the transition, that edge is unavailable rather than assigned a finite traversal time.
+
 Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
 ## 3.3 Strategic/autonomous control
