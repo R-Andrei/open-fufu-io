@@ -64,6 +64,7 @@
     "tests/StructureTransactionsCertification.test.ts",
     "tests/TacticalVisibility.test.ts",
     "tests/TankLifecycle.test.ts",
+    "tests/TankTargeting.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
   "ownedSources": [
