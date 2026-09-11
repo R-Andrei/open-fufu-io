@@ -11,6 +11,7 @@ import { createSimulationMap } from "../src/simulation/SimulationMap";
 import {
   advanceTankProductionPhase,
   tankCellTraversalTiming,
+  tankNavigationRoute,
   tankOperatingLeashContains,
   tankPurchaseCost,
   tankTerrainMovementTiming,
@@ -144,6 +145,40 @@ function corridorFixture() {
   });
 }
 
+function exactNavigationFixture(
+  terrain: readonly string[],
+  width: number,
+  height: number,
+  traits: readonly OriginTraitId[] = [],
+  tankMovementEchoBasisPoints?: number,
+) {
+  const additional: RuleContribution[] = [];
+  if (tankMovementEchoBasisPoints !== undefined) {
+    additional.push({
+      axis: "UNIT_MOVEMENT_SPEED",
+      scope: { kind: "UNIT", unit: "TANK" },
+      stage: "ECHO_PERCENT",
+      operator: "ADD_PERCENT",
+      sourceKind: "ECHO",
+      sourceId: "echo:test-tank-navigation",
+      valueUnit: "BASIS_POINTS",
+      value: tankMovementEchoBasisPoints,
+    });
+  }
+  return createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-navigation-red",
+      width,
+      height,
+      terrain,
+      initialOwners: terrain.map(() => "alpha"),
+      factions: [
+        { id: "alpha", rules: rulesWithTraitsAndAdditional(traits, additional) },
+      ],
+    }),
+  );
+}
+
 function expectExactTankSpeed(
   timing: ReturnType<typeof tankTerrainMovementTiming>,
   numerator: bigint,
@@ -273,6 +308,73 @@ describe("baseline Tank lifecycle", () => {
     expect(tankOperatingLeashContains(map, anchor, 101)).toBe(false);
     expect(tankOperatingLeashContains(map, anchor, 80 * width + 60)).toBe(true);
     expect(tankOperatingLeashContains(map, anchor, 81 * width + 60)).toBe(false);
+  });
+
+  it("uses exact symmetric half-edge work for mixed Tank terrain", () => {
+    const mixed = exactNavigationFixture(["PLAINS", "HIGHLAND"], 2, 1);
+    const forward = tankNavigationRoute(mixed, "alpha", "TANK", 0, 1);
+    const reverse = tankNavigationRoute(mixed, "alpha", "TANK", 1, 0);
+
+    expect(forward.status).toBe("FOUND");
+    expect(reverse.status).toBe("FOUND");
+    if (forward.status !== "FOUND" || reverse.status !== "FOUND") {
+      throw new Error("expected reachable mixed-terrain Tank route");
+    }
+    expect(forward.route.cells).toEqual([0, 1]);
+    expect(reverse.route.cells).toEqual([1, 0]);
+    expect(forward.route.edgeWeights).toEqual([1053]);
+    expect(reverse.route.edgeWeights).toEqual([1053]);
+    expect(forward.route.movementWorkPerTick).toBe(468);
+    expect(reverse.route.movementWorkPerTick).toBe(468);
+    expect(BigInt(forward.route.edgeWeights[0]!) * 4n).toBe(
+      BigInt(forward.route.movementWorkPerTick) * 9n,
+    );
+
+    const sameTerrain = exactNavigationFixture(["PLAINS", "PLAINS"], 2, 1);
+    const plains = tankNavigationRoute(sameTerrain, "alpha", "TANK", 0, 1);
+    expect(plains.status).toBe("FOUND");
+    if (plains.status !== "FOUND") throw new Error("expected Plains Tank route");
+    expect(plains.route.edgeWeights).toEqual([936]);
+    expect(plains.route.movementWorkPerTick).toBe(468);
+    expect(plains.route.edgeWeights[0]).toBe(plains.route.movementWorkPerTick * 2);
+  });
+
+  it("composes P43 and a Tank movement Echo into exact route work", () => {
+    const state = exactNavigationFixture(
+      ["PLAINS", "PLAINS"],
+      2,
+      1,
+      ["P43"],
+      400,
+    );
+    const route = tankNavigationRoute(state, "alpha", "HEAVY_ARTILLERY", 0, 1);
+
+    expect(route.status).toBe("FOUND");
+    if (route.status !== "FOUND") throw new Error("expected Heavy Artillery route");
+    expect(route.route.edgeWeights).toEqual([46_800]);
+    expect(route.route.movementWorkPerTick).toBe(12_168);
+    expect(BigInt(route.route.edgeWeights[0]!) * 13n).toBe(
+      BigInt(route.route.movementWorkPerTick) * 50n,
+    );
+  });
+
+  it("chooses lower exact traversal time over fewer mixed-terrain hops", () => {
+    const state = exactNavigationFixture(
+      [
+        "PLAINS", "MARSH", "MARSH", "MARSH", "PLAINS",
+        "PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+      ],
+      5,
+      2,
+    );
+    const route = tankNavigationRoute(state, "alpha", "TANK", 0, 4);
+
+    expect(route.status).toBe("FOUND");
+    if (route.status !== "FOUND") throw new Error("expected mixed-terrain Tank route");
+    expect(route.route.cells).toEqual([0, 5, 6, 7, 8, 9, 4]);
+    expect(route.route.edgeWeights).toEqual([936, 936, 936, 936, 936, 936]);
+    expect(route.route.totalWeight).toBe(5_616);
+    expect(route.route.movementWorkPerTick).toBe(468);
   });
 
   it("atomically admits an affordable Factory build and rejects cost - 1 without mutation", () => {
