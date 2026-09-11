@@ -64,6 +64,23 @@ describe("controller reference session certification", () => {
     expect(session.resolve("alpha", "STRUCTURE", ref!)).toBe(authoritativeId);
   });
 
+  it("replaces a simple-domain incarnation when explicit lifecycle transitions reuse the same authoritative ID", () => {
+    const authoritativeId = "reused-structure-id";
+    const state = collidingStructureState(authoritativeId);
+    const session = new ControllerReferenceSession("lifecycle-transition-match", state);
+    const firstRef = session.issue("alpha", "STRUCTURE", authoritativeId);
+    expect(firstRef).toBeDefined();
+
+    session.applyEntityLifecycleTransition("STRUCTURE", authoritativeId, "END");
+    session.applyEntityLifecycleTransition("STRUCTURE", authoritativeId, "START");
+    session.reconcile(state);
+
+    const replacementRef = session.issue("alpha", "STRUCTURE", authoritativeId);
+    expect(replacementRef).toBeDefined();
+    expect(replacementRef).not.toBe(firstRef);
+    expect(session.resolve("alpha", "STRUCTURE", firstRef!)).toBeUndefined();
+  });
+
   it("requires every MatchRuntime to receive an explicit live-match reference namespace", () => {
     const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
     const spec = createMicroSimulationSpec({
