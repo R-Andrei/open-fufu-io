@@ -380,10 +380,10 @@ describe("controller-round transaction adversarial behavior", () => {
 
     expect(receiptFor(receipts, "alpha")).toMatchObject({
       accepted: false,
+      failure: { code: "RUNTIME_ERROR" },
       faultCount: 1,
       faulted: false,
     });
-    expect(receiptFor(receipts, "alpha").failure).toBeUndefined();
     expect(match.acceptedInputs()).toEqual([]);
   });
 
