@@ -66,6 +66,8 @@ const BASE_STRUCTURE_RECHARGE_TICKS = Object.freeze({
   SAM_LAUNCHER: 90,
 } as const);
 
+const STRUCTURE_MIN_CENTER_DISTANCE_SQUARED = 100;
+
 type ChargeBearingStructureType = keyof typeof BASE_STRUCTURE_RECHARGE_TICKS;
 
 export interface StructureConstructionState {
@@ -590,6 +592,19 @@ function portPlacementHasDeepWaterInterface(
   );
 }
 
+function structurePlacementHasMinimumSpacing(
+  state: MatchState,
+  request: StructureAcquisitionRequest,
+): boolean {
+  const candidate = state.map.positionOf(request.cellId);
+  return state.structures.every((structure) => {
+    const existing = state.map.positionOf(structure.cellId);
+    const dx = candidate.x - existing.x;
+    const dy = candidate.y - existing.y;
+    return dx * dx + dy * dy >= STRUCTURE_MIN_CENTER_DISTANCE_SQUARED;
+  });
+}
+
 export function evaluateStructureAcquisitionAdmission(
   state: MatchState,
   request: StructureAcquisitionRequest,
@@ -597,7 +612,6 @@ export function evaluateStructureAcquisitionAdmission(
   if (!requestIsWellFormed(state, request)) return failure("INVALID_REQUEST");
   const owner = state.factions.find((faction) => faction.id === request.ownerId);
   if (owner === undefined) return failure("UNKNOWN_OWNER");
-
   const existingById = state.structures.find(
     (structure) => structure.id === request.structureId,
   );
@@ -637,6 +651,9 @@ export function evaluateStructureAcquisitionAdmission(
     state.structures.some((structure) => structure.cellId === request.cellId)
   ) {
     return failure("CELL_OCCUPIED");
+  }
+  if (!structurePlacementHasMinimumSpacing(state, request)) {
+    return failure("PLACEMENT_GEOMETRY_UNAVAILABLE");
   }
   if (!buildPlacementAllowed(state, request)) {
     return failure("BUILD_NOT_PERMITTED");
