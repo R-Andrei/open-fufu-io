@@ -621,7 +621,7 @@ describe("authoritative Factory Train runtime state", () => {
           type: "CITY",
           cellId: 10,
           completedLevel: 1,
-          active: true,
+          active: false,
           acquisitionPath: "CAPTURE_TRANSFER",
         },
       ],
