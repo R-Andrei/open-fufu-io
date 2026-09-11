@@ -200,6 +200,8 @@ export interface CellView {
   readonly segmentId?: SegmentId;
   readonly isCoast: boolean;
   readonly isShoreline: boolean;
+  /** Lawfully visible persistent structure on this cell, addressed by the enclosing CellId. */
+  readonly structure?: ControllerStructureView;
 }
 
 export interface SegmentView {
@@ -266,6 +268,20 @@ export interface ChargeStateView {
 export interface StructureConstructionView {
   readonly targetLevel: StructureLevel;
   readonly remainingTicks: number;
+}
+
+/**
+ * ID-less persistent-structure facts exposed through CellView. The enclosing
+ * CellId is the public address; internal stable StructureId remains engine-owned.
+ */
+export interface ControllerStructureView {
+  readonly ownerId: FactionId;
+  readonly type: StructureType;
+  readonly cellId: CellId;
+  readonly completedLevel?: StructureLevel;
+  readonly active: boolean;
+  readonly construction?: StructureConstructionView;
+  readonly chargeState?: ChargeStateView;
 }
 
 export interface StructureView {
