@@ -260,7 +260,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "INVALID_COMMAND", key: "unsupported-second" },
+      failure: { code: "NO_LONGER_OWNED", key: "unsupported-second" },
       faultCount: 0,
       faulted: false,
     });
@@ -330,7 +330,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(seen?.lastDecision).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "INVALID_COMMAND", key: "unsupported" },
+      failure: { code: "NO_LONGER_OWNED", key: "unsupported" },
       faultCount: 0,
       faulted: false,
     });

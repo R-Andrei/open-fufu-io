@@ -162,6 +162,8 @@ function productionShapedState(instrumentation: {
         status: "ACTIVE" as const,
         rules,
         population,
+        ffy: 25_000,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
       Object.freeze({
@@ -169,6 +171,8 @@ function productionShapedState(instrumentation: {
         status: "ACTIVE" as const,
         rules,
         population,
+        ffy: 25_000,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
     ]),
