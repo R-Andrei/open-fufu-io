@@ -61,6 +61,7 @@
     "tests/StructureFieldGeometry.test.ts",
     "tests/StructureGrantLifecycle.test.ts",
     "tests/StructureTransactions.test.ts",
+    "tests/StructureTransactionsCertification.test.ts",
     "tests/TacticalVisibility.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts"
   ],
@@ -111,7 +112,7 @@
     {"path":"src/simulation/SpawnModeResolution.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnModeResolution.test.ts"]},
     {"path":"src/simulation/SpawnSemantics.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/SpawnHardening.test.ts","tests/SpawnInitialization.test.ts"]},
     {"path":"src/simulation/StrategicSpawn.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/StrategicSpawn.test.ts","tests/StrategicSpawnFallback.test.ts"]},
-    {"path":"src/simulation/Structures.ts","validators":["tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionCertification.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/StructureGrantLifecycle.test.ts"]},
+    {"path":"src/simulation/Structures.ts","validators":["tests/MatchRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionCertification.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/StructureGrantLifecycle.test.ts","tests/StructureTransactionsCertification.test.ts"]},
     {"path":"src/simulation/TickEngine.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionLifecycle.test.ts"]},
     {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"tests/types/ControllerApiTypes.ts","validators":["tests/ControllerApiContract.test.ts"]},
