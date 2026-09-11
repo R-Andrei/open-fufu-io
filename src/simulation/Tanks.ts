@@ -61,6 +61,31 @@ export interface TankPopulationShotResolution {
   readonly targetPopulation: PopulationState;
 }
 
+export interface AdmittedTankPopulationShot
+  extends ResolveTankPopulationShotRequest {
+  readonly attackerUnitId: string;
+  readonly targetCellId: number;
+}
+
+export interface TankPopulationBatchTargetResolution {
+  readonly targetFactionId: string;
+  readonly totalDamage: number;
+  readonly casualties: number;
+  readonly targetPopulation: PopulationState;
+}
+
+export interface SuccessfulTankPopulationShot {
+  readonly attackerUnitId: string;
+  readonly targetFactionId: string;
+  readonly targetCellId: number;
+  readonly finalDamage: number;
+}
+
+export interface TankPopulationShotBatchResolution {
+  readonly targets: readonly TankPopulationBatchTargetResolution[];
+  readonly successfulShots: readonly SuccessfulTankPopulationShot[];
+}
+
 export type TankProductionFailureCode =
   | "INVALID_REQUEST"
   | "UNKNOWN_OWNER"
@@ -662,6 +687,71 @@ export function resolveTankPopulationShot(
     casualties,
   );
   return Object.freeze({ finalDamage, casualties, targetPopulation });
+}
+
+export function resolveTankPopulationShotBatch(
+  state: MatchState,
+  shots: readonly AdmittedTankPopulationShot[],
+): TankPopulationShotBatchResolution {
+  const damageByTarget = new Map<string, bigint>();
+  const successfulShots: SuccessfulTankPopulationShot[] = [];
+
+  for (const shot of shots) {
+    const resolution = resolveTankPopulationShot(state, shot);
+    const total =
+      (damageByTarget.get(shot.targetFactionId) ?? 0n) +
+      BigInt(resolution.finalDamage);
+    if (total > MAX_SAFE_BIGINT) {
+      throw new Error("Tank Population batch damage exceeds the safe-integer range");
+    }
+    damageByTarget.set(shot.targetFactionId, total);
+    if (resolution.finalDamage > 0) {
+      successfulShots.push(
+        Object.freeze({
+          attackerUnitId: shot.attackerUnitId,
+          targetFactionId: shot.targetFactionId,
+          targetCellId: shot.targetCellId,
+          finalDamage: resolution.finalDamage,
+        }),
+      );
+    }
+  }
+
+  successfulShots.sort((left, right) => {
+    const attackerOrder = compareIds(left.attackerUnitId, right.attackerUnitId);
+    if (attackerOrder !== 0) return attackerOrder;
+    const factionOrder = compareIds(left.targetFactionId, right.targetFactionId);
+    if (factionOrder !== 0) return factionOrder;
+    return left.targetCellId - right.targetCellId;
+  });
+
+  const targets = [...damageByTarget.entries()]
+    .sort(([left], [right]) => compareIds(left, right))
+    .map(([targetFactionId, totalDamageValue]) => {
+      const target = state.factions.find(
+        (faction) => faction.id === targetFactionId,
+      );
+      if (target === undefined) {
+        throw new Error(`unknown faction: ${targetFactionId}`);
+      }
+      const totalDamage = Number(totalDamageValue);
+      const casualties = Math.min(totalDamage, target.population.available);
+      return Object.freeze({
+        targetFactionId,
+        totalDamage,
+        casualties,
+        targetPopulation: removePopulation(
+          target.population,
+          "AVAILABLE",
+          casualties,
+        ),
+      });
+    });
+
+  return Object.freeze({
+    targets: Object.freeze(targets),
+    successfulShots: Object.freeze(successfulShots),
+  });
 }
 
 export function tryStartTankProduction(
