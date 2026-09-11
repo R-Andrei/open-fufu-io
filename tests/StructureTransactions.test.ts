@@ -399,11 +399,11 @@ describe("transactional persistent-structure purchases", () => {
     expect(committed.structures[0]).toEqual(
       expect.objectContaining({
         id: "city-p41",
-        completedLevel: undefined,
         active: false,
         construction: { targetLevel: 5, remainingTicks: 50 },
       }),
     );
+    expect(committed.structures[0]?.completedLevel).toBeUndefined();
   });
 
   it("atomically prices P17 upgrades and leaves N06/max-level/already-upgrading rejections untouched", () => {

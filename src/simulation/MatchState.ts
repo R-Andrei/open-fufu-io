@@ -136,7 +136,7 @@ function freezeFactions(
         population: createPopulationState(faction.population),
         ffy: materializeFfyBalance(faction.ffy),
         successfulStructurePurchaseTypes: freezeSuccessfulStructurePurchaseTypes(
-          faction.successfulStructurePurchaseTypes,
+          faction.successfulStructurePurchaseTypes ?? [],
         ),
         testMarker: faction.testMarker,
         ...(faction.fixedTeamId === undefined
@@ -421,7 +421,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       },
       ffy: faction.ffy,
       successfulStructurePurchaseTypes: [
-        ...faction.successfulStructurePurchaseTypes,
+        ...(faction.successfulStructurePurchaseTypes ?? []),
       ],
       testMarker: faction.testMarker,
       rules: {
