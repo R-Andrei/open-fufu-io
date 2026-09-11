@@ -43,7 +43,10 @@ import {
   tryMaterializeStructureGrant,
   type PersistentStructureState,
 } from "./Structures";
-import type { TankProductionJobState } from "./Tanks";
+import type {
+  TankOperationalState,
+  TankProductionJobState,
+} from "./Tanks";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
   "CITY",
@@ -78,6 +81,7 @@ export interface MatchState {
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
   readonly tankProductionJobs: readonly TankProductionJobState[];
+  readonly tankOperationalStates: readonly TankOperationalState[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -93,6 +97,7 @@ export interface MatchStateUpdate {
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
   readonly tankProductionJobs?: readonly TankProductionJobState[];
+  readonly tankOperationalStates?: readonly TankOperationalState[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -280,6 +285,89 @@ function freezeTankProductionJobs(
   return Object.freeze(jobs);
 }
 
+function freezeTankHealth(
+  health: TankOperationalState["health"],
+): TankOperationalState["health"] {
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator < 0n ||
+    health.denominator <= 0n
+  ) {
+    throw new Error("Tank health must be a non-negative exact ratio");
+  }
+  if (health.numerator === 0n) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
+  }
+  return Object.freeze({
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
+  });
+}
+
+function assertNonNegativeSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+}
+
+function freezeTankOperationalStates(
+  entries: readonly TankOperationalState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+): readonly TankOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tankOperationalStates must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const seenUnitIds = new Set<string>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Tank operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Tank operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Tank operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      throw new Error(
+        `Tank operational state must reference a deployed Tank-derived unit: ${entry.unitId}`,
+      );
+    }
+    if (!map.isValidCellId(entry.operatingAnchorCellId)) {
+      throw new Error("Tank operating anchor must be a valid map cell");
+    }
+    assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
+    assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    return Object.freeze({
+      unitId: entry.unitId,
+      health: freezeTankHealth(entry.health),
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+    });
+  });
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
+}
+
 function createState(
   previous: MatchState,
   tick: number,
@@ -304,6 +392,11 @@ function createState(
         update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
     },
   );
+  const tankOperationalStates = freezeTankOperationalStates(
+    update.tankOperationalStates ?? previous.tankOperationalStates ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -319,6 +412,7 @@ function createState(
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
     ),
+    tankOperationalStates,
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -339,7 +433,7 @@ function createState(
   });
 }
 
-type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "map" | "factions">>;
+type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "factions">>;
 
 function assertResolvedArtifactMapMatches(
   spec: InitialMatchStateSpec,
@@ -393,6 +487,7 @@ function createEmptyInitialMatchState(
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
     tankProductionJobs: Object.freeze([]),
+    tankOperationalStates: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),

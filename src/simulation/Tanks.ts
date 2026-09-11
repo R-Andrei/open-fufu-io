@@ -29,6 +29,19 @@ import type { PersistentStructureState } from "./Structures";
 
 export type TankChassisType = "TANK" | "HEAVY_ARTILLERY";
 
+export interface TankExactHealth {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface TankOperationalState {
+  readonly unitId: string;
+  readonly health: TankExactHealth;
+  readonly operatingAnchorCellId: number;
+  readonly eligibleFromTick: number;
+  readonly attackReadyAtTick: number;
+}
+
 export type TankProductionJobState =
   | {
       readonly factoryId: string;
@@ -134,6 +147,7 @@ interface ExactRatio {
 
 const BASE_TANK_BUILD_TICKS = 50;
 const HEAVY_ARTILLERY_BUILD_TICKS = 100;
+const BASE_TANK_MAX_HEALTH = 1_000n;
 const TANK_MOVEMENT_TICKS_PER_SECOND = 10n;
 const TANK_NAVIGATION_BASE_WORK = 468n;
 const TANK_OPERATING_LEASH_CELLS = 100;
@@ -232,6 +246,39 @@ function effectiveTankChassisType(
     throw new Error("Tank chassis profile resolved to an unsupported profile");
   }
   return value.value;
+}
+
+function effectiveTankMaxHealth(
+  state: MatchState,
+  ownerId: string,
+): TankExactHealth {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "TANK" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MAX_HEALTH",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MAX_HEALTH,
+    terms,
+  );
+  const health = reducedRational(
+    BASE_TANK_MAX_HEALTH * scale.numerator,
+    scale.denominator,
+  );
+  if (health.numerator <= 0n || health.denominator <= 0n) {
+    throw new Error("Tank maximum health must resolve to a positive value");
+  }
+  return Object.freeze({
+    numerator: health.numerator,
+    denominator: health.denominator,
+  });
 }
 
 function unitBuildPermitted(state: MatchState, ownerId: string): boolean {
@@ -882,6 +929,7 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
     mobileUnits: state.mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
   });
+  const operationalStates = [...state.tankOperationalStates];
   const nextJobs: TankProductionJobState[] = [];
   const ownerIds = state.factions.map((faction) => faction.id);
   const jobs = [...state.tankProductionJobs].sort((left, right) =>
@@ -908,12 +956,26 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
     const deploy = (): boolean => {
       const cellId = tankDeploymentCell(state, factory, job);
       if (cellId === undefined) return false;
-      units = createMobileUnit(state.map, ownerIds, units, {
+      const created = createMobileUnit(state.map, ownerIds, units, {
         ownerId: job.ownerId,
         type: job.chassisType,
         movementClass: job.chassisType,
         cellId,
       });
+      units = created;
+      const eligibleFromTick = state.tick + 1;
+      if (!Number.isSafeInteger(eligibleFromTick)) {
+        throw new Error("Tank activation tick exceeds the safe-integer range");
+      }
+      operationalStates.push(
+        Object.freeze({
+          unitId: created.unit.id,
+          health: effectiveTankMaxHealth(state, job.ownerId),
+          operatingAnchorCellId: cellId,
+          eligibleFromTick,
+          attackReadyAtTick: eligibleFromTick,
+        }),
+      );
       return true;
     };
 
@@ -942,5 +1004,6 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
     mobileUnits: units.mobileUnits,
     nextMobileUnitOrdinal: units.nextMobileUnitOrdinal,
     tankProductionJobs: nextJobs,
+    tankOperationalStates: operationalStates,
   });
 }
