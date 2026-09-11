@@ -1,4 +1,5 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
@@ -41,6 +42,10 @@ const greenTank = Object.freeze({
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
+
+function originRules(ids: readonly ("N07" | "N17")[]) {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(ids));
 }
 
 function manualOwnershipEvent(
@@ -411,5 +416,230 @@ describe("deterministic simulation events", () => {
       }),
     ]);
     expect(resolved[0]?.construction).toBeUndefined();
+  });
+
+  it("preserves captured-upgrade state through event routing before lifecycle progress", () => {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-captured-upgrade",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const preLand = createProspectiveMatchState(base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "fort-upgrade",
+          ownerId: "beta",
+          type: "FORT",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          construction: { targetLevel: 2, remainingTicks: 2 },
+          acquisitionPath: "PURCHASE_BUILD",
+        }),
+      ],
+    });
+    const postLand = createProspectiveMatchState(preLand, {
+      ownership: ["alpha"],
+    });
+
+    const resolved = resolvePersistentStructureLifecycleFromEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+    expect(resolved).toEqual([
+      expect.objectContaining({
+        id: "fort-upgrade",
+        ownerId: "alpha",
+        completedLevel: 1,
+        active: true,
+        construction: { targetLevel: 2, remainingTicks: 1 },
+        acquisitionPath: "CAPTURE_TRANSFER",
+      }),
+    ]);
+  });
+
+  it("preserves N17 destruction and N07 deterministic admission through event routing", () => {
+    const n17Base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-n17-capture",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: originRules(["N17"]) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const n17PreLand = createProspectiveMatchState(n17Base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "factory-cut",
+          ownerId: "beta",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const n17PostLand = createProspectiveMatchState(n17PreLand, {
+      ownership: ["alpha"],
+    });
+    expect(
+      resolvePersistentStructureLifecycleFromEvents(
+        n17PostLand,
+        [manualOwnershipEvent()],
+        1,
+      ),
+    ).toEqual([]);
+
+    const n07Base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-n07-capture",
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "gamma"],
+        factions: [
+          { id: "alpha", rules: originRules(["N07"]) },
+          { id: "beta", rules: emptyRules() },
+          { id: "gamma", rules: emptyRules() },
+        ],
+      }),
+    );
+    const n07PreLand = createProspectiveMatchState(n07Base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "factory-z",
+          ownerId: "beta",
+          type: "FACTORY",
+          cellId: 1,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+        materializePersistentStructureState({
+          id: "factory-a",
+          ownerId: "gamma",
+          type: "FACTORY",
+          cellId: 2,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const n07PostLand = createProspectiveMatchState(n07PreLand, {
+      ownership: ["alpha", "alpha", "alpha"],
+    });
+    const n07Resolved = resolvePersistentStructureLifecycleFromEvents(
+      n07PostLand,
+      [
+        createCellOwnershipChangedEvent({
+          id: "capture-cell-1",
+          tick: 1,
+          cellId: 1,
+          previousOwnerId: "beta",
+          nextOwnerId: "alpha",
+        }),
+        createCellOwnershipChangedEvent({
+          id: "capture-cell-2",
+          tick: 1,
+          cellId: 2,
+          previousOwnerId: "gamma",
+          nextOwnerId: "alpha",
+        }),
+      ],
+      1,
+    );
+    expect(n07Resolved).toEqual([
+      expect.objectContaining({
+        id: "factory-z",
+        cellId: 1,
+        ownerId: "alpha",
+        acquisitionPath: "CAPTURE_TRANSFER",
+      }),
+    ]);
+  });
+
+  it("rejects out-of-range ownership facts and keeps structures unchanged on neutralization", () => {
+    const postLand = postLandStructureState();
+    expect(() =>
+      resolvePersistentStructureLifecycleFromEvents(
+        postLand,
+        [
+          createCellOwnershipChangedEvent({
+            id: "outside-raster",
+            tick: 1,
+            cellId: 1,
+            previousOwnerId: "beta",
+            nextOwnerId: "alpha",
+          }),
+        ],
+        1,
+      ),
+    ).toThrow(/outside/i);
+
+    const neutralBase = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-neutralization",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const neutralPreLand = createProspectiveMatchState(neutralBase, {
+      structures: [
+        materializePersistentStructureState({
+          id: "neutralized-city",
+          ownerId: "beta",
+          type: "CITY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const neutralPostLand = createProspectiveMatchState(neutralPreLand, {
+      ownership: [null],
+    });
+    const resolved = resolvePersistentStructureLifecycleFromEvents(
+      neutralPostLand,
+      [
+        createCellOwnershipChangedEvent({
+          id: "neutralize-cell-0",
+          tick: 1,
+          cellId: 0,
+          previousOwnerId: "beta",
+          nextOwnerId: null,
+        }),
+      ],
+      1,
+    );
+    expect(resolved).toEqual([
+      expect.objectContaining({
+        id: "neutralized-city",
+        ownerId: "beta",
+        acquisitionPath: "GRANT",
+      }),
+    ]);
   });
 });
