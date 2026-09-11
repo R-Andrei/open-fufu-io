@@ -343,6 +343,8 @@ P33PopulationGain = 20 × completedCityLevel
 
 The gain is Capacity-capped and enters Available Population. P33 follows the canonical Train event identity from `FFY_ECONOMY.md`; it does not create a second route/station event definition.
 
+That event identity exists for P33 only if the Train station event survives the interception-before-settlement boundary owned by `FFY_ECONOMY.md`. A surviving event still triggers P33 when its finalized FFY award is `0`, including a terminal hard-zero such as N11; a pending station event canceled before settlement never triggers P33.
+
 ### P34 — conquered Factories
 
 Only Factories that **successfully transfer** to the holder through the canonical structure-capture resolver count as acquired through conquest for P34. Built or granted Factories remain ordinary. A Factory destroyed on capture by N17 or by failed ownership admission never becomes a P34 Factory. P34 + N09 remains legal, enabling conquest-only access to the transformed Factory behavior.
