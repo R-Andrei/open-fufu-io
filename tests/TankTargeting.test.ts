@@ -28,6 +28,7 @@ function targetFixture(
   terrain: readonly string[],
   ownership: readonly (string | null)[],
   alphaTraits: readonly OriginTraitId[] = [],
+  betaTraits: readonly OriginTraitId[] = [],
 ): MatchState {
   return createInitialMatchState(
     createMicroSimulationSpec({
@@ -38,10 +39,22 @@ function targetFixture(
       initialOwners: ownership,
       factions: [
         { id: "alpha", rules: rulesWithTraits(alphaTraits) },
-        { id: "beta", rules: rulesWithTraits() },
+        { id: "beta", rules: rulesWithTraits(betaTraits) },
       ],
     }),
   );
+}
+
+function withAtWar(state: MatchState): MatchState {
+  return createProspectiveMatchState(state, {
+    hostilityGrace: [
+      {
+        sideA: { kind: "FACTION", id: "alpha" },
+        sideB: { kind: "FACTION", id: "beta" },
+        expiresAtTickExclusive: state.tick + 600,
+      },
+    ],
+  });
 }
 
 function addUnit(
@@ -77,6 +90,7 @@ function select(
   currentCellId: number,
   operatingAnchorCellId: number,
   observedUnitIds: readonly string[],
+  observedCellIds: readonly number[] = [],
 ) {
   return selectTankAutonomousUnitTarget(state, {
     ownerId: "alpha",
@@ -84,10 +98,11 @@ function select(
     currentCellId,
     operatingAnchorCellId,
     observedUnitIds,
+    observedCellIds,
   });
 }
 
-describe("Tank autonomous unit-target arbitration", () => {
+describe("Tank autonomous target arbitration", () => {
   it("uses Tank-derived chassis -> Warship -> Train class priority before proximity", () => {
     let state = targetFixture(
       50,
@@ -262,5 +277,101 @@ describe("Tank autonomous unit-target arbitration", () => {
     expect(
       select(state, "HEAVY_ARTILLERY", 0, 0, [train.unit.id, warship.unit.id]),
     ).toEqual({ targetClass: "WARSHIP", unitId: warship.unit.id });
+  });
+
+  it("requires both current atWar and lawful cell observation for Population targeting", () => {
+    const peace = targetFixture(
+      2,
+      1,
+      ["PLAINS", "PLAINS"],
+      ["alpha", "beta"],
+    );
+
+    expect(select(peace, "TANK", 0, 0, [], [1])).toBeUndefined();
+
+    const war = withAtWar(peace);
+    expect(select(war, "TANK", 0, 0, [], [])).toBeUndefined();
+    expect(select(war, "TANK", 0, 0, [], [1])).toEqual({
+      targetClass: "POPULATION",
+      cellId: 1,
+    });
+  });
+
+  it("breaks equal Population traversal-time ties by ascending cellId", () => {
+    const state = withAtWar(
+      targetFixture(
+        3,
+        1,
+        ["PLAINS", "PLAINS", "PLAINS"],
+        ["beta", "alpha", "beta"],
+      ),
+    );
+
+    expect(select(state, "TANK", 1, 1, [], [2, 0])).toEqual({
+      targetClass: "POPULATION",
+      cellId: 0,
+    });
+  });
+
+  it("uses the target owner's effective P48 Shallow-Water population-bearing permission", () => {
+    const ordinary = withAtWar(
+      targetFixture(
+        2,
+        1,
+        ["PLAINS", "SHALLOW_WATER"],
+        ["alpha", "beta"],
+      ),
+    );
+    expect(select(ordinary, "TANK", 0, 0, [], [1])).toBeUndefined();
+
+    const blessed = withAtWar(
+      targetFixture(
+        2,
+        1,
+        ["PLAINS", "SHALLOW_WATER"],
+        ["alpha", "beta"],
+        [],
+        ["P48"],
+      ),
+    );
+    expect(select(blessed, "TANK", 0, 0, [], [1])).toEqual({
+      targetClass: "POPULATION",
+      cellId: 1,
+    });
+  });
+
+  it("places Population after Train and lets P43 fall through when Train raiding is disabled", () => {
+    const terrain = ["PLAINS", "PLAINS", "PLAINS"];
+    const ownership = ["alpha", "beta", "beta"];
+
+    let baseline = withAtWar(targetFixture(3, 1, terrain, ownership));
+    const baselineTrain = addUnit(baseline, {
+      ownerId: "beta",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 1,
+    });
+    baseline = baselineTrain.state;
+    expect(select(baseline, "TANK", 0, 0, [baselineTrain.unit.id], [2])).toEqual({
+      targetClass: "TRAIN",
+      unitId: baselineTrain.unit.id,
+    });
+
+    let artillery = withAtWar(
+      targetFixture(3, 1, terrain, ownership, ["P43"]),
+    );
+    const artilleryTrain = addUnit(artillery, {
+      ownerId: "beta",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 1,
+    });
+    artillery = artilleryTrain.state;
+    expect(
+      select(artillery, "HEAVY_ARTILLERY", 0, 0, [artilleryTrain.unit.id], [2]),
+    ).toEqual({
+      targetClass: "POPULATION",
+      cellId: 2,
+    });
   });
 });
