@@ -600,9 +600,16 @@ export interface DeferredControllerStructureBuildAction {
   readonly cellId: number;
 }
 
+export interface DeferredControllerStructureUpgradeAction {
+  readonly type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE";
+  readonly ownerId: string;
+  readonly cellId: number;
+}
+
 export type ControllerProposedSimulationAction =
   | SimulationAction
-  | DeferredControllerStructureBuildAction;
+  | DeferredControllerStructureBuildAction
+  | DeferredControllerStructureUpgradeAction;
 
 export interface ControllerProposedAction {
   readonly key?: string;
@@ -844,6 +851,20 @@ function evaluateProposal(
       continue;
     }
 
+    if (command.kind === "UPGRADE_STRUCTURE") {
+      actions.push(
+        Object.freeze({
+          key: command.key,
+          action: Object.freeze({
+            type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE" as const,
+            ownerId: factionId,
+            cellId: command.cellId,
+          }),
+        }),
+      );
+      continue;
+    }
+
     return invalid("INVALID_COMMAND", command.key);
   }
 
@@ -961,7 +982,10 @@ function finalizeControllerRound(
         if (action.type === "CAPITULATE_FACTION") {
           reservations.add(`faction-status:${action.factionId}`);
         }
-        if (action.type !== "CONTROLLER_PURCHASE_STRUCTURE_BUILD") {
+        if (
+          action.type !== "CONTROLLER_PURCHASE_STRUCTURE_BUILD" &&
+          action.type !== "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE"
+        ) {
           actions.push(action);
         }
       }

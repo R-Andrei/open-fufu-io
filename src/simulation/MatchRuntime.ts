@@ -420,6 +420,35 @@ function mapStructureBuildFailure(
   }
 }
 
+function mapStructureUpgradeFailure(
+  code: StructurePurchaseFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+    case "MAX_LEVEL":
+      return decisionFailure("MAX_LEVEL", key);
+    case "INVALID_REQUEST":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "UNKNOWN_STRUCTURE":
+    case "NOT_OWNER":
+    case "NOT_COMPLETED":
+    case "CONSTRUCTION_IN_PROGRESS":
+    case "UPGRADE_NOT_PERMITTED":
+      return decisionFailure("INVALID_TARGET", key);
+    case "UNKNOWN_OWNER":
+      throw new Error(`controller upgrade invariant failed: ${code}`);
+    case "STRUCTURE_ID_CONFLICT":
+    case "OWNERSHIP_CAP":
+    case "CELL_NOT_OWNED":
+    case "CELL_OCCUPIED":
+    case "BUILD_NOT_PERMITTED":
+    case "PLACEMENT_GEOMETRY_UNAVAILABLE":
+      throw new Error(`unexpected upgrade transaction failure: ${code}`);
+  }
+}
+
 function controllerActionFailure(
   state: MatchState,
   proposed: ControllerProposedAction,
@@ -452,6 +481,15 @@ function controllerActionFailure(
       return purchased.ok
         ? undefined
         : mapStructureBuildFailure(purchased.failure.code, proposed.key);
+    }
+    case "PURCHASE_STRUCTURE_UPGRADE": {
+      const purchased = tryPurchaseStructureUpgrade(state, {
+        structureId: action.structureId,
+        ownerId: action.ownerId,
+      });
+      return purchased.ok
+        ? undefined
+        : mapStructureUpgradeFailure(purchased.failure.code, proposed.key);
     }
     default:
       validateAction(state, action);
@@ -531,27 +569,47 @@ export class MatchRuntime {
   private materializeControllerAction(
     proposed: ControllerProposedAction,
     sequence: number,
-  ): SimulationAction {
-    if (proposed.action.type !== "CONTROLLER_PURCHASE_STRUCTURE_BUILD") {
-      return proposed.action;
+    proposalBaseState: MatchState,
+  ): SimulationAction | undefined {
+    if (proposed.action.type === "CONTROLLER_PURCHASE_STRUCTURE_BUILD") {
+      return Object.freeze({
+        type: "PURCHASE_STRUCTURE_BUILD" as const,
+        structureId: `structure:purchase:${this.spec.seed}:${this.state.tick + 1}:${sequence}`,
+        ownerId: proposed.action.ownerId,
+        structureType: proposed.action.structureType,
+        cellId: proposed.action.cellId,
+      });
     }
-    return Object.freeze({
-      type: "PURCHASE_STRUCTURE_BUILD" as const,
-      structureId: `structure:purchase:${this.spec.seed}:${this.state.tick + 1}:${sequence}`,
-      ownerId: proposed.action.ownerId,
-      structureType: proposed.action.structureType,
-      cellId: proposed.action.cellId,
-    });
+    if (proposed.action.type === "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE") {
+      const structure = proposalBaseState.structures.find(
+        (candidate) => candidate.cellId === proposed.action.cellId,
+      );
+      if (structure === undefined) return undefined;
+      return Object.freeze({
+        type: "PURCHASE_STRUCTURE_UPGRADE" as const,
+        structureId: structure.id,
+        ownerId: proposed.action.ownerId,
+      });
+    }
+    return proposed.action;
   }
 
   private acceptControllerProposalAtomically(
     actions: readonly ControllerProposedAction[],
   ): DecisionFailure | undefined {
     const acceptedBatch: AcceptedSimulationInput[] = [];
+    const proposalBaseState = this.validationState();
 
     for (const proposed of actions) {
       const sequence = this.nextSequence + acceptedBatch.length;
-      const action = this.materializeControllerAction(proposed, sequence);
+      const action = this.materializeControllerAction(
+        proposed,
+        sequence,
+        proposalBaseState,
+      );
+      if (action === undefined) {
+        return decisionFailure("INVALID_TARGET", proposed.key);
+      }
       const priorInputs = [...this.pendingInputs, ...acceptedBatch];
       const validationState =
         priorInputs.length === 0

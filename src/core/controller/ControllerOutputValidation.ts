@@ -252,7 +252,7 @@ function isControllerCommand(value: unknown): boolean {
         isFiniteNumber(value.cellId)
       );
     case "UPGRADE_STRUCTURE":
-      return typeof value.structureId === "string";
+      return isFiniteNumber(value.cellId);
     case "BUILD_UNIT":
       return (
         isVocabularyValue(PURCHASABLE_UNIT_TYPES, value.unit) &&

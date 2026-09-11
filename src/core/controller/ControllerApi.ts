@@ -538,7 +538,7 @@ export interface StructureBuildQuote extends ActionQuote {
 }
 
 export interface StructureUpgradeQuote extends ActionQuote {
-  readonly structureId: StructureId;
+  readonly cellId: CellId;
   readonly currentLevel: StructureLevel;
   readonly resultingLevel: StructureLevel;
   readonly buildTicks: number;
@@ -832,12 +832,11 @@ export interface MechanicsApi {
   ): StrategicWeaponMechanicsSpec;
 
   structureBuildQuote(
-    type: StructureType,
+    structureType: StructureType,
     cellId: CellId,
-    factionId?: FactionId,
   ): StructureBuildQuote;
   structureUpgradeQuote(
-    structureId: StructureId,
+    cellId: CellId,
   ): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
@@ -898,6 +897,7 @@ export type DecisionFailureCode =
   | "COMMITMENT_LIMIT"
   | "OWNERSHIP_CAP"
   | "PERSISTENT_STRUCTURE_PRESENT"
+  | "MAX_LEVEL"
   | "CONFLICTING_PROPOSAL"
   | "INVALID_DIRECTIVE"
   | "INVALID_COMMAND"
@@ -1089,7 +1089,7 @@ export interface BuildStructureCommand {
 export interface UpgradeStructureCommand {
   readonly kind: "UPGRADE_STRUCTURE";
   readonly key: CommandKey;
-  readonly structureId: StructureId;
+  readonly cellId: CellId;
 }
 
 export interface BuildUnitCommand {
