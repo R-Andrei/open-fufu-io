@@ -1,3 +1,4 @@
+import type { MobileUnitType } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { resolveAdmittedTankUnitAttacks } from "../src/simulation/TankCombat";
@@ -10,7 +11,6 @@ import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarn
 import {
   createMobileUnit,
   type MobileUnitState,
-  type MobileUnitType,
 } from "../src/simulation/MobileUnits";
 import type {
   UnitAttackResolvedEvent,
@@ -45,7 +45,7 @@ function fixture(): MatchState {
 function addUnit(
   state: MatchState,
   ownerId: string,
-  type: MobileUnitType,
+  type: "TANK" | "TRAIN",
   cellId: number,
 ): Readonly<{ state: MatchState; unit: MobileUnitState }> {
   const created = createMobileUnit(
@@ -57,8 +57,8 @@ function addUnit(
     },
     {
       ownerId,
-      type,
-      movementClass: type,
+      type: type satisfies MobileUnitType,
+      movementClass: type === "TRAIN" ? "RAIL" : "TANK",
       cellId,
     },
   );
