@@ -39,11 +39,11 @@ import {
   advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
   canDispatchFactoryPrimaryTrain,
+  createFactoryTrainDispatchRoutes,
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
-  createTrainRouteInput,
+  dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
-  markFactoryPrimaryTrainDispatched,
   transferFactoryTrainServiceEpoch,
 } from "./TrainService";
 
@@ -230,6 +230,21 @@ function reconcileStoredFactoryTrainDispatches(
       continue;
     }
 
+    const owner = state.factions.find(
+      (faction) => faction.id === factory.ownerId,
+    );
+    if (owner === undefined) {
+      throw new Error(
+        `Factory ${factory.id} has unknown owner ${factory.ownerId}`,
+      );
+    }
+    const p07Active = owner.rules.customDomains.some(
+      (entry) =>
+        entry.sourceKind === "ORIGIN" &&
+        entry.sourceId === "P07" &&
+        entry.domain === "FACTORY_DISPATCH_SCHEDULER",
+    );
+
     const created = createMobileUnit(
       state.map,
       ownerIds,
@@ -241,10 +256,19 @@ function reconcileStoredFactoryTrainDispatches(
         cellId: loop!.cells[0]!,
       },
     );
+    const dispatch = dispatchFactoryPrimaryTrain(
+      epoch,
+      created.unit.id,
+      p07Active,
+    );
+    const routes = createFactoryTrainDispatchRoutes(
+      loop!.cells,
+      dispatch.bonusTrainRequired,
+    );
     const routed = assignMobileUnitRoute(
       state.map,
       created.unit,
-      createTrainRouteInput(loop!.cells),
+      routes.primary,
     );
 
     mobileUnits = created.mobileUnits.map((unit) =>
@@ -252,32 +276,68 @@ function reconcileStoredFactoryTrainDispatches(
     );
     nextMobileUnitOrdinal = created.nextMobileUnitOrdinal;
 
-    const retainedLifecycle = retainFactoryRailLoopSnapshot(
+    let retainedLifecycle = retainFactoryRailLoopSnapshot(
       lifecycle!,
       routed.id,
     );
-    factoryRailLoops = factoryRailLoops.map((entry) =>
-      entry.factoryId === factory.id ? retainedLifecycle : entry,
+    const dispatchSnapshot = createTrainDispatchEconomicSnapshot(
+      factory.id,
+      factory.ownerId,
+      factory.completedLevel!,
     );
-    loopsByFactory.set(factory.id, retainedLifecycle);
-
-    epoch = markFactoryPrimaryTrainDispatched(epoch, routed.id);
-    factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
-      entry.factoryId === factory.id ? epoch : entry,
-    );
-    epochsByFactory.set(factory.id, epoch);
     trainServices.push({
       trainId: routed.id,
       factoryId: factory.id,
       loopSnapshotId: routed.id,
       isPrimary: true,
-      dispatchSnapshot: createTrainDispatchEconomicSnapshot(
-        factory.id,
-        factory.ownerId,
-        factory.completedLevel!,
-      ),
+      dispatchSnapshot,
       resumeAtTick: null,
     });
+
+    epoch = dispatch.epoch;
+    if (routes.bonus !== null) {
+      const bonusCreated = createMobileUnit(
+        state.map,
+        ownerIds,
+        { mobileUnits, nextMobileUnitOrdinal },
+        {
+          ownerId: factory.ownerId,
+          type: "TRAIN",
+          movementClass: "RAIL",
+          cellId: loop!.cells[0]!,
+        },
+      );
+      const bonusRouted = assignMobileUnitRoute(
+        state.map,
+        bonusCreated.unit,
+        routes.bonus,
+      );
+      mobileUnits = bonusCreated.mobileUnits.map((unit) =>
+        unit.id === bonusRouted.id ? bonusRouted : unit,
+      );
+      nextMobileUnitOrdinal = bonusCreated.nextMobileUnitOrdinal;
+      retainedLifecycle = retainFactoryRailLoopSnapshot(
+        retainedLifecycle,
+        bonusRouted.id,
+      );
+      trainServices.push({
+        trainId: bonusRouted.id,
+        factoryId: factory.id,
+        loopSnapshotId: bonusRouted.id,
+        isPrimary: false,
+        dispatchSnapshot,
+        resumeAtTick: null,
+      });
+    }
+
+    factoryRailLoops = factoryRailLoops.map((entry) =>
+      entry.factoryId === factory.id ? retainedLifecycle : entry,
+    );
+    loopsByFactory.set(factory.id, retainedLifecycle);
+    factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+      entry.factoryId === factory.id ? epoch : entry,
+    );
+    epochsByFactory.set(factory.id, epoch);
   }
 
   const survivingTrainServices: typeof trainServices = [];
