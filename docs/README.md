@@ -15,6 +15,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | High-level Open Fufu target design and cross-system invariants | [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md) |
 | Game-wide effective-rule composition, rule-axis taxonomy, modifier algebra, normalization, and static composition validation | [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md) |
 | OpenFront → Open Fufu migration, runtime topology, persistence, version binding, source traceability, deployment, and implementation sequencing | [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md) |
+| Deterministic simulation-domain event boundary, envelope, causal-event semantics, and in-tick delivery invariants | [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md) |
 | Exact production map-artifact package/manifest schemas, canonical serialization/content identity, terrain-code encoding, and artifact validation | [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts) |
 | HTTP/control-plane service API | [`service/SERVICE_API.md`](./service/SERVICE_API.md) |
 | Live participant/spectator stream protocol | [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md) |
@@ -40,7 +41,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Official-AI named-Origin strategic rationale | [`official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_ORIGIN_CONFIGURATIONS.md) |
 | Official-AI Baseline/character behavioral rationale and signature semantics | [`official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md`](./official-ai/OFFICIAL_AI_CHARACTER_CONFIGURATIONS.md) |
 | Exact Official-AI trait-support, combination-support, and suppression mappings | [`../design/official-ai/origin-trait-support.config.ts`](../design/official-ai/origin-trait-support.config.ts) |
-| Exact Official-AI named-Origin mappings, assertions, and named support | [`../design/official-ai/origin-configurations.config.ts`](../design/official-ai/origin-configurations.config.ts) |
+| Exact named Official-Origin mappings, assertions, and named support | [`../design/official-ai/origin-configurations.config.ts`](../design/official-ai/origin-configurations.config.ts) |
 | Exact Difficulty-0 Baseline and Official character `CharacterProfile` mappings | [`../design/official-ai/character-configurations.config.ts`](../design/official-ai/character-configurations.config.ts) |
 | Minor Factions / Goons | [`MINOR_FACTIONS.md`](./MINOR_FACTIONS.md) |
 
