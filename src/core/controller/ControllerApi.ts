@@ -200,6 +200,8 @@ export interface CellView {
   readonly segmentId?: SegmentId;
   readonly isCoast: boolean;
   readonly isShoreline: boolean;
+  /** Lawfully visible persistent structure on this cell, addressed by the enclosing CellId. */
+  readonly structure?: ControllerStructureView;
 }
 
 export interface SegmentView {
@@ -266,6 +268,20 @@ export interface ChargeStateView {
 export interface StructureConstructionView {
   readonly targetLevel: StructureLevel;
   readonly remainingTicks: number;
+}
+
+/**
+ * ID-less persistent-structure facts exposed through CellView. The enclosing
+ * CellId is the public address; internal stable StructureId remains engine-owned.
+ */
+export interface ControllerStructureView {
+  readonly ownerId: FactionId;
+  readonly type: StructureType;
+  readonly cellId: CellId;
+  readonly completedLevel?: StructureLevel;
+  readonly active: boolean;
+  readonly construction?: StructureConstructionView;
+  readonly chargeState?: ChargeStateView;
 }
 
 export interface StructureView {
@@ -538,10 +554,10 @@ export interface StructureBuildQuote extends ActionQuote {
 }
 
 export interface StructureUpgradeQuote extends ActionQuote {
-  readonly structureId: StructureId;
-  readonly currentLevel: StructureLevel;
-  readonly resultingLevel: StructureLevel;
-  readonly buildTicks: number;
+  readonly cellId: CellId;
+  readonly currentLevel?: StructureLevel;
+  readonly resultingLevel?: StructureLevel;
+  readonly buildTicks?: number;
 }
 
 export interface UnitBuildQuote extends ActionQuote {
@@ -832,12 +848,11 @@ export interface MechanicsApi {
   ): StrategicWeaponMechanicsSpec;
 
   structureBuildQuote(
-    type: StructureType,
+    structureType: StructureType,
     cellId: CellId,
-    factionId?: FactionId,
   ): StructureBuildQuote;
   structureUpgradeQuote(
-    structureId: StructureId,
+    cellId: CellId,
   ): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
@@ -898,6 +913,15 @@ export type DecisionFailureCode =
   | "COMMITMENT_LIMIT"
   | "OWNERSHIP_CAP"
   | "PERSISTENT_STRUCTURE_PRESENT"
+  | "CELL_NOT_OWNED"
+  | "CELL_OCCUPIED"
+  | "BUILD_NOT_PERMITTED"
+  | "PLACEMENT_GEOMETRY_UNAVAILABLE"
+  | "NOT_OWNER"
+  | "NOT_COMPLETED"
+  | "CONSTRUCTION_IN_PROGRESS"
+  | "MAX_LEVEL"
+  | "UPGRADE_NOT_PERMITTED"
   | "CONFLICTING_PROPOSAL"
   | "INVALID_DIRECTIVE"
   | "INVALID_COMMAND"
@@ -1089,7 +1113,7 @@ export interface BuildStructureCommand {
 export interface UpgradeStructureCommand {
   readonly kind: "UPGRADE_STRUCTURE";
   readonly key: CommandKey;
-  readonly structureId: StructureId;
+  readonly cellId: CellId;
 }
 
 export interface BuildUnitCommand {

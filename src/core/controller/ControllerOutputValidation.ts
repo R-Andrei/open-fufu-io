@@ -89,6 +89,14 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+function isCellId(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+  );
+}
+
 function hasOptionalString(record: Record<string, unknown>, key: string): boolean {
   return record[key] === undefined || typeof record[key] === "string";
 }
@@ -249,10 +257,10 @@ function isControllerCommand(value: unknown): boolean {
     case "BUILD_STRUCTURE":
       return (
         isVocabularyValue(STRUCTURE_TYPES, value.structure) &&
-        isFiniteNumber(value.cellId)
+        isCellId(value.cellId)
       );
     case "UPGRADE_STRUCTURE":
-      return typeof value.structureId === "string";
+      return isCellId(value.cellId);
     case "BUILD_UNIT":
       return (
         isVocabularyValue(PURCHASABLE_UNIT_TYPES, value.unit) &&
