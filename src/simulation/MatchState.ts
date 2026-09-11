@@ -1,4 +1,7 @@
-import type { FactionStatus } from "../core/controller/ControllerApi";
+import type {
+  FactionStatus,
+  StructureType,
+} from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
@@ -41,12 +44,24 @@ import {
   type PersistentStructureState,
 } from "./Structures";
 
+const STRUCTURE_TYPES = new Set<StructureType>([
+  "CITY",
+  "FORT",
+  "PORT",
+  "FACTORY",
+  "MISSILE_SILO",
+  "SAM_LAUNCHER",
+  "OBSERVATION_POST",
+  "COMMAND_POST",
+]);
+
 export interface MatchFactionState {
   readonly id: string;
   readonly status: FactionStatus;
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
   readonly ffy: number;
+  readonly successfulStructurePurchaseTypes: readonly StructureType[];
   readonly testMarker: number;
   readonly fixedTeamId?: string;
 }
@@ -93,6 +108,22 @@ function createSyntheticMap(map: SyntheticMapSpec): SimulationMap {
   });
 }
 
+function freezeSuccessfulStructurePurchaseTypes(
+  types: readonly StructureType[],
+): readonly StructureType[] {
+  const seen = new Set<StructureType>();
+  for (const type of types) {
+    if (!STRUCTURE_TYPES.has(type)) {
+      throw new Error(`unknown successful structure purchase type: ${String(type)}`);
+    }
+    if (seen.has(type)) {
+      throw new Error(`duplicate successful structure purchase type: ${type}`);
+    }
+    seen.add(type);
+  }
+  return Object.freeze([...seen].sort());
+}
+
 function freezeFactions(
   factions: readonly MatchFactionState[],
 ): readonly MatchFactionState[] {
@@ -104,6 +135,9 @@ function freezeFactions(
         rules: faction.rules,
         population: createPopulationState(faction.population),
         ffy: materializeFfyBalance(faction.ffy),
+        successfulStructurePurchaseTypes: freezeSuccessfulStructurePurchaseTypes(
+          faction.successfulStructurePurchaseTypes ?? [],
+        ),
         testMarker: faction.testMarker,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -285,6 +319,7 @@ function createEmptyInitialMatchState(
         rules: faction.rules,
         population: createEmptyPopulationState(),
         ffy: STARTING_FFY,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -385,6 +420,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           faction.population.neutralSettlementHalfResidual,
       },
       ffy: faction.ffy,
+      successfulStructurePurchaseTypes: [
+        ...(faction.successfulStructurePurchaseTypes ?? []),
+      ],
       testMarker: faction.testMarker,
       rules: {
         version: faction.rules.version,

@@ -1,4 +1,7 @@
-import type { DirectiveChanges } from "../core/controller/ControllerApi";
+import type {
+  DirectiveChanges,
+  StructureType,
+} from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
 import { reconcileHostilityGrace } from "./HostilityState";
 import {
@@ -19,7 +22,11 @@ import {
   type PopulationBucket,
   type PopulationState,
 } from "./Population";
-import { resolvePersistentStructureLifecycleTick } from "./Structures";
+import {
+  resolvePersistentStructureLifecycleTick,
+  tryPurchaseStructureBuild,
+  tryPurchaseStructureUpgrade,
+} from "./Structures";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -67,6 +74,20 @@ export interface ApplyPersistentDirectivesAction {
   readonly changes: DirectiveChanges;
 }
 
+export interface PurchaseStructureBuildAction {
+  readonly type: "PURCHASE_STRUCTURE_BUILD";
+  readonly structureId: string;
+  readonly ownerId: string;
+  readonly structureType: StructureType;
+  readonly cellId: number;
+}
+
+export interface PurchaseStructureUpgradeAction {
+  readonly type: "PURCHASE_STRUCTURE_UPGRADE";
+  readonly structureId: string;
+  readonly ownerId: string;
+}
+
 export type SimulationAction =
   | SetTestMarkerAction
   | CapitulateFactionAction
@@ -74,7 +95,9 @@ export type SimulationAction =
   | RepartitionPopulationAction
   | RemovePopulationAction
   | TransferPopulationAction
-  | ApplyPersistentDirectivesAction;
+  | ApplyPersistentDirectivesAction
+  | PurchaseStructureBuildAction
+  | PurchaseStructureUpgradeAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -245,6 +268,40 @@ export class TickEngine {
             operations: applied.operations,
             defensePriorities: applied.defensePriorities,
             hostilityGrace,
+          });
+          break;
+        }
+        case "PURCHASE_STRUCTURE_BUILD": {
+          const purchased = tryPurchaseStructureBuild(working, {
+            structureId: action.structureId,
+            ownerId: action.ownerId,
+            type: action.structureType,
+            cellId: action.cellId,
+          });
+          if (!purchased.ok) {
+            throw new Error(
+              `accepted structure build purchase became invalid: ${purchased.failure.code}`,
+            );
+          }
+          working = createProspectiveMatchState(working, {
+            factions: purchased.factions,
+            structures: purchased.structures,
+          });
+          break;
+        }
+        case "PURCHASE_STRUCTURE_UPGRADE": {
+          const purchased = tryPurchaseStructureUpgrade(working, {
+            structureId: action.structureId,
+            ownerId: action.ownerId,
+          });
+          if (!purchased.ok) {
+            throw new Error(
+              `accepted structure upgrade purchase became invalid: ${purchased.failure.code}`,
+            );
+          }
+          working = createProspectiveMatchState(working, {
+            factions: purchased.factions,
+            structures: purchased.structures,
           });
           break;
         }
