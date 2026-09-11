@@ -13,6 +13,7 @@ import {
   tankWeaponRangeContains,
   tryStartTankProduction,
 } from "../src/simulation/Tanks";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -248,5 +249,76 @@ describe("baseline Tank lifecycle", () => {
       movementClass: "TANK",
       cellId: 0,
     });
+  });
+
+  it("runs Tank production after structure lifecycle so paused work resumes on the Factory activation tick", () => {
+    const accepted = tryStartTankProduction(productionFixture(250_000), {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Tank production admission");
+
+    const temporarilyInactive = createProspectiveMatchState(accepted.state, {
+      structures: accepted.state.structures.map((structure) =>
+        structure.id === "alpha-factory"
+          ? {
+              ...structure,
+              completedLevel: undefined,
+              active: false,
+              construction: { targetLevel: 1 as const, remainingTicks: 2 },
+            }
+          : structure,
+      ),
+    });
+    const engine = new TickEngine();
+
+    const paused = engine.advance(temporarilyInactive, []);
+    expect(
+      paused.structures.find((structure) => structure.id === "alpha-factory"),
+    ).toMatchObject({
+      active: false,
+      construction: { targetLevel: 1, remainingTicks: 1 },
+    });
+    expect(paused.tankProductionJobs[0]).toMatchObject({
+      state: "BUILDING",
+      remainingTicks: 50,
+    });
+
+    const resumed = engine.advance(paused, []);
+    expect(
+      resumed.structures.find((structure) => structure.id === "alpha-factory"),
+    ).toMatchObject({ active: true, completedLevel: 1 });
+    expect(resumed.tankProductionJobs[0]).toMatchObject({
+      state: "BUILDING",
+      remainingTicks: 49,
+    });
+  });
+
+  it("observes capture transfer before the final production phase and cancels the old owner's job without refund", () => {
+    const accepted = tryStartTankProduction(productionFixture(250_000), {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Tank production admission");
+
+    const capturedCell = createProspectiveMatchState(accepted.state, {
+      ownership: accepted.state.ownership.map((ownerId, cellId) =>
+        cellId === 1 ? "beta" : ownerId,
+      ),
+    });
+    const advanced = new TickEngine().advance(capturedCell, []);
+
+    expect(
+      advanced.structures.find((structure) => structure.id === "alpha-factory"),
+    ).toMatchObject({
+      ownerId: "beta",
+      acquisitionPath: "CAPTURE_TRANSFER",
+    });
+    expect(advanced.tankProductionJobs).toHaveLength(0);
+    expect(
+      advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(0);
   });
 });
