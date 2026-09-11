@@ -14,10 +14,8 @@ import {
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
-import {
-  advanceTankRepairPhase,
-  type TankOperationalState,
-} from "../src/simulation/Tanks";
+import { advanceTankRepairPhase } from "../src/simulation/TankRepair";
+import type { TankOperationalState } from "../src/simulation/Tanks";
 
 function rules(
   traits: readonly OriginTraitId[] = [],
