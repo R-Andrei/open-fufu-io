@@ -354,11 +354,14 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
   const firingUnitIds = new Set<string>();
 
   for (const operational of state.tankOperationalStates) {
+    const retainedTarget = operational.retainedTarget;
     if (
       operational.eligibleFromTick > state.tick ||
       operational.repairFactoryId !== undefined ||
       operational.attackReadyAtTick > state.tick ||
-      operational.retainedTarget?.targetClass !== "TANK_CHASSIS"
+      retainedTarget === undefined ||
+      (retainedTarget.targetClass !== "TANK_CHASSIS" &&
+        retainedTarget.targetClass !== "TRAIN")
     ) {
       continue;
     }
@@ -369,10 +372,12 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     ) {
       continue;
     }
-    const target = unitsById.get(operational.retainedTarget.unitId);
+    const target = unitsById.get(retainedTarget.unitId);
+    if (target === undefined) continue;
     if (
-      target === undefined ||
-      (target.type !== "TANK" && target.type !== "HEAVY_ARTILLERY")
+      retainedTarget.targetClass === "TANK_CHASSIS"
+        ? target.type !== "TANK" && target.type !== "HEAVY_ARTILLERY"
+        : unit.type !== "TANK" || target.type !== "TRAIN"
     ) {
       continue;
     }
@@ -392,7 +397,7 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
         currentCellId: unit.cellId,
         operatingAnchorCellId: operational.operatingAnchorCellId,
       },
-      operational.retainedTarget,
+      retainedTarget,
     );
     if (
       plan === undefined ||
