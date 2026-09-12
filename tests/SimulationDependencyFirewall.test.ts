@@ -497,6 +497,26 @@ describe("simulation dependency firewall", () => {
     ).toThrow(/require.*string literal/i);
   });
 
+  it("does not drop configured internal path aliases", () => {
+    expect(
+      relativeModuleSpecifiersFromSource(
+        "fixture.ts",
+        'import type { EconomyState } from "src/simulation/Economy";',
+      ),
+    ).toEqual(["src/simulation/Economy"]);
+  });
+
+  it("uses TypeScript extension substitution for simulation imports", () => {
+    const importer = join(process.cwd(), "src", "simulation", "Structures.ts");
+    expect(
+      resolveSimulationImport(
+        importer,
+        "./Economy.js",
+        new Set(["src/simulation/Economy.ts"]),
+      ),
+    ).toBe("src/simulation/Economy.ts");
+  });
+
   it("requires an exhaustive reviewed simulation-boundary classification", () => {
     const simulationRoot = join(process.cwd(), "src", "simulation");
     const graph = simulationImportGraph(simulationRoot);
@@ -772,7 +792,7 @@ describe("simulation dependency firewall", () => {
         targetSide: { kind: "FACTION", id: "alpha" },
       },
     ]);
-    expect(new Set(applied.events.map((event) => event.id)).size).toBe(2);
+    expect(new Set(applied.events.map((event) => event.id)).size.toBe(2);
     expect(applied.events.every((event) => event.tick === 5)).toBe(true);
 
     const repeated = tryApplyPersistentDirectiveChangesWithEvents(
