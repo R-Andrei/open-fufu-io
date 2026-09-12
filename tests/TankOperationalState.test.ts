@@ -9,10 +9,12 @@ import {
   type MatchStateUpdate,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createMobileUnit } from "../src/simulation/MobileUnits";
 import {
   advanceTankProductionPhase,
   tryStartTankProduction,
 } from "../src/simulation/Tanks";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 type TankRetainedTargetProbe =
   | Readonly<{
@@ -47,6 +49,10 @@ type MatchStateWithTankOperationalStates = MatchState &
     tankOperationalStates?: readonly TankOperationalStateProbe[];
     directReveals?: readonly DirectRevealProbe[];
   }>;
+
+function emptyRules() {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
 
 function rulesWithFractionalHealthEcho() {
   const contribution: RuleContribution = {
@@ -104,6 +110,93 @@ function completeBaselineTank(state: MatchState): MatchState {
     working = advanceTankProductionPhase(working);
   }
   return working;
+}
+
+function autonomousIntentFixture(alphaHealth: bigint): Readonly<{
+  state: MatchState;
+  alphaUnitId: string;
+  betaUnitId: string;
+}> {
+  let state = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-autonomous-intent-red",
+      width: 3,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "alpha"],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-factory",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules: emptyRules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const ownerIds = state.factions.map((faction) => faction.id);
+  const alpha = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 1,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: alpha.mobileUnits,
+    nextMobileUnitOrdinal: alpha.nextMobileUnitOrdinal,
+  });
+  const beta = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 2,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: beta.mobileUnits,
+    nextMobileUnitOrdinal: beta.nextMobileUnitOrdinal,
+    tankOperationalStates: [
+      {
+        unitId: alpha.unit.id,
+        health: { numerator: alphaHealth, denominator: 1n },
+        operatingAnchorCellId: alpha.unit.cellId,
+        eligibleFromTick: 1,
+        attackReadyAtTick: 1,
+      },
+      {
+        unitId: beta.unit.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: beta.unit.cellId,
+        eligibleFromTick: 1,
+        attackReadyAtTick: 1,
+      },
+    ],
+  });
+  return Object.freeze({
+    state,
+    alphaUnitId: alpha.unit.id,
+    betaUnitId: beta.unit.id,
+  });
 }
 
 describe("Tank authoritative operational state", () => {
@@ -249,5 +342,31 @@ describe("Tank authoritative operational state", () => {
     expect(canonicalMatchStateSerialization(withReveals)).not.toBe(
       canonicalMatchStateSerialization(initial),
     );
+  });
+
+  it("acquires a lawfully visible hostile Tank in TickEngine intent on the first eligible tick", () => {
+    const fixture = autonomousIntentFixture(1_000n);
+    const advanced = new TickEngine().advance(fixture.state, []);
+    const alpha = advanced.tankOperationalStates.find(
+      (operational) => operational.unitId === fixture.alphaUnitId,
+    );
+
+    expect(advanced.tick).toBe(1);
+    expect(alpha?.repairFactoryId).toBeUndefined();
+    expect(alpha?.retainedTarget).toEqual({
+      targetClass: "TANK_CHASSIS",
+      unitId: fixture.betaUnitId,
+    });
+  });
+
+  it("gives exact-threshold Factory repair priority over same-tick target acquisition", () => {
+    const fixture = autonomousIntentFixture(500n);
+    const advanced = new TickEngine().advance(fixture.state, []);
+    const alpha = advanced.tankOperationalStates.find(
+      (operational) => operational.unitId === fixture.alphaUnitId,
+    );
+
+    expect(alpha?.repairFactoryId).toBe("alpha-factory");
+    expect(alpha?.retainedTarget).toBeUndefined();
   });
 });
