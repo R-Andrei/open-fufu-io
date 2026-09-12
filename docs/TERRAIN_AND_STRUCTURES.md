@@ -773,7 +773,7 @@ Train
 Population
 ```
 
-Within the first non-empty eligible class, choose the target requiring the least expected legal traversal time to a firing position under the chassis's current effective movement profile. A target already legally in range has traversal time zero. Equal traversal-time candidates break ties by stable target identity; Population-cell ties use ascending stable `cellId`.
+Within the first non-empty eligible class, choose the target requiring the least expected legal traversal time to a firing position under the chassis's current effective movement profile. A target already legally in range has traversal time zero. Equal traversal-time candidates break ties by stable target identity; Population-cell ties use ascending stable `cellId`. When pursuit has more than one legal firing position at the same minimum traversal time, choose the position with the lowest stable `cellId`.
 
 The selected target is sticky. It remains retained rather than being replaced merely because another candidate later becomes nearer or belongs to a higher-priority class. Clear it only when the target is destroyed/ceases to exist, is no longer lawfully observed, is no longer a legal target, has no legal reachable firing position, or is outside the chassis's 100-cell operating leash. A new acquisition then repeats the class-priority and tie rules above.
 
