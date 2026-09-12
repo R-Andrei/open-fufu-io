@@ -9,7 +9,9 @@ Neighboring concerns remain owned elsewhere:
 - authoritative simulation runtime topology, `MatchRuntime`, `MatchState`, `TickEngine`, persistence architecture, and implementation sequencing: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
 - gameplay legality, damage, target selection, timing, and subsystem-specific physical outcomes: the focused gameplay owners registered in [`README.md`](./README.md);
 - FFY event valuation and economic consequences: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
-- Origin-specific gameplay transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
+- Origin-specific gameplay transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
+- controller-visible projected-event schemas: [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts);
+- live participant/spectator transport envelopes and stream-event schemas: [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md).
 
 This contract does not replace those owners and does not make every state transition an event.
 
@@ -242,7 +244,22 @@ This separation allows additional consumers such as economy, statistics, diploma
 
 ---
 
-## 7. Extension rule
+## 7. Event layers and adapters
+
+`SimulationEvent` is the canonical **internal authoritative simulation-domain fact** used when an occurrence crosses simulation ownership boundaries. Other surfaces that use the word `event` are consumers/adapters with their own narrower contracts; they are not alternate simulation buses.
+
+In particular:
+
+- FFY positive-event and signed-fact inputs are Economy-owned valuation/application inputs. A physical or lifecycle producer must not bypass the simulation-domain boundary by writing Economy-private event inputs directly when the economic consequence originates in another subsystem; the Economy adapter derives those inputs from the relevant canonical fact plus Economy-owned/current authoritative state.
+- controller-facing `ControllerEvent` values are requester-lawful observation projections. They may be derived from canonical simulation facts and current lawful state, but their public payload vocabulary, visibility filtering, retention window, and controller API versioning remain owned by `ControllerApi.ts`.
+- participant/spectator stream events and envelopes are transport/projection messages. Their stream sequence is not a simulation-event ID, and their schemas/versioning remain owned by `PARTICIPANT_PROTOCOL.md`.
+- diagnostics, statistics, replay evidence, or presentation may consume canonical facts where their focused contracts require occurrences, but they must not create a second authoritative occurrence channel back into gameplay state.
+
+A focused gameplay owner may define the meaning and minimum factual context of one of its occurrences. When that occurrence must cross into another subsystem, implementation uses the common `SimulationEvent` envelope and the deterministic delivery rules here rather than inventing a sibling callback/listener/result-delivery architecture. Exact focused mechanics remain with the focused owner.
+
+---
+
+## 8. Extension rule
 
 New cross-system event kinds must follow the same ownership discipline:
 

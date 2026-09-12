@@ -7,6 +7,7 @@ This file is the **canonical owner for Open Fufu base terrain, physical rail top
 Neighboring concerns are owned elsewhere:
 
 - game-wide teams, hostility, and `atWar` lifecycle: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
+- deterministic cross-system simulation-event boundary and delivery: [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md);
 - FFY, Factory Train service, and Trade Ship economics: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
 - Warships, Transports, and strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
 - Origin transformations of terrain, structures, or units: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
@@ -375,14 +376,20 @@ The Origin catalogue owns which traits create grants. Strategic Spawn owns P20 s
 
 ## 2.4 Structure capture resolution
 
-A successful territorial capture of a cell containing an enemy persistent structure does **not** directly call a raw ownership setter. It creates a deterministic structure-capture resolution inside the same authoritative capture transaction.
+A successful territorial capture of a cell containing an enemy persistent structure first commits the territorial owner's political-ownership transition. That producer emits the canonical `CELL_OWNERSHIP_CHANGED` fact defined by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md). The persistent-structure resolver consumes that already-resolved occurrence and determines only the structure-owned fate of the physical structure on the changed cell.
 
-Territorial capture success is already established before this resolver runs. Structure rules may determine the structure's fate and capture consequences, but they do not retroactively veto the successful cell capture unless a separate territorial-acquisition rule explicitly says so.
+Territorial capture success is therefore established before the structure resolver runs. Structure rules may determine the structure's fate, but they do not retroactively veto the successful cell capture unless a separate territorial-acquisition rule explicitly says so.
 
 Canonical pipeline:
 
 ```text
 successful territorial capture of occupied cell
+    ↓
+commit political ownership
+    ↓
+emit CELL_OWNERSHIP_CHANGED
+    ↓
+Structures consumes the ownership fact
     ↓
 freeze StructureCaptureContext
     ↓
@@ -393,18 +400,22 @@ if disposition remains TRANSFER:
     ↓
 resolve final structure disposition
     ↓
-resolve typed capture consequences from the final result
+commit structure fate
     ↓
-commit cell ownership + structure fate + consequences atomically
+emit immutable StructureCaptureResolved simulation fact
     ↓
-emit immutable StructureCaptureResolved fact
+explicitly ordered downstream consumers apply only their owned consequences
 ```
 
-For the simulation tick that contains this capture, that entire territorial-capture/structure-fate transaction resolves **before** end-of-tick persistent-structure construction progression. The frozen capture context therefore observes the pre-progress `construction.remainingTicks`; a successful transfer preserves that exact value. Only after the capture transaction commits does lifecycle progression subtract the tick and perform any resulting completion. Consequently, a structure captured with `remainingTicks = 1` transfers while still incomplete and may then complete later in the same tick under the new owner. Post-transfer field queries use the new owner's effective rules at the structure's still-current completed level until any later atomic completion changes that level.
+`StructureCaptureResolved` is a cross-system simulation-domain fact and therefore uses the common envelope/delivery invariants in [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md). This structure owner defines its factual capture meaning; downstream Economy, Factory-service, Origin, statistics, projection, and other consumers own their own consequences. A downstream consequence is not rolled into the Structure state commit merely because it reacts on the same tick.
+
+For the simulation tick that contains this capture, territorial ownership resolution precedes structure-fate resolution, and structure-fate resolution completes **before** end-of-tick persistent-structure construction progression. The frozen capture context therefore observes the pre-progress `construction.remainingTicks`; a successful transfer preserves that exact value. Only after the structure fate commits does lifecycle progression subtract the tick and perform any resulting completion. Consequently, a structure captured with `remainingTicks = 1` transfers while still incomplete and may then complete later in the same tick under the new owner. Post-transfer field queries use the new owner's effective rules at the structure's still-current completed level until any later atomic completion changes that level.
+
+Focused downstream owners may require an earlier tick snapshot for their own consequence valuation. Event routing does not move or redefine such a focused snapshot boundary: for example, P05's capture-tick earning snapshot remains owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). The canonical fact determines whether the qualifying structure occurrence happened; the consumer applies its own already-defined temporal sampling rule.
 
 ### 2.4.1 Capture context and disposition
 
-The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time.
+The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time. `StructureCaptureResolved` preserves the lifecycle-safe factual context needed after a `DESTROY` result removes the physical structure from current state.
 
 V1 has exactly two generic final dispositions:
 
@@ -435,13 +446,13 @@ Fresh construction therefore remains fresh construction after transfer, includin
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
-Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`, and a focused subsystem may close the previous owner's operational epoch and initialize the new owner's epoch while preserving the physical structure. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
+Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`. A focused subsystem that owns an operational epoch reacts to the immutable transfer result through the canonical simulation-event boundary rather than being mutated inside the structure resolver. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved Structure state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
 
-### 2.4.3 Typed capture consequences, not mutating event listeners
+### 2.4.3 Typed capture facts, not mutating event listeners
 
-Gameplay systems that care about structure capture participate through typed deterministic resolver inputs/consequences rather than arbitrary post-hoc listeners that mutate canonical state in unspecified order.
+Gameplay systems that care about structure capture consume the immutable deterministic `StructureCaptureResolved` occurrence through explicit phase ordering. They do not register arbitrary post-hoc listeners, feed consumer-private state back into the structure resolver, or ask the structure resolver to commit another subsystem's consequence.
 
-The resolver distinguishes at least these trigger stages:
+The resolved fact distinguishes at least these factual trigger stages/results:
 
 ```text
 STRUCTURE_PRESENT_ON_CAPTURE
@@ -449,11 +460,11 @@ STRUCTURE_TRANSFERRED
 STRUCTURE_DESTROYED_ON_CAPTURE
 ```
 
-A future rule may therefore punish/reward capturing a City merely because it was present, only when it is successfully acquired, or only when capture destroys it, without depending on listener registration order. Consequence producers return declarative effects; the capture transaction collects and commits those effects atomically with the structure fate.
+A future rule may therefore punish/reward capturing a City merely because it was present, only when it is successfully acquired, or only when capture destroys it, without depending on listener registration order. Each downstream consumer applies only the consequence it owns after the Structure state transition is committed.
 
-Current examples are Origin-owned: P05 consumes `STRUCTURE_TRANSFERRED` to create its conquest FFY event, while P34 consumes a successfully transferred Factory as conquest acquisition/provenance. If N17 or failed transfer admission produces `STRUCTURE_DESTROYED_ON_CAPTURE`, those successful-transfer effects do not fire.
+Current examples are Origin/economy owned: P05 consumes `STRUCTURE_TRANSFERRED` to create its conquest FFY event, P34 consumes a successfully transferred Factory as conquest acquisition/provenance, and Factory Train service consumes successful Factory transfer to replace its owner-scoped service epoch. If N17 or failed transfer admission produces `STRUCTURE_DESTROYED_ON_CAPTURE`, successful-transfer effects do not fire.
 
-After commit, the simulation emits an immutable resolved fact suitable for replay, diagnostics, statistics, presentation, and lawful controller-event projection. Post-resolution observers cannot change the already committed structure fate.
+The immutable resolved fact is also suitable for replay-derived evidence, diagnostics, statistics, presentation, and lawful controller-event projection. Those consumers cannot change the already committed structure fate.
 
 ### 2.4.4 Same-tick ownership-slot resolution
 
