@@ -69,6 +69,17 @@ export type UnitDestroyedEvent = SimulationEvent<
   UnitDestroyedPayload
 >;
 
+export interface RadioactiveAttackAftershockResolvedPayload {
+  readonly attacker: UnitEventSubject;
+  readonly targetCellId: CellId;
+  readonly affectedCellIds: readonly CellId[];
+}
+
+export type RadioactiveAttackAftershockResolvedEvent = SimulationEvent<
+  "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED",
+  RadioactiveAttackAftershockResolvedPayload
+>;
+
 export interface CellOwnershipChangedPayload {
   readonly cellId: CellId;
   readonly previousOwnerId: FactionId | null;
@@ -149,6 +160,14 @@ export interface CreateUnitDestroyedEventInput {
   readonly tick: number;
   readonly unit: UnitEventSubject;
   readonly causes: readonly UnitAttackDestructionCause[];
+}
+
+export interface CreateRadioactiveAttackAftershockResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly attacker: UnitEventSubject;
+  readonly targetCellId: CellId;
+  readonly affectedCellIds: readonly CellId[];
 }
 
 export interface CreateCellOwnershipChangedEventInput {
@@ -355,6 +374,29 @@ export function createUnitDestroyedEvent(
     payload: Object.freeze({
       unit: freezeUnitSubject(input.unit),
       causes: Object.freeze(causes),
+    }),
+  });
+}
+
+export function createRadioactiveAttackAftershockResolvedEvent(
+  input: CreateRadioactiveAttackAftershockResolvedEventInput,
+): RadioactiveAttackAftershockResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertCellId(input.targetCellId, "radioactive aftershock targetCellId");
+  const affectedCellIds = input.affectedCellIds.map((cellId) => {
+    assertCellId(cellId, "radioactive aftershock affected cellId");
+    return cellId;
+  });
+
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED" as const,
+    payload: Object.freeze({
+      attacker: freezeUnitSubject(input.attacker),
+      targetCellId: input.targetCellId,
+      affectedCellIds: Object.freeze(affectedCellIds),
     }),
   });
 }

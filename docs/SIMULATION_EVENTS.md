@@ -150,7 +150,27 @@ then attackEventId ascending
 
 This order exists only for deterministic serialization/replay and stable comparison. Array position does not mean first hit, last hit, primary cause, or reward credit. Same-tick simultaneous attacks remain simultaneous.
 
-### 5.3 `CELL_OWNERSHIP_CHANGED`
+### 5.3 `RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED`
+
+When a focused combat owner resolves an attack-triggered radioactive aftershock whose physical consequence belongs to the territorial/Fallout subsystem, it emits:
+
+```ts
+RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED {
+  attacker: UnitEventSubject;
+  targetCellId: number;
+  affectedCellIds: readonly number[];
+}
+```
+
+The combat owner resolves the aftershock's legality, trigger, footprint, eligibility, cap, and canonical affected-cell ordering from its authoritative combat snapshot before emitting the fact. Those mechanics remain with the focused gameplay/Origin owners and are not restated here.
+
+`affectedCellIds` is therefore the already-resolved authoritative footprint for this occurrence. A downstream territorial/Fallout consumer applies that exact set and **must not** reselect cells or re-evaluate combat-side eligibility against later state.
+
+The event may contain an empty `affectedCellIds` set when the focused combat rule resolves a qualifying occurrence with no eligible territorial cells. It records the resolved occurrence rather than inventing a second suppression rule at the event boundary.
+
+The payload does not carry ownership snapshots, Fallout snapshots, capture results, Population accounting, structure-capture consequences, or other consumer-owned state. Applying the territorial consequence is not a capture operation merely because political ownership changes.
+
+### 5.4 `CELL_OWNERSHIP_CHANGED`
 
 When an authoritative producer changes the political owner of a simulation cell, it emits exactly one fact for that changed cell:
 
@@ -234,21 +254,6 @@ In particular:
 - controller-facing `ControllerEvent` values are requester-lawful observation projections. They may be derived from canonical simulation facts and current lawful state, but their public payload vocabulary, visibility filtering, retention window, and controller API versioning remain owned by `ControllerApi.ts`.
 - participant/spectator stream events and envelopes are transport/projection messages. Their stream sequence is not a simulation-event ID, and their schemas/versioning remain owned by `PARTICIPANT_PROTOCOL.md`.
 - diagnostics, statistics, replay evidence, or presentation may consume canonical facts where their focused contracts require occurrences, but they must not create a second authoritative occurrence channel back into gameplay state.
-
-### 7.1 Live operational reference bookkeeping
-
-MatchRuntime-owned live controller-reference identity bookkeeping is not a simulation subsystem or simulation-domain event consumer merely because it needs ordered lifecycle information. A live reference session may receive deterministic lifecycle hints directly from `MatchRuntime` solely to preserve opaque controller-reference incarnation identity when a before/after authoritative-state comparison would collapse a same-tick lifecycle boundary.
-
-That direct operational channel is permitted only while all of the following remain true:
-
-- it owns only live reference identity, incarnation, tombstone, and resolution bookkeeping;
-- its state is not canonical `MatchState`, does not alter accepted-input replay/fingerprints or archival gameplay state, and is discarded with the live runtime;
-- its lifecycle hints do not mutate authoritative gameplay state, decide mechanics, or apply a consequence owned by any simulation subsystem;
-- trusted resolution still applies requester-lawful visibility before any differentiated controller-visible result is materialized;
-- lifecycle-hint order is derived from deterministic authoritative transition/input order rather than listener registration, asynchronous completion, or observation timing;
-- no simulation subsystem may consume the private reference-lifecycle queue as an authoritative occurrence channel.
-
-This is a narrow operational-identity exemption, not a second simulation event family. If an occurrence must drive a gameplay consequence, inform another authoritative simulation owner, or become a canonical cross-system fact, it must use `SimulationEvent` under this document instead. Controller-facing `ControllerEvent` projection remains governed by the adapter rule above and is not covered by this exemption.
 
 A focused gameplay owner may define the meaning and minimum factual context of one of its occurrences. When that occurrence must cross into another subsystem, implementation uses the common `SimulationEvent` envelope and the deterministic delivery rules here rather than inventing a sibling callback/listener/result-delivery architecture. Exact focused mechanics remain with the focused owner.
 

@@ -411,9 +411,9 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Fort defensive / Command offensive magnitude | AXIS | `structure.field.pressureMagnitude[type,direction]`. |
 | Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type effect magnitude; boolean inside-field qualification uses the focused owner's union semantics. |
 | Fort+Command cross-type pressure handling | DOMAIN REDUCER | Complement formula when both distinct field types affect same direction. |
-| Port/Factory repair radius | AXIS | `structure.repair.radius[type,service]`; supports post-Echo contextual specialization/final override by target unit where explicitly authored. |
-| Port/Factory repair rate | AXIS | `structure.repair.rate[type,service]`; supports post-Echo contextual specialization by target unit. |
-| Factory simultaneous repair capacity | PARAMETER / baseline | P34 does not change simultaneous repair capacity. |
+| Port repair radius / Factory broad repair radius | AXIS | `structure.repair.radius[type,service]`; Port consumes its passive naval radius; Factory consumes this axis only for the broad armored-unit field. Contextual scalars such as P31/P34 execute after ordinary Echo specialization where authored. |
+| Port repair rate / Factory armored-unit repair rate | AXIS | `structure.repair.rate[type,service]`; Port consumes its passive naval rate; Factory uses the one effective rate scale for both broad and fast armored-unit rates. |
+| Factory fast-service radius / slot capacity | PARAMETER / baseline | Fixed 10-cell fast-service radius and one-chassis fast-service slot; P34 and ordinary Factory repair Echoes do not modify these parameters. |
 | Silo/SAM Launcher charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
 | Silo/SAM Launcher recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
 | SAM Launcher interception range | AXIS | `structure.interception.range[SAM_LAUNCHER]`; P40 + Echo; N11 consumes this same effective field after projection. |
@@ -583,7 +583,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P31 | POST-ECHO CONDITIONAL SCALARS + CUSTOM | Warship-specific Port repair radius `2×` and rate `1.5×` run in `CONTEXTUAL_SCALAR` after ordinary Port/Echo specialization; operational-while-repairing remains an explicit non-scalar boundary. |
 | P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
 | P33 | CUSTOM event side effect | qualifying Train event at owned City also grants `20 × City level` Available Population, Capacity-capped. |
-| P34 | MIXED CAPTURED-FACTORY PROFILE | Under `CAPTURE_TRANSFER`, Factory Train-event base value `×1.50`; Tank/Heavy-Artillery Factory construction work rate `×1.50`; repair rate `×1.50`; repair radius `FINAL_OVERRIDE(8 cells)`. Train dispatch-time profile snapshot persistence remains the explicit Factory/FFY lifecycle boundary. |
+| P34 | MIXED CAPTURED-FACTORY PROFILE | Under `CAPTURE_TRANSFER`, Factory Train-event base value `×1.50`; Tank/Heavy-Artillery Factory construction work rate `×1.50`; Factory armored-unit repair rate `×1.50`; Factory broad armored-unit repair radius `×1.50`. Both repair scalars run in `CONTEXTUAL_SCALAR` after ordinary Echo specialization. Train dispatch-time profile snapshot persistence remains the explicit Factory/FFY lifecycle boundary. |
 | P35 | CUSTOM territorial lifecycle | deliberate relinquishment -> neutral Fallout; ordinary abandonment semantics remain terrain/territory-owned. |
 | P36 | AXIS + residual lifecycle | neutral settlement Population cost `0.5/cell`; faction-level persistent residual accounting. |
 | P37 | MIXED | Transport embark cost flat `+250 FFY`; successful landing can emit the authored Fort-grant boundary while amphibious execution and generic structure admission remain with their focused owners. |
@@ -659,8 +659,8 @@ Echo modifiers are ordinary signed percentage specializations unless their Echo 
 | City Growth contribution | City | 1 | `structure.effect.cityGrowth` |
 | Fort coverage area | Fort | 1 | `structure.field.coverageArea[FORT]` |
 | Fort defensive pressure | Fort | 1 | `structure.field.pressureMagnitude[FORT,DEFENSE]` |
-| Armored-unit repair radius | Factory | 1 | `structure.repair.radius[FACTORY,ARMORED]` |
-| Armored-unit repair rate | Factory | 1 | `structure.repair.rate[FACTORY,ARMORED]` |
+| Armored-unit repair radius | Factory | 1 | `structure.repair.radius[FACTORY,ARMORED]` — broad Factory field only |
+| Armored-unit repair rate | Factory | 1 | `structure.repair.rate[FACTORY,ARMORED]` — scales both broad and fast rates |
 | Passive repair radius | Port | 1 | `structure.repair.radius[PORT,NAVAL]` |
 | Passive repair rate | Port | 1 | `structure.repair.rate[PORT,NAVAL]` |
 | Observation radius | Observation Post | 1 | `structure.observation.radius` — also blackout radius under P49 |
@@ -688,7 +688,7 @@ The 12,927 derived Echo identities remain generated from these concrete keys and
 - Fort-pressure Echoes specialize the effective Fort magnitude; P50 mirrors that effective magnitude.
 - Command-pressure Echoes specialize the effective Command magnitude; P51 mirrors that effective magnitude.
 - P31's Warship-only Port repair scalar runs after ordinary Port repair Echo specialization.
-- P34's Factory repair rate runs after ordinary Factory/Echo repair-rate specialization; its authored 8-cell repair radius is a conditional `FINAL_OVERRIDE` for qualifying Tank/Heavy-Artillery repair.
+- P34's Factory broad-repair-radius and armored-unit repair-rate scalars run in `CONTEXTUAL_SCALAR` after ordinary Factory repair Echo specialization. The broad-radius scalar changes broad geometry only; the repair-rate scalar scales both broad and fast rates. The fixed 10-cell fast-service radius and one-chassis fast-service slot are not modified by either axis.
 - A stat may become inert because a hard Origin rule removes the relevant capability. Inert is legal; it is not a hidden compatibility veto.
 - A hard zero/prohibition remains terminal across ordinary Echo specialization. Examples include N08 Fort defensive pressure and N12 Warship build permission.
 - Counter-response-effectiveness Echoes are legal with P04 but inert while P04's terminal `FINAL_OVERRIDE(1.0)` applies.
@@ -803,13 +803,15 @@ This is a named land-combat/structure-field aggregation rule. It must not be gen
 P34's player-facing `50% increased effectiveness` is projected into the exact Factory effects canonically defined by the Factory owner:
 
 ```text
-Factory Train-event base value          ×1.50
-Tank-chassis construction work rate     ×1.50
-Tank/Heavy-Artillery repair rate        ×1.50
-Tank/Heavy-Artillery repair radius      8 cells
+Factory Train-event base value             ×1.50
+Tank-chassis construction work rate        ×1.50
+Tank/Heavy-Artillery repair rate           ×1.50
+Factory broad armored-unit repair radius   ×1.50
 ```
 
 Every contribution requires current ownership acquisition path `CAPTURE_TRANSFER`; the chassis-sensitive effects additionally require the target unit to be `TANK` or `HEAVY_ARTILLERY`. These are true AND-conjunctions, not synthetic composite condition IDs.
+
+For Factory repair, the ordinary Echo percentage specializes the same typed axis first and the P34 contribution then runs in `CONTEXTUAL_SCALAR`. The repair-rate result scales both the Factory broad and fast baseline rates; the repair-radius result scales broad geometry only. Fast-service radius and slot capacity remain focused-owner baseline parameters and are outside these two axes.
 
 The Train base-value transform is snapshotted into a dispatched Train's Factory economic profile by the Factory/FFY lifecycle. That snapshot persistence is the remaining custom-domain boundary; the four numeric effects themselves are ordinary typed composition surfaces.
 
@@ -863,7 +865,7 @@ The following use explicit structural/Origin/Echo/contextual ordering unless a f
 - P40 effective SAM Launcher range/recharge profile, then SAM Launcher range/recharge Echoes;
 - P25 Hydrogen cost/blast-area Origin profile, then matching weapon Echo specialization;
 - P31 consumes the already-effective Port repair field in `CONTEXTUAL_SCALAR`, after ordinary Port/Echo specialization;
-- P34 Factory repair rate likewise runs contextually after ordinary Factory/Echo repair-rate specialization, while P34's 8-cell Factory repair radius is a conditional final override.
+- P34 Factory broad-repair-radius and armored-unit repair-rate contributions likewise run in `CONTEXTUAL_SCALAR` after ordinary Factory/Echo specialization. The radius axis feeds broad geometry only, while the rate axis feeds both broad and fast service rates.
 
 ## 13.4 Hard-zero purchase/upgrade cost versus percentage cost modifiers
 
@@ -880,7 +882,7 @@ The composition registry must not invent or duplicate focused subsystem realizat
 Stable boundaries relevant to the current V1 profile include:
 
 - Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
-- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, and persistent Silo/SAM Launcher structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, Factory two-tier repair-service realization, and persistent Silo/SAM Launcher structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
 - `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM Launcher weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
 - `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
 - `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.

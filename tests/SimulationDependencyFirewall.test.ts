@@ -51,6 +51,8 @@ const ALLOWED_BOUNDARY_OWNERS = new Set([
   "SIMULATION_EVENTS",
   "SPAWN",
   "STRUCTURES",
+  "TANK",
+  "VISIBILITY",
 ]);
 
 const ALLOWED_EDGE_CLASSIFICATIONS = new Set([
@@ -559,8 +561,8 @@ describe("simulation dependency firewall", () => {
     const policy = loadSimulationBoundaryPolicy();
 
     expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
-    expect(graph.modules).toHaveLength(27);
-    expect(graph.edges).toHaveLength(80);
+    expect(graph.modules).toHaveLength(34);
+    expect(graph.edges).toHaveLength(115);
   });
 
   it("rejects unclassified, stale, duplicate, and misclassified architecture policy", () => {

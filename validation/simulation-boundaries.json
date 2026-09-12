@@ -19,6 +19,7 @@
     "src/simulation/Navigation.ts": "MAP_SUBSTRATE",
     "src/simulation/Population.ts": "POPULATION",
     "src/simulation/RailNetwork.ts": "MAP_SUBSTRATE",
+    "src/simulation/RepairService.ts": "TANK",
     "src/simulation/Segments.ts": "MAP_SUBSTRATE",
     "src/simulation/SimulationEvents.ts": "SIMULATION_EVENTS",
     "src/simulation/SimulationMap.ts": "MAP_SUBSTRATE",
@@ -28,7 +29,13 @@
     "src/simulation/StrategicSpawn.ts": "SPAWN",
     "src/simulation/Structures.ts": "STRUCTURES",
     "src/simulation/StructuresCore.ts": "STRUCTURES",
-    "src/simulation/TickEngine.ts": "RUNTIME_CORE"
+    "src/simulation/TankCombat.ts": "TANK",
+    "src/simulation/TankRepair.ts": "TANK",
+    "src/simulation/TankTargeting.ts": "TANK",
+    "src/simulation/Tanks.ts": "TANK",
+    "src/simulation/TerritoryEffects.ts": "LAND",
+    "src/simulation/TickEngine.ts": "RUNTIME_CORE",
+    "src/simulation/VisibilityState.ts": "VISIBILITY"
   },
   "crossOwnerImports": [
     {
@@ -236,6 +243,12 @@
       "rationale": "MatchState aggregates Structure-owned state into the authoritative state contract."
     },
     {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Tank production and operational state into the authoritative state contract."
+    },
+    {
       "from": "src/simulation/MicroSimulationHarness.ts",
       "to": "src/simulation/MatchSpec.ts",
       "classification": "TEST_HARNESS",
@@ -368,6 +381,132 @@
       "rationale": "Structure admission and quote logic read current MatchState for legality and current values."
     },
     {
+      "from": "src/simulation/TankCombat.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank combat reuses Land terrain base-spec contracts for effective rule evaluation; no Land occurrence is delivered."
+    },
+    {
+      "from": "src/simulation/TankCombat.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank combat resolves from and writes through the authoritative MatchState contract while owning Tank physical outcomes."
+    },
+    {
+      "from": "src/simulation/TankCombat.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank combat consumes canonical mobile-unit identity/state vocabulary for physical attack subjects."
+    },
+    {
+      "from": "src/simulation/TankCombat.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Tank combat emits canonical physical attack, destruction, and aftershock facts for cross-owner consequences."
+    },
+    {
+      "from": "src/simulation/TankCombat.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank combat consumes the map terrain/geometry contract for deterministic physical resolution."
+    },
+    {
+      "from": "src/simulation/TankRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank repair evaluates current authoritative state for assignments, movement, and service eligibility."
+    },
+    {
+      "from": "src/simulation/TankRepair.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Tank repair invokes MobileUnits-owned deterministic route and movement primitives for repair retreat."
+    },
+    {
+      "from": "src/simulation/TankRepair.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank repair reads current Factory structure state and fields for service eligibility."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting queries current hostility state for target legality rather than receiving an occurrence."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank targeting reuses Land terrain base-spec contracts for legal traversal and targeting evaluation."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting derives deterministic choices from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank targeting consumes the canonical navigation substrate to rank reachable firing positions."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting reads current map geometry and terrain for leash, range, and firing-position calculations."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Tank production admission invokes the Economy-owned atomic FFY debit primitive for accepted purchases."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank production and population-shot logic consume current authoritative MatchState for legality and values."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Tank lifecycle creates canonical mobile units and consumes MobileUnits-owned collection primitives."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank movement and deployment reuse the canonical navigation substrate rather than defining a parallel path model."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Tank Population-shot resolution applies Population-owned deterministic debit primitives after attack admission."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank lifecycle reads current map geometry and terrain for movement, deployment, and range-owned calculations."
+    },
+    {
+      "from": "src/simulation/Tanks.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank production and repair-related lifecycle logic read current Factory structure state."
+    },
+    {
+      "from": "src/simulation/TerritoryEffects.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Land-owned territorial effects consume canonical radioactive-attack aftershock facts before applying ownership/Fallout consequences."
+    },
+    {
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Economy.ts",
       "classification": "ORCHESTRATION",
@@ -387,6 +526,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine advances canonical mobile-unit route state as part of deterministic Tank movement orchestration."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Population.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
@@ -402,6 +547,54 @@
       "to": "src/simulation/Structures.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TankCombat.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Tank-owned frozen post-movement combat resolution in the canonical Tank-stage order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TankRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Tank-owned repair intent, retreat movement, and service phases in deterministic order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TankTargeting.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Tank-owned autonomous target selection and pursuit routing in deterministic order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Tank-owned lifecycle and final production phases in deterministic authoritative order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/VisibilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
+    },
+    {
+      "from": "src/simulation/VisibilityState.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Visibility projection derives requester-lawful observation from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/VisibilityState.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Visibility consumes canonical physical attack/destruction facts to derive direct-reveal consequences."
+    },
+    {
+      "from": "src/simulation/VisibilityState.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Visibility reads current Observation Post structure state and fields for ordinary observation/blackout projection."
     }
   ]
 }

@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
   canonicalHostilitySideKey,
@@ -43,6 +44,10 @@ import {
   tryMaterializeStructureGrant,
   type PersistentStructureState,
 } from "./Structures";
+import type {
+  TankOperationalState,
+  TankProductionJobState,
+} from "./Tanks";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
   "CITY",
@@ -76,6 +81,9 @@ export interface MatchState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly tankProductionJobs: readonly TankProductionJobState[];
+  readonly tankOperationalStates: readonly TankOperationalState[];
+  readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -90,6 +98,9 @@ export interface MatchStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly tankProductionJobs?: readonly TankProductionJobState[];
+  readonly tankOperationalStates?: readonly TankOperationalState[];
+  readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -220,6 +231,259 @@ function freezeHostilityGrace(
   );
 }
 
+function freezeDirectReveals(
+  entries: readonly DirectRevealRecord[],
+): readonly DirectRevealRecord[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("directReveals must be an array");
+  }
+  const seen = new Set<string>();
+  const materialized = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("direct reveal record must be an object");
+    }
+    if (
+      typeof entry.viewerFactionId !== "string" ||
+      entry.viewerFactionId.length === 0
+    ) {
+      throw new Error("direct reveal viewerFactionId must be a non-empty string");
+    }
+    if (
+      entry.sourceKind !== "UNIT" &&
+      entry.sourceKind !== "STRUCTURE" &&
+      entry.sourceKind !== "OPERATION"
+    ) {
+      throw new Error("direct reveal sourceKind is invalid");
+    }
+    if (typeof entry.sourceId !== "string" || entry.sourceId.length === 0) {
+      throw new Error("direct reveal sourceId must be a non-empty string");
+    }
+    if (
+      !Number.isSafeInteger(entry.expiryExclusiveTick) ||
+      entry.expiryExclusiveTick < 0 ||
+      Object.is(entry.expiryExclusiveTick, -0)
+    ) {
+      throw new Error(
+        "direct reveal expiryExclusiveTick must be a non-negative safe integer",
+      );
+    }
+    const key = `${JSON.stringify(entry.viewerFactionId)}\u0000${entry.sourceKind}\u0000${JSON.stringify(entry.sourceId)}`;
+    if (seen.has(key)) {
+      throw new Error("duplicate direct reveal viewer/source record");
+    }
+    seen.add(key);
+    return Object.freeze({
+      viewerFactionId: entry.viewerFactionId,
+      sourceKind: entry.sourceKind,
+      sourceId: entry.sourceId,
+      expiryExclusiveTick: entry.expiryExclusiveTick,
+    });
+  });
+  materialized.sort(
+    (left, right) =>
+      compareIds(left.viewerFactionId, right.viewerFactionId) ||
+      compareIds(left.sourceKind, right.sourceKind) ||
+      compareIds(left.sourceId, right.sourceId),
+  );
+  return Object.freeze(materialized);
+}
+
+function freezeTankProductionJobs(
+  entries: readonly TankProductionJobState[],
+): readonly TankProductionJobState[] {
+  const seenFactories = new Set<string>();
+  const jobs = entries.map((job) => {
+    if (job === null || typeof job !== "object" || Array.isArray(job)) {
+      throw new Error("Tank production job must be an object");
+    }
+    if (typeof job.factoryId !== "string" || job.factoryId.length === 0) {
+      throw new Error("Tank production factoryId must be a non-empty string");
+    }
+    if (seenFactories.has(job.factoryId)) {
+      throw new Error(`duplicate Tank production Factory: ${job.factoryId}`);
+    }
+    seenFactories.add(job.factoryId);
+    if (typeof job.ownerId !== "string" || job.ownerId.length === 0) {
+      throw new Error("Tank production ownerId must be a non-empty string");
+    }
+    if (job.chassisType !== "TANK" && job.chassisType !== "HEAVY_ARTILLERY") {
+      throw new Error("Tank production chassis type is invalid");
+    }
+    if (job.state === "BUILDING") {
+      if (
+        !Number.isSafeInteger(job.remainingTicks) ||
+        job.remainingTicks <= 0 ||
+        Object.is(job.remainingTicks, -0)
+      ) {
+        throw new Error(
+          "Tank production remainingTicks must be a positive safe integer",
+        );
+      }
+      return Object.freeze({
+        factoryId: job.factoryId,
+        ownerId: job.ownerId,
+        chassisType: job.chassisType,
+        state: "BUILDING" as const,
+        remainingTicks: job.remainingTicks,
+      });
+    }
+    if (job.state !== "WAITING_DEPLOYMENT") {
+      throw new Error("Tank production job state is invalid");
+    }
+    return Object.freeze({
+      factoryId: job.factoryId,
+      ownerId: job.ownerId,
+      chassisType: job.chassisType,
+      state: "WAITING_DEPLOYMENT" as const,
+    });
+  });
+  jobs.sort(
+    (left, right) =>
+      compareIds(left.factoryId, right.factoryId) ||
+      compareIds(left.ownerId, right.ownerId),
+  );
+  return Object.freeze(jobs);
+}
+
+function freezeTankHealth(
+  health: TankOperationalState["health"],
+): TankOperationalState["health"] {
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator < 0n ||
+    health.denominator <= 0n
+  ) {
+    throw new Error("Tank health must be a non-negative exact ratio");
+  }
+  if (health.numerator === 0n) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
+  }
+  return Object.freeze({
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
+  });
+}
+
+function assertNonNegativeSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+}
+
+function freezeTankRetainedTarget(
+  target: TankOperationalState["retainedTarget"],
+  map: SimulationMap,
+): TankOperationalState["retainedTarget"] {
+  if (target === undefined) return undefined;
+  if (target === null || typeof target !== "object" || Array.isArray(target)) {
+    throw new Error("Tank retained target must be an object");
+  }
+  if (target.targetClass === "POPULATION") {
+    if (!map.isValidCellId(target.cellId)) {
+      throw new Error("Tank retained Population target must be a valid map cell");
+    }
+    return Object.freeze({
+      targetClass: "POPULATION" as const,
+      cellId: target.cellId,
+    });
+  }
+  if (
+    target.targetClass !== "TANK_CHASSIS" &&
+    target.targetClass !== "WARSHIP" &&
+    target.targetClass !== "TRAIN"
+  ) {
+    throw new Error("Tank retained target class is invalid");
+  }
+  if (typeof target.unitId !== "string" || target.unitId.length === 0) {
+    throw new Error("Tank retained unit target must have a non-empty unitId");
+  }
+  return Object.freeze({
+    targetClass: target.targetClass,
+    unitId: target.unitId,
+  });
+}
+
+function freezeTankOperationalStates(
+  entries: readonly TankOperationalState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+): readonly TankOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tankOperationalStates must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const seenUnitIds = new Set<string>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Tank operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Tank operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Tank operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      throw new Error(
+        `Tank operational state must reference a deployed Tank-derived unit: ${entry.unitId}`,
+      );
+    }
+    if (!map.isValidCellId(entry.operatingAnchorCellId)) {
+      throw new Error("Tank operating anchor must be a valid map cell");
+    }
+    assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
+    assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    const retainedTarget = freezeTankRetainedTarget(entry.retainedTarget, map);
+    if (
+      entry.repairFactoryId !== undefined &&
+      (typeof entry.repairFactoryId !== "string" || entry.repairFactoryId.length === 0)
+    ) {
+      throw new Error("Tank repairFactoryId must be a non-empty string");
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Tank repairArrivalTick",
+      );
+      if (entry.repairFactoryId === undefined) {
+        throw new Error("Tank repairArrivalTick requires repairFactoryId");
+      }
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      health: freezeTankHealth(entry.health),
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      ...(retainedTarget === undefined ? {} : { retainedTarget }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+    });
+  });
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
+}
+
 function createState(
   previous: MatchState,
   tick: number,
@@ -244,6 +508,11 @@ function createState(
         update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
     },
   );
+  const tankOperationalStates = freezeTankOperationalStates(
+    update.tankOperationalStates ?? previous.tankOperationalStates ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -256,6 +525,13 @@ function createState(
     ),
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    tankProductionJobs: freezeTankProductionJobs(
+      update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
+    ),
+    tankOperationalStates,
+    directReveals: freezeDirectReveals(
+      update.directReveals ?? previous.directReveals ?? [],
+    ),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -329,6 +605,9 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    tankProductionJobs: Object.freeze([]),
+    tankOperationalStates: Object.freeze([]),
+    directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -491,6 +770,69 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const tankProductionJobs = [...state.tankProductionJobs]
+    .sort(
+      (left, right) =>
+        compareIds(left.factoryId, right.factoryId) ||
+        compareIds(left.ownerId, right.ownerId),
+    )
+    .map((job) =>
+      job.state === "BUILDING"
+        ? {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            state: job.state,
+            remainingTicks: job.remainingTicks,
+          }
+        : {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            state: job.state,
+          },
+    );
+
+  const tankOperationalStates = [...state.tankOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      health: {
+        numerator: entry.health.numerator.toString(),
+        denominator: entry.health.denominator.toString(),
+      },
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      ...(entry.retainedTarget === undefined
+        ? {}
+        : {
+            retainedTarget:
+              entry.retainedTarget.targetClass === "POPULATION"
+                ? {
+                    targetClass: "POPULATION" as const,
+                    cellId: entry.retainedTarget.cellId,
+                  }
+                : {
+                    targetClass: entry.retainedTarget.targetClass,
+                    unitId: entry.retainedTarget.unitId,
+                  },
+          }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+    }));
+
+  const directReveals = state.directReveals.map((entry) => ({
+    viewerFactionId: entry.viewerFactionId,
+    sourceKind: entry.sourceKind,
+    sourceId: entry.sourceId,
+    expiryExclusiveTick: entry.expiryExclusiveTick,
+  }));
+
   const operations = [...state.operations]
     .sort((left, right) =>
       compareIds(left.ownerId, right.ownerId) ||
@@ -552,6 +894,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    tankProductionJobs,
+    tankOperationalStates,
+    directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(
