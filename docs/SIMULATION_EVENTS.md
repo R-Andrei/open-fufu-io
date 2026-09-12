@@ -235,6 +235,21 @@ In particular:
 - participant/spectator stream events and envelopes are transport/projection messages. Their stream sequence is not a simulation-event ID, and their schemas/versioning remain owned by `PARTICIPANT_PROTOCOL.md`.
 - diagnostics, statistics, replay evidence, or presentation may consume canonical facts where their focused contracts require occurrences, but they must not create a second authoritative occurrence channel back into gameplay state.
 
+### 7.1 Live operational reference bookkeeping
+
+MatchRuntime-owned live controller-reference identity bookkeeping is not a simulation subsystem or simulation-domain event consumer merely because it needs ordered lifecycle information. A live reference session may receive deterministic lifecycle hints directly from `MatchRuntime` solely to preserve opaque controller-reference incarnation identity when a before/after authoritative-state comparison would collapse a same-tick lifecycle boundary.
+
+That direct operational channel is permitted only while all of the following remain true:
+
+- it owns only live reference identity, incarnation, tombstone, and resolution bookkeeping;
+- its state is not canonical `MatchState`, does not alter accepted-input replay/fingerprints or archival gameplay state, and is discarded with the live runtime;
+- its lifecycle hints do not mutate authoritative gameplay state, decide mechanics, or apply a consequence owned by any simulation subsystem;
+- trusted resolution still applies requester-lawful visibility before any differentiated controller-visible result is materialized;
+- lifecycle-hint order is derived from deterministic authoritative transition/input order rather than listener registration, asynchronous completion, or observation timing;
+- no simulation subsystem may consume the private reference-lifecycle queue as an authoritative occurrence channel.
+
+This is a narrow operational-identity exemption, not a second simulation event family. If an occurrence must drive a gameplay consequence, inform another authoritative simulation owner, or become a canonical cross-system fact, it must use `SimulationEvent` under this document instead. Controller-facing `ControllerEvent` projection remains governed by the adapter rule above and is not covered by this exemption.
+
 A focused gameplay owner may define the meaning and minimum factual context of one of its occurrences. When that occurrence must cross into another subsystem, implementation uses the common `SimulationEvent` envelope and the deterministic delivery rules here rather than inventing a sibling callback/listener/result-delivery architecture. Exact focused mechanics remain with the focused owner.
 
 ---
