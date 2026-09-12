@@ -119,6 +119,10 @@ export interface AcceptedSimulationInput {
   readonly action: SimulationAction;
 }
 
+type TankRetainedTarget = NonNullable<
+  MatchState["tankOperationalStates"][number]["retainedTarget"]
+>;
+
 function updateFactionPopulation(
   factions: readonly MatchFactionState[],
   factionId: string,
@@ -142,6 +146,17 @@ function factionCapitulationEventId(
   return `faction:capitulated:${tick}:${sequence}:${JSON.stringify(factionId)}`;
 }
 
+function sameTankTarget(
+  left: TankRetainedTarget,
+  right: ReturnType<typeof selectTankAutonomousUnitTarget>,
+): boolean {
+  if (right === undefined || left.targetClass !== right.targetClass) return false;
+  if (left.targetClass === "POPULATION") {
+    return right.targetClass === "POPULATION" && left.cellId === right.cellId;
+  }
+  return right.targetClass !== "POPULATION" && left.unitId === right.unitId;
+}
+
 function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const observationByOwner = new Map<
@@ -152,8 +167,7 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
   const tankOperationalStates = state.tankOperationalStates.map((operational) => {
     if (
       operational.eligibleFromTick > state.tick ||
-      operational.repairFactoryId !== undefined ||
-      operational.retainedTarget !== undefined
+      operational.repairFactoryId !== undefined
     ) {
       return operational;
     }
@@ -169,15 +183,51 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
       observation = projectTankTargetObservation(state, unit.ownerId);
       observationByOwner.set(unit.ownerId, observation);
     }
-    const target = selectTankAutonomousUnitTarget(state, {
-      ownerId: unit.ownerId,
-      chassisType: unit.type,
-      currentCellId: unit.cellId,
-      operatingAnchorCellId: operational.operatingAnchorCellId,
-      observedUnitIds: observation.observedUnitIds,
-      observedCellIds: observation.observedCellIds,
-    });
-    if (target === undefined) return operational;
+    const selectTarget = (
+      observedUnitIds: readonly string[],
+      observedCellIds: readonly number[],
+    ) =>
+      selectTankAutonomousUnitTarget(state, {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+        observedUnitIds,
+        observedCellIds,
+      });
+
+    const retainedTarget = operational.retainedTarget;
+    if (retainedTarget !== undefined) {
+      const retainedObservedUnitIds =
+        retainedTarget.targetClass !== "POPULATION" &&
+        observation.observedUnitIds.includes(retainedTarget.unitId)
+          ? Object.freeze([retainedTarget.unitId])
+          : Object.freeze([] as string[]);
+      const retainedObservedCellIds =
+        retainedTarget.targetClass === "POPULATION" &&
+        observation.observedCellIds.includes(retainedTarget.cellId)
+          ? Object.freeze([retainedTarget.cellId])
+          : Object.freeze([] as number[]);
+      if (
+        sameTankTarget(
+          retainedTarget,
+          selectTarget(retainedObservedUnitIds, retainedObservedCellIds),
+        )
+      ) {
+        return operational;
+      }
+    }
+
+    const target = selectTarget(
+      observation.observedUnitIds,
+      observation.observedCellIds,
+    );
+    if (target === undefined) {
+      if (retainedTarget === undefined) return operational;
+      const { retainedTarget: _staleTarget, ...withoutRetainedTarget } = operational;
+      changed = true;
+      return Object.freeze(withoutRetainedTarget);
+    }
     changed = true;
     return Object.freeze({ ...operational, retainedTarget: target });
   });
