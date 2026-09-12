@@ -487,4 +487,57 @@ describe("TickEngine Tank combat integration", () => {
     ).toBe(false);
     expect(advanced.directReveals).toEqual([]);
   });
+
+  it("physically intercepts a retained hostile Train without creating or refreshing atWar", () => {
+    let state = fixture();
+    const blue = addUnit(state, "blue", "TANK", 0);
+    state = blue.state;
+    const train = addUnit(state, "red", "TRAIN", 3);
+    state = train.state;
+    const hostilityBefore = state.hostilityGrace;
+
+    const advanced = new TickEngine().advance(state, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(
+      advanced.mobileUnits.some((unit) => unit.id === train.unit.id),
+    ).toBe(false);
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(11);
+    expect(advanced.directReveals).toEqual([
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: blue.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
+    expect(advanced.hostilityGrace).toEqual(hostilityBefore);
+  });
+
+  it("keeps P43 Heavy Artillery from acquiring or intercepting Trains", () => {
+    let state = fixture({ blueTraits: ["P43"] });
+    const blue = addUnit(state, "blue", "HEAVY_ARTILLERY", 0);
+    state = blue.state;
+    const train = addUnit(state, "red", "TRAIN", 3);
+    state = train.state;
+
+    const advanced = new TickEngine().advance(state, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(
+      advanced.mobileUnits.some((unit) => unit.id === train.unit.id),
+    ).toBe(true);
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.retainedTarget,
+    ).toBeUndefined();
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(0);
+    expect(advanced.directReveals).toEqual([]);
+  });
 });
