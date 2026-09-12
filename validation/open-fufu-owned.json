@@ -134,6 +134,7 @@
     {"path":"src/simulation/TankTargeting.ts","validators":["tests/TankTargeting.test.ts"]},
     {"path":"src/simulation/Tanks.ts","validators":["tests/TankLifecycle.test.ts","tests/TankOperationalState.test.ts"]},
     {"path":"src/simulation/TickEngine.ts","validators":["tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/TankLifecycle.test.ts"]},
+    {"path":"src/simulation/VisibilityState.ts","validators":["tests/TankCombatEvents.test.ts"]},
     {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"tests/types/ControllerApiTypes.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"vitest.config.ts","validators":["tests/ValidationBoundaryPolicy.test.ts"]}
