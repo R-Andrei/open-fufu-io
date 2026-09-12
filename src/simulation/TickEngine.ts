@@ -38,6 +38,10 @@ import {
   tryPurchaseStructureUpgrade,
 } from "./Structures";
 import {
+  resolveAdmittedTankUnitAttacks,
+  type AdmittedTankUnitAttack,
+} from "./TankCombat";
+import {
   advanceTankRepairIntentPhase,
   advanceTankRepairMovementPhase,
   advanceTankRepairPhase,
@@ -48,7 +52,10 @@ import {
   type TankAutonomousUnitTargetSelection,
 } from "./TankTargeting";
 import { advanceTankProductionPhase } from "./Tanks";
-import { projectTankTargetObservation } from "./VisibilityState";
+import {
+  projectTankTargetObservation,
+  resolveDirectRevealsFromPhysicalEvents,
+} from "./VisibilityState";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -331,6 +338,110 @@ function advanceTankPursuitMovementPhase(
   });
 }
 
+function tankUnitAttackCooldownTicks(
+  unitType: "TANK" | "HEAVY_ARTILLERY",
+): number {
+  return unitType === "HEAVY_ARTILLERY" ? 120 : 10;
+}
+
+function advanceTankUnitCombatPhase(state: MatchState): MatchState {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectTankTargetObservation>
+  >();
+  const attacks: AdmittedTankUnitAttack[] = [];
+  const firingUnitIds = new Set<string>();
+
+  for (const operational of state.tankOperationalStates) {
+    if (
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.attackReadyAtTick > state.tick ||
+      operational.retainedTarget?.targetClass !== "TANK_CHASSIS"
+    ) {
+      continue;
+    }
+    const unit = unitsById.get(operational.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+    const target = unitsById.get(operational.retainedTarget.unitId);
+    if (
+      target === undefined ||
+      (target.type !== "TANK" && target.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    let observation = observationByOwner.get(unit.ownerId);
+    if (observation === undefined) {
+      observation = projectTankTargetObservation(state, unit.ownerId);
+      observationByOwner.set(unit.ownerId, observation);
+    }
+    if (!observation.observedUnitIds.includes(target.id)) continue;
+
+    const plan = planTankPursuitRoute(
+      state,
+      {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+      },
+      operational.retainedTarget,
+    );
+    if (
+      plan === undefined ||
+      plan.cells.length !== 1 ||
+      plan.destinationCellId !== unit.cellId
+    ) {
+      continue;
+    }
+
+    attacks.push(
+      Object.freeze({
+        attackerUnitId: unit.id,
+        targetUnitId: target.id,
+      }),
+    );
+    firingUnitIds.add(unit.id);
+  }
+
+  const preCombat =
+    firingUnitIds.size === 0
+      ? state
+      : createProspectiveMatchState(state, {
+          tankOperationalStates: state.tankOperationalStates.map((operational) => {
+            if (!firingUnitIds.has(operational.unitId)) return operational;
+            const unit = unitsById.get(operational.unitId);
+            if (
+              unit === undefined ||
+              (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+            ) {
+              throw new Error(
+                `Tank combat cooldown update lost firing unit ${operational.unitId}`,
+              );
+            }
+            return Object.freeze({
+              ...operational,
+              attackReadyAtTick:
+                state.tick + tankUnitAttackCooldownTicks(unit.type),
+            });
+          }),
+        });
+  const combat = resolveAdmittedTankUnitAttacks(preCombat, attacks);
+  const directReveals = resolveDirectRevealsFromPhysicalEvents(
+    combat.state,
+    combat.events,
+    state.tick,
+  );
+  return createProspectiveMatchState(combat.state, { directReveals });
+}
+
 export class TickEngine {
   applyAcceptedInputs(
     state: MatchState,
@@ -596,7 +707,8 @@ export class TickEngine {
       repairIntended,
     );
     const repairMoved = advanceTankRepairMovementPhase(pursuitMoved);
-    const repaired = advanceTankRepairPhase(repairMoved);
+    const combatResolved = advanceTankUnitCombatPhase(repairMoved);
+    const repaired = advanceTankRepairPhase(combatResolved);
     return advanceTankProductionPhase(repaired);
   }
 }
