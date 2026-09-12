@@ -17,6 +17,7 @@ import {
 import {
   advanceMobileUnit,
   assignMobileUnitRoute,
+  setMobileUnitStrategicDestination,
 } from "./MobileUnits";
 import {
   grantPopulation,
@@ -55,6 +56,9 @@ import {
 } from "./TankTargeting";
 import {
   advanceTankProductionPhase,
+  tankCellTraversalTiming,
+  tankNavigationRoute,
+  tankOperatingLeashContains,
   tankStrategicNavigationRoute,
   type AdmittedTankPopulationShot,
 } from "./Tanks";
@@ -144,6 +148,8 @@ export interface AcceptedSimulationInput {
 type TankRetainedTarget = NonNullable<
   MatchState["tankOperationalStates"][number]["retainedTarget"]
 >;
+
+const TANK_ROAMING_LEASH_CELLS = 100;
 
 function updateFactionPopulation(
   factions: readonly MatchFactionState[],
@@ -420,23 +426,233 @@ function advanceTankStrategicMovementPhase(state: MatchState): MatchState {
       });
     }
 
-    const advanced = advanceMobileUnit(
+    let advanced = advanceMobileUnit(
       prepared,
       plan.route.movementWorkPerTick,
     ).unit;
-    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
-    if (
-      advanced.cellId === destinationCellId &&
-      operational.operatingAnchorCellId !== destinationCellId
-    ) {
-      operationalUpdates.set(
-        unit.id,
-        Object.freeze({
-          ...operational,
-          operatingAnchorCellId: destinationCellId,
-        }),
-      );
+    if (advanced.cellId === destinationCellId) {
+      advanced = setMobileUnitStrategicDestination(state.map, advanced, undefined);
+      if (operational.operatingAnchorCellId !== destinationCellId) {
+        operationalUpdates.set(
+          unit.id,
+          Object.freeze({
+            ...operational,
+            operatingAnchorCellId: destinationCellId,
+          }),
+        );
+      }
     }
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+  }
+
+  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+    tankOperationalStates: state.tankOperationalStates.map(
+      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
+    ),
+  });
+}
+
+function tankRoamingHash(unitId: string, roamingOrdinal: number): number {
+  let hash = 0x811c9dc5;
+  const key = `${unitId}\u0000${roamingOrdinal}`;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function tankRouteInsideOperatingLeash(
+  state: MatchState,
+  operatingAnchorCellId: number,
+  cells: readonly number[],
+): boolean {
+  return cells.every((cellId) =>
+    tankOperatingLeashContains(state.map, operatingAnchorCellId, cellId),
+  );
+}
+
+function tankRoamingCandidates(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+  operatingAnchorCellId: number,
+): readonly number[] {
+  if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+    return Object.freeze([]);
+  }
+  const anchor = state.map.positionOf(operatingAnchorCellId);
+  const minX = Math.max(0, anchor.x - TANK_ROAMING_LEASH_CELLS);
+  const maxX = Math.min(state.map.width - 1, anchor.x + TANK_ROAMING_LEASH_CELLS);
+  const minY = Math.max(0, anchor.y - TANK_ROAMING_LEASH_CELLS);
+  const maxY = Math.min(state.map.height - 1, anchor.y + TANK_ROAMING_LEASH_CELLS);
+  const candidates: number[] = [];
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const cellId = state.map.cellIdAt(x, y);
+      if (
+        cellId === undefined ||
+        cellId === unit.cellId ||
+        !tankOperatingLeashContains(state.map, operatingAnchorCellId, cellId) ||
+        tankCellTraversalTiming(state, unit.ownerId, unit.type, cellId) === undefined
+      ) {
+        continue;
+      }
+      candidates.push(cellId);
+    }
+  }
+  return Object.freeze(candidates);
+}
+
+function tankRoamingPlan(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+  operatingAnchorCellId: number,
+  roamingOrdinal: number,
+) {
+  if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+    return undefined;
+  }
+  const candidates = tankRoamingCandidates(state, unit, operatingAnchorCellId);
+  if (candidates.length === 0) return undefined;
+  const startIndex = tankRoamingHash(unit.id, roamingOrdinal) % candidates.length;
+  for (let offset = 0; offset < candidates.length; offset += 1) {
+    const destinationCellId = candidates[(startIndex + offset) % candidates.length]!;
+    const route = tankNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      destinationCellId,
+    );
+    if (
+      route.status === "FOUND" &&
+      route.route.cells.length > 1 &&
+      tankRouteInsideOperatingLeash(
+        state,
+        operatingAnchorCellId,
+        route.route.cells,
+      )
+    ) {
+      return route.route;
+    }
+  }
+  return undefined;
+}
+
+function advanceTankRoamingMovementPhase(
+  state: MatchState,
+  stateBeforeStrategicMovement: MatchState,
+): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const beforeStrategicById = new Map(
+    stateBeforeStrategicMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["tankOperationalStates"][number]
+  >();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.retainedTarget !== undefined ||
+      unit.strategicDestinationCellId !== undefined ||
+      beforeStrategicById.get(unit.id)?.strategicDestinationCellId !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const movementTiming = tankNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      unit.cellId,
+    );
+    if (movementTiming.status !== "FOUND") continue;
+
+    if (
+      !tankOperatingLeashContains(
+        state.map,
+        operational.operatingAnchorCellId,
+        unit.cellId,
+      )
+    ) {
+      const returnRoute = tankNavigationRoute(
+        state,
+        unit.ownerId,
+        unit.type,
+        unit.cellId,
+        operational.operatingAnchorCellId,
+      );
+      if (returnRoute.status !== "FOUND") continue;
+      let prepared = unit;
+      if (!routeMatchesTankStrategicPlan(unit, returnRoute.route)) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: returnRoute.route.cells,
+          edgeWeights: returnRoute.route.edgeWeights,
+        });
+      }
+      const advanced = advanceMobileUnit(
+        prepared,
+        returnRoute.route.movementWorkPerTick,
+      ).unit;
+      if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+      continue;
+    }
+
+    if (
+      unit.route !== undefined &&
+      tankRouteInsideOperatingLeash(
+        state,
+        operational.operatingAnchorCellId,
+        unit.route.cells.slice(unit.route.nextCellIndex - 1),
+      )
+    ) {
+      const advanced = advanceMobileUnit(
+        unit,
+        movementTiming.route.movementWorkPerTick,
+      ).unit;
+      if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+      continue;
+    }
+
+    const roamingOrdinal = operational.roamingOrdinal ?? 0;
+    if (roamingOrdinal >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("Tank roaming ordinal is exhausted");
+    }
+    const plan = tankRoamingPlan(
+      state,
+      unit,
+      operational.operatingAnchorCellId,
+      roamingOrdinal,
+    );
+    if (plan === undefined) continue;
+    const prepared = assignMobileUnitRoute(state.map, unit, {
+      cells: plan.cells,
+      edgeWeights: plan.edgeWeights,
+    });
+    const advanced = advanceMobileUnit(
+      prepared,
+      plan.movementWorkPerTick,
+    ).unit;
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+    operationalUpdates.set(
+      unit.id,
+      Object.freeze({
+        ...operational,
+        roamingOrdinal: roamingOrdinal + 1,
+      }),
+    );
   }
 
   if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
@@ -923,7 +1139,8 @@ export class TickEngine {
     );
     const strategicMoved = advanceTankStrategicMovementPhase(pursuitMoved);
     const repairMoved = advanceTankRepairMovementPhase(strategicMoved);
-    const combatResolved = advanceTankUnitCombatPhase(repairMoved);
+    const roamed = advanceTankRoamingMovementPhase(repairMoved, pursuitMoved);
+    const combatResolved = advanceTankUnitCombatPhase(roamed);
     const repaired = advanceTankRepairPhase(combatResolved);
     return advanceTankProductionPhase(repaired);
   }
