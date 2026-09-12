@@ -38,7 +38,9 @@ import {
   advanceTankRepairMovementPhase,
   advanceTankRepairPhase,
 } from "./TankRepair";
+import { selectTankAutonomousUnitTarget } from "./TankTargeting";
 import { advanceTankProductionPhase } from "./Tanks";
+import { projectTankTargetObservation } from "./VisibilityState";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -138,6 +140,53 @@ function factionCapitulationEventId(
   factionId: string,
 ): string {
   return `faction:capitulated:${tick}:${sequence}:${JSON.stringify(factionId)}`;
+}
+
+function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectTankTargetObservation>
+  >();
+  let changed = false;
+  const tankOperationalStates = state.tankOperationalStates.map((operational) => {
+    if (
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.retainedTarget !== undefined
+    ) {
+      return operational;
+    }
+    const unit = unitsById.get(operational.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      return operational;
+    }
+    let observation = observationByOwner.get(unit.ownerId);
+    if (observation === undefined) {
+      observation = projectTankTargetObservation(state, unit.ownerId);
+      observationByOwner.set(unit.ownerId, observation);
+    }
+    const target = selectTankAutonomousUnitTarget(state, {
+      ownerId: unit.ownerId,
+      chassisType: unit.type,
+      currentCellId: unit.cellId,
+      operatingAnchorCellId: operational.operatingAnchorCellId,
+      observedUnitIds: observation.observedUnitIds,
+      observedCellIds: observation.observedCellIds,
+    });
+    if (target === undefined) return operational;
+    changed = true;
+    return Object.freeze({ ...operational, retainedTarget: target });
+  });
+
+  return changed
+    ? createProspectiveMatchState(state, {
+        tankOperationalStates: Object.freeze(tankOperationalStates),
+      })
+    : state;
 }
 
 export class TickEngine {
@@ -399,7 +448,8 @@ export class TickEngine {
       hostilityGrace,
     });
     const repairIntended = advanceTankRepairIntentPhase(advanced);
-    const repairMoved = advanceTankRepairMovementPhase(repairIntended);
+    const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
+    const repairMoved = advanceTankRepairMovementPhase(targetIntended);
     const repaired = advanceTankRepairPhase(repairMoved);
     return advanceTankProductionPhase(repaired);
   }
