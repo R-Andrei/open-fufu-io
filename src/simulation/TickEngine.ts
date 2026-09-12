@@ -55,6 +55,7 @@ import {
 } from "./TankTargeting";
 import {
   advanceTankProductionPhase,
+  tankStrategicNavigationRoute,
   type AdmittedTankPopulationShot,
 } from "./Tanks";
 import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
@@ -341,6 +342,107 @@ function advanceTankPursuitMovementPhase(
   if (unitUpdates.size === 0) return state;
   return createProspectiveMatchState(state, {
     mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+  });
+}
+
+function routeMatchesTankStrategicPlan(
+  unit: MatchState["mobileUnits"][number],
+  plan: Readonly<{
+    cells: readonly number[];
+    edgeWeights: readonly number[];
+  }>,
+): boolean {
+  const route = unit.route;
+  if (route === undefined) return false;
+  const routeStartIndex = route.nextCellIndex - 1;
+  if (route.cells.length - routeStartIndex !== plan.cells.length) return false;
+  if (route.edgeWeights.length - routeStartIndex !== plan.edgeWeights.length) {
+    return false;
+  }
+  for (let index = 0; index < plan.cells.length; index += 1) {
+    if (route.cells[routeStartIndex + index] !== plan.cells[index]) return false;
+  }
+  for (let index = 0; index < plan.edgeWeights.length; index += 1) {
+    if (route.edgeWeights[routeStartIndex + index] !== plan.edgeWeights[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function advanceTankStrategicMovementPhase(state: MatchState): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["tankOperationalStates"][number]
+  >();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    const destinationCellId = unit.strategicDestinationCellId;
+    if (
+      operational === undefined ||
+      destinationCellId === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.retainedTarget !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const plan = tankStrategicNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      destinationCellId,
+    );
+    if (plan.status === "LIMIT_REACHED") continue;
+
+    let prepared = unit;
+    if (plan.route.cells.length === 1) {
+      if (unit.route !== undefined) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+      }
+    } else if (!routeMatchesTankStrategicPlan(unit, plan.route)) {
+      prepared = assignMobileUnitRoute(state.map, unit, {
+        cells: plan.route.cells,
+        edgeWeights: plan.route.edgeWeights,
+      });
+    }
+
+    const advanced = advanceMobileUnit(
+      prepared,
+      plan.route.movementWorkPerTick,
+    ).unit;
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+    if (
+      advanced.cellId === destinationCellId &&
+      operational.operatingAnchorCellId !== destinationCellId
+    ) {
+      operationalUpdates.set(
+        unit.id,
+        Object.freeze({
+          ...operational,
+          operatingAnchorCellId: destinationCellId,
+        }),
+      );
+    }
+  }
+
+  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+    tankOperationalStates: state.tankOperationalStates.map(
+      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
+    ),
   });
 }
 
@@ -814,7 +916,8 @@ export class TickEngine {
       targetIntended,
       repairIntended,
     );
-    const repairMoved = advanceTankRepairMovementPhase(pursuitMoved);
+    const strategicMoved = advanceTankStrategicMovementPhase(pursuitMoved);
+    const repairMoved = advanceTankRepairMovementPhase(strategicMoved);
     const combatResolved = advanceTankUnitCombatPhase(repairMoved);
     const repaired = advanceTankRepairPhase(combatResolved);
     return advanceTankProductionPhase(repaired);

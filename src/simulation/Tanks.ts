@@ -153,6 +153,13 @@ export type TankNavigationRouteResult =
   | { readonly status: "UNREACHABLE" }
   | { readonly status: "LIMIT_REACHED" };
 
+export type TankStrategicNavigationRouteResult =
+  | {
+      readonly status: "FOUND" | "BEST_EFFORT";
+      readonly route: TankNavigationRoute;
+    }
+  | { readonly status: "LIMIT_REACHED" };
+
 interface ExactRatio {
   readonly numerator: bigint;
   readonly denominator: bigint;
@@ -655,6 +662,78 @@ export function tankNavigationRoute(
   );
   return Object.freeze({
     status: "FOUND" as const,
+    route: Object.freeze({
+      cells,
+      edgeWeights,
+      totalWeight: result.path.totalWeight,
+      movementWorkPerTick: Number(movementWork),
+    }),
+  });
+}
+
+export function tankStrategicNavigationRoute(
+  state: MatchState,
+  ownerId: string,
+  chassisType: TankChassisType,
+  startCellId: number,
+  destinationCellId: number,
+): TankStrategicNavigationRouteResult {
+  if (
+    !state.map.isValidCellId(startCellId) ||
+    !state.map.isValidCellId(destinationCellId)
+  ) {
+    throw new Error("Tank strategic navigation query requires valid map cells");
+  }
+
+  const profile = tankMovementProfile(state, ownerId, chassisType);
+  const movementWork = TANK_NAVIGATION_BASE_WORK * profile.scale.numerator;
+  if (movementWork <= 0n || movementWork > MAX_SAFE_BIGINT) {
+    throw new Error("Tank navigation timing exceeds the safe-integer range");
+  }
+  const edgeMultiplier =
+    profile.scale.denominator * profile.chassisDenominator;
+  const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
+    if (
+      !tankCellCorridorPermitsTraversal(state, ownerId, fromCellId) ||
+      !tankCellCorridorPermitsTraversal(state, ownerId, toCellId)
+    ) {
+      return undefined;
+    }
+    const fromHalf = tankTerrainHalfEdgeBaseWork(
+      state.map.terrainAt(fromCellId),
+    );
+    const toHalf = tankTerrainHalfEdgeBaseWork(
+      state.map.terrainAt(toCellId),
+    );
+    if (fromHalf === undefined || toHalf === undefined) return undefined;
+    const work = (fromHalf + toHalf) * edgeMultiplier;
+    if (work <= 0n || work > MAX_SAFE_BIGINT) {
+      throw new Error("Tank navigation timing exceeds the safe-integer range");
+    }
+    return Number(work);
+  };
+  const policy: NavigationTraversalPolicy = { traversalWeight: edgeWeight };
+  const result = createNavigation(state.map).pathToward(
+    startCellId,
+    destinationCellId,
+    policy,
+  );
+  if (result.status === "LIMIT_REACHED") {
+    return Object.freeze({ status: "LIMIT_REACHED" as const });
+  }
+
+  const cells = Object.freeze([...result.path.cells]);
+  const edgeWeights = Object.freeze(
+    cells.slice(1).map((cellId, index) => {
+      const weight = edgeWeight(cells[index]!, cellId);
+      if (weight === undefined) {
+        throw new Error("Tank strategic navigation returned an unavailable route edge");
+      }
+      return weight;
+    }),
+  );
+  return Object.freeze({
+    status: result.status,
     route: Object.freeze({
       cells,
       edgeWeights,
