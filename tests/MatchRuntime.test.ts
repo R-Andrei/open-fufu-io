@@ -35,6 +35,7 @@ function twoFactionRuntime(seed = "controller-runtime") {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: `match-runtime:${seed}` },
   );
 }
 
@@ -72,7 +73,9 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       ],
     });
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "walking-skeleton",
+    });
     const state = runtime.snapshot();
 
     expect(state.tick).toBe(0);
@@ -293,6 +296,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       runtime.spec,
       runtime.acceptedInputs(),
       runtime.snapshot().tick,
+      { controllerReferenceNamespace: "match-runtime:controller-replay" },
     );
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
@@ -345,7 +349,9 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         { id: "beta", rules },
       ],
     });
-    const original = new MatchRuntime(spec);
+    const original = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "replay-proof",
+    });
 
     original.acceptAction({ type: "SET_TEST_MARKER", factionId: "alpha", value: 4 });
     original.acceptAction({ type: "SET_TEST_MARKER", factionId: "beta", value: 9 });
@@ -356,6 +362,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       spec,
       original.acceptedInputs(),
       original.snapshot().tick,
+      { controllerReferenceNamespace: "replay-proof" },
     );
 
     expect(regenerated.snapshot()).toEqual(original.snapshot());
@@ -370,6 +377,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       () =>
         new MatchRuntime(
           createMicroSimulationSpec({ factions: [{ id: "only", rules }] }),
+          { controllerReferenceNamespace: "malformed-skeleton" },
         ),
     ).toThrow(/at least two factions/i);
 
@@ -612,7 +620,9 @@ describe("persistent structure grant foundation", () => {
       ],
     });
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "initial-structure-grant",
+    });
 
     expect(runtime.snapshot().structures).toEqual([
       {
@@ -745,8 +755,12 @@ describe("persistent structure grant foundation", () => {
         { id: "beta", rules },
       ],
     });
-    const runtime = new MatchRuntime(spec);
-    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "structure-replay",
+    });
+    const regenerated = MatchRuntime.regenerate(spec, [], 0, {
+      controllerReferenceNamespace: "structure-replay",
+    });
 
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());

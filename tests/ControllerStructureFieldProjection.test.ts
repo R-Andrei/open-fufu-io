@@ -125,6 +125,9 @@ describe("controller structure-field projection", () => {
           { id: "beta", rules },
         ],
       }),
+      {
+        controllerReferenceNamespace: "controller-cell-structure-lifecycle-red",
+      },
     ).snapshot();
     const state = createProspectiveMatchState(base, {
       structures: [
@@ -259,7 +262,10 @@ describe("controller structure-field projection", () => {
       ...Array.from({ length: 24 }, () => "beta" as const),
     ] as const;
 
-    const makeState = (betaRules: typeof betaOrdinaryRules) =>
+    const makeState = (
+      betaRules: typeof betaOrdinaryRules,
+      controllerReferenceNamespace: string,
+    ) =>
       new MatchRuntime(
         createMicroSimulationSpec({
           seed: "controller-field-visibility-red",
@@ -288,10 +294,17 @@ describe("controller structure-field projection", () => {
             },
           ],
         }),
+        { controllerReferenceNamespace },
       ).snapshot();
 
-    const visibleState = makeState(betaOrdinaryRules);
-    const concealedState = makeState(betaP45Rules);
+    const visibleState = makeState(
+      betaOrdinaryRules,
+      "controller-field-visibility-red:visible",
+    );
+    const concealedState = makeState(
+      betaP45Rules,
+      "controller-field-visibility-red:concealed",
+    );
     const limits = {
       queriesPerDecision: 128,
       materializedCellsPerDecision: 25_000,
@@ -425,6 +438,7 @@ describe("controller structure-field projection", () => {
           },
         ],
       }),
+      { controllerReferenceNamespace: "controller-p49-visibility-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,

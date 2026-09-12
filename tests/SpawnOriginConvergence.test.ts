@@ -442,12 +442,16 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
       ] as const) {
         const runtime = new MatchRuntime(matchSpec(seed, factionSpecs, input), {
           mapArtifacts: ARTIFACT.resolver,
+          controllerReferenceNamespace: `spawn-origin-convergence:${mode}`,
         });
         assertActiveSpawn(runtime, mode);
       }
 
       const fixedSpec = matchSpec(seed, factionSpecs, fixedInput);
-      const fixed = new MatchRuntime(fixedSpec, { mapArtifacts: ARTIFACT.resolver });
+      const fixed = new MatchRuntime(fixedSpec, {
+        mapArtifacts: ARTIFACT.resolver,
+        controllerReferenceNamespace: "spawn-origin-convergence:FIXED",
+      });
       assertActiveSpawn(fixed, "FIXED");
 
       const alphaSpawn = fixed.snapshot().spawnSnapshot!.factions.find(
@@ -594,7 +598,10 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
         fixedSpec,
         fixed.acceptedInputs(),
         fixed.snapshot().tick,
-        { mapArtifacts: ARTIFACT.resolver },
+        {
+          mapArtifacts: ARTIFACT.resolver,
+          controllerReferenceNamespace: "spawn-origin-convergence:FIXED:replay",
+        },
       );
       expect(regenerated.snapshot().spawnSnapshot).toEqual(fixed.snapshot().spawnSnapshot);
       expect(regenerated.snapshot()).toEqual(fixed.snapshot());
