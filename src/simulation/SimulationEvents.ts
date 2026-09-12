@@ -3,6 +3,9 @@ import type {
   CellId,
   FactionId,
   MobileUnitType,
+  StructureId,
+  StructureLevel,
+  StructureType,
   UnitId,
 } from "../core/controller/ControllerApi";
 
@@ -13,6 +16,17 @@ const MOBILE_UNIT_TYPES = new Set<MobileUnitType>([
   "TRANSPORT_SHIP",
   "TRADE_SHIP",
   "TRAIN",
+]);
+
+const STRUCTURE_TYPES = new Set<StructureType>([
+  "CITY",
+  "FORT",
+  "PORT",
+  "FACTORY",
+  "MISSILE_SILO",
+  "SAM_LAUNCHER",
+  "OBSERVATION_POST",
+  "COMMAND_POST",
 ]);
 
 export interface SimulationEvent<TKind extends string, TPayload> {
@@ -77,6 +91,36 @@ export type CellOwnershipChangedEvent = SimulationEvent<
   CellOwnershipChangedPayload
 >;
 
+export interface StructureCaptureConstructionSnapshot {
+  readonly targetLevel: StructureLevel;
+  readonly remainingTicks: number;
+}
+
+export interface StructureCaptureEventSubject {
+  readonly structureId: StructureId;
+  readonly structureType: StructureType;
+  readonly cellId: CellId;
+  readonly previousOwnerId: FactionId;
+  readonly capturingFactionId: FactionId;
+  readonly completedLevel?: StructureLevel;
+  readonly active: boolean;
+  readonly construction?: StructureCaptureConstructionSnapshot;
+}
+
+export type StructureCaptureResolvedResult =
+  | "STRUCTURE_TRANSFERRED"
+  | "STRUCTURE_DESTROYED_ON_CAPTURE";
+
+export interface StructureCaptureResolvedPayload {
+  readonly structure: StructureCaptureEventSubject;
+  readonly result: StructureCaptureResolvedResult;
+}
+
+export type StructureCaptureResolvedEvent = SimulationEvent<
+  "STRUCTURE_CAPTURE_RESOLVED",
+  StructureCaptureResolvedPayload
+>;
+
 export interface PersistentDirectedHostilitySourceEndedPayload {
   readonly sourceSide: HostilitySideIdentity;
   readonly targetSide: HostilitySideIdentity;
@@ -134,6 +178,13 @@ export interface CreateCellOwnershipChangedEventInput {
   readonly nextOwnerId: FactionId | null;
 }
 
+export interface CreateStructureCaptureResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly structure: StructureCaptureEventSubject;
+  readonly result: StructureCaptureResolvedResult;
+}
+
 export interface CreatePersistentDirectedHostilitySourceEndedEventInput {
   readonly id: string;
   readonly tick: number;
@@ -171,6 +222,12 @@ function assertCellId(cellId: number, label: string): void {
   }
 }
 
+function assertStructureLevel(value: StructureLevel, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 5) {
+    throw new Error(`${label} must be an integer from 1 through 5`);
+  }
+}
+
 function assertOptionalFactionId(value: FactionId | null, label: string): void {
   if (value !== null) assertNonEmptyId(value, label);
 }
@@ -187,6 +244,69 @@ function freezeUnitSubject(subject: UnitEventSubject): UnitEventSubject {
     ownerId: subject.ownerId,
     unitType: subject.unitType,
     cellId: subject.cellId,
+  });
+}
+
+function freezeStructureCaptureSubject(
+  subject: StructureCaptureEventSubject,
+): StructureCaptureEventSubject {
+  assertNonEmptyId(subject.structureId, "structure capture subject structureId");
+  if (!STRUCTURE_TYPES.has(subject.structureType)) {
+    throw new Error(
+      `unsupported structure capture subject type: ${String(subject.structureType)}`,
+    );
+  }
+  assertCellId(subject.cellId, "structure capture subject cellId");
+  assertNonEmptyId(subject.previousOwnerId, "structure capture previous ownerId");
+  assertNonEmptyId(
+    subject.capturingFactionId,
+    "structure capture capturing factionId",
+  );
+  if (subject.previousOwnerId === subject.capturingFactionId) {
+    throw new Error("structure capture requires distinct previous and capturing factions");
+  }
+  if (subject.completedLevel !== undefined) {
+    assertStructureLevel(
+      subject.completedLevel,
+      "structure capture subject completedLevel",
+    );
+  }
+  if (typeof subject.active !== "boolean") {
+    throw new Error("structure capture subject active must be boolean");
+  }
+  const construction =
+    subject.construction === undefined
+      ? undefined
+      : (() => {
+          assertStructureLevel(
+            subject.construction.targetLevel,
+            "structure capture construction targetLevel",
+          );
+          if (
+            !Number.isSafeInteger(subject.construction.remainingTicks) ||
+            subject.construction.remainingTicks <= 0
+          ) {
+            throw new Error(
+              "structure capture construction remainingTicks must be a positive safe integer",
+            );
+          }
+          return Object.freeze({
+            targetLevel: subject.construction.targetLevel,
+            remainingTicks: subject.construction.remainingTicks,
+          });
+        })();
+
+  return Object.freeze({
+    structureId: subject.structureId,
+    structureType: subject.structureType,
+    cellId: subject.cellId,
+    previousOwnerId: subject.previousOwnerId,
+    capturingFactionId: subject.capturingFactionId,
+    ...(subject.completedLevel === undefined
+      ? {}
+      : { completedLevel: subject.completedLevel }),
+    active: subject.active,
+    ...(construction === undefined ? {} : { construction }),
   });
 }
 
@@ -300,6 +420,28 @@ export function createCellOwnershipChangedEvent(
       cellId: input.cellId,
       previousOwnerId: input.previousOwnerId,
       nextOwnerId: input.nextOwnerId,
+    }),
+  });
+}
+
+export function createStructureCaptureResolvedEvent(
+  input: CreateStructureCaptureResolvedEventInput,
+): StructureCaptureResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  if (
+    input.result !== "STRUCTURE_TRANSFERRED" &&
+    input.result !== "STRUCTURE_DESTROYED_ON_CAPTURE"
+  ) {
+    throw new Error(`unsupported structure capture result: ${String(input.result)}`);
+  }
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "STRUCTURE_CAPTURE_RESOLVED" as const,
+    payload: Object.freeze({
+      structure: freezeStructureCaptureSubject(input.structure),
+      result: input.result,
     }),
   });
 }
