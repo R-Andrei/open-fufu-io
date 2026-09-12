@@ -40,6 +40,7 @@ export interface TankPursuitRouteRequest {
   readonly chassisType: TankChassisType;
   readonly currentCellId: number;
   readonly operatingAnchorCellId: number;
+  readonly strategicDestinationCellId?: number;
 }
 
 export interface TankAutonomousUnitTargetRequest extends TankPursuitRouteRequest {
@@ -236,17 +237,26 @@ function scaledHalfTraversalWeight(
   return half.numerator * (scale / half.denominator);
 }
 
+function strategicTravelActive(request: TankPursuitRouteRequest): boolean {
+  return (
+    request.strategicDestinationCellId !== undefined &&
+    request.strategicDestinationCellId !== request.currentCellId
+  );
+}
+
 function targetingTraversalPolicy(
   state: MatchState,
   ownerId: string,
   chassisType: TankChassisType,
   operatingAnchorCellId: number,
+  enforceOperatingLeash: boolean,
 ): NavigationTraversalPolicy {
   const scale = traversalWeightScale(state, ownerId, chassisType);
   const halfWeightByCell = new Map<number, bigint | undefined>();
   const halfWeightForCell = (cellId: number): bigint | undefined => {
     if (halfWeightByCell.has(cellId)) return halfWeightByCell.get(cellId);
     if (
+      enforceOperatingLeash &&
       !tankOperatingLeashContains(
         state.map,
         operatingAnchorCellId,
@@ -355,15 +365,17 @@ function minimumFiringPosition(
   operatingAnchorCellId: number,
   targetCellId: number,
   range: ExactRatio,
+  enforceOperatingLeash: boolean,
 ): TankFiringPosition | undefined {
   let best: TankFiringPosition | undefined;
   for (const entry of reachable.cells) {
     if (
-      !tankOperatingLeashContains(
-        state.map,
-        operatingAnchorCellId,
-        entry.cellId,
-      ) ||
+      (enforceOperatingLeash &&
+        !tankOperatingLeashContains(
+          state.map,
+          operatingAnchorCellId,
+          entry.cellId,
+        )) ||
       !cellWithinExactRange(state.map, entry.cellId, targetCellId, range)
     ) {
       continue;
@@ -388,6 +400,7 @@ function minimumTraversalWeightToFiringPosition(
   operatingAnchorCellId: number,
   targetCellId: number,
   range: ExactRatio,
+  enforceOperatingLeash: boolean,
 ): number | undefined {
   return minimumFiringPosition(
     state,
@@ -395,6 +408,7 @@ function minimumTraversalWeightToFiringPosition(
     operatingAnchorCellId,
     targetCellId,
     range,
+    enforceOperatingLeash,
   )?.traversalWeight;
 }
 
@@ -478,9 +492,11 @@ export function selectTankAutonomousUnitTarget(
 ): TankAutonomousUnitTargetSelection | undefined {
   if (
     !state.map.isValidCellId(request.currentCellId) ||
-    !state.map.isValidCellId(request.operatingAnchorCellId)
+    !state.map.isValidCellId(request.operatingAnchorCellId) ||
+    (request.strategicDestinationCellId !== undefined &&
+      !state.map.isValidCellId(request.strategicDestinationCellId))
   ) {
-    throw new Error("Tank target selection requires valid current and anchor cells");
+    throw new Error("Tank target selection requires valid current, anchor, and strategic destination cells");
   }
   const owner = state.factions.find((faction) => faction.id === request.ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${request.ownerId}`);
@@ -495,6 +511,7 @@ export function selectTankAutonomousUnitTarget(
     return undefined;
   }
 
+  const enforceOperatingLeash = !strategicTravelActive(request);
   const observedUnits = new Set(request.observedUnitIds);
   const observedCells = new Set(request.observedCellIds);
   const range = effectiveAttackRange(
@@ -510,6 +527,7 @@ export function selectTankAutonomousUnitTarget(
       request.ownerId,
       request.chassisType,
       request.operatingAnchorCellId,
+      enforceOperatingLeash,
     ),
   );
 
@@ -527,11 +545,12 @@ export function selectTankAutonomousUnitTarget(
         relationIdentity(owner),
         relationIdentity(targetOwner),
       ) !== "ENEMY" ||
-      !tankOperatingLeashContains(
-        state.map,
-        request.operatingAnchorCellId,
-        unit.cellId,
-      )
+      (enforceOperatingLeash &&
+        !tankOperatingLeashContains(
+          state.map,
+          request.operatingAnchorCellId,
+          unit.cellId,
+        ))
     ) {
       continue;
     }
@@ -541,6 +560,7 @@ export function selectTankAutonomousUnitTarget(
       request.operatingAnchorCellId,
       unit.cellId,
       range,
+      enforceOperatingLeash,
     );
     if (traversalWeight === undefined) continue;
     const candidate: RankedTarget = Object.freeze({
@@ -554,11 +574,12 @@ export function selectTankAutonomousUnitTarget(
   for (const cellId of observedCells) {
     if (
       !state.map.isValidCellId(cellId) ||
-      !tankOperatingLeashContains(
-        state.map,
-        request.operatingAnchorCellId,
-        cellId,
-      )
+      (enforceOperatingLeash &&
+        !tankOperatingLeashContains(
+          state.map,
+          request.operatingAnchorCellId,
+          cellId,
+        ))
     ) {
       continue;
     }
@@ -584,6 +605,7 @@ export function selectTankAutonomousUnitTarget(
       request.operatingAnchorCellId,
       cellId,
       range,
+      enforceOperatingLeash,
     );
     if (traversalWeight === undefined) continue;
     const candidate: RankedTarget = Object.freeze({
@@ -614,9 +636,11 @@ export function planTankPursuitRoute(
 ): TankPursuitRoutePlan | undefined {
   if (
     !state.map.isValidCellId(request.currentCellId) ||
-    !state.map.isValidCellId(request.operatingAnchorCellId)
+    !state.map.isValidCellId(request.operatingAnchorCellId) ||
+    (request.strategicDestinationCellId !== undefined &&
+      !state.map.isValidCellId(request.strategicDestinationCellId))
   ) {
-    throw new Error("Tank pursuit planning requires valid current and anchor cells");
+    throw new Error("Tank pursuit planning requires valid current, anchor, and strategic destination cells");
   }
   if (state.factions.every((faction) => faction.id !== request.ownerId)) {
     throw new Error(`unknown faction: ${request.ownerId}`);
@@ -632,6 +656,7 @@ export function planTankPursuitRoute(
     return undefined;
   }
 
+  const enforceOperatingLeash = !strategicTravelActive(request);
   let targetCellId: number;
   if (target.targetClass === "POPULATION") {
     if (!state.map.isValidCellId(target.cellId)) return undefined;
@@ -647,6 +672,7 @@ export function planTankPursuitRoute(
     targetCellId = targetUnit.cellId;
   }
   if (
+    enforceOperatingLeash &&
     !tankOperatingLeashContains(
       state.map,
       request.operatingAnchorCellId,
@@ -666,6 +692,7 @@ export function planTankPursuitRoute(
     request.ownerId,
     request.chassisType,
     request.operatingAnchorCellId,
+    enforceOperatingLeash,
   );
   const navigation = createNavigation(state.map);
   const reachable = navigation.reachable(
@@ -679,6 +706,7 @@ export function planTankPursuitRoute(
     request.operatingAnchorCellId,
     targetCellId,
     range,
+    enforceOperatingLeash,
   );
   if (firingPosition === undefined) return undefined;
 

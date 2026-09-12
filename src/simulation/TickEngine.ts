@@ -215,6 +215,7 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
         chassisType: unit.type,
         currentCellId: unit.cellId,
         operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
         observedUnitIds,
         observedCellIds,
       });
@@ -308,6 +309,7 @@ function advanceTankPursuitMovementPhase(
         chassisType: unit.type,
         currentCellId: unit.cellId,
         operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
       },
       target,
     );
@@ -495,6 +497,7 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
         chassisType: unit.type,
         currentCellId: unit.cellId,
         operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
         observedUnitIds: Object.freeze([]),
         observedCellIds: Object.freeze([retainedTarget.cellId]),
       });
@@ -507,6 +510,7 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
           chassisType: unit.type,
           currentCellId: unit.cellId,
           operatingAnchorCellId: operational.operatingAnchorCellId,
+          strategicDestinationCellId: unit.strategicDestinationCellId,
         },
         retainedTarget,
       );
@@ -559,6 +563,7 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
         chassisType: unit.type,
         currentCellId: unit.cellId,
         operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
       },
       retainedTarget,
     );
