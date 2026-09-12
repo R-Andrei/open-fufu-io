@@ -53,6 +53,17 @@ export type UnitAttackResolvedEvent = SimulationEvent<
   UnitAttackResolvedPayload
 >;
 
+export interface TankPopulationAttackResolvedPayload {
+  readonly attacker: UnitEventSubject;
+  readonly targetFactionId: FactionId;
+  readonly targetCellId: CellId;
+}
+
+export type TankPopulationAttackResolvedEvent = SimulationEvent<
+  "TANK_POPULATION_ATTACK_RESOLVED",
+  TankPopulationAttackResolvedPayload
+>;
+
 export interface UnitAttackDestructionCause {
   readonly kind: "UNIT_ATTACK";
   readonly attackEventId: string;
@@ -153,6 +164,14 @@ export interface CreateUnitAttackResolvedEventInput {
   readonly tick: number;
   readonly attacker: UnitEventSubject;
   readonly target: UnitEventSubject;
+}
+
+export interface CreateTankPopulationAttackResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly attacker: UnitEventSubject;
+  readonly targetFactionId: FactionId;
+  readonly targetCellId: CellId;
 }
 
 export interface CreateUnitDestroyedEventInput {
@@ -340,6 +359,25 @@ export function createUnitAttackResolvedEvent(
     payload: Object.freeze({
       attacker: freezeUnitSubject(input.attacker),
       target: freezeUnitSubject(input.target),
+    }),
+  });
+}
+
+export function createTankPopulationAttackResolvedEvent(
+  input: CreateTankPopulationAttackResolvedEventInput,
+): TankPopulationAttackResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertNonEmptyId(input.targetFactionId, "Tank Population attack targetFactionId");
+  assertCellId(input.targetCellId, "Tank Population attack targetCellId");
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "TANK_POPULATION_ATTACK_RESOLVED" as const,
+    payload: Object.freeze({
+      attacker: freezeUnitSubject(input.attacker),
+      targetFactionId: input.targetFactionId,
+      targetCellId: input.targetCellId,
     }),
   });
 }

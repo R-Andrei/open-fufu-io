@@ -19,18 +19,23 @@ import {
 import type { MobileUnitState } from "./MobileUnits";
 import {
   createRadioactiveAttackAftershockResolvedEvent,
+  createTankPopulationAttackResolvedEvent,
   createUnitAttackResolvedEvent,
   createUnitDestroyedEvent,
   type PhysicalUnitSimulationEvent,
   type RadioactiveAttackAftershockResolvedEvent,
+  type TankPopulationAttackResolvedEvent,
   type UnitAttackDestructionCause,
   type UnitEventSubject,
 } from "./SimulationEvents";
 import type { SimulationTerrain } from "./SimulationMap";
-import type {
-  SuccessfulTankPopulationShot,
-  TankExactHealth,
-  TankOperationalState,
+import {
+  resolveTankPopulationShotBatch,
+  type AdmittedTankPopulationShot,
+  type SuccessfulTankPopulationShot,
+  type TankExactHealth,
+  type TankOperationalState,
+  type TankPopulationShotBatchResolution,
 } from "./Tanks";
 
 export interface AdmittedTankUnitAttack {
@@ -41,6 +46,12 @@ export interface AdmittedTankUnitAttack {
 export interface TankUnitAttackResolution {
   readonly state: MatchState;
   readonly events: readonly PhysicalUnitSimulationEvent[];
+}
+
+export interface TankPopulationAttackResolution
+  extends TankPopulationShotBatchResolution {
+  readonly state: MatchState;
+  readonly events: readonly TankPopulationAttackResolvedEvent[];
 }
 
 export interface TankPopulationAftershockResolution {
@@ -86,6 +97,24 @@ function tankCombatEventId(
     ordinal,
     subjectUnitId,
     ...(targetUnitId === undefined ? [] : [targetUnitId]),
+  ]);
+}
+
+function tankPopulationAttackEventId(
+  tick: number,
+  ordinal: number,
+  attackerUnitId: string,
+  targetFactionId: string,
+  targetCellId: number,
+): string {
+  return JSON.stringify([
+    "TANK_COMBAT",
+    "POPULATION_ATTACK",
+    tick,
+    ordinal,
+    attackerUnitId,
+    targetFactionId,
+    targetCellId,
   ]);
 }
 
@@ -356,6 +385,68 @@ export function resolveAdmittedTankUnitAttacks(
   return Object.freeze({
     state: nextState,
     events: Object.freeze([...attackEvents, ...destructionEvents]),
+  });
+}
+
+export function resolveAdmittedTankPopulationAttacks(
+  state: MatchState,
+  shots: readonly AdmittedTankPopulationShot[],
+): TankPopulationAttackResolution {
+  const batch = resolveTankPopulationShotBatch(state, shots);
+  const factionsById = new Map(state.factions.map((faction) => [faction.id, faction]));
+  const events = batch.successfulShots.map((shot, index) => {
+    const attacker = state.mobileUnits.find(
+      (unit) => unit.id === shot.attackerUnitId,
+    );
+    if (
+      attacker === undefined ||
+      (attacker.type !== "TANK" && attacker.type !== "HEAVY_ARTILLERY")
+    ) {
+      throw new Error(
+        `admitted Tank Population attack requires a Tank-derived attacker: ${shot.attackerUnitId}`,
+      );
+    }
+    if (!state.map.isValidCellId(shot.targetCellId)) {
+      throw new Error("admitted Tank Population attack requires a valid target cell");
+    }
+    if (state.ownership[shot.targetCellId] !== shot.targetFactionId) {
+      throw new Error(
+        "admitted Tank Population attack target cell must still be owned by its target faction",
+      );
+    }
+    const attackerOwner = factionsById.get(attacker.ownerId);
+    const targetOwner = factionsById.get(shot.targetFactionId);
+    if (attackerOwner === undefined || targetOwner === undefined) {
+      throw new Error("admitted Tank Population attack references an unknown faction");
+    }
+    if (
+      factionRelationBetween(
+        relationIdentity(attackerOwner),
+        relationIdentity(targetOwner),
+      ) !== "ENEMY"
+    ) {
+      throw new Error("admitted Tank Population attack requires an enemy target");
+    }
+    return createTankPopulationAttackResolvedEvent({
+      id: tankPopulationAttackEventId(
+        state.tick,
+        index,
+        attacker.id,
+        shot.targetFactionId,
+        shot.targetCellId,
+      ),
+      tick: state.tick,
+      attacker: unitEventSubject(attacker),
+      targetFactionId: shot.targetFactionId,
+      targetCellId: shot.targetCellId,
+    });
+  });
+
+  return Object.freeze({
+    state,
+    targets: batch.targets,
+    successfulShots: batch.successfulShots,
+    events: Object.freeze(events),
   });
 }
 

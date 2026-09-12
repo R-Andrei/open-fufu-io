@@ -20,7 +20,10 @@ import {
   type DirectRevealRecord,
 } from "../core/visibility/TacticalVisibility";
 import type { MatchFactionState, MatchState } from "./MatchState";
-import type { PhysicalUnitSimulationEvent } from "./SimulationEvents";
+import type {
+  PhysicalUnitSimulationEvent,
+  TankPopulationAttackResolvedEvent,
+} from "./SimulationEvents";
 import type { PersistentStructureState } from "./Structures";
 
 const V1_SIMULATION_TICKS_PER_SECOND = 10 as const;
@@ -41,6 +44,10 @@ export interface TankTargetObservation {
   readonly observedUnitIds: readonly string[];
   readonly observedCellIds: readonly CellId[];
 }
+
+type TankCombatVisibilityEvent =
+  | PhysicalUnitSimulationEvent
+  | TankPopulationAttackResolvedEvent;
 
 function factionById(
   state: MatchState,
@@ -382,14 +389,9 @@ export function projectTankTargetObservation(
   return Object.freeze({ observedUnitIds, observedCellIds });
 }
 
-/**
- * Applies physical-combat visibility consequences after the producer has
- * committed its owned state. Attack facts refresh source-specific reveal for
- * the directly attacked faction; destruction facts prevent reveal ghosts.
- */
-export function resolveDirectRevealsFromPhysicalEvents(
+function resolveDirectRevealsFromTankCombatEventSet(
   state: Readonly<Pick<MatchState, "directReveals">>,
-  events: readonly PhysicalUnitSimulationEvent[],
+  events: readonly TankCombatVisibilityEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
   let directReveals = pruneExpiredDirectReveals(
@@ -404,13 +406,17 @@ export function resolveDirectRevealsFromPhysicalEvents(
       continue;
     }
 
+    const attackedFactionId =
+      event.kind === "TANK_POPULATION_ATTACK_RESOLVED"
+        ? event.payload.targetFactionId
+        : event.payload.target.ownerId;
     directReveals = refreshDirectRevealRecords(
       directReveals,
       {
         resolved: true,
         hostile: true,
         identifiableSource: true,
-        attackedFactionIds: [event.payload.target.ownerId],
+        attackedFactionIds: [attackedFactionId],
       },
       "UNIT",
       event.payload.attacker.unitId,
@@ -427,5 +433,39 @@ export function resolveDirectRevealsFromPhysicalEvents(
         record.sourceKind !== "UNIT" ||
         !destroyedUnitIds.has(record.sourceId),
     ),
+  );
+}
+
+/**
+ * Applies physical-combat visibility consequences after the producer has
+ * committed its owned state. Attack facts refresh source-specific reveal for
+ * the directly attacked faction; destruction facts prevent reveal ghosts.
+ */
+export function resolveDirectRevealsFromPhysicalEvents(
+  state: Readonly<Pick<MatchState, "directReveals">>,
+  events: readonly PhysicalUnitSimulationEvent[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  return resolveDirectRevealsFromTankCombatEventSet(
+    state,
+    events,
+    currentTick,
+  );
+}
+
+/**
+ * Applies the complete Tank-combat visibility consequences for one frozen
+ * combat batch, including Population attacks and same-batch destruction.
+ */
+export function resolveDirectRevealsFromTankCombatEvents(
+  state: Readonly<Pick<MatchState, "directReveals">>,
+  physicalEvents: readonly PhysicalUnitSimulationEvent[],
+  populationEvents: readonly TankPopulationAttackResolvedEvent[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  return resolveDirectRevealsFromTankCombatEventSet(
+    state,
+    Object.freeze([...physicalEvents, ...populationEvents]),
+    currentTick,
   );
 }
