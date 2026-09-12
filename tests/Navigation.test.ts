@@ -189,6 +189,57 @@ describe("target-owned deterministic navigation", () => {
       truncated: false,
     });
   });
+
+  it("routes toward an unreachable destination by the globally closest reachable cell", () => {
+    const navigation = createNavigation(syntheticMap(3, 3));
+    const separatedColumns: NavigationTraversalPolicy = {
+      traversalWeight(from, to) {
+        const fromX = from % 3;
+        const toX = to % 3;
+        if ((fromX === 1 && toX === 2) || (fromX === 2 && toX === 1)) {
+          return undefined;
+        }
+        return 1;
+      },
+    };
+
+    expect(navigation.pathToward(3, 5, uniformPolicy())).toEqual({
+      status: "FOUND",
+      path: { cells: [3, 4, 5], totalWeight: 2 },
+    });
+    expect(navigation.pathToward(3, 5, separatedColumns)).toEqual({
+      status: "BEST_EFFORT",
+      path: { cells: [3, 4], totalWeight: 1 },
+    });
+  });
+
+  it("breaks equal-distance best-effort cells by traversal time and then stable CellId", () => {
+    const navigation = createNavigation(syntheticMap(3, 3));
+    const blockedCenter: NavigationTraversalPolicy = {
+      traversalWeight(from, to) {
+        if (from === 4 || to === 4) return undefined;
+        return 1;
+      },
+    };
+
+    expect(navigation.pathToward(0, 4, blockedCenter)).toEqual({
+      status: "BEST_EFFORT",
+      path: { cells: [0, 1], totalWeight: 1 },
+    });
+
+    const weightedTie: NavigationTraversalPolicy = {
+      traversalWeight(from, to) {
+        if (from === 4 || to === 4) return undefined;
+        if ((from === 0 && to === 1) || (from === 1 && to === 0)) return 5;
+        return 1;
+      },
+    };
+
+    expect(navigation.pathToward(0, 4, weightedTie)).toEqual({
+      status: "BEST_EFFORT",
+      path: { cells: [0, 3], totalWeight: 1 },
+    });
+  });
 });
 
 describe("target-owned deterministic rail routing", () => {
