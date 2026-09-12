@@ -116,14 +116,15 @@ function autonomousIntentFixture(alphaHealth: bigint): Readonly<{
   state: MatchState;
   alphaUnitId: string;
   betaUnitId: string;
+  alternateBetaUnitId: string;
 }> {
   let state = createInitialMatchState(
     createMicroSimulationSpec({
       seed: "tank-autonomous-intent-red",
-      width: 3,
+      width: 4,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "alpha", "alpha"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "alpha", "alpha"],
       initialStructureGrants: [
         {
           structureId: "alpha-factory",
@@ -175,6 +176,24 @@ function autonomousIntentFixture(alphaHealth: bigint): Readonly<{
   state = createProspectiveMatchState(state, {
     mobileUnits: beta.mobileUnits,
     nextMobileUnitOrdinal: beta.nextMobileUnitOrdinal,
+  });
+  const alternateBeta = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 3,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: alternateBeta.mobileUnits,
+    nextMobileUnitOrdinal: alternateBeta.nextMobileUnitOrdinal,
     tankOperationalStates: [
       {
         unitId: alpha.unit.id,
@@ -190,12 +209,20 @@ function autonomousIntentFixture(alphaHealth: bigint): Readonly<{
         eligibleFromTick: 1,
         attackReadyAtTick: 1,
       },
+      {
+        unitId: alternateBeta.unit.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: alternateBeta.unit.cellId,
+        eligibleFromTick: 1,
+        attackReadyAtTick: 1,
+      },
     ],
   });
   return Object.freeze({
     state,
     alphaUnitId: alpha.unit.id,
     betaUnitId: beta.unit.id,
+    alternateBetaUnitId: alternateBeta.unit.id,
   });
 }
 
@@ -368,5 +395,37 @@ describe("Tank authoritative operational state", () => {
 
     expect(alpha?.repairFactoryId).toBe("alpha-factory");
     expect(alpha?.retainedTarget).toBeUndefined();
+  });
+
+  it("keeps a legal target sticky, then reacquires in the same intent phase when it ceases to exist", () => {
+    const fixture = autonomousIntentFixture(1_000n);
+    const engine = new TickEngine();
+    const acquired = engine.advance(fixture.state, []);
+    const retained = engine.advance(acquired, []);
+    const retainedAlpha = retained.tankOperationalStates.find(
+      (operational) => operational.unitId === fixture.alphaUnitId,
+    );
+    expect(retainedAlpha?.retainedTarget).toEqual({
+      targetClass: "TANK_CHASSIS",
+      unitId: fixture.betaUnitId,
+    });
+
+    const withoutRetainedTarget = createProspectiveMatchState(retained, {
+      mobileUnits: retained.mobileUnits.filter(
+        (unit) => unit.id !== fixture.betaUnitId,
+      ),
+      tankOperationalStates: retained.tankOperationalStates.filter(
+        (operational) => operational.unitId !== fixture.betaUnitId,
+      ),
+    });
+    const reacquired = engine.advance(withoutRetainedTarget, []);
+    const reacquiredAlpha = reacquired.tankOperationalStates.find(
+      (operational) => operational.unitId === fixture.alphaUnitId,
+    );
+
+    expect(reacquiredAlpha?.retainedTarget).toEqual({
+      targetClass: "TANK_CHASSIS",
+      unitId: fixture.alternateBetaUnitId,
+    });
   });
 });
