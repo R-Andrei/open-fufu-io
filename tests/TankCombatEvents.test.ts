@@ -26,6 +26,7 @@ import type {
   TankExactHealth,
   TankOperationalState,
 } from "../src/simulation/Tanks";
+import { TickEngine } from "../src/simulation/TickEngine";
 import { resolveDirectRevealsFromPhysicalEvents } from "../src/simulation/VisibilityState";
 
 function rules(
@@ -376,5 +377,114 @@ describe("Tank combat direct-reveal delivery", () => {
       state.directReveals,
     );
     expect(resolveDirectRevealsFromPhysicalEvents(state, [], 1)).toEqual([]);
+  });
+});
+
+describe("TickEngine Tank combat integration", () => {
+  it("fires reciprocal baseline Tank attacks on cadence and refreshes only reciprocal direct reveals", () => {
+    let state = fixture();
+    const blue = addUnit(state, "blue", "TANK", 0);
+    state = blue.state;
+    const red = addUnit(state, "red", "TANK", 3);
+    state = red.state;
+    const engine = new TickEngine();
+
+    state = engine.advance(state, []);
+
+    expect(state.tick).toBe(1);
+    expect(tankHealth(state, blue.unit.id)).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+    expect(tankHealth(state, red.unit.id)).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+    expect(
+      state.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(11);
+    expect(
+      state.tankOperationalStates.find((entry) => entry.unitId === red.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(11);
+    expect(state.directReveals).toEqual([
+      {
+        viewerFactionId: "blue",
+        sourceKind: "UNIT",
+        sourceId: red.unit.id,
+        expiryExclusiveTick: 151,
+      },
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: blue.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
+
+    while (state.tick < 10) state = engine.advance(state, []);
+    expect(tankHealth(state, blue.unit.id)).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+    expect(tankHealth(state, red.unit.id)).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+    expect(state.directReveals.map((record) => record.expiryExclusiveTick)).toEqual([
+      151,
+      151,
+    ]);
+
+    state = engine.advance(state, []);
+    expect(state.tick).toBe(11);
+    expect(tankHealth(state, blue.unit.id)).toEqual({
+      numerator: 500n,
+      denominator: 1n,
+    });
+    expect(tankHealth(state, red.unit.id)).toEqual({
+      numerator: 500n,
+      denominator: 1n,
+    });
+    expect(
+      state.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(21);
+    expect(
+      state.tankOperationalStates.find((entry) => entry.unitId === red.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(21);
+    expect(state.directReveals.map((record) => record.expiryExclusiveTick)).toEqual([
+      161,
+      161,
+    ]);
+    expect(state.directReveals.some((record) => record.viewerFactionId === "green")).toBe(
+      false,
+    );
+  });
+
+  it("commits mutually lethal Heavy Artillery attacks from the frozen post-movement TickEngine snapshot", () => {
+    let state = fixture({ blueTraits: ["P43"], redTraits: ["P43"] });
+    const lethalHealth = Object.freeze({ numerator: 1_000n, denominator: 1n });
+    const blue = addUnit(state, "blue", "HEAVY_ARTILLERY", 0, lethalHealth);
+    state = blue.state;
+    const red = addUnit(state, "red", "HEAVY_ARTILLERY", 3, lethalHealth);
+    state = red.state;
+
+    const advanced = new TickEngine().advance(state, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(
+      advanced.mobileUnits.some(
+        (unit) => unit.id === blue.unit.id || unit.id === red.unit.id,
+      ),
+    ).toBe(false);
+    expect(
+      advanced.tankOperationalStates.some(
+        (entry) => entry.unitId === blue.unit.id || entry.unitId === red.unit.id,
+      ),
+    ).toBe(false);
+    expect(advanced.directReveals).toEqual([]);
   });
 });
