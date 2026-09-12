@@ -721,9 +721,9 @@ Tanks may path through friendly traversable territory and traversable territory 
 
 Tanks are autonomous combat formations rather than RTS-micro units.
 
-The controller may issue a strategic **move destination**. An accepted move repositions the Tank and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
+The controller may issue a strategic **move destination**. Shared destination admission, persistence, exact-or-best-effort routing, interruption/resumption, and anchor-update semantics are owned by `OPEN_FUFU_DESIGN.md` §6.5.1; this Tank owner supplies Tank-specific destination-cell legality, traversal, and intent priority. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
 
-Within ordinary operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned.
+Within ordinary settled operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Active strategic travel uses the shared leash/interruption contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned.
 
 A Tank-derived chassis provides its owning faction ordinary local tactical observation out to that chassis's **current effective weapon range**. That local observation is subject to the game-wide visibility precedence in `OPEN_FUFU_DESIGN.md`: concealment/blackout still defeats ordinary observation, while an active source-specific direct reveal may expose a source through concealment. Tank attacks require legal observation.
 
@@ -762,7 +762,7 @@ A deployed Tank-derived chassis resolves one movement intent per Tank stage in t
 3. a current controller-issued strategic move destination;
 4. ordinary autonomous search/roaming around the operating anchor.
 
-An accepted strategic move changes the operating anchor only when that strategic destination is reached. Repair movement never replaces the operating anchor.
+Strategic destination persistence, best-effort unreachable routing, active-travel leash treatment, interruption/resumption, and anchor update use the shared contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Repair movement never replaces the operating anchor.
 
 When the chassis has no retained target, autonomous target acquisition considers lawfully observed, legal targets in this class priority:
 
@@ -775,9 +775,9 @@ Population
 
 Within the first non-empty eligible class, choose the target requiring the least expected legal traversal time to a firing position under the chassis's current effective movement profile. A target already legally in range has traversal time zero. Equal traversal-time candidates break ties by stable target identity; Population-cell ties use ascending stable `cellId`. When pursuit has more than one legal firing position at the same minimum traversal time, choose the position with the lowest stable `cellId`.
 
-The selected target is sticky. It remains retained rather than being replaced merely because another candidate later becomes nearer or belongs to a higher-priority class. Clear it only when the target is destroyed/ceases to exist, is no longer lawfully observed, is no longer a legal target, has no legal reachable firing position, or is outside the chassis's 100-cell operating leash. A new acquisition then repeats the class-priority and tie rules above.
+The selected target is sticky. It remains retained rather than being replaced merely because another candidate later becomes nearer or belongs to a higher-priority class. Clear it only when the target is destroyed/ceases to exist, is no longer lawfully observed, is no longer a legal target, has no legal reachable firing position, or, during ordinary settled operation, is outside the chassis's 100-cell operating leash. A new acquisition then repeats the class-priority and tie rules above.
 
-The ordinary 100-cell leash is measured between cell centers around the current operating anchor. A target/firing-position pursuit may not cause the chassis to operate outside that leash. Autonomous roaming likewise remains inside it.
+The ordinary 100-cell leash is measured between cell centers around the current operating anchor. During ordinary settled operation, a target/firing-position pursuit may not cause the chassis to operate outside that leash, and autonomous roaming remains inside it. Active strategic travel uses the shared leash exception in `OPEN_FUFU_DESIGN.md` §6.5.1.
 
 ## 3.7 Range, attacks, and same-tick combat resolution
 
@@ -791,7 +791,7 @@ Range is geometric weapon reach, not path distance. Chassis path barriers theref
 
 A hostile Warship is a legal anti-armor target between Tank-derived chassis and Train in the priority above. A baseline Tank attacks it with the ordinary anti-armor profile: effective Tank anti-armor range/damage/cooldown. This Tank-originated attack does not require, create, or refresh `atWar`. P43 applies its transformed anti-armor profile. This rule adds no reciprocal Warship-to-Tank behavior; Warship mechanics remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
-A Population target is one enemy-owned population-bearing cell that is currently visible to the Tank owner's faction, within effective Population-weapon range, within the operating leash, and whose owning hostility side is currently `atWar` with the Tank owner's side. Public political ownership alone does not make an otherwise unseen enemy cell a legal Population target. Direct Population damage is finalized once per committed shot after applicable damage modifiers and floored to a non-negative whole Population amount. The actual direct casualty debit is:
+A Population target is one enemy-owned population-bearing cell that is currently visible to the Tank owner's faction, within effective Population-weapon range, within the ordinary operating leash when that leash applies under Section 3.6, and whose owning hostility side is currently `atWar` with the Tank owner's side. Public political ownership alone does not make an otherwise unseen enemy cell a legal Population target. Direct Population damage is finalized once per committed shot after applicable damage modifiers and floored to a non-negative whole Population amount. The actual direct casualty debit is:
 
 ```text
 min(finalPopulationDamage, targetFaction.AvailablePopulation)

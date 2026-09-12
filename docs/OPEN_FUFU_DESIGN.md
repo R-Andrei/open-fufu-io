@@ -279,6 +279,18 @@ Simulation-owned physical route selection minimizes **expected traversal time** 
 
 Physical routing does not fold strategic danger, desirability, target value, or other controller/AI preferences into traversal time unless an explicit focused mechanic makes such a factor part of physical movement. Equal-traversal-time alternatives resolve deterministically.
 
+### 6.5.1 Strategic mobile-unit destinations
+
+For a mobile-unit class whose focused owner permits a controller-issued strategic move destination, this section owns the shared destination lifecycle; the focused unit owner still owns whether that class supports the command, which destination cells are intrinsically legal, its transition legality/movement profile, and the priority of strategic travel relative to that unit's other intents.
+
+An accepted destination must be a cell the moving subject can legally occupy. Intrinsically illegal destinations are rejected. Connectivity is not an admission requirement: a legal destination remains valid even when no complete current route reaches it.
+
+The authoritative unit retains the exact accepted destination until it reaches that cell or a later accepted order replaces it. The simulation does not randomize, substitute, or silently cancel that destination because the route is incomplete. If the destination is currently reachable, ordinary physical routing chooses the least-traversal-time legal path. If it is unreachable, the unit instead routes toward the currently reachable legal cell whose cell center is geometrically closest to the requested destination; equal geometric distance is resolved by least legal traversal time from the unit and then ascending stable `cellId`. Reaching that best-effort frontier does not replace the requested destination. The unit retains the order and retries from later authoritative state.
+
+A settled operating-anchor leash constrains ordinary autonomous operation only. While a not-yet-reached strategic destination is active, that old anchor leash does not limit the player-directed travel itself or otherwise-legal autonomous target acquisition, pursuit, and combat encountered during the travel. A higher-priority local intent such as focused-owner repair behavior or retained legal combat may temporarily pre-empt movement; once that interruption ends, the same retained strategic destination resumes without controller reissue.
+
+The requested destination becomes the unit's new operating/wander anchor only on actual arrival at that requested cell. Reaching an intermediate best-effort frontier, entering combat, or taking a repair detour does not move the anchor by itself.
+
 ---
 
 # 7. Population model
