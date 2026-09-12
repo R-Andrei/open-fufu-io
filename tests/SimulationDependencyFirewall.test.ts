@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { extname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, extname, join, relative, resolve } from "node:path";
+import ts from "typescript";
 import {
   resolveHostilityGraceFromEvents,
   type HostilityStateLike,
@@ -25,6 +26,11 @@ const FORBIDDEN_LEGACY_IMPORT_TOKENS = [
   "GameRunner",
 ] as const;
 
+interface SimulationImportEdge {
+  readonly from: string;
+  readonly to: string;
+}
+
 function typescriptFiles(root: string): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -36,6 +42,91 @@ function typescriptFiles(root: string): string[] {
     }
   }
   return result.sort();
+}
+
+function repoPath(path: string): string {
+  return relative(process.cwd(), path).replaceAll("\\", "/");
+}
+
+function relativeModuleSpecifiers(path: string): readonly string[] {
+  const source = readFileSync(path, "utf8");
+  const parsed = ts.createSourceFile(
+    path,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const result: string[] = [];
+
+  for (const statement of parsed.statements) {
+    if (
+      (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) &&
+      statement.moduleSpecifier !== undefined &&
+      ts.isStringLiteral(statement.moduleSpecifier) &&
+      statement.moduleSpecifier.text.startsWith(".")
+    ) {
+      result.push(statement.moduleSpecifier.text);
+    }
+  }
+
+  function visit(node: ts.Node): void {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      node.arguments.length === 1
+    ) {
+      const argument = node.arguments[0];
+      if (ts.isStringLiteral(argument) && argument.text.startsWith(".")) {
+        result.push(argument.text);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(parsed);
+
+  return result;
+}
+
+function resolveSimulationImport(
+  importer: string,
+  specifier: string,
+  modulePaths: ReadonlySet<string>,
+): string | undefined {
+  const base = resolve(dirname(importer), specifier);
+  for (const candidate of [base, `${base}.ts`, join(base, "index.ts")]) {
+    const normalized = repoPath(candidate);
+    if (modulePaths.has(normalized)) return normalized;
+  }
+  return undefined;
+}
+
+function simulationImportGraph(simulationRoot: string): {
+  readonly modules: readonly string[];
+  readonly edges: readonly SimulationImportEdge[];
+} {
+  const files = typescriptFiles(simulationRoot);
+  const modules = files.map(repoPath).sort();
+  const modulePaths = new Set(modules);
+  const edges: SimulationImportEdge[] = [];
+
+  for (const file of files) {
+    const from = repoPath(file);
+    for (const specifier of relativeModuleSpecifiers(file)) {
+      const to = resolveSimulationImport(file, specifier, modulePaths);
+      if (to !== undefined) edges.push(Object.freeze({ from, to }));
+    }
+  }
+
+  return Object.freeze({
+    modules: Object.freeze(modules),
+    edges: Object.freeze(
+      [...edges].sort(
+        (left, right) =>
+          left.from.localeCompare(right.from) || left.to.localeCompare(right.to),
+      ),
+    ),
+  });
 }
 
 function attackOperation(
@@ -114,6 +205,22 @@ describe("simulation dependency firewall", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("requires an exhaustive reviewed simulation-boundary classification", () => {
+    const simulationRoot = join(process.cwd(), "src", "simulation");
+    const graph = simulationImportGraph(simulationRoot);
+    const policyPath = join(
+      process.cwd(),
+      "validation",
+      "simulation-boundaries.json",
+    );
+
+    if (!existsSync(policyPath)) {
+      throw new Error(
+        `missing validation/simulation-boundaries.json\n${JSON.stringify(graph, null, 2)}`,
+      );
+    }
   });
 
   it("routes hostility grace through canonical lifecycle events rather than snapshot reconciliation", () => {
