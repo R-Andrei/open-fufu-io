@@ -105,6 +105,30 @@ export interface DirectRevealRecord {
   readonly expiryExclusiveTick: number;
 }
 
+function compareDirectRevealRecords(
+  left: DirectRevealRecord,
+  right: DirectRevealRecord,
+): number {
+  if (left.viewerFactionId !== right.viewerFactionId) {
+    return left.viewerFactionId < right.viewerFactionId ? -1 : 1;
+  }
+  if (left.sourceKind !== right.sourceKind) {
+    return left.sourceKind < right.sourceKind ? -1 : 1;
+  }
+  if (left.sourceId !== right.sourceId) {
+    return left.sourceId < right.sourceId ? -1 : 1;
+  }
+  return 0;
+}
+
+function directRevealRecordKey(
+  viewerFactionId: string,
+  sourceKind: DirectRevealSourceKind,
+  sourceId: string,
+): string {
+  return `${JSON.stringify(viewerFactionId)}\u0000${sourceKind}\u0000${JSON.stringify(sourceId)}`;
+}
+
 /**
  * Hostile manifestation refresh is keyed by source identity and lawful viewer,
  * so movement never clears the reveal and unrelated factions gain no reveal.
@@ -161,5 +185,67 @@ export function directRevealRecipients(
         manifestation.attackedFactionIds.filter((id) => id.length > 0),
       ),
     ].sort(),
+  );
+}
+
+/**
+ * Refreshes the source-specific reveal for every directly attacked faction and
+ * preserves all unrelated viewer/source records.
+ */
+export function refreshDirectRevealRecords(
+  records: readonly DirectRevealRecord[],
+  manifestation: HostileManifestationInput,
+  sourceKind: DirectRevealSourceKind,
+  sourceId: string,
+  manifestationTick: number,
+  ticksPerSecond: number,
+): readonly DirectRevealRecord[] {
+  const recipients = directRevealRecipients(manifestation);
+  if (recipients.length === 0) {
+    return Object.freeze([...records].sort(compareDirectRevealRecords));
+  }
+
+  const refreshedByKey = new Map<string, DirectRevealRecord>();
+  for (const record of records) {
+    refreshedByKey.set(
+      directRevealRecordKey(
+        record.viewerFactionId,
+        record.sourceKind,
+        record.sourceId,
+      ),
+      record,
+    );
+  }
+  for (const viewerFactionId of recipients) {
+    const refreshed = refreshDirectReveal(
+      viewerFactionId,
+      sourceKind,
+      sourceId,
+      manifestationTick,
+      ticksPerSecond,
+    );
+    refreshedByKey.set(
+      directRevealRecordKey(viewerFactionId, sourceKind, sourceId),
+      refreshed,
+    );
+  }
+
+  return Object.freeze(
+    [...refreshedByKey.values()].sort(compareDirectRevealRecords),
+  );
+}
+
+/** Drops every source-specific reveal at its exclusive expiry tick. */
+export function pruneExpiredDirectReveals(
+  records: readonly DirectRevealRecord[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  requireNonNegativeSafeTick(currentTick, "currentTick");
+  return Object.freeze(
+    records
+      .filter((record) =>
+        isDirectRevealActive(currentTick, record.expiryExclusiveTick),
+      )
+      .sort(compareDirectRevealRecords),
   );
 }
