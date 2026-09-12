@@ -11,7 +11,9 @@ import {
   createMobileUnit,
   type MobileUnitState,
 } from "../src/simulation/MobileUnits";
+import { materializePersistentStructureState } from "../src/simulation/Structures";
 import { selectTankAutonomousUnitTarget } from "../src/simulation/TankTargeting";
+import { projectTankTargetObservation } from "../src/simulation/VisibilityState";
 
 function rulesWithTraits(traits: readonly OriginTraitId[] = []) {
   const origin = originRuleProfileInput(traits);
@@ -80,6 +82,39 @@ function addUnit(
     state: createProspectiveMatchState(state, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+    }),
+  });
+}
+
+function addTankObserver(
+  state: MatchState,
+  input: Readonly<{
+    ownerId: string;
+    type: "TANK" | "HEAVY_ARTILLERY";
+    cellId: number;
+    eligibleFromTick?: number;
+  }>,
+): Readonly<{ state: MatchState; unit: MobileUnitState }> {
+  const created = addUnit(state, {
+    ownerId: input.ownerId,
+    type: input.type,
+    movementClass: input.type,
+    cellId: input.cellId,
+  });
+  const eligibleFromTick = input.eligibleFromTick ?? created.state.tick;
+  return Object.freeze({
+    unit: created.unit,
+    state: createProspectiveMatchState(created.state, {
+      tankOperationalStates: [
+        ...created.state.tankOperationalStates,
+        Object.freeze({
+          unitId: created.unit.id,
+          health: Object.freeze({ numerator: 1_000n, denominator: 1n }),
+          operatingAnchorCellId: input.cellId,
+          eligibleFromTick,
+          attackReadyAtTick: eligibleFromTick,
+        }),
+      ],
     }),
   });
 }
@@ -373,5 +408,227 @@ describe("Tank autonomous target arbitration", () => {
       targetClass: "POPULATION",
       cellId: 2,
     });
+  });
+});
+
+describe("Tank lawful target observation projection", () => {
+  it("uses only eligible Tank-derived local observation and the exact baseline range boundary", () => {
+    let state = targetFixture(
+      32,
+      1,
+      Array.from({ length: 32 }, () => "PLAINS"),
+      ["alpha", ...Array.from({ length: 31 }, () => "beta")],
+    );
+    const observer = addTankObserver(state, {
+      ownerId: "alpha",
+      type: "TANK",
+      cellId: 0,
+    });
+    state = observer.state;
+    const inRange = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 30,
+    });
+    state = inRange.state;
+    const outOfRange = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 31,
+    });
+    state = outOfRange.state;
+
+    const observation = projectTankTargetObservation(state, "alpha");
+    expect(observation.observedUnitIds).toContain(inRange.unit.id);
+    expect(observation.observedUnitIds).not.toContain(outOfRange.unit.id);
+    expect(observation.observedCellIds).toContain(30);
+    expect(observation.observedCellIds).not.toContain(31);
+    expect(observation.observedUnitIds).toEqual(
+      [...observation.observedUnitIds].sort(),
+    );
+    expect(observation.observedCellIds).toEqual(
+      [...observation.observedCellIds].sort((left, right) => left - right),
+    );
+
+    const inactiveObserverState = createProspectiveMatchState(state, {
+      tankOperationalStates: state.tankOperationalStates.map((entry) =>
+        entry.unitId === observer.unit.id
+          ? { ...entry, eligibleFromTick: state.tick + 1 }
+          : entry,
+      ),
+    });
+    const inactiveObservation = projectTankTargetObservation(
+      inactiveObserverState,
+      "alpha",
+    );
+    expect(inactiveObservation.observedUnitIds).not.toContain(inRange.unit.id);
+    expect(inactiveObservation.observedCellIds).not.toContain(30);
+  });
+
+  it("uses the transformed Heavy-Artillery weapon range for local observation", () => {
+    let state = targetFixture(
+      47,
+      1,
+      Array.from({ length: 47 }, () => "PLAINS"),
+      ["alpha", ...Array.from({ length: 46 }, () => "beta")],
+      ["P43"],
+    );
+    const observer = addTankObserver(state, {
+      ownerId: "alpha",
+      type: "HEAVY_ARTILLERY",
+      cellId: 0,
+    });
+    state = observer.state;
+    const inRange = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 45,
+    });
+    state = inRange.state;
+    const outOfRange = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 46,
+    });
+    state = outOfRange.state;
+
+    const observation = projectTankTargetObservation(state, "alpha");
+    expect(observation.observedUnitIds).toContain(inRange.unit.id);
+    expect(observation.observedUnitIds).not.toContain(outOfRange.unit.id);
+    expect(observation.observedCellIds).toContain(45);
+    expect(observation.observedCellIds).not.toContain(46);
+  });
+
+  it("lets P45 conceal ordinary local observation while direct reveal exposes only the source", () => {
+    const terrain = [
+      ...Array.from({ length: 30 }, () => "PLAINS"),
+      "FOREST",
+      "PLAINS",
+    ];
+    let state = targetFixture(
+      32,
+      1,
+      terrain,
+      ["alpha", ...Array.from({ length: 31 }, () => "beta")],
+      [],
+      ["P45"],
+    );
+    const observer = addTankObserver(state, {
+      ownerId: "alpha",
+      type: "TANK",
+      cellId: 0,
+    });
+    state = observer.state;
+    const concealed = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 30,
+    });
+    state = concealed.state;
+
+    const ordinary = projectTankTargetObservation(state, "alpha");
+    expect(ordinary.observedUnitIds).not.toContain(concealed.unit.id);
+    expect(ordinary.observedCellIds).not.toContain(30);
+
+    const revealedState = createProspectiveMatchState(state, {
+      directReveals: [
+        {
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT",
+          sourceId: concealed.unit.id,
+          expiryExclusiveTick: state.tick + 1,
+        },
+      ],
+    });
+    const revealed = projectTankTargetObservation(revealedState, "alpha");
+    expect(revealed.observedUnitIds).toContain(concealed.unit.id);
+    expect(revealed.observedCellIds).not.toContain(30);
+
+    const expiredState = createProspectiveMatchState(state, {
+      directReveals: [
+        {
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT",
+          sourceId: concealed.unit.id,
+          expiryExclusiveTick: state.tick,
+        },
+      ],
+    });
+    expect(
+      projectTankTargetObservation(expiredState, "alpha").observedUnitIds,
+    ).not.toContain(concealed.unit.id);
+  });
+
+  it("uses ordinary Observation Posts but lets enemy P49 blackout suppress them", () => {
+    let state = targetFixture(
+      70,
+      1,
+      Array.from({ length: 70 }, () => "PLAINS"),
+      ["alpha", "alpha", ...Array.from({ length: 68 }, () => "beta")],
+      [],
+      ["P49"],
+    );
+    const observer = addTankObserver(state, {
+      ownerId: "alpha",
+      type: "TANK",
+      cellId: 0,
+    });
+    state = observer.state;
+    const target = addUnit(state, {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 35,
+    });
+    state = target.state;
+    const alphaPost = materializePersistentStructureState({
+      id: "alpha-observer",
+      ownerId: "alpha",
+      type: "OBSERVATION_POST",
+      cellId: 1,
+      completedLevel: 1,
+      active: true,
+      acquisitionPath: "GRANT",
+    });
+    state = createProspectiveMatchState(state, { structures: [alphaPost] });
+
+    const ordinary = projectTankTargetObservation(state, "alpha");
+    expect(ordinary.observedUnitIds).toContain(target.unit.id);
+    expect(ordinary.observedCellIds).toContain(35);
+
+    const betaBlackout = materializePersistentStructureState({
+      id: "beta-blackout",
+      ownerId: "beta",
+      type: "OBSERVATION_POST",
+      cellId: 50,
+      completedLevel: 1,
+      active: true,
+      acquisitionPath: "GRANT",
+    });
+    state = createProspectiveMatchState(state, {
+      structures: [alphaPost, betaBlackout],
+    });
+    const blackedOut = projectTankTargetObservation(state, "alpha");
+    expect(blackedOut.observedUnitIds).not.toContain(target.unit.id);
+    expect(blackedOut.observedCellIds).not.toContain(35);
+
+    const revealedState = createProspectiveMatchState(state, {
+      directReveals: [
+        {
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT",
+          sourceId: target.unit.id,
+          expiryExclusiveTick: state.tick + 1,
+        },
+      ],
+    });
+    const revealed = projectTankTargetObservation(revealedState, "alpha");
+    expect(revealed.observedUnitIds).toContain(target.unit.id);
+    expect(revealed.observedCellIds).not.toContain(35);
   });
 });
