@@ -303,7 +303,7 @@ Baseline subsystem effects may define another explicit subject/owner relation wh
 
 For boolean conditions such as “inside a qualifying Fort/SAM Launcher area,” same-type overlap is union/existence: one or more qualifying fields makes the condition true once. Overlap does not multiply P18/P24 and cannot make N11 “more zero.” Numeric pressure/support consumers separately retain the strongest-applicable same-type reducer and the canonical Fort/Command cross-type composition rule.
 
-#### 2.1.1.3 Canonical consumers and controller projection
+#### 2.1.1.3 Canonical consumers
 
 All authoritative consumers query the same effective field profile. Current required consequences include:
 
@@ -313,8 +313,6 @@ All authoritative consumers query the same effective field profile. Current requ
 - N11 consumes self-owned SAM Launcher membership;
 - N11 uses the SAM Launcher's **current effective interception range geometry**, including P40 and ordinary SAM-range Echo specialization; it has no separate economic radius;
 - P40 changes N11 geometry only because it changes that canonical effective SAM range; charge READY/RECHARGING state does not change membership.
-
-Controller/Official-AI mechanics projection must expose the same authoritative physical-structure field as a queryable selector/helper. Numeric compatibility fields such as a displayed coverage radius or interception range are derived ergonomic information only; they must never become a second raster-membership authority, especially for area-scaled fields where an exact radius may be irrational.
 
 Every physical persistent structure blocks deliberate relinquishment of its containing cell for as long as that structure exists, regardless of completed level, health, activity, or construction/upgrade state. This registry owns the structure-occupancy predicate only; the atomic relinquishment transaction, ownership result, and failure behavior are owned by `OPEN_FUFU_DESIGN.md`. Relinquishment never uses structure destruction or ownerless-structure state as an implicit workaround.
 
@@ -357,7 +355,7 @@ occupied slots
 
 A materialized under-construction structure appears only in the first bucket; it is never counted again as a separate pending acquisition. An admitted construction occupies its ownership slot from transaction commit, not only from later activation. An upgrade does not create a new structure and consumes no additional ownership slot.
 
-A controller/mechanics quote is informational only and does **not** reserve a slot. Several individually legal quotes may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling commands cannot oversubscribe the same cap.
+A non-committing prospective admission evaluation does **not** reserve a slot. Several individually legal prospective evaluations may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling acquisitions cannot oversubscribe the same cap.
 
 The slot is released when authoritative ownership of that physical structure ends, including successful transfer away or destruction/deletion. A committed pre-materialization reservation is released on authoritative cancellation/rollback. Failed admissions leave no phantom reservation.
 
@@ -565,7 +563,7 @@ state  : READY
 
 For completed capacity `N`, the slot IDs are exactly `0..N-1`. Existing slots are never renumbered. Initial activation creates the complete current range in ascending ID order; a later capacity increase from `N` to `M` appends exactly `N..M-1` and leaves every earlier slot identity unchanged.
 
-The controller-facing summary may expose only `ready`, `capacity`, and remaining recharge ticks. That projection is derived state. The authoritative simulation/replay retains every `slotId`, state, and absolute deadline so charge consumption cannot be ambiguous or duplicated.
+The authoritative simulation/replay retains every `slotId`, state, and absolute deadline so charge consumption cannot be ambiguous or duplicated.
 
 A fresh Silo contributes **no active charge state while its first construction is incomplete**. When a newly materialized/completed Silo first becomes active, every slot in its current completed-level capacity starts **READY**. This applies equally to ordinary completed construction and to an immediate completed grant unless the grant's own canonical mechanic explicitly says otherwise. Consequently, a successful P20 L1 starting-Silo grant begins with slot `0` READY (`1/1`) immediately.
 

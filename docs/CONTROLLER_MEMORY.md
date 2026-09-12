@@ -48,6 +48,8 @@ JsonValue =
 
 The root is always an object. Nested objects are plain structured records. Arrays preserve their authored order.
 
+Opaque controller references whose public-contract representation is JSON-compatible may be stored in memory exactly like any other valid value. The memory codec treats such references as opaque persisted data: it does not resolve them, determine their current visibility or liveness, rewrite them, or prune them when the referenced object becomes unavailable. Reference identity and visibility semantics remain owned by the controller/high-level contracts; this document owns only persistence of the serialized value.
+
 The following are not valid controller-memory values:
 
 - `undefined`;
