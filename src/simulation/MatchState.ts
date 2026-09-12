@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
   canonicalHostilitySideKey,
@@ -82,6 +83,7 @@ export interface MatchState {
   readonly nextMobileUnitOrdinal: number;
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly tankOperationalStates: readonly TankOperationalState[];
+  readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -98,6 +100,7 @@ export interface MatchStateUpdate {
   readonly nextMobileUnitOrdinal?: number;
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly tankOperationalStates?: readonly TankOperationalState[];
+  readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -226,6 +229,63 @@ function freezeHostilityGrace(
           ),
       ),
   );
+}
+
+function freezeDirectReveals(
+  entries: readonly DirectRevealRecord[],
+): readonly DirectRevealRecord[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("directReveals must be an array");
+  }
+  const seen = new Set<string>();
+  const materialized = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("direct reveal record must be an object");
+    }
+    if (
+      typeof entry.viewerFactionId !== "string" ||
+      entry.viewerFactionId.length === 0
+    ) {
+      throw new Error("direct reveal viewerFactionId must be a non-empty string");
+    }
+    if (
+      entry.sourceKind !== "UNIT" &&
+      entry.sourceKind !== "STRUCTURE" &&
+      entry.sourceKind !== "OPERATION"
+    ) {
+      throw new Error("direct reveal sourceKind is invalid");
+    }
+    if (typeof entry.sourceId !== "string" || entry.sourceId.length === 0) {
+      throw new Error("direct reveal sourceId must be a non-empty string");
+    }
+    if (
+      !Number.isSafeInteger(entry.expiryExclusiveTick) ||
+      entry.expiryExclusiveTick < 0 ||
+      Object.is(entry.expiryExclusiveTick, -0)
+    ) {
+      throw new Error(
+        "direct reveal expiryExclusiveTick must be a non-negative safe integer",
+      );
+    }
+    const key = `${JSON.stringify(entry.viewerFactionId)}\u0000${entry.sourceKind}\u0000${JSON.stringify(entry.sourceId)}`;
+    if (seen.has(key)) {
+      throw new Error("duplicate direct reveal viewer/source record");
+    }
+    seen.add(key);
+    return Object.freeze({
+      viewerFactionId: entry.viewerFactionId,
+      sourceKind: entry.sourceKind,
+      sourceId: entry.sourceId,
+      expiryExclusiveTick: entry.expiryExclusiveTick,
+    });
+  });
+  materialized.sort(
+    (left, right) =>
+      compareIds(left.viewerFactionId, right.viewerFactionId) ||
+      compareIds(left.sourceKind, right.sourceKind) ||
+      compareIds(left.sourceId, right.sourceId),
+  );
+  return Object.freeze(materialized);
 }
 
 function freezeTankProductionJobs(
@@ -469,6 +529,9 @@ function createState(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
     ),
     tankOperationalStates,
+    directReveals: freezeDirectReveals(
+      update.directReveals ?? previous.directReveals ?? [],
+    ),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -544,6 +607,7 @@ function createEmptyInitialMatchState(
     nextMobileUnitOrdinal: 0,
     tankProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
+    directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -762,6 +826,13 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const directReveals = state.directReveals.map((entry) => ({
+    viewerFactionId: entry.viewerFactionId,
+    sourceKind: entry.sourceKind,
+    sourceId: entry.sourceId,
+    expiryExclusiveTick: entry.expiryExclusiveTick,
+  }));
+
   const operations = [...state.operations]
     .sort((left, right) =>
       compareIds(left.ownerId, right.ownerId) ||
@@ -825,6 +896,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
     tankProductionJobs,
     tankOperationalStates,
+    directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(
