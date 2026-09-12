@@ -440,8 +440,8 @@ describe("Tank Factory two-tier repair service", () => {
   it("clears the repair route when broad repair reaches full health before fast service", () => {
     const seeded = repairFixture({
       width: 16,
-      factoryLevel: 1,
-      tanks: [{ cellId: 15, health: 999n, assigned: false }],
+      factoryLevel: 5,
+      tanks: [{ cellId: 15, health: 995n }],
     });
     const unitId = seeded.tankOperationalStates[0]!.unitId;
     const intended = advanceTankRepairIntentPhase(seeded);
