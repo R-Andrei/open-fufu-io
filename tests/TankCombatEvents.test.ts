@@ -1,6 +1,12 @@
 import type { MobileUnitType } from "../src/core/controller/ControllerApi";
+import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
+import {
+  originRuleProfileInput,
+  type OriginTraitId,
+} from "../src/core/rules/OriginRuleManifest";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import { resolveAdmittedTankUnitAttacks } from "../src/simulation/TankCombat";
 import {
   createInitialMatchState,
@@ -16,16 +22,31 @@ import type {
   UnitAttackResolvedEvent,
   UnitDestroyedEvent,
 } from "../src/simulation/SimulationEvents";
+import type {
+  TankExactHealth,
+  TankOperationalState,
+} from "../src/simulation/Tanks";
 
-function rules() {
+function rules(
+  traits: readonly OriginTraitId[] = [],
+  additional: readonly RuleContribution[] = [],
+) {
+  const origin = originRuleProfileInput(traits);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
-    contributions: [],
-    dynamicProviders: [],
-    customDomains: [],
+    contributions: [...origin.contributions, ...additional],
+    dynamicProviders: origin.dynamicProviders,
+    customDomains: origin.customDomains,
   });
 }
 
-function fixture(): MatchState {
+function fixture(
+  options: Readonly<{
+    blueTraits?: readonly OriginTraitId[];
+    blueAdditional?: readonly RuleContribution[];
+    redTraits?: readonly OriginTraitId[];
+    redAdditional?: readonly RuleContribution[];
+  }> = {},
+): MatchState {
   return createInitialMatchState(
     createMicroSimulationSpec({
       seed: "tank-combat-events-red",
@@ -34,9 +55,15 @@ function fixture(): MatchState {
       terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
       initialOwners: ["blue", "blue", "green", "red"],
       factions: [
-        { id: "blue", rules: rules() },
+        {
+          id: "blue",
+          rules: rules(options.blueTraits, options.blueAdditional),
+        },
         { id: "green", rules: rules() },
-        { id: "red", rules: rules() },
+        {
+          id: "red",
+          rules: rules(options.redTraits, options.redAdditional),
+        },
       ],
     }),
   );
@@ -45,8 +72,9 @@ function fixture(): MatchState {
 function addUnit(
   state: MatchState,
   ownerId: string,
-  type: "TANK" | "TRAIN",
+  type: "TANK" | "HEAVY_ARTILLERY" | "TRAIN",
   cellId: number,
+  health: TankExactHealth = Object.freeze({ numerator: 1_000n, denominator: 1n }),
 ): Readonly<{ state: MatchState; unit: MobileUnitState }> {
   const created = createMobileUnit(
     state.map,
@@ -62,13 +90,34 @@ function addUnit(
       cellId,
     },
   );
+  const tankOperationalStates: readonly TankOperationalState[] =
+    type === "TRAIN"
+      ? state.tankOperationalStates
+      : Object.freeze([
+          ...state.tankOperationalStates,
+          Object.freeze({
+            unitId: created.unit.id,
+            health,
+            operatingAnchorCellId: cellId,
+            eligibleFromTick: 0,
+            attackReadyAtTick: 0,
+          }),
+        ]);
   return Object.freeze({
     unit: created.unit,
     state: createProspectiveMatchState(state, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      tankOperationalStates,
     }),
   });
+}
+
+function tankHealth(
+  state: MatchState,
+  unitId: string,
+): TankExactHealth | undefined {
+  return state.tankOperationalStates.find((entry) => entry.unitId === unitId)?.health;
 }
 
 function attackEvents(
@@ -156,5 +205,91 @@ describe("Tank physical combat events", () => {
 
     expect(forward.state.hostilityGrace).toEqual(state.hostilityGrace);
     expect(forward.state.operations).toEqual(state.operations);
+  });
+
+  it("applies the baseline 250 HP anti-armor damage to an admitted Tank target", () => {
+    let state = fixture();
+    const attacker = addUnit(state, "blue", "TANK", 0);
+    state = attacker.state;
+    const target = addUnit(state, "red", "TANK", 3);
+    state = target.state;
+
+    const result = resolveAdmittedTankUnitAttacks(state, [
+      { attackerUnitId: attacker.unit.id, targetUnitId: target.unit.id },
+    ]);
+
+    expect(tankHealth(result.state, target.unit.id)).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+    expect(result.state.mobileUnits.some((unit) => unit.id === target.unit.id)).toBe(
+      true,
+    );
+    expect(attackEvents(result.events)).toHaveLength(1);
+    expect(destroyedEvents(result.events)).toHaveLength(0);
+    expect(result.state.hostilityGrace).toEqual(state.hostilityGrace);
+  });
+
+  it("keeps effective Tank damage exact when an Echo produces fractional HP damage", () => {
+    const damageEcho = echoRuleContribution(
+      "unit.TANK.damage",
+      "BENEFICIAL",
+      500,
+      "echo:test-tank-damage",
+    );
+    let state = fixture({ blueAdditional: [damageEcho] });
+    const attacker = addUnit(state, "blue", "TANK", 0);
+    state = attacker.state;
+    const target = addUnit(state, "red", "TANK", 3);
+    state = target.state;
+
+    const result = resolveAdmittedTankUnitAttacks(state, [
+      { attackerUnitId: attacker.unit.id, targetUnitId: target.unit.id },
+    ]);
+
+    expect(tankHealth(result.state, target.unit.id)).toEqual({
+      numerator: 1_475n,
+      denominator: 2n,
+    });
+  });
+
+  it("resolves mutually lethal P43 Heavy Artillery attacks from the same frozen snapshot", () => {
+    let state = fixture({ blueTraits: ["P43"], redTraits: ["P43"] });
+    const blue = addUnit(state, "blue", "HEAVY_ARTILLERY", 0);
+    state = blue.state;
+    const red = addUnit(state, "red", "HEAVY_ARTILLERY", 3);
+    state = red.state;
+
+    const attacks = [
+      { attackerUnitId: blue.unit.id, targetUnitId: red.unit.id },
+      { attackerUnitId: red.unit.id, targetUnitId: blue.unit.id },
+    ] as const;
+    const forward = resolveAdmittedTankUnitAttacks(state, attacks);
+    const reversed = resolveAdmittedTankUnitAttacks(state, [...attacks].reverse());
+
+    expect(reversed).toEqual(forward);
+    expect(
+      forward.state.mobileUnits.some(
+        (unit) => unit.id === blue.unit.id || unit.id === red.unit.id,
+      ),
+    ).toBe(false);
+    expect(
+      forward.state.tankOperationalStates.some(
+        (entry) => entry.unitId === blue.unit.id || entry.unitId === red.unit.id,
+      ),
+    ).toBe(false);
+    expect(attackEvents(forward.events)).toHaveLength(2);
+    const destructions = destroyedEvents(forward.events);
+    expect(destructions).toHaveLength(2);
+    expect(
+      destructions.map((event) => [
+        event.payload.unit.unitId,
+        event.payload.causes.map((cause) => cause.attacker.unitId),
+      ]),
+    ).toEqual([
+      [blue.unit.id, [red.unit.id]],
+      [red.unit.id, [blue.unit.id]],
+    ]);
+    expect(forward.state.hostilityGrace).toEqual(state.hostilityGrace);
   });
 });
