@@ -696,6 +696,7 @@ interface RepairCandidate {
 export function advanceTankRepairPhase(state: MatchState): MatchState {
   const unitById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const updates = new Map<string, TankOperationalState>();
+  const unitUpdates = new Map<string, MobileUnitState>();
   const factories = state.structures
     .filter(
       (structure) =>
@@ -779,12 +780,19 @@ export function advanceTankRepairPhase(state: MatchState): MatchState {
       const updated = result.full
         ? clearRepairState(candidate.operational, health)
         : Object.freeze({ ...candidate.operational, health });
+      if (result.full) {
+        const clearedUnit = clearUnitRoute(state, candidate.unit);
+        if (clearedUnit !== candidate.unit) {
+          unitUpdates.set(candidate.unit.id, clearedUnit);
+        }
+      }
       updates.set(candidate.operational.unitId, updated);
     }
   }
 
-  if (updates.size === 0) return state;
+  if (updates.size === 0 && unitUpdates.size === 0) return state;
   return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
     tankOperationalStates: state.tankOperationalStates.map(
       (operational) => updates.get(operational.unitId) ?? operational,
     ),
