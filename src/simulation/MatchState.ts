@@ -757,6 +757,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       type: unit.type,
       movementClass: unit.movementClass,
       cellId: unit.cellId,
+      ...(unit.strategicDestinationCellId === undefined
+        ? {}
+        : { strategicDestinationCellId: unit.strategicDestinationCellId }),
       ...(unit.route === undefined
         ? {}
         : {
