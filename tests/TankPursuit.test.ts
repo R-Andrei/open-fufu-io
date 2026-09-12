@@ -167,6 +167,95 @@ function strategicTravelFixture(
   return Object.freeze({ state, unitId: ordered.id, destinationCellId });
 }
 
+function strategicCombatFixture(): Readonly<{
+  state: MatchState;
+  alphaUnitId: string;
+  betaUnitId: string;
+  destinationCellId: number;
+}> {
+  const width = 132;
+  const destinationCellId = 131;
+  let state = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-strategic-combat-red",
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: width }, () => "alpha"),
+      factions: [
+        { id: "alpha", rules: emptyRules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const ownerIds = state.factions.map((faction) => faction.id);
+  const alpha = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 101,
+    },
+  );
+  const orderedAlpha = setMobileUnitStrategicDestination(
+    state.map,
+    alpha.unit,
+    destinationCellId,
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: alpha.mobileUnits.map((unit) =>
+      unit.id === orderedAlpha.id ? orderedAlpha : unit,
+    ),
+    nextMobileUnitOrdinal: alpha.nextMobileUnitOrdinal,
+  });
+  const beta = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 102,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: beta.mobileUnits,
+    nextMobileUnitOrdinal: beta.nextMobileUnitOrdinal,
+    tankOperationalStates: [
+      {
+        unitId: orderedAlpha.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: 0,
+        eligibleFromTick: 1,
+        attackReadyAtTick: 1,
+      },
+      {
+        unitId: beta.unit.id,
+        health: { numerator: 250n, denominator: 1n },
+        operatingAnchorCellId: beta.unit.cellId,
+        eligibleFromTick: 1_000,
+        attackReadyAtTick: 1_000,
+      },
+    ],
+  });
+  return Object.freeze({
+    state,
+    alphaUnitId: orderedAlpha.id,
+    betaUnitId: beta.unit.id,
+    destinationCellId,
+  });
+}
+
 function unitById(state: MatchState, unitId: string) {
   const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
   if (unit === undefined) throw new Error(`missing unit ${unitId}`);
@@ -278,5 +367,37 @@ describe("Tank strategic movement", () => {
     expect(retried.route).toBeUndefined();
     expect(retried.strategicDestinationCellId).toBe(fixture.destinationCellId);
     expect(operationalById(tick3, fixture.unitId).operatingAnchorCellId).toBe(0);
+  });
+
+  it("interrupts travel for legal nearby combat beyond the settled-anchor leash and resumes the same destination", () => {
+    const fixture = strategicCombatFixture();
+    const engine = new TickEngine();
+
+    const tick1 = engine.advance(fixture.state, []);
+    expect(
+      tick1.mobileUnits.some((unit) => unit.id === fixture.betaUnitId),
+    ).toBe(false);
+    const interrupted = unitById(tick1, fixture.alphaUnitId);
+    expect(interrupted.cellId).toBe(101);
+    expect(interrupted.route).toBeUndefined();
+    expect(interrupted.strategicDestinationCellId).toBe(
+      fixture.destinationCellId,
+    );
+    expect(
+      operationalById(tick1, fixture.alphaUnitId).operatingAnchorCellId,
+    ).toBe(0);
+
+    const tick2 = engine.advance(tick1, []);
+    const resumed = unitById(tick2, fixture.alphaUnitId);
+    expect(
+      operationalById(tick2, fixture.alphaUnitId).retainedTarget,
+    ).toBeUndefined();
+    expect(resumed.cellId).toBe(101);
+    expect(resumed.route?.destinationCellId).toBe(fixture.destinationCellId);
+    expect(resumed.route?.edgeProgress).toBeGreaterThan(0);
+    expect(resumed.strategicDestinationCellId).toBe(fixture.destinationCellId);
+    expect(
+      operationalById(tick2, fixture.alphaUnitId).operatingAnchorCellId,
+    ).toBe(0);
   });
 });
