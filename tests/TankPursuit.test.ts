@@ -85,7 +85,14 @@ function pursuitFixture(): Readonly<{
         health: { numerator: 1_000n, denominator: 1n },
         operatingAnchorCellId: alpha.unit.cellId,
         eligibleFromTick: 1,
-        attackReadyAtTick: 1,
+        attackReadyAtTick: 1_000,
+      },
+      {
+        unitId: beta.unit.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: beta.unit.cellId,
+        eligibleFromTick: 1_000,
+        attackReadyAtTick: 1_000,
       },
     ],
   });
