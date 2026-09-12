@@ -1,0 +1,407 @@
+{
+  "schemaVersion": 1,
+  "canonicalContract": "docs/SIMULATION_EVENTS.md",
+  "moduleOwners": {
+    "src/simulation/ControllerQueryProjection.ts": "CONTROLLER_ADAPTER",
+    "src/simulation/ControllerReferenceSession.ts": "OPERATIONAL_REFERENCE",
+    "src/simulation/ControllerRuntime.ts": "CONTROLLER_ADAPTER",
+    "src/simulation/ControllerSpatialSurface.ts": "CONTROLLER_ADAPTER",
+    "src/simulation/Economy.ts": "ECONOMY",
+    "src/simulation/HostilityState.ts": "HOSTILITY",
+    "src/simulation/LandOperations.ts": "LAND",
+    "src/simulation/LandOperationsCore.ts": "LAND",
+    "src/simulation/MapArtifact.ts": "MAP_SUBSTRATE",
+    "src/simulation/MatchRuntime.ts": "RUNTIME_CORE",
+    "src/simulation/MatchSpec.ts": "RUNTIME_CORE",
+    "src/simulation/MatchState.ts": "RUNTIME_CORE",
+    "src/simulation/MicroSimulationHarness.ts": "TEST_HARNESS",
+    "src/simulation/MobileUnits.ts": "MOBILE_UNITS",
+    "src/simulation/Navigation.ts": "MAP_SUBSTRATE",
+    "src/simulation/Population.ts": "POPULATION",
+    "src/simulation/RailNetwork.ts": "MAP_SUBSTRATE",
+    "src/simulation/Segments.ts": "MAP_SUBSTRATE",
+    "src/simulation/SimulationEvents.ts": "SIMULATION_EVENTS",
+    "src/simulation/SimulationMap.ts": "MAP_SUBSTRATE",
+    "src/simulation/SpawnInitialization.ts": "SPAWN",
+    "src/simulation/SpawnModeResolution.ts": "SPAWN",
+    "src/simulation/SpawnSemantics.ts": "SPAWN",
+    "src/simulation/StrategicSpawn.ts": "SPAWN",
+    "src/simulation/Structures.ts": "STRUCTURES",
+    "src/simulation/StructuresCore.ts": "STRUCTURES",
+    "src/simulation/TickEngine.ts": "RUNTIME_CORE"
+  },
+  "crossOwnerImports": [
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection reads current Land mechanics/state for requester-lawful derived queries; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection reads current authoritative MatchState for requester-lawful observation; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection reads current Structure state/mechanics for lawful quotes and views; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerReferenceSession.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Operational reference bookkeeping reconciles against current MatchState identity while remaining non-authoritative live session state."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller observation and admission use current Economy calculations without creating a cross-owner occurrence channel."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "The controller adapter explicitly routes accepted controller directives through Land-owned deterministic operations."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "The controller adapter depends on the canonical MatchState shape for lawful projection and admission."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "The controller adapter depends on Population state vocabulary used in lawful observations and admission."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/TickEngine.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "The controller adapter emits the TickEngine-owned SimulationAction contract rather than an alternate occurrence channel."
+    },
+    {
+      "from": "src/simulation/Economy.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Economy reuses Land terrain base-spec contracts for economic derivation; no lifecycle occurrence crosses the boundary."
+    },
+    {
+      "from": "src/simulation/Economy.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Economy derives values from current authoritative MatchState without treating current state as an event."
+    },
+    {
+      "from": "src/simulation/HostilityState.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Hostility consequences inspect current Land operation state after canonical lifecycle facts are delivered."
+    },
+    {
+      "from": "src/simulation/HostilityState.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Hostility consumes canonical simulation lifecycle facts rather than a private occurrence channel."
+    },
+    {
+      "from": "src/simulation/LandOperations.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Land produces canonical simulation lifecycle and ownership facts for cross-owner consequences."
+    },
+    {
+      "from": "src/simulation/LandOperationsCore.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Land initialization depends on the MatchSpec map/configuration contract; no occurrence is delivered."
+    },
+    {
+      "from": "src/simulation/LandOperationsCore.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Land resolution applies Population-owned deterministic primitives as part of the authoritative Land operation."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/ControllerQueryProjection.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/ControllerReferenceSession.ts",
+      "classification": "OPERATIONAL_REFERENCE",
+      "rationale": "R7 live controller-reference identity bookkeeping receives deterministic lifecycle hints only outside canonical MatchState, replay, fingerprints, and gameplay consequences."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/ControllerRuntime.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/MapArtifact.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/SpawnInitialization.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchSpec.ts",
+      "to": "src/simulation/MapArtifact.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchSpec embeds the MapArtifact binding contract; this is configuration identity, not occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchSpec.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchSpec embeds the Structure grant request contract for initialization; this is configuration, not occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Economy-owned value materialization into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Hostility-owned residual state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Land-owned operation and capture state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Mobile-unit state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Population-owned state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState embeds the immutable map-substrate contract in authoritative state."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Structure-owned state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MicroSimulationHarness.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "TEST_HARNESS",
+      "rationale": "Test-only harness composes the MatchSpec production contract for deterministic fixture execution; it is not an authoritative occurrence channel."
+    },
+    {
+      "from": "src/simulation/MicroSimulationHarness.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "TEST_HARNESS",
+      "rationale": "Test-only harness composes Structure production contracts for deterministic fixture execution; it is not an authoritative occurrence channel."
+    },
+    {
+      "from": "src/simulation/MobileUnits.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Mobile-unit rules query current map-substrate facts; map state is not an occurrence channel."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/MapArtifact.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn initialization consumes canonical map-artifact identity helpers; no occurrence is delivered."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn initialization consumes the MatchSpec spawn-handoff contract."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Spawn initialization deterministically materializes the initial authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Spawn initialization creates initial Population state during deterministic pre-match materialization."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn initialization consumes the immutable SimulationMap contract for placement and materialization."
+    },
+    {
+      "from": "src/simulation/SpawnInitialization.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Spawn initialization applies configured initial Structure grants during deterministic pre-match materialization."
+    },
+    {
+      "from": "src/simulation/SpawnModeResolution.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn-mode resolution produces the MatchSpec-owned resolved spawn-input contract."
+    },
+    {
+      "from": "src/simulation/SpawnModeResolution.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Spawn-mode resolution reads current or prospective MatchState facts while choosing legal origins."
+    },
+    {
+      "from": "src/simulation/SpawnSemantics.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn semantics reuses Land terrain legality and base-spec contracts rather than duplicating them."
+    },
+    {
+      "from": "src/simulation/SpawnSemantics.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Spawn semantics validates the MatchSpec-owned resolved spawn contract."
+    },
+    {
+      "from": "src/simulation/SpawnSemantics.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Spawn semantics reads current or prospective MatchState for deterministic legality and spacing checks."
+    },
+    {
+      "from": "src/simulation/SpawnSemantics.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Spawn semantics reads map-substrate facts for deterministic placement checks."
+    },
+    {
+      "from": "src/simulation/StrategicSpawn.ts",
+      "to": "src/simulation/ControllerRuntime.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Strategic Spawn explicitly invokes the controller-host contract for deterministic pre-match decisions."
+    },
+    {
+      "from": "src/simulation/StrategicSpawn.ts",
+      "to": "src/simulation/MatchSpec.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Strategic Spawn produces and consumes the MatchSpec-owned spawn-input contract."
+    },
+    {
+      "from": "src/simulation/StrategicSpawn.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Strategic Spawn reads current or prospective MatchState while evaluating legal deterministic choices."
+    },
+    {
+      "from": "src/simulation/Structures.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Structure lifecycle resolution reads current authoritative MatchState around its owned lifecycle operations."
+    },
+    {
+      "from": "src/simulation/Structures.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Structures consumes and produces canonical simulation facts at cross-owner lifecycle boundaries."
+    },
+    {
+      "from": "src/simulation/StructuresCore.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Structure purchase admission applies Economy-owned FFY debit primitives atomically with the accepted Structure transaction."
+    },
+    {
+      "from": "src/simulation/StructuresCore.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Structure admission and quote logic read current MatchState for legality and current values."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "TickEngine explicitly sequences canonical simulation event creation and delivery in deterministic phase order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    }
+  ]
+}
