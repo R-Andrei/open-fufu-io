@@ -428,6 +428,281 @@ describe("deterministic simulation events", () => {
     ]);
   });
 
+  it("emits an immutable lifecycle-safe capture-destruction fact with no consumer-private payload", () => {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-capture-destroyed",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: originRules(["N17"]) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const preLand = createProspectiveMatchState(base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "factory-cut",
+          ownerId: "beta",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const postLand = createProspectiveMatchState(preLand, {
+      ownership: ["alpha"],
+    });
+
+    const resolved = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+
+    expect(resolved.structures).toEqual([]);
+    expect(resolved.events).toEqual([
+      {
+        id: expect.any(String),
+        tick: 1,
+        kind: "STRUCTURE_CAPTURE_RESOLVED",
+        payload: {
+          structure: {
+            structureId: "factory-cut",
+            structureType: "FACTORY",
+            cellId: 0,
+            previousOwnerId: "beta",
+            capturingFactionId: "alpha",
+            completedLevel: 1,
+            active: true,
+          },
+          result: "STRUCTURE_DESTROYED_ON_CAPTURE",
+        },
+      },
+    ]);
+    const event = resolved.events[0]!;
+    expect(Object.keys(event.payload).sort()).toEqual(["result", "structure"]);
+    expect(Object.keys(event.payload.structure).sort()).toEqual([
+      "active",
+      "capturingFactionId",
+      "cellId",
+      "completedLevel",
+      "previousOwnerId",
+      "structureId",
+      "structureType",
+    ]);
+    expect(event.payload).not.toHaveProperty("ffy");
+    expect(event.payload).not.toHaveProperty("factoryService");
+    expect(event.payload).not.toHaveProperty("originReward");
+    expect(event.payload).not.toHaveProperty("atWar");
+    expect(event.payload).not.toHaveProperty("score");
+    expect(Object.isFrozen(event)).toBe(true);
+    expect(Object.isFrozen(event.payload)).toBe(true);
+    expect(Object.isFrozen(event.payload.structure)).toBe(true);
+  });
+
+  it("emits no structure-capture fact when the changed cell contains no persistent structure", () => {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-empty-capture",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const postLand = createProspectiveMatchState(base, {
+      ownership: ["alpha"],
+    });
+
+    const resolved = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+
+    expect(resolved.structures).toEqual([]);
+    expect(resolved.events).toEqual([]);
+  });
+
+  it("orders structure-capture facts deterministically with stable unique producer-owned identities", () => {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-multi-structure-capture",
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "gamma"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+          { id: "gamma", rules: emptyRules() },
+        ],
+      }),
+    );
+    const preLand = createProspectiveMatchState(base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "fort-cell-2",
+          ownerId: "gamma",
+          type: "FORT",
+          cellId: 2,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+        materializePersistentStructureState({
+          id: "city-cell-1",
+          ownerId: "beta",
+          type: "CITY",
+          cellId: 1,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        }),
+      ],
+    });
+    const postLand = createProspectiveMatchState(preLand, {
+      ownership: ["alpha", "alpha", "alpha"],
+    });
+    const reversedStructures = Object.freeze({
+      ...postLand,
+      structures: Object.freeze([...postLand.structures].reverse()),
+    }) as MatchState;
+    const cellOne = createCellOwnershipChangedEvent({
+      id: "capture-cell-1",
+      tick: 1,
+      cellId: 1,
+      previousOwnerId: "beta",
+      nextOwnerId: "alpha",
+    });
+    const cellTwo = createCellOwnershipChangedEvent({
+      id: "capture-cell-2",
+      tick: 1,
+      cellId: 2,
+      previousOwnerId: "gamma",
+      nextOwnerId: "alpha",
+    });
+
+    const first = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [cellTwo, cellOne],
+      1,
+    );
+    const second = resolvePersistentStructureLifecycleTickWithEvents(
+      reversedStructures,
+      [cellOne, cellTwo],
+      1,
+    );
+
+    expect(first.events).toEqual(second.events);
+    expect(first.events.map((event) => event.payload.structure.cellId)).toEqual([
+      1,
+      2,
+    ]);
+    expect(new Set(first.events.map((event) => event.id)).size).toBe(2);
+    expect(first.events.every((event) => event.id.length > 0)).toBe(true);
+  });
+
+  it("snapshots fresh construction before same-tick progression", () => {
+    const postLand = postLandStructureState({ remainingTicks: 1 });
+    const resolved = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+
+    expect(resolved.events[0]?.payload.structure).toEqual({
+      structureId: "captured-city",
+      structureType: "CITY",
+      cellId: 0,
+      previousOwnerId: "beta",
+      capturingFactionId: "alpha",
+      active: false,
+      construction: { targetLevel: 1, remainingTicks: 1 },
+    });
+    expect(Object.isFrozen(resolved.events[0]?.payload.structure.construction)).toBe(
+      true,
+    );
+    expect(resolved.structures).toEqual([
+      expect.objectContaining({
+        id: "captured-city",
+        ownerId: "alpha",
+        completedLevel: 1,
+        active: true,
+      }),
+    ]);
+  });
+
+  it("snapshots an in-progress upgrade before same-tick progression", () => {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "simulation-event-captured-upgrade-fact",
+        width: 1,
+        height: 1,
+        terrain: ["PLAINS"],
+        initialOwners: ["beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const preLand = createProspectiveMatchState(base, {
+      structures: [
+        materializePersistentStructureState({
+          id: "fort-upgrade-fact",
+          ownerId: "beta",
+          type: "FORT",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          construction: { targetLevel: 2, remainingTicks: 2 },
+          acquisitionPath: "PURCHASE_BUILD",
+        }),
+      ],
+    });
+    const postLand = createProspectiveMatchState(preLand, {
+      ownership: ["alpha"],
+    });
+
+    const resolved = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+
+    expect(resolved.events[0]?.payload.structure).toEqual({
+      structureId: "fort-upgrade-fact",
+      structureType: "FORT",
+      cellId: 0,
+      previousOwnerId: "beta",
+      capturingFactionId: "alpha",
+      completedLevel: 1,
+      active: true,
+      construction: { targetLevel: 2, remainingTicks: 2 },
+    });
+    expect(resolved.structures).toEqual([
+      expect.objectContaining({
+        id: "fort-upgrade-fact",
+        ownerId: "alpha",
+        completedLevel: 1,
+        active: true,
+        construction: { targetLevel: 2, remainingTicks: 1 },
+        acquisitionPath: "CAPTURE_TRANSFER",
+      }),
+    ]);
+  });
+
   it("makes persistent-structure capture depend on the explicit ownership event batch", () => {
     const postLand = postLandStructureState();
 
