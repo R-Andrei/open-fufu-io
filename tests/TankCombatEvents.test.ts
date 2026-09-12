@@ -18,6 +18,7 @@ import {
   createMobileUnit,
   type MobileUnitState,
 } from "../src/simulation/MobileUnits";
+import { grantPopulation } from "../src/simulation/Population";
 import type {
   UnitAttackResolvedEvent,
   UnitDestroyedEvent,
@@ -120,6 +121,35 @@ function tankHealth(
   unitId: string,
 ): TankExactHealth | undefined {
   return state.tankOperationalStates.find((entry) => entry.unitId === unitId)?.health;
+}
+
+function withBlueRedAtWar(state: MatchState): MatchState {
+  return createProspectiveMatchState(state, {
+    hostilityGrace: [
+      {
+        sideA: { kind: "FACTION", id: "blue" },
+        sideB: { kind: "FACTION", id: "red" },
+        expiresAtTickExclusive: state.tick + 600,
+      },
+    ],
+  });
+}
+
+function grantAvailable(
+  state: MatchState,
+  factionId: string,
+  amount: number,
+): MatchState {
+  return createProspectiveMatchState(state, {
+    factions: state.factions.map((faction) =>
+      faction.id === factionId
+        ? Object.freeze({
+            ...faction,
+            population: grantPopulation(faction.population, amount),
+          })
+        : faction,
+    ),
+  });
 }
 
 function attackEvents(
@@ -486,6 +516,114 @@ describe("TickEngine Tank combat integration", () => {
       ),
     ).toBe(false);
     expect(advanced.directReveals).toEqual([]);
+  });
+
+  it("resolves baseline Population attacks with direct casualties, cadence, reveal, and no capture", () => {
+    let state = grantAvailable(withBlueRedAtWar(fixture()), "red", 600);
+    const blue = addUnit(state, "blue", "TANK", 0);
+    state = blue.state;
+    const hostilityBefore = state.hostilityGrace;
+
+    const advanced = new TickEngine().advance(state, []);
+    const red = advanced.factions.find((faction) => faction.id === "red")!;
+
+    expect(advanced.tick).toBe(1);
+    expect(red.population.available).toBe(350);
+    expect(red.population.total).toBe(350);
+    expect(red.population.peakTotal).toBe(600);
+    expect(advanced.ownership[3]).toBe("red");
+    expect(advanced.fallout[3]).toBe(false);
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(31);
+    expect(advanced.directReveals).toEqual([
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: blue.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
+    expect(advanced.hostilityGrace).toEqual(hostilityBefore);
+  });
+
+  it("does not attack Population without current atWar even when the enemy cell is visible", () => {
+    let state = grantAvailable(fixture(), "red", 600);
+    const blue = addUnit(state, "blue", "TANK", 0);
+    state = blue.state;
+
+    const advanced = new TickEngine().advance(state, []);
+    const red = advanced.factions.find((faction) => faction.id === "red")!;
+
+    expect(red.population.available).toBe(600);
+    expect(red.population.total).toBe(600);
+    expect(advanced.ownership[3]).toBe("red");
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(0);
+    expect(advanced.directReveals).toEqual([]);
+  });
+
+  it("uses P43 Heavy Artillery Population damage and 12-second cooldown", () => {
+    let state = grantAvailable(
+      withBlueRedAtWar(fixture({ blueTraits: ["P43"] })),
+      "red",
+      1_500,
+    );
+    const blue = addUnit(state, "blue", "HEAVY_ARTILLERY", 0);
+    state = blue.state;
+
+    const advanced = new TickEngine().advance(state, []);
+    const red = advanced.factions.find((faction) => faction.id === "red")!;
+
+    expect(red.population.available).toBe(500);
+    expect(red.population.total).toBe(500);
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(121);
+    expect(advanced.directReveals).toEqual([
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: blue.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
+  });
+
+  it("applies P44 Fallout only after the successful direct Population shot", () => {
+    let state = grantAvailable(
+      withBlueRedAtWar(fixture({ blueTraits: ["P44"] })),
+      "red",
+      600,
+    );
+    const blue = addUnit(state, "blue", "TANK", 0);
+    state = blue.state;
+
+    const advanced = new TickEngine().advance(state, []);
+    const red = advanced.factions.find((faction) => faction.id === "red")!;
+
+    expect(red.population.available).toBe(350);
+    expect(red.population.total).toBe(350);
+    expect(advanced.ownership[3]).toBeNull();
+    expect(advanced.fallout[3]).toBe(true);
+    expect(advanced.ownership[1]).toBe("blue");
+    expect(advanced.fallout[1]).toBe(false);
+    expect(
+      advanced.tankOperationalStates.find((entry) => entry.unitId === blue.unit.id)
+        ?.attackReadyAtTick,
+    ).toBe(31);
+    expect(advanced.directReveals).toEqual([
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: blue.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
   });
 
   it("physically intercepts a retained hostile Train without creating or refreshing atWar", () => {
