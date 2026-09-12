@@ -6,6 +6,7 @@ This file is the **canonical owner for baseline Open Fufu FFY economy, Factory T
 
 Neighboring concerns are owned elsewhere:
 
+- deterministic simulation-domain event boundary and cross-system delivery: [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md);
 - physical rail topology, station attachment, connectivity, and rail-routing semantics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - persistent Factory/Port structure construction and level mechanics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - Warship combat and Transport/strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
@@ -61,6 +62,8 @@ Ordinary yield modifiers use four broad source families:
 - **Industrial FFY**.
 
 Individual event identities remain distinct internally for simulation, replay, and debugging even when they share a modifier family.
+
+An FFY `event` in this document is an Economy-owned valuation/application input and does not by itself define the authoritative physical or lifecycle occurrence that caused it. When that occurrence is owned by another simulation subsystem, Economy consumes the canonical simulation-domain fact under [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md) and derives the FFY input from that fact plus Economy-owned/current authoritative state. Economy-local sources and transactions do not require a redundant second simulation event merely because their valuation unit is also called an event.
 
 Ordinary same-axis yield percentages add before multiplication unless an explicit structural rule says otherwise.
 
@@ -131,9 +134,9 @@ Purchase prices, Transport embarkation costs, strategic-weapon costs, and other 
 
 ## 3.1 P05 structure-transfer conquest event
 
-P05 **Big Shot** consumes the canonical persistent-structure capture result rather than defining another capture path.
+P05 **Big Shot** consumes the canonical immutable `StructureCaptureResolved` simulation-domain fact from `TERRAIN_AND_STRUCTURES.md` rather than defining another capture path or receiving a producer-private Economy input.
 
-Exactly one P05 **Military / conquest FFY** event is produced for each enemy persistent structure that reaches the canonical `STRUCTURE_TRANSFERRED` capture consequence for a P05 holder. A structure that is destroyed on capture, rejected by transfer admission, or otherwise never reaches `STRUCTURE_TRANSFERRED` produces no P05 event.
+Exactly one P05 **Military / conquest FFY** event is derived for each enemy persistent structure whose canonical capture fact reaches the `STRUCTURE_TRANSFERRED` result for a P05 holder. A structure that is destroyed on capture, rejected by transfer admission, or otherwise never reaches `STRUCTURE_TRANSFERRED` produces no P05 event.
 
 The event's ordinary base value is:
 
@@ -162,7 +165,7 @@ For simulation tick `T`, every P05 event caused by a successful territorial capt
 
 The snapshot includes every mutable input that the ordinary positive-event pipeline would otherwise read while resolving P05, including faction-wide derived earning state such as terrain-share All-FFY effects, the captured cell's terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force for the capturing faction.
 
-The structure-capture resolver may subsequently determine that a particular occupied-cell capture transfers or destroys its structure. Only final `STRUCTURE_TRANSFERRED` results emit P05, but every emitted P05 event still consumes the capturing faction's frozen earning-state view from the tick boundary above.
+The structure-capture resolver may subsequently determine that a particular occupied-cell capture transfers or destroys its structure. Only final `STRUCTURE_TRANSFERRED` facts produce P05, but every emitted P05 event still consumes the capturing faction's frozen earning-state view from the tick boundary above.
 
 State changed or created by **any** ownership change on that same tick therefore cannot retroactively change a P05 event from that tick. In particular:
 
@@ -191,7 +194,7 @@ Baseline service rules:
 - Route ordering/path construction minimizes expected travel time for a finite closed tour beginning and ending at the originating Factory. With uniform rail speed this reduces to shortest physical rail distance between service points.
 - The route generator does not intentionally add arbitrary loops solely to farm events; retracing produced naturally by the rail topology is legal.
 
-Whenever a Train physically reaches or passes through an eligible City/Port station on its finite route, that station triggers one ordinary Train event whether or not it was a selected route target.
+Whenever a Train physically reaches or passes through an eligible City/Port station on its finite route, Train service resolves one canonical station occurrence whether or not it was a selected route target. Within this owning subsystem the occurrence directly feeds the ordinary Train FFY valuation below. When another subsystem consumes the same occurrence—for example P33 Population accounting—the occurrence crosses that ownership boundary as the canonical immutable simulation-domain fact required by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md); consumers do not invent a second route/station event definition.
 
 Every paying station event imposes a **1.5-second / 15-tick dwell** before the Train continues. Repeated qualifying passes through the same station trigger repeated events and dwells. There is no hard per-tour event cap.
 
@@ -205,7 +208,7 @@ Each owned Factory has one current **Train-service ownership epoch** containing 
 
 A newly operational Factory begins its service through the ordinary deterministic initial-service path. Temporary inactivity pauses the current service epoch without discarding its scheduler state. Factory upgrades preserve the current service epoch.
 
-A successful Factory ownership transfer atomically closes the previous owner's service epoch and creates a fresh epoch for the new owner. The new epoch does not inherit the previous owner's turnaround, active-primary occupancy, route queue position, or P07 dispatch phase. The physical Factory's structure identity, completed level, health, construction state, and other transfer-preserved structure state remain governed by `TERRAIN_AND_STRUCTURES.md`.
+A successful Factory `STRUCTURE_TRANSFERRED` occurrence is first committed by the Structure owner and delivered as the canonical immutable structure-capture fact. Train service consumes that fact and, as one Economy-owned transition, closes the previous owner's service epoch and creates a fresh epoch for the new owner. The new epoch does not inherit the previous owner's turnaround, active-primary occupancy, route queue position, or P07 dispatch phase. The physical Factory's structure identity, completed level, health, construction state, and other transfer-preserved structure state remain governed by `TERRAIN_AND_STRUCTURES.md`; the Structure resolver does not mutate this owner-scoped Train-service state directly.
 
 Every dispatched Train snapshots the Factory service epoch that created it. If the Factory later changes owner while that Train is still in flight:
 
