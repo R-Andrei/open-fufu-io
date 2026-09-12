@@ -3,10 +3,10 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
-import { reconcileHostilityGrace } from "./HostilityState";
+import { resolveHostilityGraceFromEvents } from "./HostilityState";
 import {
   resolveLandTick,
-  tryApplyPersistentDirectiveChanges,
+  tryApplyPersistentDirectiveChangesWithEvents,
 } from "./LandOperations";
 import {
   createAdvancedMatchState,
@@ -22,6 +22,12 @@ import {
   type PopulationBucket,
   type PopulationState,
 } from "./Population";
+import {
+  createFactionCapitulatedEvent,
+  type CellOwnershipChangedEvent,
+  type HostilityLifecycleSimulationEvent,
+  type PersistentDirectedHostilitySourceEndedEvent,
+} from "./SimulationEvents";
 import {
   resolvePersistentStructureLifecycleTick,
   tryPurchaseStructureBuild,
@@ -121,6 +127,14 @@ function updateFactionPopulation(
   return result;
 }
 
+function factionCapitulationEventId(
+  tick: number,
+  sequence: number,
+  factionId: string,
+): string {
+  return `faction:capitulated:${tick}:${sequence}:${JSON.stringify(factionId)}`;
+}
+
 export class TickEngine {
   applyAcceptedInputs(
     state: MatchState,
@@ -156,21 +170,37 @@ export class TickEngine {
           });
           break;
         case "CAPITULATE_FACTION": {
+          const previousFaction = working.factions.find(
+            (faction) => faction.id === action.factionId,
+          );
           const nextFactions = working.factions.map((faction) =>
             faction.id === action.factionId
               ? { ...faction, status: "CAPITULATED" as const }
               : faction,
           );
-          const hostilityGrace = reconcileHostilityGrace(
-            working.factions,
-            working.operations,
-            nextFactions,
-            working.operations,
-            working.hostilityGrace,
+          const postProducer = createProspectiveMatchState(working, {
+            factions: nextFactions,
+          });
+          const events: HostilityLifecycleSimulationEvent[] =
+            previousFaction?.status === "ACTIVE"
+              ? [
+                  createFactionCapitulatedEvent({
+                    id: factionCapitulationEventId(
+                      nextTick,
+                      input.sequence,
+                      action.factionId,
+                    ),
+                    tick: nextTick,
+                    factionId: action.factionId,
+                  }),
+                ]
+              : [];
+          const hostilityGrace = resolveHostilityGraceFromEvents(
+            postProducer,
+            events,
             nextTick,
           );
-          working = createProspectiveMatchState(working, {
-            factions: nextFactions,
+          working = createProspectiveMatchState(postProducer, {
             hostilityGrace,
           });
           break;
@@ -246,28 +276,31 @@ export class TickEngine {
           break;
         }
         case "APPLY_PERSISTENT_DIRECTIVES": {
-          const applied = tryApplyPersistentDirectiveChanges(
+          const applied = tryApplyPersistentDirectiveChangesWithEvents(
             working,
             action.factionId,
             action.changes,
+            {
+              transitionTick: nextTick,
+              acceptedInputSequence: input.sequence,
+            },
           );
           if (!applied.ok) {
             throw new Error(
               `accepted directive action became invalid: ${applied.failure.code}`,
             );
           }
-          const hostilityGrace = reconcileHostilityGrace(
-            working.factions,
-            working.operations,
-            applied.factions,
-            applied.operations,
-            working.hostilityGrace,
-            nextTick,
-          );
-          working = createProspectiveMatchState(working, {
+          const postProducer = createProspectiveMatchState(working, {
             factions: applied.factions,
             operations: applied.operations,
             defensePriorities: applied.defensePriorities,
+          });
+          const hostilityGrace = resolveHostilityGraceFromEvents(
+            postProducer,
+            applied.events,
+            nextTick,
+          );
+          working = createProspectiveMatchState(postProducer, {
             hostilityGrace,
           });
           break;
@@ -331,17 +364,22 @@ export class TickEngine {
       captureProgress: land.captureProgress,
       counterResponseResiduals: land.counterResponseResiduals,
     });
+    const ownershipEvents = land.events.filter(
+      (event): event is CellOwnershipChangedEvent =>
+        event.kind === "CELL_OWNERSHIP_CHANGED",
+    );
+    const hostilityEvents = land.events.filter(
+      (event): event is PersistentDirectedHostilitySourceEndedEvent =>
+        event.kind === "PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED",
+    );
     const structures = resolvePersistentStructureLifecycleTick(
       postLandState,
-      land.events,
+      ownershipEvents,
       nextTick,
     );
-    const hostilityGrace = reconcileHostilityGrace(
-      earningSnapshot.factions,
-      earningSnapshot.operations,
-      land.factions,
-      land.operations,
-      earningSnapshot.hostilityGrace,
+    const hostilityGrace = resolveHostilityGraceFromEvents(
+      postLandState,
+      hostilityEvents,
       nextTick,
     );
     const advanced = createAdvancedMatchState(earningSnapshot, {

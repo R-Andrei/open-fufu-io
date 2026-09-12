@@ -1,3 +1,4 @@
+import type { HostilitySideIdentity } from "../core/FactionRelations";
 import type {
   CellId,
   FactionId,
@@ -76,9 +77,32 @@ export type CellOwnershipChangedEvent = SimulationEvent<
   CellOwnershipChangedPayload
 >;
 
+export interface PersistentDirectedHostilitySourceEndedPayload {
+  readonly sourceSide: HostilitySideIdentity;
+  readonly targetSide: HostilitySideIdentity;
+}
+
+export type PersistentDirectedHostilitySourceEndedEvent = SimulationEvent<
+  "PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED",
+  PersistentDirectedHostilitySourceEndedPayload
+>;
+
+export interface FactionCapitulatedPayload {
+  readonly factionId: FactionId;
+}
+
+export type FactionCapitulatedEvent = SimulationEvent<
+  "FACTION_CAPITULATED",
+  FactionCapitulatedPayload
+>;
+
 export type PhysicalUnitSimulationEvent =
   | UnitAttackResolvedEvent
   | UnitDestroyedEvent;
+
+export type HostilityLifecycleSimulationEvent =
+  | PersistentDirectedHostilitySourceEndedEvent
+  | FactionCapitulatedEvent;
 
 export interface CreateUnitAttackResolvedEventInput {
   readonly id: string;
@@ -108,6 +132,19 @@ export interface CreateCellOwnershipChangedEventInput {
   readonly cellId: CellId;
   readonly previousOwnerId: FactionId | null;
   readonly nextOwnerId: FactionId | null;
+}
+
+export interface CreatePersistentDirectedHostilitySourceEndedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly sourceSide: HostilitySideIdentity;
+  readonly targetSide: HostilitySideIdentity;
+}
+
+export interface CreateFactionCapitulatedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly factionId: FactionId;
 }
 
 function compareIds(left: string, right: string): number {
@@ -151,6 +188,24 @@ function freezeUnitSubject(subject: UnitEventSubject): UnitEventSubject {
     unitType: subject.unitType,
     cellId: subject.cellId,
   });
+}
+
+function freezeHostilitySide(
+  side: HostilitySideIdentity,
+  label: string,
+): HostilitySideIdentity {
+  if (side === null || typeof side !== "object") {
+    throw new Error(`${label} must be a hostility-side object`);
+  }
+  if (side.kind !== "FACTION" && side.kind !== "FIXED_TEAM") {
+    throw new Error(`${label} has an unsupported hostility-side kind`);
+  }
+  assertNonEmptyId(side.id, `${label} id`);
+  return Object.freeze({ kind: side.kind, id: side.id });
+}
+
+function hostilitySideKey(side: HostilitySideIdentity): string {
+  return `${side.kind}\u0000${side.id}`;
 }
 
 export function createUnitAttackResolvedEvent(
@@ -246,5 +301,40 @@ export function createCellOwnershipChangedEvent(
       previousOwnerId: input.previousOwnerId,
       nextOwnerId: input.nextOwnerId,
     }),
+  });
+}
+
+export function createPersistentDirectedHostilitySourceEndedEvent(
+  input: CreatePersistentDirectedHostilitySourceEndedEventInput,
+): PersistentDirectedHostilitySourceEndedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  const sourceSide = freezeHostilitySide(input.sourceSide, "hostility source side");
+  const targetSide = freezeHostilitySide(input.targetSide, "hostility target side");
+  if (hostilitySideKey(sourceSide) === hostilitySideKey(targetSide)) {
+    throw new Error("ended hostility source requires two distinct sides");
+  }
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED" as const,
+    payload: Object.freeze({
+      sourceSide,
+      targetSide,
+    }),
+  });
+}
+
+export function createFactionCapitulatedEvent(
+  input: CreateFactionCapitulatedEventInput,
+): FactionCapitulatedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertNonEmptyId(input.factionId, "capitulated factionId");
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "FACTION_CAPITULATED" as const,
+    payload: Object.freeze({ factionId: input.factionId }),
   });
 }
