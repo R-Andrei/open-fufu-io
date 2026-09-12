@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import {
@@ -26,9 +26,56 @@ const FORBIDDEN_LEGACY_IMPORT_TOKENS = [
   "GameRunner",
 ] as const;
 
+const SIMULATION_BOUNDARY_POLICY_PATH = join(
+  process.cwd(),
+  "validation",
+  "simulation-boundaries.json",
+);
+const SIMULATION_EVENT_MODULE = "src/simulation/SimulationEvents.ts";
+const MATCH_RUNTIME_MODULE = "src/simulation/MatchRuntime.ts";
+const CONTROLLER_REFERENCE_MODULE =
+  "src/simulation/ControllerReferenceSession.ts";
+
+const ALLOWED_BOUNDARY_OWNERS = new Set([
+  "CONTROLLER_ADAPTER",
+  "OPERATIONAL_REFERENCE",
+  "ECONOMY",
+  "HOSTILITY",
+  "LAND",
+  "MAP_SUBSTRATE",
+  "RUNTIME_CORE",
+  "TEST_HARNESS",
+  "MOBILE_UNITS",
+  "POPULATION",
+  "SIMULATION_EVENTS",
+  "SPAWN",
+  "STRUCTURES",
+]);
+
+const ALLOWED_EDGE_CLASSIFICATIONS = new Set([
+  "CANONICAL_EVENT",
+  "ORCHESTRATION",
+  "CURRENT_STATE_READ",
+  "SHARED_CONTRACT",
+  "OPERATIONAL_REFERENCE",
+  "TEST_HARNESS",
+]);
+
 interface SimulationImportEdge {
   readonly from: string;
   readonly to: string;
+}
+
+interface SimulationImportGraph {
+  readonly modules: readonly string[];
+  readonly edges: readonly SimulationImportEdge[];
+}
+
+interface SimulationBoundaryEdge {
+  readonly from: string;
+  readonly to: string;
+  readonly classification: string;
+  readonly rationale: string;
 }
 
 function typescriptFiles(root: string): string[] {
@@ -48,8 +95,10 @@ function repoPath(path: string): string {
   return relative(process.cwd(), path).replaceAll("\\", "/");
 }
 
-function relativeModuleSpecifiers(path: string): readonly string[] {
-  const source = readFileSync(path, "utf8");
+function relativeModuleSpecifiersFromSource(
+  path: string,
+  source: string,
+): readonly string[] {
   const parsed = ts.createSourceFile(
     path,
     source,
@@ -67,18 +116,33 @@ function relativeModuleSpecifiers(path: string): readonly string[] {
       statement.moduleSpecifier.text.startsWith(".")
     ) {
       result.push(statement.moduleSpecifier.text);
+      continue;
+    }
+    if (
+      ts.isImportEqualsDeclaration(statement) &&
+      ts.isExternalModuleReference(statement.moduleReference)
+    ) {
+      const expression = statement.moduleReference.expression;
+      if (expression === undefined || !ts.isStringLiteral(expression)) {
+        throw new Error(`${path}: import-equals module reference must be literal`);
+      }
+      if (expression.text.startsWith(".")) result.push(expression.text);
     }
   }
 
   function visit(node: ts.Node): void {
-    if (
-      ts.isCallExpression(node) &&
-      node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments.length === 1
-    ) {
-      const argument = node.arguments[0];
-      if (ts.isStringLiteral(argument) && argument.text.startsWith(".")) {
-        result.push(argument.text);
+    if (ts.isCallExpression(node)) {
+      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire =
+        ts.isIdentifier(node.expression) && node.expression.text === "require";
+      if (isDynamicImport || isRequire) {
+        if (node.arguments.length !== 1 || !ts.isStringLiteral(node.arguments[0])) {
+          throw new Error(
+            `${path}: ${isDynamicImport ? "dynamic import" : "require"} module reference must be one string literal`,
+          );
+        }
+        const specifier = node.arguments[0].text;
+        if (specifier.startsWith(".")) result.push(specifier);
       }
     }
     ts.forEachChild(node, visit);
@@ -86,6 +150,10 @@ function relativeModuleSpecifiers(path: string): readonly string[] {
   visit(parsed);
 
   return result;
+}
+
+function relativeModuleSpecifiers(path: string): readonly string[] {
+  return relativeModuleSpecifiersFromSource(path, readFileSync(path, "utf8"));
 }
 
 function resolveSimulationImport(
@@ -101,32 +169,220 @@ function resolveSimulationImport(
   return undefined;
 }
 
-function simulationImportGraph(simulationRoot: string): {
-  readonly modules: readonly string[];
-  readonly edges: readonly SimulationImportEdge[];
-} {
+function edgeKey(edge: SimulationImportEdge): string {
+  return JSON.stringify([edge.from, edge.to]);
+}
+
+function simulationImportGraph(simulationRoot: string): SimulationImportGraph {
   const files = typescriptFiles(simulationRoot);
   const modules = files.map(repoPath).sort();
   const modulePaths = new Set(modules);
-  const edges: SimulationImportEdge[] = [];
+  const edges = new Map<string, SimulationImportEdge>();
 
   for (const file of files) {
     const from = repoPath(file);
     for (const specifier of relativeModuleSpecifiers(file)) {
       const to = resolveSimulationImport(file, specifier, modulePaths);
-      if (to !== undefined) edges.push(Object.freeze({ from, to }));
+      if (to === undefined) continue;
+      const edge = Object.freeze({ from, to });
+      edges.set(edgeKey(edge), edge);
     }
   }
 
   return Object.freeze({
     modules: Object.freeze(modules),
     edges: Object.freeze(
-      [...edges].sort(
+      [...edges.values()].sort(
         (left, right) =>
           left.from.localeCompare(right.from) || left.to.localeCompare(right.to),
       ),
     ),
   });
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function exactKeys(
+  errors: string[],
+  label: string,
+  value: Record<string, unknown>,
+  expected: readonly string[],
+): void {
+  const actual = Object.keys(value).sort();
+  const wanted = [...expected].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(wanted)) {
+    errors.push(
+      `${label} keys must be exactly ${wanted.join(", ")}; got ${actual.join(", ")}`,
+    );
+  }
+}
+
+function loadSimulationBoundaryPolicy(): unknown {
+  return JSON.parse(readFileSync(SIMULATION_BOUNDARY_POLICY_PATH, "utf8"));
+}
+
+function validateSimulationBoundaryPolicy(
+  graph: SimulationImportGraph,
+  value: unknown,
+): string[] {
+  const errors: string[] = [];
+  if (!isPlainRecord(value)) return ["policy root must be an object"];
+
+  exactKeys(errors, "policy root", value, [
+    "canonicalContract",
+    "crossOwnerImports",
+    "moduleOwners",
+    "schemaVersion",
+  ]);
+
+  if (value.schemaVersion !== 1) {
+    errors.push("schemaVersion must be exactly 1");
+  }
+  if (value.canonicalContract !== "docs/SIMULATION_EVENTS.md") {
+    errors.push("canonicalContract must be docs/SIMULATION_EVENTS.md");
+  }
+  if (!isPlainRecord(value.moduleOwners)) {
+    errors.push("moduleOwners must be an object");
+    return errors;
+  }
+  if (!Array.isArray(value.crossOwnerImports)) {
+    errors.push("crossOwnerImports must be an array");
+    return errors;
+  }
+
+  const moduleOwners = value.moduleOwners;
+  const policyModules = Object.keys(moduleOwners).sort();
+  const graphModules = [...graph.modules].sort();
+  for (const modulePath of graphModules) {
+    if (!Object.prototype.hasOwnProperty.call(moduleOwners, modulePath)) {
+      errors.push(`missing module owner: ${modulePath}`);
+    }
+  }
+  for (const modulePath of policyModules) {
+    if (!graphModules.includes(modulePath)) {
+      errors.push(`unknown/stale module owner: ${modulePath}`);
+    }
+    const owner = moduleOwners[modulePath];
+    if (typeof owner !== "string" || !ALLOWED_BOUNDARY_OWNERS.has(owner)) {
+      errors.push(`invalid module owner for ${modulePath}`);
+    }
+  }
+
+  const requiredOwnerAnchors: Readonly<Record<string, string>> = {
+    [SIMULATION_EVENT_MODULE]: "SIMULATION_EVENTS",
+    [MATCH_RUNTIME_MODULE]: "RUNTIME_CORE",
+    "src/simulation/TickEngine.ts": "RUNTIME_CORE",
+    [CONTROLLER_REFERENCE_MODULE]: "OPERATIONAL_REFERENCE",
+  };
+  for (const [modulePath, expectedOwner] of Object.entries(
+    requiredOwnerAnchors,
+  )) {
+    if (moduleOwners[modulePath] !== expectedOwner) {
+      errors.push(`${modulePath} must be owned by ${expectedOwner}`);
+    }
+  }
+
+  const actualEdges = new Map(graph.edges.map((edge) => [edgeKey(edge), edge]));
+  const declaredEdges = new Map<string, SimulationBoundaryEdge>();
+
+  for (let index = 0; index < value.crossOwnerImports.length; index += 1) {
+    const candidate = value.crossOwnerImports[index];
+    if (!isPlainRecord(candidate)) {
+      errors.push(`crossOwnerImports[${index}] must be an object`);
+      continue;
+    }
+    exactKeys(errors, `crossOwnerImports[${index}]`, candidate, [
+      "classification",
+      "from",
+      "rationale",
+      "to",
+    ]);
+    const { from, to, classification, rationale } = candidate;
+    if (
+      typeof from !== "string" ||
+      typeof to !== "string" ||
+      typeof classification !== "string" ||
+      typeof rationale !== "string"
+    ) {
+      errors.push(`crossOwnerImports[${index}] fields must all be strings`);
+      continue;
+    }
+    if (!ALLOWED_EDGE_CLASSIFICATIONS.has(classification)) {
+      errors.push(`invalid edge classification: ${classification}`);
+    }
+    if (rationale.trim().length === 0) {
+      errors.push(`edge rationale must be non-empty: ${from} -> ${to}`);
+    }
+    if (!graphModules.includes(from) || !graphModules.includes(to)) {
+      errors.push(`edge references unknown module: ${from} -> ${to}`);
+    }
+
+    const key = edgeKey({ from, to });
+    if (declaredEdges.has(key)) {
+      errors.push(`duplicate policy edge: ${from} -> ${to}`);
+    } else {
+      declaredEdges.set(
+        key,
+        Object.freeze({ from, to, classification, rationale }),
+      );
+    }
+
+    if (!actualEdges.has(key)) {
+      errors.push(`stale policy edge: ${from} -> ${to}`);
+    }
+
+    const fromOwner = moduleOwners[from];
+    const toOwner = moduleOwners[to];
+    if (typeof fromOwner === "string" && fromOwner === toOwner) {
+      errors.push(`same-owner edge must not be declared: ${from} -> ${to}`);
+    }
+
+    if (to === SIMULATION_EVENT_MODULE && classification !== "CANONICAL_EVENT") {
+      errors.push(`SimulationEvents edge must be CANONICAL_EVENT: ${from}`);
+    }
+    if (
+      classification === "CANONICAL_EVENT" &&
+      to !== SIMULATION_EVENT_MODULE
+    ) {
+      errors.push(`CANONICAL_EVENT must target SimulationEvents: ${from} -> ${to}`);
+    }
+
+    const isOperationalReference =
+      from === MATCH_RUNTIME_MODULE && to === CONTROLLER_REFERENCE_MODULE;
+    if (
+      isOperationalReference &&
+      classification !== "OPERATIONAL_REFERENCE"
+    ) {
+      errors.push("MatchRuntime -> ControllerReferenceSession must use the R7 operational-reference classification");
+    }
+    if (
+      classification === "OPERATIONAL_REFERENCE" &&
+      !isOperationalReference
+    ) {
+      errors.push(`OPERATIONAL_REFERENCE is limited to the R7 seam: ${from} -> ${to}`);
+    }
+  }
+
+  for (const edge of graph.edges) {
+    const fromOwner = moduleOwners[edge.from];
+    const toOwner = moduleOwners[edge.to];
+    if (
+      typeof fromOwner === "string" &&
+      typeof toOwner === "string" &&
+      fromOwner !== toOwner &&
+      !declaredEdges.has(edgeKey(edge))
+    ) {
+      errors.push(`unclassified cross-owner import: ${edge.from} -> ${edge.to}`);
+    }
+  }
+
+  return errors;
+}
+
+function clonePolicy(value: unknown): any {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function attackOperation(
@@ -207,20 +463,127 @@ describe("simulation dependency firewall", () => {
     expect(violations).toEqual([]);
   });
 
+  it("cannot bypass dependency classification with alternate module-loading syntax", () => {
+    expect(
+      relativeModuleSpecifiersFromSource(
+        "fixture.ts",
+        'import value = require("./Value"); const other = require("./Other"); import("./Dynamic");',
+      ),
+    ).toEqual(["./Value", "./Other", "./Dynamic"]);
+    expect(() =>
+      relativeModuleSpecifiersFromSource(
+        "fixture.ts",
+        'const path = "./Dynamic"; import(path);',
+      ),
+    ).toThrow(/dynamic import.*string literal/i);
+    expect(() =>
+      relativeModuleSpecifiersFromSource(
+        "fixture.ts",
+        'const path = "./Other"; require(path);',
+      ),
+    ).toThrow(/require.*string literal/i);
+  });
+
   it("requires an exhaustive reviewed simulation-boundary classification", () => {
     const simulationRoot = join(process.cwd(), "src", "simulation");
     const graph = simulationImportGraph(simulationRoot);
-    const policyPath = join(
-      process.cwd(),
-      "validation",
-      "simulation-boundaries.json",
+    const policy = loadSimulationBoundaryPolicy();
+
+    expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
+    expect(graph.modules).toHaveLength(27);
+    expect(graph.edges).toHaveLength(80);
+  });
+
+  it("rejects unclassified, stale, duplicate, and misclassified architecture policy", () => {
+    const simulationRoot = join(process.cwd(), "src", "simulation");
+    const graph = simulationImportGraph(simulationRoot);
+    const policy = loadSimulationBoundaryPolicy();
+
+    const newModuleGraph: SimulationImportGraph = Object.freeze({
+      modules: Object.freeze([
+        ...graph.modules,
+        "src/simulation/NewDomain.ts",
+      ].sort()),
+      edges: graph.edges,
+    });
+    expect(
+      validateSimulationBoundaryPolicy(newModuleGraph, policy),
+    ).toContain("missing module owner: src/simulation/NewDomain.ts");
+
+    const unclassifiedEdge: SimulationImportEdge = Object.freeze({
+      from: "src/simulation/Economy.ts",
+      to: "src/simulation/Structures.ts",
+    });
+    const newEdgeGraph: SimulationImportGraph = Object.freeze({
+      modules: graph.modules,
+      edges: Object.freeze(
+        [...graph.edges, unclassifiedEdge].sort(
+          (left, right) =>
+            left.from.localeCompare(right.from) ||
+            left.to.localeCompare(right.to),
+        ),
+      ),
+    });
+    expect(validateSimulationBoundaryPolicy(newEdgeGraph, policy)).toContain(
+      "unclassified cross-owner import: src/simulation/Economy.ts -> src/simulation/Structures.ts",
     );
 
-    if (!existsSync(policyPath)) {
-      throw new Error(
-        `missing validation/simulation-boundaries.json\n${JSON.stringify(graph, null, 2)}`,
-      );
-    }
+    const stale = clonePolicy(policy);
+    stale.crossOwnerImports.push({
+      from: "src/simulation/Economy.ts",
+      to: "src/simulation/Structures.ts",
+      classification: "CURRENT_STATE_READ",
+      rationale: "adversarial stale entry",
+    });
+    expect(validateSimulationBoundaryPolicy(graph, stale)).toContain(
+      "stale policy edge: src/simulation/Economy.ts -> src/simulation/Structures.ts",
+    );
+
+    const duplicate = clonePolicy(policy);
+    duplicate.crossOwnerImports.push({
+      ...duplicate.crossOwnerImports[0],
+    });
+    expect(validateSimulationBoundaryPolicy(graph, duplicate)).toContain(
+      `duplicate policy edge: ${duplicate.crossOwnerImports[0].from} -> ${duplicate.crossOwnerImports[0].to}`,
+    );
+
+    const eventMisclassification = clonePolicy(policy);
+    const eventEdge = eventMisclassification.crossOwnerImports.find(
+      (edge: SimulationBoundaryEdge) => edge.to === SIMULATION_EVENT_MODULE,
+    );
+    eventEdge.classification = "CURRENT_STATE_READ";
+    expect(
+      validateSimulationBoundaryPolicy(graph, eventMisclassification),
+    ).toContain(
+      `SimulationEvents edge must be CANONICAL_EVENT: ${eventEdge.from}`,
+    );
+
+    const operationalMisclassification = clonePolicy(policy);
+    const operationalEdge = operationalMisclassification.crossOwnerImports.find(
+      (edge: SimulationBoundaryEdge) =>
+        edge.from === MATCH_RUNTIME_MODULE &&
+        edge.to === CONTROLLER_REFERENCE_MODULE,
+    );
+    operationalEdge.classification = "ORCHESTRATION";
+    expect(
+      validateSimulationBoundaryPolicy(graph, operationalMisclassification),
+    ).toContain(
+      "MatchRuntime -> ControllerReferenceSession must use the R7 operational-reference classification",
+    );
+
+    const wrongAnchor = clonePolicy(policy);
+    wrongAnchor.moduleOwners[SIMULATION_EVENT_MODULE] = "ECONOMY";
+    expect(validateSimulationBoundaryPolicy(graph, wrongAnchor)).toContain(
+      "src/simulation/SimulationEvents.ts must be owned by SIMULATION_EVENTS",
+    );
+
+    const extraRootField = clonePolicy(policy);
+    extraRootField.unreviewedEscapeHatch = true;
+    expect(
+      validateSimulationBoundaryPolicy(graph, extraRootField).some((error) =>
+        error.startsWith("policy root keys must be exactly"),
+      ),
+    ).toBe(true);
   });
 
   it("routes hostility grace through canonical lifecycle events rather than snapshot reconciliation", () => {
