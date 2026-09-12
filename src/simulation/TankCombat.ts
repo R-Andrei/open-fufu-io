@@ -2,10 +2,12 @@ import { factionRelationBetween } from "../core/FactionRelations";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
   isTerrainScopeId,
+  reducedRational,
   type RuleCondition,
 } from "../core/rules/RuleComposition";
 import {
   conditionEligibleRuleTerms,
+  materializeScalarScaleFactorTerms,
   resolvedRuleTermsForScope,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
@@ -25,7 +27,11 @@ import {
   type UnitEventSubject,
 } from "./SimulationEvents";
 import type { SimulationTerrain } from "./SimulationMap";
-import type { SuccessfulTankPopulationShot } from "./Tanks";
+import type {
+  SuccessfulTankPopulationShot,
+  TankExactHealth,
+  TankOperationalState,
+} from "./Tanks";
 
 export interface AdmittedTankUnitAttack {
   readonly attackerUnitId: string;
@@ -109,16 +115,94 @@ function compareAdmittedTankUnitAttacks(
   );
 }
 
+function addExactHealth(
+  left: TankExactHealth,
+  right: TankExactHealth,
+): TankExactHealth {
+  const sum = reducedRational(
+    left.numerator * right.denominator + right.numerator * left.denominator,
+    left.denominator * right.denominator,
+  );
+  return Object.freeze({
+    numerator: sum.numerator,
+    denominator: sum.denominator,
+  });
+}
+
+function subtractExactHealth(
+  left: TankExactHealth,
+  right: TankExactHealth,
+): TankExactHealth {
+  const difference = reducedRational(
+    left.numerator * right.denominator - right.numerator * left.denominator,
+    left.denominator * right.denominator,
+  );
+  return Object.freeze({
+    numerator: difference.numerator,
+    denominator: difference.denominator,
+  });
+}
+
+function compareExactHealth(
+  left: TankExactHealth,
+  right: TankExactHealth,
+): number {
+  const difference =
+    left.numerator * right.denominator - right.numerator * left.denominator;
+  return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+}
+
+function effectiveTankAntiArmorDamage(
+  state: MatchState,
+  attacker: MobileUnitState,
+): TankExactHealth {
+  if (attacker.type !== "TANK" && attacker.type !== "HEAVY_ARTILLERY") {
+    throw new Error(`unsupported Tank-derived attacker type: ${attacker.type}`);
+  }
+  const owner = state.factions.find((faction) => faction.id === attacker.ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${attacker.ownerId}`);
+  const scope = { kind: "UNIT", unit: "TANK" } as const;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_DAMAGE",
+      scope,
+      ruleDynamicState(state, attacker.ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_DAMAGE,
+    terms,
+  );
+  const baseDamage = attacker.type === "HEAVY_ARTILLERY" ? 1_000n : 250n;
+  const damage = reducedRational(
+    baseDamage * scale.numerator,
+    scale.denominator,
+  );
+  if (damage.numerator < 0n || damage.denominator <= 0n) {
+    throw new Error("Tank anti-armor damage must resolve to a non-negative value");
+  }
+  return Object.freeze({
+    numerator: damage.numerator,
+    denominator: damage.denominator,
+  });
+}
+
 export function resolveAdmittedTankUnitAttacks(
   state: MatchState,
   attacks: readonly AdmittedTankUnitAttack[],
 ): TankUnitAttackResolution {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const operationalByUnitId = new Map(
+    state.tankOperationalStates.map((entry) => [entry.unitId, entry]),
+  );
   const factionsById = new Map(state.factions.map((faction) => [faction.id, faction]));
-  const causesByDestroyedTrain = new Map<
+  const causesByTarget = new Map<
     string,
     readonly UnitAttackDestructionCause[]
   >();
+  const damageByTarget = new Map<string, TankExactHealth>();
   const attackEvents: PhysicalUnitSimulationEvent[] = [];
 
   const orderedAttacks = [...attacks].sort(compareAdmittedTankUnitAttacks);
@@ -139,12 +223,16 @@ export function resolveAdmittedTankUnitAttacks(
         `admitted Tank unit attack requires an existing target: ${attack.targetUnitId}`,
       );
     }
-    if (target.type !== "TRAIN") {
+    if (
+      target.type !== "TRAIN" &&
+      target.type !== "TANK" &&
+      target.type !== "HEAVY_ARTILLERY"
+    ) {
       throw new Error(
         `Tank unit attack physical resolver does not yet support target type ${target.type}`,
       );
     }
-    if (attacker.type === "HEAVY_ARTILLERY") {
+    if (target.type === "TRAIN" && attacker.type === "HEAVY_ARTILLERY") {
       throw new Error("Heavy Artillery cannot resolve an admitted Train attack");
     }
 
@@ -176,8 +264,8 @@ export function resolveAdmittedTankUnitAttacks(
     });
     attackEvents.push(event);
 
-    const existingCauses = causesByDestroyedTrain.get(target.id) ?? [];
-    causesByDestroyedTrain.set(
+    const existingCauses = causesByTarget.get(target.id) ?? [];
+    causesByTarget.set(
       target.id,
       Object.freeze([
         ...existingCauses,
@@ -188,33 +276,81 @@ export function resolveAdmittedTankUnitAttacks(
         }),
       ]),
     );
+
+    if (target.type !== "TRAIN") {
+      const targetOperational = operationalByUnitId.get(target.id);
+      if (targetOperational === undefined) {
+        throw new Error(
+          `Tank-derived target is missing operational state: ${target.id}`,
+        );
+      }
+      const damage = effectiveTankAntiArmorDamage(state, attacker);
+      const existingDamage = damageByTarget.get(target.id);
+      damageByTarget.set(
+        target.id,
+        existingDamage === undefined
+          ? damage
+          : addExactHealth(existingDamage, damage),
+      );
+    }
   }
 
-  const destroyedTrainIds = [...causesByDestroyedTrain.keys()].sort(compareIds);
+  const destroyedUnitIds = new Set<string>();
+  for (const targetId of causesByTarget.keys()) {
+    if (unitsById.get(targetId)?.type === "TRAIN") {
+      destroyedUnitIds.add(targetId);
+    }
+  }
+  for (const [targetId, damage] of damageByTarget) {
+    const operational = operationalByUnitId.get(targetId);
+    if (operational === undefined) {
+      throw new Error(
+        `Tank-derived target is missing operational state: ${targetId}`,
+      );
+    }
+    if (compareExactHealth(damage, operational.health) >= 0) {
+      destroyedUnitIds.add(targetId);
+    }
+  }
+
+  const destroyedIds = [...destroyedUnitIds].sort(compareIds);
   const destructionEvents: PhysicalUnitSimulationEvent[] = [];
-  for (let index = 0; index < destroyedTrainIds.length; index += 1) {
-    const trainId = destroyedTrainIds[index]!;
-    const train = unitsById.get(trainId);
-    if (train === undefined || train.type !== "TRAIN") {
-      throw new Error(`destroyed Train is missing from combat snapshot: ${trainId}`);
+  for (let index = 0; index < destroyedIds.length; index += 1) {
+    const unitId = destroyedIds[index]!;
+    const unit = unitsById.get(unitId);
+    if (unit === undefined) {
+      throw new Error(`destroyed unit is missing from combat snapshot: ${unitId}`);
     }
     destructionEvents.push(
       createUnitDestroyedEvent({
-        id: tankCombatEventId("DESTROYED", state.tick, index, train.id),
+        id: tankCombatEventId("DESTROYED", state.tick, index, unit.id),
         tick: state.tick,
-        unit: unitEventSubject(train),
-        causes: causesByDestroyedTrain.get(trainId) ?? [],
+        unit: unitEventSubject(unit),
+        causes: causesByTarget.get(unitId) ?? [],
       }),
     );
   }
 
+  const nextTankOperationalStates = Object.freeze(
+    state.tankOperationalStates
+      .filter((entry) => !destroyedUnitIds.has(entry.unitId))
+      .map((entry): TankOperationalState => {
+        const damage = damageByTarget.get(entry.unitId);
+        if (damage === undefined) return entry;
+        return Object.freeze({
+          ...entry,
+          health: subtractExactHealth(entry.health, damage),
+        });
+      }),
+  );
   const nextState =
-    destroyedTrainIds.length === 0
+    destroyedUnitIds.size === 0 && damageByTarget.size === 0
       ? state
       : createProspectiveMatchState(state, {
           mobileUnits: state.mobileUnits.filter(
-            (unit) => !causesByDestroyedTrain.has(unit.id),
+            (unit) => !destroyedUnitIds.has(unit.id),
           ),
+          tankOperationalStates: nextTankOperationalStates,
         });
 
   return Object.freeze({
