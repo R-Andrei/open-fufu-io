@@ -6,6 +6,7 @@ import {
   createInitialMatchState,
   createProspectiveMatchState,
   type MatchState,
+  type MatchStateUpdate,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
@@ -34,9 +35,17 @@ type TankOperationalStateProbe = Readonly<{
   repairArrivalTick?: number;
 }>;
 
+type DirectRevealProbe = Readonly<{
+  viewerFactionId: string;
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION";
+  sourceId: string;
+  expiryExclusiveTick: number;
+}>;
+
 type MatchStateWithTankOperationalStates = MatchState &
   Readonly<{
     tankOperationalStates?: readonly TankOperationalStateProbe[];
+    directReveals?: readonly DirectRevealProbe[];
   }>;
 
 function rulesWithFractionalHealthEcho() {
@@ -193,5 +202,52 @@ describe("Tank authoritative operational state", () => {
       tankOperationalStates: [changedTarget] as unknown as MatchState["tankOperationalStates"],
     });
     expect(canonicalMatchStateSerialization(retargeted)).not.toBe(fingerprint);
+  });
+
+  it("stores direct reveals as deterministic fingerprint-relevant authoritative match state", () => {
+    const initial = fixture() as MatchStateWithTankOperationalStates;
+    expect(initial.directReveals).toEqual([]);
+
+    const directReveals: readonly DirectRevealProbe[] = [
+      {
+        viewerFactionId: "charlie",
+        sourceKind: "UNIT",
+        sourceId: "tank-z",
+        expiryExclusiveTick: 240,
+      },
+      {
+        viewerFactionId: "alpha",
+        sourceKind: "UNIT",
+        sourceId: "tank-b",
+        expiryExclusiveTick: 180,
+      },
+    ];
+    const withReveals = createProspectiveMatchState(
+      initial,
+      { directReveals } as unknown as MatchStateUpdate,
+    ) as MatchStateWithTankOperationalStates;
+
+    expect(withReveals.directReveals).toEqual([
+      {
+        viewerFactionId: "alpha",
+        sourceKind: "UNIT",
+        sourceId: "tank-b",
+        expiryExclusiveTick: 180,
+      },
+      {
+        viewerFactionId: "charlie",
+        sourceKind: "UNIT",
+        sourceId: "tank-z",
+        expiryExclusiveTick: 240,
+      },
+    ]);
+
+    const serialized = JSON.parse(canonicalMatchStateSerialization(withReveals)) as {
+      directReveals?: readonly DirectRevealProbe[];
+    };
+    expect(serialized.directReveals).toEqual(withReveals.directReveals);
+    expect(canonicalMatchStateSerialization(withReveals)).not.toBe(
+      canonicalMatchStateSerialization(initial),
+    );
   });
 });
