@@ -256,6 +256,53 @@ function strategicCombatFixture(): Readonly<{
   });
 }
 
+function idleRoamingFixture(): Readonly<{
+  state: MatchState;
+  unitId: string;
+  anchorCellId: number;
+}> {
+  const width = 205;
+  const anchorCellId = 102;
+  let state = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "tank-idle-roaming-red",
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: width }, () => "alpha"),
+      factions: [{ id: "alpha", rules: emptyRules() }],
+    }),
+  );
+  const created = createMobileUnit(
+    state.map,
+    state.factions.map((faction) => faction.id),
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: anchorCellId,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: created.mobileUnits,
+    nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+    tankOperationalStates: [
+      {
+        unitId: created.unit.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: anchorCellId,
+        eligibleFromTick: 1,
+        attackReadyAtTick: 1_000,
+      },
+    ],
+  });
+  return Object.freeze({ state, unitId: created.unit.id, anchorCellId });
+}
+
 function unitById(state: MatchState, unitId: string) {
   const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
   if (unit === undefined) throw new Error(`missing unit ${unitId}`);
@@ -336,8 +383,16 @@ describe("Tank strategic movement", () => {
     const arrived = unitById(tick4, fixture.unitId);
     expect(arrived.cellId).toBe(fixture.destinationCellId);
     expect(arrived.route).toBeUndefined();
-    expect(arrived.strategicDestinationCellId).toBe(fixture.destinationCellId);
+    expect(arrived.strategicDestinationCellId).toBeUndefined();
     expect(operationalById(tick4, fixture.unitId).operatingAnchorCellId).toBe(
+      fixture.destinationCellId,
+    );
+
+    const tick5 = engine.advance(tick4, []);
+    const roaming = unitById(tick5, fixture.unitId);
+    expect(roaming.strategicDestinationCellId).toBeUndefined();
+    expect(roaming.route?.destinationCellId).not.toBe(fixture.destinationCellId);
+    expect(operationalById(tick5, fixture.unitId).operatingAnchorCellId).toBe(
       fixture.destinationCellId,
     );
   });
@@ -399,5 +454,38 @@ describe("Tank strategic movement", () => {
     expect(
       operationalById(tick2, fixture.alphaUnitId).operatingAnchorCellId,
     ).toBe(0);
+  });
+});
+
+describe("Tank ordinary roaming", () => {
+  it("selects a deterministic reachable local waypoint within the operating leash and persists one roaming ordinal", () => {
+    const leftFixture = idleRoamingFixture();
+    const rightFixture = idleRoamingFixture();
+    const engine = new TickEngine();
+
+    expect(operationalById(leftFixture.state, leftFixture.unitId).roamingOrdinal).toBe(0);
+    expect(operationalById(rightFixture.state, rightFixture.unitId).roamingOrdinal).toBe(0);
+
+    const leftTick1 = engine.advance(leftFixture.state, []);
+    const rightTick1 = engine.advance(rightFixture.state, []);
+    const leftUnit = unitById(leftTick1, leftFixture.unitId);
+    const rightUnit = unitById(rightTick1, rightFixture.unitId);
+    const leftOperational = operationalById(leftTick1, leftFixture.unitId);
+    const rightOperational = operationalById(rightTick1, rightFixture.unitId);
+
+    expect(leftUnit.route?.destinationCellId).toBeDefined();
+    expect(leftUnit.route?.destinationCellId).toBe(rightUnit.route?.destinationCellId);
+    expect(leftUnit.route?.destinationCellId).not.toBe(leftFixture.anchorCellId);
+    expect(
+      Math.abs((leftUnit.route?.destinationCellId ?? leftFixture.anchorCellId) - leftFixture.anchorCellId),
+    ).toBeLessThanOrEqual(100);
+    expect(leftUnit.strategicDestinationCellId).toBeUndefined();
+    expect(leftOperational.operatingAnchorCellId).toBe(leftFixture.anchorCellId);
+    expect(rightOperational.operatingAnchorCellId).toBe(rightFixture.anchorCellId);
+    expect(leftOperational.roamingOrdinal).toBe(1);
+    expect(rightOperational.roamingOrdinal).toBe(1);
+
+    const leftTick2 = engine.advance(leftTick1, []);
+    expect(operationalById(leftTick2, leftFixture.unitId).roamingOrdinal).toBe(1);
   });
 });
