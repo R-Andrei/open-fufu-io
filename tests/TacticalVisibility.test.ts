@@ -5,7 +5,9 @@ import {
   directRevealRecipients,
   isDirectRevealActive,
   isOwnedForestConcealmentCell,
+  pruneExpiredDirectReveals,
   refreshDirectReveal,
+  refreshDirectRevealRecords,
   resolveTacticalVisibility,
 } from "../src/core/visibility/TacticalVisibility";
 
@@ -152,6 +154,95 @@ describe("direct hostile manifestation reveal", () => {
     });
     expect(recipients).toEqual(["B"]);
     expect(recipients).not.toContain("C");
+  });
+
+  it("refreshes only attacked-faction records and preserves unrelated reveals", () => {
+    const refreshed = refreshDirectRevealRecords(
+      [
+        {
+          viewerFactionId: "B",
+          sourceKind: "UNIT",
+          sourceId: "tank-A",
+          expiryExclusiveTick: 250,
+        },
+        {
+          viewerFactionId: "C",
+          sourceKind: "STRUCTURE",
+          sourceId: "silo-C",
+          expiryExclusiveTick: 400,
+        },
+      ],
+      {
+        resolved: true,
+        hostile: true,
+        identifiableSource: true,
+        attackedFactionIds: ["B"],
+      },
+      "UNIT",
+      "tank-A",
+      220,
+      10,
+    );
+
+    expect(refreshed).toEqual([
+      {
+        viewerFactionId: "B",
+        sourceKind: "UNIT",
+        sourceId: "tank-A",
+        expiryExclusiveTick: 370,
+      },
+      {
+        viewerFactionId: "C",
+        sourceKind: "STRUCTURE",
+        sourceId: "silo-C",
+        expiryExclusiveTick: 400,
+      },
+    ]);
+  });
+
+  it("creates no direct-reveal record for a third party", () => {
+    expect(
+      refreshDirectRevealRecords(
+        [],
+        {
+          resolved: true,
+          hostile: true,
+          identifiableSource: true,
+          attackedFactionIds: ["B"],
+        },
+        "UNIT",
+        "tank-A",
+        100,
+        10,
+      ),
+    ).toEqual([
+      {
+        viewerFactionId: "B",
+        sourceKind: "UNIT",
+        sourceId: "tank-A",
+        expiryExclusiveTick: 250,
+      },
+    ]);
+  });
+
+  it("drops a reveal exactly at its exclusive expiry tick", () => {
+    const records = [
+      {
+        viewerFactionId: "B",
+        sourceKind: "UNIT" as const,
+        sourceId: "tank-A",
+        expiryExclusiveTick: 250,
+      },
+      {
+        viewerFactionId: "C",
+        sourceKind: "UNIT" as const,
+        sourceId: "tank-D",
+        expiryExclusiveTick: 251,
+      },
+    ];
+    expect(pruneExpiredDirectReveals(records, 249)).toEqual(records);
+    expect(pruneExpiredDirectReveals(records, 250)).toEqual([records[1]]);
+    expect(pruneExpiredDirectReveals(records, 251)).toEqual([]);
   });
 
   it("lets active direct reveal pierce overlapping concealment without exposing neighbors", () => {
