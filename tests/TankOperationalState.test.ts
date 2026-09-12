@@ -32,6 +32,7 @@ type TankOperationalStateProbe = Readonly<{
   operatingAnchorCellId: number;
   eligibleFromTick: number;
   attackReadyAtTick: number;
+  roamingOrdinal?: number;
   retainedTarget?: TankRetainedTargetProbe;
   repairFactoryId?: string;
   repairArrivalTick?: number;
@@ -247,6 +248,7 @@ describe("Tank authoritative operational state", () => {
         operatingAnchorCellId: 0,
         eligibleFromTick: completed.tick + 1,
         attackReadyAtTick: completed.tick + 1,
+        roamingOrdinal: 0,
       },
     ]);
 
@@ -280,6 +282,18 @@ describe("Tank authoritative operational state", () => {
       ],
     });
     expect(canonicalMatchStateSerialization(damaged)).not.toBe(fingerprint);
+
+    const nextRoamingOrdinal = createProspectiveMatchState(completed, {
+      tankOperationalStates: [
+        {
+          ...operational,
+          roamingOrdinal: (operational.roamingOrdinal ?? 0) + 1,
+        },
+      ],
+    });
+    expect(canonicalMatchStateSerialization(nextRoamingOrdinal)).not.toBe(
+      fingerprint,
+    );
   });
 
   it("preserves sticky target and repair queue state as fingerprint-relevant authoritative state", () => {
