@@ -16,6 +16,7 @@ import {
   createUnitDestroyedEvent,
   type CellOwnershipChangedEvent,
 } from "../src/simulation/SimulationEvents";
+import * as StructureSimulation from "../src/simulation/Structures";
 import {
   materializePersistentStructureState,
   resolvePersistentStructureLifecycleTick,
@@ -208,6 +209,41 @@ const resolvePersistentStructureLifecycleFromEvents =
     currentTick: number,
   ) => ReturnType<typeof resolvePersistentStructureLifecycleTick>;
 
+type ExpectedStructureCaptureResolvedEvent = Readonly<{
+  id: string;
+  tick: number;
+  kind: "STRUCTURE_CAPTURE_RESOLVED";
+  payload: Readonly<{
+    structure: Readonly<{
+      structureId: string;
+      structureType: string;
+      cellId: number;
+      previousOwnerId: string;
+      capturingFactionId: string;
+      completedLevel?: number;
+      active: boolean;
+      construction?: Readonly<{
+        targetLevel: number;
+        remainingTicks: number;
+      }>;
+    }>;
+    result: "STRUCTURE_TRANSFERRED" | "STRUCTURE_DESTROYED_ON_CAPTURE";
+  }>;
+}>;
+
+const resolvePersistentStructureLifecycleTickWithEvents = (
+  StructureSimulation as typeof StructureSimulation & {
+    readonly resolvePersistentStructureLifecycleTickWithEvents: (
+      state: MatchState,
+      events: readonly CellOwnershipChangedEvent[],
+      currentTick: number,
+    ) => Readonly<{
+      structures: readonly unknown[];
+      events: readonly ExpectedStructureCaptureResolvedEvent[];
+    }>;
+  }
+).resolvePersistentStructureLifecycleTickWithEvents;
+
 describe("deterministic simulation events", () => {
   it("materializes an immutable lifecycle-safe resolved attack fact", () => {
     const event = createUnitAttackResolvedEvent({
@@ -354,6 +390,42 @@ describe("deterministic simulation events", () => {
     expect(first.events.every((event) => event.tick === transitionTick)).toBe(true);
     expect(new Set(first.events.map((event) => event.id)).size).toBe(2);
     expect(first.ownership).toEqual(["alpha", "alpha", "beta", "beta"]);
+  });
+
+  it("emits a structure-capture fact only after committing the Structure-owned transfer", () => {
+    const postLand = postLandStructureState();
+    const resolved = resolvePersistentStructureLifecycleTickWithEvents(
+      postLand,
+      [manualOwnershipEvent()],
+      1,
+    );
+
+    expect(resolved.structures).toEqual([
+      expect.objectContaining({
+        id: "captured-city",
+        ownerId: "alpha",
+        acquisitionPath: "CAPTURE_TRANSFER",
+      }),
+    ]);
+    expect(resolved.events).toEqual([
+      {
+        id: expect.any(String),
+        tick: 1,
+        kind: "STRUCTURE_CAPTURE_RESOLVED",
+        payload: {
+          structure: {
+            structureId: "captured-city",
+            structureType: "CITY",
+            cellId: 0,
+            previousOwnerId: "beta",
+            capturingFactionId: "alpha",
+            completedLevel: 1,
+            active: true,
+          },
+          result: "STRUCTURE_TRANSFERRED",
+        },
+      },
+    ]);
   });
 
   it("makes persistent-structure capture depend on the explicit ownership event batch", () => {
