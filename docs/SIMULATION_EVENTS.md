@@ -103,7 +103,7 @@ The snapshot records the authoritative identity/location facts relevant at event
 
 ## 5. Initial shared event vocabulary
 
-The first concrete event vocabulary covers the shared physical-combat seam and cell-level political-ownership transitions that have downstream consumers.
+The shared vocabulary begins with physical-combat facts, cell-level political-ownership transitions, and the producer-owned lifecycle facts currently required by cross-system hostility-state consequences.
 
 ### 5.1 `UNIT_ATTACK_RESOLVED`
 
@@ -165,6 +165,41 @@ CELL_OWNERSHIP_CHANGED {
 When one producer phase changes multiple cells, its `CELL_OWNERSHIP_CHANGED` batch is ordered by `cellId` ascending and contains exactly one fact per changed cell. The producer owns deterministic event identity under the common envelope; consumers must continue to treat the identity string as opaque.
 
 The fact is an in-tick delivery value rather than persistent `MatchState` residual state. Downstream consumers receive it after the producer-owned ownership state has been committed and may query that current authoritative state for facts they own. A consumer that applies one-time consequences must reject duplicate changed-cell facts within the same delivered batch rather than silently applying the same occurrence twice.
+
+### 5.4 `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED`
+
+When a subsystem-owned persistent directed-hostility source that was active for one resolved hostility-side pair ceases to be active because of that subsystem's authoritative lifecycle transition, that producer emits:
+
+```ts
+PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED {
+  sourceSide: HostilitySideIdentity;
+  targetSide: HostilitySideIdentity;
+}
+```
+
+`sourceSide` and `targetSide` are immutable lifecycle-safe snapshots of the directed sides for that source immediately before it ended. They remain directed even though game-wide `atWar` is symmetric. They must be distinct.
+
+This event reports only source termination. It does **not** contain or decide `atWar`, grace expiry, current active-source counts, operation bodies, Population, rewards, attribution, or any other Hostility-consumer policy. The Hostility owner may query current authoritative faction/source state after producer mutation to determine whether the affected unordered pair still has another active persistent source and what consequence follows.
+
+A producer must snapshot any identity needed after its owned record/reference disappears. In particular, a persistent source whose opposing side is resolved through another lifecycle record must capture that side before the reference can be removed or invalidated.
+
+Within one producer transition, every ended persistent source emits exactly one fact. A stable source that remains active for the same directed side pair emits none; retargeting/replacement that ends the old directed source emits the old source fact even when an implementation reuses a stable local source identifier. Event IDs remain deterministic, producer-owned, unique, and opaque; ordering of a multi-source ended batch must be deterministic.
+
+### 5.5 `FACTION_CAPITULATED`
+
+When an authoritative faction-lifecycle producer commits the concrete `ACTIVE -> CAPITULATED` transition, it emits:
+
+```ts
+FACTION_CAPITULATED {
+  factionId: FactionId;
+}
+```
+
+The payload contains only the faction identity whose transition occurred. Immutable fixed-team/hostility-side identity remains ordinary current authoritative faction state and is not duplicated into this fact. A no-op application to a faction that is already capitulated emits no event.
+
+The event does not decide whether a hostility side still has another active member, which war relations remain live, or whether any grace state starts or is cleared. Those are Hostility-owned consequences derived from this occurrence plus current authoritative state.
+
+A dedicated `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_STARTED` fact is not required merely to mirror this termination fact. Presence of active persistent sources is current authoritative state and remains an ordinary direct query unless a separate cross-system consequence later proves that a start occurrence itself must cross an ownership boundary.
 
 ---
 
