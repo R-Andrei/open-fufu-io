@@ -33,6 +33,7 @@ function landRuntime(options: {
         { id: "beta", rules: rules(options.betaTraits) },
       ],
     }),
+    { controllerReferenceNamespace: options.seed },
   );
 }
 
@@ -174,6 +175,7 @@ describe("land operations through authoritative MatchRuntime", () => {
       match.spec,
       match.acceptedInputs(),
       match.snapshot().tick,
+      { controllerReferenceNamespace: match.spec.seed },
     );
     expect(regenerated.snapshot()).toEqual(match.snapshot());
     expect(regenerated.stateFingerprint()).toBe(match.stateFingerprint());

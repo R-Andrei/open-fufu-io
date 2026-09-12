@@ -124,6 +124,7 @@ function readyParallelNeutralCaptures(): MatchState {
         { id: "beta", rules: emptyRules() },
       ],
     }),
+    { controllerReferenceNamespace: "simulation-event-land-producer" },
   );
   match.acceptAction({
     type: "GRANT_POPULATION",

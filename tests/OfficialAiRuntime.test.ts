@@ -36,6 +36,7 @@ describe("Official AI runtime foundation", () => {
           { id: "beta", rules: emptyRules() },
         ],
       }),
+      { controllerReferenceNamespace: "official-ai-baseline-expansion" },
     );
     match.acceptAction({
       type: "GRANT_POPULATION",
@@ -82,6 +83,7 @@ describe("Official AI runtime foundation", () => {
       match.spec,
       match.acceptedInputs(),
       match.snapshot().tick,
+      { controllerReferenceNamespace: match.spec.seed },
     );
     expect(regenerated.snapshot()).toEqual(match.snapshot());
     expect(regenerated.stateFingerprint()).toBe(match.stateFingerprint());
