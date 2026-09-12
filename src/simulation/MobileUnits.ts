@@ -51,6 +51,8 @@ export interface MobileUnitState {
   readonly type: MobileUnitType;
   readonly movementClass: MovementClass;
   readonly cellId: CellId;
+  /** Persistent player/controller-selected destination, independent of temporary routing. */
+  readonly strategicDestinationCellId?: CellId;
   readonly route?: MobileUnitRouteState;
 }
 
@@ -232,6 +234,9 @@ function materializeUnit(
   assertKnownUnitType(unit.type);
   assertKnownMovementClass(unit.movementClass);
   assertCellId(map, unit.cellId);
+  if (unit.strategicDestinationCellId !== undefined) {
+    assertCellId(map, unit.strategicDestinationCellId);
+  }
   const route = unit.route === undefined ? undefined : materializeRoute(map, unit.cellId, unit.route);
 
   return Object.freeze({
@@ -240,6 +245,9 @@ function materializeUnit(
     type: unit.type,
     movementClass: unit.movementClass,
     cellId: unit.cellId,
+    ...(unit.strategicDestinationCellId === undefined
+      ? {}
+      : { strategicDestinationCellId: unit.strategicDestinationCellId }),
     ...(route === undefined ? {} : { route }),
   });
 }
@@ -346,6 +354,25 @@ export function removeMobileUnit(
   });
 }
 
+export function setMobileUnitStrategicDestination(
+  map: SimulationMap,
+  unit: MobileUnitState,
+  destinationCellId: CellId | undefined,
+): MobileUnitState {
+  if (destinationCellId !== undefined) {
+    assertCellId(map, destinationCellId);
+  }
+  return Object.freeze({
+    id: unit.id,
+    ownerId: unit.ownerId,
+    type: unit.type,
+    movementClass: unit.movementClass,
+    cellId: unit.cellId,
+    ...(destinationCellId === undefined ? {} : { strategicDestinationCellId: destinationCellId }),
+    ...(unit.route === undefined ? {} : { route: unit.route }),
+  });
+}
+
 export function assignMobileUnitRoute(
   map: SimulationMap,
   unit: MobileUnitState,
@@ -384,6 +411,9 @@ export function assignMobileUnitRoute(
       type: unit.type,
       movementClass: unit.movementClass,
       cellId: unit.cellId,
+      ...(unit.strategicDestinationCellId === undefined
+        ? {}
+        : { strategicDestinationCellId: unit.strategicDestinationCellId }),
     });
   }
 
@@ -393,6 +423,9 @@ export function assignMobileUnitRoute(
     type: unit.type,
     movementClass: unit.movementClass,
     cellId: unit.cellId,
+    ...(unit.strategicDestinationCellId === undefined
+      ? {}
+      : { strategicDestinationCellId: unit.strategicDestinationCellId }),
     route: Object.freeze({
       destinationCellId: input.cells[input.cells.length - 1]!,
       cells: Object.freeze([...input.cells]),
@@ -472,6 +505,9 @@ export function advanceMobileUnit(
         type: unit.type,
         movementClass: unit.movementClass,
         cellId: currentCellId,
+        ...(unit.strategicDestinationCellId === undefined
+          ? {}
+          : { strategicDestinationCellId: unit.strategicDestinationCellId }),
       }),
       unusedWork: remainingWork,
     });
@@ -484,6 +520,9 @@ export function advanceMobileUnit(
       type: unit.type,
       movementClass: unit.movementClass,
       cellId: currentCellId,
+      ...(unit.strategicDestinationCellId === undefined
+        ? {}
+        : { strategicDestinationCellId: unit.strategicDestinationCellId }),
       route: Object.freeze({
         destinationCellId: route.destinationCellId,
         cells: route.cells,
@@ -557,14 +596,16 @@ export function createMobileUnitSpatialIndex(
 export function snapshotMobileUnitForProjection(
   unit: MobileUnitState,
 ): MobileUnitProjectionSource {
+  const movementDestinationCellId =
+    unit.strategicDestinationCellId ?? unit.route?.destinationCellId;
   return Object.freeze({
     id: unit.id,
     ownerId: unit.ownerId,
     type: unit.type,
     movementClass: unit.movementClass,
     cellId: unit.cellId,
-    ...(unit.route === undefined
+    ...(movementDestinationCellId === undefined
       ? {}
-      : { movementDestinationCellId: unit.route.destinationCellId }),
+      : { movementDestinationCellId }),
   });
 }
