@@ -572,19 +572,60 @@ describe("baseline Tank lifecycle", () => {
   });
 
   it("observes capture transfer before the final production phase and cancels the old owner's job without refund", () => {
-    const accepted = tryStartTankProduction(productionFixture(250_000), {
-      ownerId: "alpha",
-      factoryId: "alpha-factory",
-    });
+    const accepted = tryStartTankProduction(
+      productionFixture(250_000, {
+        initialOwners: ["alpha", "alpha", "beta", "beta"],
+      }),
+      {
+        ownerId: "alpha",
+        factoryId: "alpha-factory",
+      },
+    );
     expect(accepted.ok).toBe(true);
     if (!accepted.ok) throw new Error("expected Tank production admission");
 
-    const capturedCell = createProspectiveMatchState(accepted.state, {
-      ownership: accepted.state.ownership.map((ownerId, cellId) =>
-        cellId === 1 ? "beta" : ownerId,
-      ),
+    const readyToCapture = createProspectiveMatchState(accepted.state, {
+      captureProgress: [
+        {
+          cellId: 1,
+          claimantFactionId: "beta",
+          progressMicros: 999_999,
+        },
+      ],
     });
-    const advanced = new TickEngine().advance(capturedCell, []);
+    const nextTick = readyToCapture.tick + 1;
+    const advanced = new TickEngine().advance(readyToCapture, [
+      {
+        tick: nextTick,
+        sequence: 0,
+        action: {
+          type: "GRANT_POPULATION",
+          factionId: "beta",
+          amount: 2,
+        },
+      },
+      {
+        tick: nextTick,
+        sequence: 1,
+        action: {
+          type: "APPLY_PERSISTENT_DIRECTIVES",
+          factionId: "beta",
+          changes: {
+            set: [
+              {
+                kind: "LAND_OPERATION",
+                key: "capture-factory",
+                operation: "ATTACK",
+                targetFactionId: "alpha",
+                population: 2,
+                source: { kind: "CELLS", ids: [2] },
+                target: { kind: "CELLS", ids: [1] },
+              },
+            ],
+          },
+        },
+      },
+    ]);
 
     expect(
       advanced.structures.find((structure) => structure.id === "alpha-factory"),
