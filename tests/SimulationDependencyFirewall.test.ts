@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { extname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 import {
   resolveHostilityGraceFromEvents,
@@ -31,6 +31,7 @@ const SIMULATION_BOUNDARY_POLICY_PATH = join(
   "validation",
   "simulation-boundaries.json",
 );
+const TSCONFIG_PATH = join(process.cwd(), "tsconfig.json");
 const SIMULATION_EVENT_MODULE = "src/simulation/SimulationEvents.ts";
 const MATCH_RUNTIME_MODULE = "src/simulation/MatchRuntime.ts";
 const CONTROLLER_REFERENCE_MODULE =
@@ -78,6 +79,32 @@ interface SimulationBoundaryEdge {
   readonly rationale: string;
 }
 
+function loadCompilerOptions(): ts.CompilerOptions {
+  const read = ts.readConfigFile(TSCONFIG_PATH, ts.sys.readFile);
+  if (read.error !== undefined) {
+    throw new Error(
+      ts.flattenDiagnosticMessageText(read.error.messageText, "\n"),
+    );
+  }
+  const parsed = ts.parseJsonConfigFileContent(
+    read.config,
+    ts.sys,
+    process.cwd(),
+    undefined,
+    TSCONFIG_PATH,
+  );
+  if (parsed.errors.length > 0) {
+    throw new Error(
+      parsed.errors
+        .map((error) => ts.flattenDiagnosticMessageText(error.messageText, "\n"))
+        .join("\n"),
+    );
+  }
+  return parsed.options;
+}
+
+const SIMULATION_COMPILER_OPTIONS = loadCompilerOptions();
+
 function typescriptFiles(root: string): string[] {
   const result: string[] = [];
   for (const entry of readdirSync(root, { withFileTypes: true })) {
@@ -95,7 +122,7 @@ function repoPath(path: string): string {
   return relative(process.cwd(), path).replaceAll("\\", "/");
 }
 
-function relativeModuleSpecifiersFromSource(
+function moduleSpecifiersFromSource(
   path: string,
   source: string,
 ): readonly string[] {
@@ -112,8 +139,7 @@ function relativeModuleSpecifiersFromSource(
     if (
       (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) &&
       statement.moduleSpecifier !== undefined &&
-      ts.isStringLiteral(statement.moduleSpecifier) &&
-      statement.moduleSpecifier.text.startsWith(".")
+      ts.isStringLiteral(statement.moduleSpecifier)
     ) {
       result.push(statement.moduleSpecifier.text);
       continue;
@@ -126,7 +152,7 @@ function relativeModuleSpecifiersFromSource(
       if (expression === undefined || !ts.isStringLiteral(expression)) {
         throw new Error(`${path}: import-equals module reference must be literal`);
       }
-      if (expression.text.startsWith(".")) result.push(expression.text);
+      result.push(expression.text);
     }
   }
 
@@ -141,8 +167,7 @@ function relativeModuleSpecifiersFromSource(
           `${path}: import type module reference must be one string literal`,
         );
       }
-      const specifier = argument.literal.text;
-      if (specifier.startsWith(".")) result.push(specifier);
+      result.push(argument.literal.text);
     }
     if (ts.isCallExpression(node)) {
       const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
@@ -154,8 +179,7 @@ function relativeModuleSpecifiersFromSource(
             `${path}: ${isDynamicImport ? "dynamic import" : "require"} module reference must be one string literal`,
           );
         }
-        const specifier = node.arguments[0].text;
-        if (specifier.startsWith(".")) result.push(specifier);
+        result.push(node.arguments[0].text);
       }
     }
     ts.forEachChild(node, visit);
@@ -165,8 +189,8 @@ function relativeModuleSpecifiersFromSource(
   return result;
 }
 
-function relativeModuleSpecifiers(path: string): readonly string[] {
-  return relativeModuleSpecifiersFromSource(path, readFileSync(path, "utf8"));
+function moduleSpecifiers(path: string): readonly string[] {
+  return moduleSpecifiersFromSource(path, readFileSync(path, "utf8"));
 }
 
 function resolveSimulationImport(
@@ -174,12 +198,15 @@ function resolveSimulationImport(
   specifier: string,
   modulePaths: ReadonlySet<string>,
 ): string | undefined {
-  const base = resolve(dirname(importer), specifier);
-  for (const candidate of [base, `${base}.ts`, join(base, "index.ts")]) {
-    const normalized = repoPath(candidate);
-    if (modulePaths.has(normalized)) return normalized;
-  }
-  return undefined;
+  const resolvedModule = ts.resolveModuleName(
+    specifier,
+    importer,
+    SIMULATION_COMPILER_OPTIONS,
+    ts.sys,
+  ).resolvedModule;
+  if (resolvedModule === undefined) return undefined;
+  const normalized = repoPath(resolve(resolvedModule.resolvedFileName));
+  return modulePaths.has(normalized) ? normalized : undefined;
 }
 
 function edgeKey(edge: SimulationImportEdge): string {
@@ -194,7 +221,7 @@ function simulationImportGraph(simulationRoot: string): SimulationImportGraph {
 
   for (const file of files) {
     const from = repoPath(file);
-    for (const specifier of relativeModuleSpecifiers(file)) {
+    for (const specifier of moduleSpecifiers(file)) {
       const to = resolveSimulationImport(file, specifier, modulePaths);
       if (to === undefined) continue;
       const edge = Object.freeze({ from, to });
@@ -478,19 +505,19 @@ describe("simulation dependency firewall", () => {
 
   it("cannot bypass dependency classification with alternate module-loading syntax", () => {
     expect(
-      relativeModuleSpecifiersFromSource(
+      moduleSpecifiersFromSource(
         "fixture.ts",
         'import value = require("./Value"); const other = require("./Other"); import("./Dynamic"); type TypeOnly = import("./TypeOnly").Thing;',
       ),
     ).toEqual(["./Value", "./Other", "./Dynamic", "./TypeOnly"]);
     expect(() =>
-      relativeModuleSpecifiersFromSource(
+      moduleSpecifiersFromSource(
         "fixture.ts",
         'const path = "./Dynamic"; import(path);',
       ),
     ).toThrow(/dynamic import.*string literal/i);
     expect(() =>
-      relativeModuleSpecifiersFromSource(
+      moduleSpecifiersFromSource(
         "fixture.ts",
         'const path = "./Other"; require(path);',
       ),
@@ -499,11 +526,20 @@ describe("simulation dependency firewall", () => {
 
   it("does not drop configured internal path aliases", () => {
     expect(
-      relativeModuleSpecifiersFromSource(
+      moduleSpecifiersFromSource(
         "fixture.ts",
         'import type { EconomyState } from "src/simulation/Economy";',
       ),
     ).toEqual(["src/simulation/Economy"]);
+
+    const importer = join(process.cwd(), "src", "simulation", "Structures.ts");
+    expect(
+      resolveSimulationImport(
+        importer,
+        "src/simulation/Economy",
+        new Set(["src/simulation/Economy.ts"]),
+      ),
+    ).toBe("src/simulation/Economy.ts");
   });
 
   it("uses TypeScript extension substitution for simulation imports", () => {
