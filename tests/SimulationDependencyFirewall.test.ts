@@ -792,7 +792,7 @@ describe("simulation dependency firewall", () => {
         targetSide: { kind: "FACTION", id: "alpha" },
       },
     ]);
-    expect(new Set(applied.events.map((event) => event.id)).size.toBe(2);
+    expect(new Set(applied.events.map((event) => event.id)).size).toBe(2);
     expect(applied.events.every((event) => event.tick === 5)).toBe(true);
 
     const repeated = tryApplyPersistentDirectiveChangesWithEvents(
