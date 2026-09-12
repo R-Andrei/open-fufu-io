@@ -467,9 +467,9 @@ describe("simulation dependency firewall", () => {
     expect(
       relativeModuleSpecifiersFromSource(
         "fixture.ts",
-        'import value = require("./Value"); const other = require("./Other"); import("./Dynamic");',
+        'import value = require("./Value"); const other = require("./Other"); import("./Dynamic"); type TypeOnly = import("./TypeOnly").Thing;',
       ),
-    ).toEqual(["./Value", "./Other", "./Dynamic"]);
+    ).toEqual(["./Value", "./Other", "./Dynamic", "./TypeOnly"]);
     expect(() =>
       relativeModuleSpecifiersFromSource(
         "fixture.ts",
