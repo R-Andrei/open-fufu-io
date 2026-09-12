@@ -29,7 +29,7 @@ import {
   type PersistentDirectedHostilitySourceEndedEvent,
 } from "./SimulationEvents";
 import {
-  resolvePersistentStructureLifecycleTick,
+  resolvePersistentStructureLifecycleTickWithEvents,
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
@@ -371,7 +371,7 @@ export class TickEngine {
       (event): event is PersistentDirectedHostilitySourceEndedEvent =>
         event.kind === "PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED",
     );
-    const structures = resolvePersistentStructureLifecycleTick(
+    const structurePhase = resolvePersistentStructureLifecycleTickWithEvents(
       postLandState,
       ownershipEvents,
       nextTick,
@@ -385,7 +385,7 @@ export class TickEngine {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,
-      structures,
+      structures: structurePhase.structures,
       operations: land.operations,
       defensePriorities: land.defensePriorities,
       captureProgress: land.captureProgress,

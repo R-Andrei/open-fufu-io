@@ -3,7 +3,12 @@ import type {
   StructureLevel,
 } from "../core/controller/ControllerApi";
 import type { MatchState } from "./MatchState";
-import type { CellOwnershipChangedEvent } from "./SimulationEvents";
+import {
+  createStructureCaptureResolvedEvent,
+  type CellOwnershipChangedEvent,
+  type StructureCaptureResolvedEvent,
+  type StructureCaptureResolvedResult,
+} from "./SimulationEvents";
 import {
   effectiveStructureRechargeTicks,
   evaluateStructureAcquisitionAdmission,
@@ -14,6 +19,16 @@ import {
 } from "./StructuresCore";
 
 export * from "./StructuresCore";
+
+export interface PersistentStructureLifecycleTickResult {
+  readonly structures: readonly PersistentStructureState[];
+  readonly events: readonly StructureCaptureResolvedEvent[];
+}
+
+interface CaptureResolutionResult {
+  readonly structures: readonly PersistentStructureState[];
+  readonly events: readonly StructureCaptureResolvedEvent[];
+}
 
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
@@ -115,10 +130,50 @@ function acquisitionLevelForCapture(
   throw new Error(`structure ${structure.id} has no level-bearing persistent state`);
 }
 
+function structureCaptureResolvedEventId(
+  currentTick: number,
+  structure: PersistentStructureState,
+): string {
+  return `structure:capture-resolved:${currentTick}:${structure.cellId}:${JSON.stringify(structure.id)}`;
+}
+
+function createCaptureResolvedEvent(
+  structure: PersistentStructureState,
+  capturingFactionId: FactionId,
+  result: StructureCaptureResolvedResult,
+  currentTick: number,
+): StructureCaptureResolvedEvent {
+  return createStructureCaptureResolvedEvent({
+    id: structureCaptureResolvedEventId(currentTick, structure),
+    tick: currentTick,
+    structure: {
+      structureId: structure.id,
+      structureType: structure.type,
+      cellId: structure.cellId,
+      previousOwnerId: structure.ownerId,
+      capturingFactionId,
+      ...(structure.completedLevel === undefined
+        ? {}
+        : { completedLevel: structure.completedLevel }),
+      active: structure.active,
+      ...(structure.construction === undefined
+        ? {}
+        : {
+            construction: {
+              targetLevel: structure.construction.targetLevel,
+              remainingTicks: structure.construction.remainingTicks,
+            },
+          }),
+    },
+    result,
+  });
+}
+
 function resolveCaptureTransfersFromEvents(
   state: MatchState,
   eventsByCell: ReadonlyMap<number, CellOwnershipChangedEvent>,
-): readonly PersistentStructureState[] {
+  currentTick: number,
+): CaptureResolutionResult {
   const candidates = state.structures
     .filter((structure) => {
       const event = eventsByCell.get(structure.cellId);
@@ -128,49 +183,69 @@ function resolveCaptureTransfersFromEvents(
     .sort(
       (left, right) => left.cellId - right.cellId || compareIds(left.id, right.id),
     );
-  if (candidates.length === 0) return state.structures;
+  if (candidates.length === 0) {
+    return Object.freeze({
+      structures: state.structures,
+      events: Object.freeze([]),
+    });
+  }
 
   const candidateIds = new Set(candidates.map((structure) => structure.id));
   let working = state.structures.filter(
     (structure) => !candidateIds.has(structure.id),
   );
+  const captureEvents: StructureCaptureResolvedEvent[] = [];
 
   for (const structure of candidates) {
     const event = eventsByCell.get(structure.cellId);
     const nextOwnerId = event?.payload.nextOwnerId;
     if (nextOwnerId === null || nextOwnerId === undefined) continue;
-    if (factionHasN17CaptureDestruction(state, nextOwnerId)) continue;
 
-    const admissionState = {
-      ...state,
-      structures: materializePersistentStructures([...working, structure]),
-    } as MatchState;
-    const admission = evaluateStructureAcquisitionAdmission(admissionState, {
-      structureId: structure.id,
-      ownerId: nextOwnerId,
-      type: structure.type,
-      cellId: structure.cellId,
-      level: acquisitionLevelForCapture(structure),
-      acquisitionPath: "CAPTURE_TRANSFER",
-    });
-    if (!admission.ok) {
-      if (admission.failure.code === "OWNERSHIP_CAP") continue;
-      throw new Error(
-        `capture transfer admission for ${structure.id} failed with ${admission.failure.code}`,
-      );
+    let result: StructureCaptureResolvedResult;
+    if (factionHasN17CaptureDestruction(state, nextOwnerId)) {
+      result = "STRUCTURE_DESTROYED_ON_CAPTURE";
+    } else {
+      const admissionState = {
+        ...state,
+        structures: materializePersistentStructures([...working, structure]),
+      } as MatchState;
+      const admission = evaluateStructureAcquisitionAdmission(admissionState, {
+        structureId: structure.id,
+        ownerId: nextOwnerId,
+        type: structure.type,
+        cellId: structure.cellId,
+        level: acquisitionLevelForCapture(structure),
+        acquisitionPath: "CAPTURE_TRANSFER",
+      });
+      if (!admission.ok) {
+        if (admission.failure.code !== "OWNERSHIP_CAP") {
+          throw new Error(
+            `capture transfer admission for ${structure.id} failed with ${admission.failure.code}`,
+          );
+        }
+        result = "STRUCTURE_DESTROYED_ON_CAPTURE";
+      } else {
+        working = [
+          ...working,
+          materializePersistentStructureState({
+            ...structure,
+            ownerId: nextOwnerId,
+            acquisitionPath: "CAPTURE_TRANSFER",
+          }),
+        ];
+        result = "STRUCTURE_TRANSFERRED";
+      }
     }
 
-    working = [
-      ...working,
-      materializePersistentStructureState({
-        ...structure,
-        ownerId: nextOwnerId,
-        acquisitionPath: "CAPTURE_TRANSFER",
-      }),
-    ];
+    captureEvents.push(
+      createCaptureResolvedEvent(structure, nextOwnerId, result, currentTick),
+    );
   }
 
-  return materializePersistentStructures(working);
+  return Object.freeze({
+    structures: materializePersistentStructures(working),
+    events: Object.freeze(captureEvents),
+  });
 }
 
 function freezeChargeSlots(
@@ -297,25 +372,45 @@ function progressStructure(
   });
 }
 
-export function resolvePersistentStructureLifecycleTick(
+export function resolvePersistentStructureLifecycleTickWithEvents(
   state: MatchState,
   ownershipEvents: readonly CellOwnershipChangedEvent[],
   currentTick: number,
-): readonly PersistentStructureState[] {
+): PersistentStructureLifecycleTickResult {
   assertTransitionTick(currentTick);
   const eventsByCell = validateOwnershipEventBatch(
     state,
     ownershipEvents,
     currentTick,
   );
-  const afterCapture = resolveCaptureTransfersFromEvents(state, eventsByCell);
+  const capture = resolveCaptureTransfersFromEvents(
+    state,
+    eventsByCell,
+    currentTick,
+  );
   const postCaptureState = {
     ...state,
-    structures: afterCapture,
+    structures: capture.structures,
   } as MatchState;
-  return materializePersistentStructures(
-    afterCapture.map((structure) =>
+  const structures = materializePersistentStructures(
+    capture.structures.map((structure) =>
       progressStructure(postCaptureState, structure, currentTick),
     ),
   );
+  return Object.freeze({
+    structures,
+    events: capture.events,
+  });
+}
+
+export function resolvePersistentStructureLifecycleTick(
+  state: MatchState,
+  ownershipEvents: readonly CellOwnershipChangedEvent[],
+  currentTick: number,
+): readonly PersistentStructureState[] {
+  return resolvePersistentStructureLifecycleTickWithEvents(
+    state,
+    ownershipEvents,
+    currentTick,
+  ).structures;
 }
