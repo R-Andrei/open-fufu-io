@@ -137,16 +137,13 @@ export interface HostileManifestationInput {
   readonly hostile: boolean;
   /** Direct reveal requires one canonical source entity/operation identity. */
   readonly identifiableSource: boolean;
-  /**
-   * Factions to which the resolved manifestation itself is lawfully observable,
-   * including affected factions and any independent lawful witnesses.
-   */
-  readonly observingFactionIds: readonly string[];
+  /** Factions directly attacked by the resolved hostile effect. */
+  readonly attackedFactionIds: readonly string[];
 }
 
 /**
- * Returns the deterministic viewer set that receives source-specific direct reveal.
- * Merely attempted/selected/failed actions therefore produce no recipients.
+ * Returns the deterministic directly-attacked faction set that receives
+ * source-specific direct reveal. Third-party observers are never recipients.
  */
 export function directRevealRecipients(
   manifestation: HostileManifestationInput,
@@ -161,7 +158,7 @@ export function directRevealRecipients(
   return Object.freeze(
     [
       ...new Set(
-        manifestation.observingFactionIds.filter((id) => id.length > 0),
+        manifestation.attackedFactionIds.filter((id) => id.length > 0),
       ),
     ].sort(),
   );
