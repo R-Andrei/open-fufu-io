@@ -14,8 +14,13 @@ import {
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
-import { advanceTankRepairPhase } from "../src/simulation/TankRepair";
+import {
+  advanceTankRepairIntentPhase,
+  advanceTankRepairMovementPhase,
+  advanceTankRepairPhase,
+} from "../src/simulation/TankRepair";
 import type { TankExactHealth, TankOperationalState } from "../src/simulation/Tanks";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function rules(
   traits: readonly OriginTraitId[] = [],
@@ -34,17 +39,25 @@ interface TankSeed {
   readonly health: bigint;
   readonly arrivalTick?: number;
   readonly anchorCellId?: number;
+  readonly assigned?: boolean;
 }
 
 function repairFixture(options: {
   readonly width: number;
   readonly factoryLevel: 1 | 2 | 3 | 4 | 5;
+  readonly factoryCells?: readonly Readonly<{
+    structureId: string;
+    cellId: number;
+  }>[];
   readonly capturedFactory?: boolean;
   readonly traits?: readonly OriginTraitId[];
   readonly additional?: readonly RuleContribution[];
   readonly tick?: number;
   readonly tanks: readonly TankSeed[];
 }): MatchState {
+  const factoryGrants = options.factoryCells ?? [
+    { structureId: "alpha-factory", cellId: 0 },
+  ];
   let state = createInitialMatchState(
     createMicroSimulationSpec({
       seed: "tank-repair-red",
@@ -52,15 +65,13 @@ function repairFixture(options: {
       height: 1,
       terrain: Array.from({ length: options.width }, () => "PLAINS"),
       initialOwners: Array.from({ length: options.width }, () => "alpha"),
-      initialStructureGrants: [
-        {
-          structureId: "alpha-factory",
-          ownerId: "alpha",
-          type: "FACTORY",
-          cellId: 0,
-          level: options.factoryLevel,
-        },
-      ],
+      initialStructureGrants: factoryGrants.map((factory) => ({
+        structureId: factory.structureId,
+        ownerId: "alpha",
+        type: "FACTORY" as const,
+        cellId: factory.cellId,
+        level: options.factoryLevel,
+      })),
       factions: [
         {
           id: "alpha",
@@ -112,7 +123,9 @@ function repairFixture(options: {
       operatingAnchorCellId: tank.anchorCellId ?? tank.cellId,
       eligibleFromTick: 0,
       attackReadyAtTick: 0,
-      repairFactoryId: "alpha-factory",
+      ...(tank.assigned === false
+        ? {}
+        : { repairFactoryId: "alpha-factory" }),
       ...(tank.arrivalTick === undefined
         ? {}
         : { repairArrivalTick: tank.arrivalTick }),
@@ -139,6 +152,134 @@ function expectHealth(
 ): void {
   expect(health).toEqual({ numerator, denominator });
 }
+
+describe("Tank Factory repair retreat lifecycle", () => {
+  it("enters automatic repair retreat at and below the exact 50% threshold, but not one HP above", () => {
+    const state = repairFixture({
+      width: 16,
+      factoryLevel: 1,
+      tanks: [
+        { cellId: 15, health: 501n, assigned: false },
+        { cellId: 15, health: 500n, assigned: false },
+        { cellId: 15, health: 499n, assigned: false },
+      ],
+    });
+    const ids = state.tankOperationalStates.map((entry) => entry.unitId);
+
+    const intended = advanceTankRepairIntentPhase(state);
+
+    expect(intended.tankOperationalStates[0]).not.toHaveProperty(
+      "repairFactoryId",
+    );
+    for (const index of [1, 2]) {
+      expect(intended.tankOperationalStates[index]).toMatchObject({
+        repairFactoryId: "alpha-factory",
+      });
+      expect(
+        intended.mobileUnits.find((unit) => unit.id === ids[index])?.route,
+      ).toMatchObject({ destinationCellId: 10 });
+    }
+  });
+
+  it("chooses the least-time Factory and breaks an exact Factory tie by structureId", () => {
+    const state = repairFixture({
+      width: 41,
+      factoryLevel: 1,
+      factoryCells: [
+        { structureId: "z-factory", cellId: 0 },
+        { structureId: "a-factory", cellId: 40 },
+      ],
+      tanks: [{ cellId: 20, health: 500n, assigned: false }],
+    });
+    const unitId = state.tankOperationalStates[0]!.unitId;
+
+    const intended = advanceTankRepairIntentPhase(state);
+
+    expect(intended.tankOperationalStates[0]).toMatchObject({
+      repairFactoryId: "a-factory",
+    });
+    expect(
+      intended.mobileUnits.find((unit) => unit.id === unitId)?.route,
+    ).toMatchObject({ destinationCellId: 30 });
+  });
+
+  it("preserves a still-valid Factory assignment instead of opportunistically switching", () => {
+    const seeded = repairFixture({
+      width: 41,
+      factoryLevel: 1,
+      factoryCells: [
+        { structureId: "z-factory", cellId: 0 },
+        { structureId: "a-factory", cellId: 40 },
+      ],
+      tanks: [{ cellId: 20, health: 500n, assigned: false }],
+    });
+    const state = createProspectiveMatchState(seeded, {
+      tankOperationalStates: seeded.tankOperationalStates.map((operational) => ({
+        ...operational,
+        repairFactoryId: "z-factory",
+      })),
+    });
+
+    const intended = advanceTankRepairIntentPhase(state);
+
+    expect(intended.tankOperationalStates[0]).toMatchObject({
+      repairFactoryId: "z-factory",
+    });
+  });
+
+  it("moves along the selected Tank route and records queue arrival on the tick the fast field is reached", () => {
+    const state = repairFixture({
+      width: 12,
+      factoryLevel: 1,
+      tanks: [{ cellId: 11, health: 500n, assigned: false }],
+    });
+    const unitId = state.tankOperationalStates[0]!.unitId;
+    const intended = advanceTankRepairIntentPhase(state);
+
+    const firstMove = advanceTankRepairMovementPhase(intended);
+    expect(firstMove.mobileUnits.find((unit) => unit.id === unitId)).toMatchObject({
+      cellId: 11,
+      route: { destinationCellId: 10, edgeProgress: 468 },
+    });
+    expect(firstMove.tankOperationalStates[0]).not.toHaveProperty(
+      "repairArrivalTick",
+    );
+
+    const nextTick = createAdvancedMatchState(firstMove, {});
+    const arrived = advanceTankRepairMovementPhase(nextTick);
+    expect(arrived.mobileUnits.find((unit) => unit.id === unitId)).toMatchObject({
+      cellId: 10,
+    });
+    expect(
+      arrived.mobileUnits.find((unit) => unit.id === unitId),
+    ).not.toHaveProperty("route");
+    expect(arrived.tankOperationalStates[0]).toMatchObject({
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: 1,
+    });
+  });
+
+  it("runs repair intent, movement, and service in TickEngine before final Tank production", () => {
+    const state = repairFixture({
+      width: 16,
+      factoryLevel: 1,
+      tanks: [{ cellId: 15, health: 500n, assigned: false }],
+    });
+    const unitId = state.tankOperationalStates[0]!.unitId;
+
+    const advanced = new TickEngine().advance(state, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(advanced.tankOperationalStates[0]).toMatchObject({
+      repairFactoryId: "alpha-factory",
+      health: { numerator: 501n, denominator: 1n },
+    });
+    expect(advanced.mobileUnits.find((unit) => unit.id === unitId)).toMatchObject({
+      cellId: 15,
+      route: { destinationCellId: 10, edgeProgress: 468 },
+    });
+  });
+});
 
 describe("Tank Factory two-tier repair service", () => {
   it.each([
