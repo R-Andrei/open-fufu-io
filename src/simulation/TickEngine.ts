@@ -33,6 +33,11 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  advanceTankRepairIntentPhase,
+  advanceTankRepairMovementPhase,
+  advanceTankRepairPhase,
+} from "./TankRepair";
 import { advanceTankProductionPhase } from "./Tanks";
 
 export interface SetTestMarkerAction {
@@ -393,6 +398,9 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
-    return advanceTankProductionPhase(advanced);
+    const repairIntended = advanceTankRepairIntentPhase(advanced);
+    const repairMoved = advanceTankRepairMovementPhase(repairIntended);
+    const repaired = advanceTankRepairPhase(repairMoved);
+    return advanceTankProductionPhase(repaired);
   }
 }
