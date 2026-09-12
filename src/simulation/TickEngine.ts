@@ -15,6 +15,10 @@ import {
   type MatchState,
 } from "./MatchState";
 import {
+  advanceMobileUnit,
+  assignMobileUnitRoute,
+} from "./MobileUnits";
+import {
   grantPopulation,
   removePopulation,
   repartitionPopulation,
@@ -38,7 +42,11 @@ import {
   advanceTankRepairMovementPhase,
   advanceTankRepairPhase,
 } from "./TankRepair";
-import { selectTankAutonomousUnitTarget } from "./TankTargeting";
+import {
+  planTankPursuitRoute,
+  selectTankAutonomousUnitTarget,
+  type TankAutonomousUnitTargetSelection,
+} from "./TankTargeting";
 import { advanceTankProductionPhase } from "./Tanks";
 import { projectTankTargetObservation } from "./VisibilityState";
 
@@ -147,10 +155,11 @@ function factionCapitulationEventId(
 }
 
 function sameTankTarget(
-  left: TankRetainedTarget,
-  right: ReturnType<typeof selectTankAutonomousUnitTarget>,
+  left: TankRetainedTarget | undefined,
+  right: TankAutonomousUnitTargetSelection | undefined,
 ): boolean {
-  if (right === undefined || left.targetClass !== right.targetClass) return false;
+  if (left === undefined || right === undefined) return left === right;
+  if (left.targetClass !== right.targetClass) return false;
   if (left.targetClass === "POPULATION") {
     return right.targetClass === "POPULATION" && left.cellId === right.cellId;
   }
@@ -237,6 +246,89 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
         tankOperationalStates: Object.freeze(tankOperationalStates),
       })
     : state;
+}
+
+function advanceTankPursuitMovementPhase(
+  state: MatchState,
+  stateBeforeTargeting: MatchState,
+): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const previousOperationalById = new Map(
+    stateBeforeTargeting.tankOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const previousTarget = previousOperationalById.get(unit.id)?.retainedTarget;
+    const target = operational.retainedTarget;
+    if (target === undefined) {
+      if (previousTarget !== undefined && unit.route !== undefined) {
+        const cleared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+        if (cleared !== unit) unitUpdates.set(unit.id, cleared);
+      }
+      continue;
+    }
+
+    const plan = planTankPursuitRoute(
+      state,
+      {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+      },
+      target,
+    );
+    if (plan === undefined) continue;
+
+    let prepared = unit;
+    if (plan.cells.length === 1) {
+      if (unit.route !== undefined) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+      }
+    } else if (
+      !sameTankTarget(previousTarget, target) ||
+      unit.route === undefined ||
+      unit.route.destinationCellId !== plan.destinationCellId
+    ) {
+      prepared = assignMobileUnitRoute(state.map, unit, {
+        cells: plan.cells,
+        edgeWeights: plan.edgeWeights,
+      });
+    }
+
+    const advanced = advanceMobileUnit(
+      prepared,
+      plan.movementWorkPerTick,
+    ).unit;
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+  }
+
+  if (unitUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+  });
 }
 
 export class TickEngine {
@@ -499,7 +591,11 @@ export class TickEngine {
     });
     const repairIntended = advanceTankRepairIntentPhase(advanced);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
-    const repairMoved = advanceTankRepairMovementPhase(targetIntended);
+    const pursuitMoved = advanceTankPursuitMovementPhase(
+      targetIntended,
+      repairIntended,
+    );
+    const repairMoved = advanceTankRepairMovementPhase(pursuitMoved);
     const repaired = advanceTankRepairPhase(repairMoved);
     return advanceTankProductionPhase(repaired);
   }

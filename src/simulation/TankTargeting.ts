@@ -35,11 +35,14 @@ type TankAutonomousMobileTargetClass = Exclude<
   "POPULATION"
 >;
 
-export interface TankAutonomousUnitTargetRequest {
+export interface TankPursuitRouteRequest {
   readonly ownerId: string;
   readonly chassisType: TankChassisType;
   readonly currentCellId: number;
   readonly operatingAnchorCellId: number;
+}
+
+export interface TankAutonomousUnitTargetRequest extends TankPursuitRouteRequest {
   /** Unit IDs already established as lawfully observed by the caller. */
   readonly observedUnitIds: readonly string[];
   /** Cell IDs already established as lawfully observed by the caller. */
@@ -55,6 +58,13 @@ export type TankAutonomousUnitTargetSelection =
       targetClass: "POPULATION";
       cellId: number;
     }>;
+
+export interface TankPursuitRoutePlan {
+  readonly destinationCellId: number;
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+  readonly movementWorkPerTick: number;
+}
 
 interface ExactRatio {
   readonly numerator: bigint;
@@ -72,6 +82,11 @@ type RankedTarget =
       cellId: number;
       traversalWeight: number;
     }>;
+
+interface TankFiringPosition {
+  readonly cellId: number;
+  readonly traversalWeight: number;
+}
 
 const TRAVERSABLE_TANK_TERRAINS = Object.freeze([
   "PLAINS",
@@ -334,14 +349,14 @@ function classRank(targetClass: TankAutonomousUnitTargetClass): number {
   }
 }
 
-function minimumTraversalWeightToFiringPosition(
+function minimumFiringPosition(
   state: MatchState,
   reachable: ReturnType<ReturnType<typeof createNavigation>["reachable"]>,
   operatingAnchorCellId: number,
   targetCellId: number,
   range: ExactRatio,
-): number | undefined {
-  let best: number | undefined;
+): TankFiringPosition | undefined {
+  let best: TankFiringPosition | undefined;
   for (const entry of reachable.cells) {
     if (
       !tankOperatingLeashContains(
@@ -353,11 +368,34 @@ function minimumTraversalWeightToFiringPosition(
     ) {
       continue;
     }
-    if (best === undefined || entry.totalWeight < best) {
-      best = entry.totalWeight;
+    if (
+      best === undefined ||
+      entry.totalWeight < best.traversalWeight ||
+      (entry.totalWeight === best.traversalWeight && entry.cellId < best.cellId)
+    ) {
+      best = Object.freeze({
+        cellId: entry.cellId,
+        traversalWeight: entry.totalWeight,
+      });
     }
   }
   return best;
+}
+
+function minimumTraversalWeightToFiringPosition(
+  state: MatchState,
+  reachable: ReturnType<ReturnType<typeof createNavigation>["reachable"]>,
+  operatingAnchorCellId: number,
+  targetCellId: number,
+  range: ExactRatio,
+): number | undefined {
+  return minimumFiringPosition(
+    state,
+    reachable,
+    operatingAnchorCellId,
+    targetCellId,
+    range,
+  )?.traversalWeight;
 }
 
 function populationPermissionConditionApplies(
@@ -566,5 +604,112 @@ export function selectTankAutonomousUnitTarget(
   return Object.freeze({
     targetClass: best.targetClass,
     unitId: best.unitId,
+  });
+}
+
+export function planTankPursuitRoute(
+  state: MatchState,
+  request: TankPursuitRouteRequest,
+  target: TankAutonomousUnitTargetSelection,
+): TankPursuitRoutePlan | undefined {
+  if (
+    !state.map.isValidCellId(request.currentCellId) ||
+    !state.map.isValidCellId(request.operatingAnchorCellId)
+  ) {
+    throw new Error("Tank pursuit planning requires valid current and anchor cells");
+  }
+  if (state.factions.every((faction) => faction.id !== request.ownerId)) {
+    throw new Error(`unknown faction: ${request.ownerId}`);
+  }
+  if (
+    tankCellTraversalTiming(
+      state,
+      request.ownerId,
+      request.chassisType,
+      request.currentCellId,
+    ) === undefined
+  ) {
+    return undefined;
+  }
+
+  let targetCellId: number;
+  if (target.targetClass === "POPULATION") {
+    if (!state.map.isValidCellId(target.cellId)) return undefined;
+    targetCellId = target.cellId;
+  } else {
+    const targetUnit = state.mobileUnits.find((unit) => unit.id === target.unitId);
+    if (
+      targetUnit === undefined ||
+      targetClassForUnit(targetUnit.type, request.chassisType) !== target.targetClass
+    ) {
+      return undefined;
+    }
+    targetCellId = targetUnit.cellId;
+  }
+  if (
+    !tankOperatingLeashContains(
+      state.map,
+      request.operatingAnchorCellId,
+      targetCellId,
+    )
+  ) {
+    return undefined;
+  }
+
+  const range = effectiveAttackRange(
+    state,
+    request.ownerId,
+    request.chassisType,
+  );
+  const policy = targetingTraversalPolicy(
+    state,
+    request.ownerId,
+    request.chassisType,
+    request.operatingAnchorCellId,
+  );
+  const navigation = createNavigation(state.map);
+  const reachable = navigation.reachable(
+    request.currentCellId,
+    Number.MAX_SAFE_INTEGER,
+    policy,
+  );
+  const firingPosition = minimumFiringPosition(
+    state,
+    reachable,
+    request.operatingAnchorCellId,
+    targetCellId,
+    range,
+  );
+  if (firingPosition === undefined) return undefined;
+
+  const path = navigation.path(
+    request.currentCellId,
+    firingPosition.cellId,
+    policy,
+  );
+  if (path.status !== "FOUND") return undefined;
+  const cells = Object.freeze([...path.path.cells]);
+  const edgeWeights = Object.freeze(
+    cells.slice(1).map((cellId, index) => {
+      const weight = policy.traversalWeight(cells[index]!, cellId);
+      if (weight === undefined) {
+        throw new Error("Tank pursuit returned an unavailable route edge");
+      }
+      return weight;
+    }),
+  );
+  const movementWork = traversalWeightScale(
+    state,
+    request.ownerId,
+    request.chassisType,
+  );
+  if (movementWork <= 0n || movementWork > MAX_SAFE_BIGINT) {
+    throw new Error("Tank pursuit movement work exceeds the safe-integer range");
+  }
+  return Object.freeze({
+    destinationCellId: firingPosition.cellId,
+    cells,
+    edgeWeights,
+    movementWorkPerTick: Number(movementWork),
   });
 }
