@@ -574,6 +574,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TerritoryEffects.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine delivers canonical radioactive-aftershock facts to the Land-owned territorial-effects consumer in deterministic Tank-stage order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
