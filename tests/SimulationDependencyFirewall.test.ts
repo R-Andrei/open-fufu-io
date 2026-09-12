@@ -131,6 +131,19 @@ function relativeModuleSpecifiersFromSource(
   }
 
   function visit(node: ts.Node): void {
+    if (ts.isImportTypeNode(node)) {
+      const argument = node.argument;
+      if (
+        !ts.isLiteralTypeNode(argument) ||
+        !ts.isStringLiteral(argument.literal)
+      ) {
+        throw new Error(
+          `${path}: import type module reference must be one string literal`,
+        );
+      }
+      const specifier = argument.literal.text;
+      if (specifier.startsWith(".")) result.push(specifier);
+    }
     if (ts.isCallExpression(node)) {
       const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
       const isRequire =
