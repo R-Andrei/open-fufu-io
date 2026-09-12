@@ -26,6 +26,7 @@ import type {
   TankExactHealth,
   TankOperationalState,
 } from "../src/simulation/Tanks";
+import { resolveDirectRevealsFromPhysicalEvents } from "../src/simulation/VisibilityState";
 
 function rules(
   traits: readonly OriginTraitId[] = [],
@@ -291,5 +292,89 @@ describe("Tank physical combat events", () => {
       [red.unit.id, [blue.unit.id]],
     ]);
     expect(forward.state.hostilityGrace).toEqual(state.hostilityGrace);
+  });
+});
+
+describe("Tank combat direct-reveal delivery", () => {
+  it("reveals a resolved attacker only to the directly attacked faction for the V1 lifetime", () => {
+    let state = fixture();
+    const attacker = addUnit(state, "blue", "TANK", 0);
+    state = attacker.state;
+    const target = addUnit(state, "red", "TANK", 3);
+    state = createProspectiveMatchState(target.state, {
+      directReveals: [
+        {
+          viewerFactionId: "green",
+          sourceKind: "UNIT",
+          sourceId: "unrelated-unit",
+          expiryExclusiveTick: 999,
+        },
+      ],
+    });
+
+    const combat = resolveAdmittedTankUnitAttacks(state, [
+      { attackerUnitId: attacker.unit.id, targetUnitId: target.unit.id },
+    ]);
+    expect(combat.state.directReveals).toEqual(state.directReveals);
+
+    expect(
+      resolveDirectRevealsFromPhysicalEvents(
+        combat.state,
+        combat.events,
+        state.tick,
+      ),
+    ).toEqual([
+      {
+        viewerFactionId: "green",
+        sourceKind: "UNIT",
+        sourceId: "unrelated-unit",
+        expiryExclusiveTick: 999,
+      },
+      {
+        viewerFactionId: "red",
+        sourceKind: "UNIT",
+        sourceId: attacker.unit.id,
+        expiryExclusiveTick: state.tick + 150,
+      },
+    ]);
+  });
+
+  it("does not retain direct-reveal ghosts for attackers destroyed in the same physical batch", () => {
+    let state = fixture({ blueTraits: ["P43"], redTraits: ["P43"] });
+    const blue = addUnit(state, "blue", "HEAVY_ARTILLERY", 0);
+    state = blue.state;
+    const red = addUnit(state, "red", "HEAVY_ARTILLERY", 3);
+    state = red.state;
+
+    const combat = resolveAdmittedTankUnitAttacks(state, [
+      { attackerUnitId: blue.unit.id, targetUnitId: red.unit.id },
+      { attackerUnitId: red.unit.id, targetUnitId: blue.unit.id },
+    ]);
+
+    expect(
+      resolveDirectRevealsFromPhysicalEvents(
+        combat.state,
+        combat.events,
+        state.tick,
+      ),
+    ).toEqual([]);
+  });
+
+  it("prunes expired direct reveals even when the physical-event batch is empty", () => {
+    const state = createProspectiveMatchState(fixture(), {
+      directReveals: [
+        {
+          viewerFactionId: "red",
+          sourceKind: "UNIT",
+          sourceId: "blue-unit",
+          expiryExclusiveTick: 1,
+        },
+      ],
+    });
+
+    expect(resolveDirectRevealsFromPhysicalEvents(state, [], 0)).toEqual(
+      state.directReveals,
+    );
+    expect(resolveDirectRevealsFromPhysicalEvents(state, [], 1)).toEqual([]);
   });
 });
