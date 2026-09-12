@@ -257,6 +257,12 @@ Exact public types, resource limits, receipts, and lifecycle behavior belong to 
 
 Cells are the finest meaningful territorial simulation resolution. Ownership, terrain, capture, structures, and local combat geometry ultimately resolve through cells.
 
+Any entity or phenomenon that the authoritative simulation represents as physically occupying a map cell occupies exactly one `CellId` at that instant. **A physical cell may contain at most one such physical thing, with no exceptions.**
+
+An occupied cell is unreachable and impassable to every other physical thing. No movement, route, spawn, deployment, construction, grant, landing, embark/disembark, return/service/repair relocation, projectile, or other physical transition may enter, share, cross through, or otherwise traverse an occupied cell. This applies regardless of owner, type, subsystem, visibility, terrain permission, or movement mode; no focused subsystem may create an exception.
+
+This is an authoritative state invariant, not merely a pathfinding preference. Physical route planning must treat occupied cells as blocked, and every authoritative placement, transition, and state-materialization boundary must prevent any result that would create physical co-occupancy. A physical transition that cannot enter its next cell because it is occupied does not pass through that cell.
+
 Ordinary V1 maps use **exactly 4,800,000 raster cells**. Width, height, aspect ratio, and population-bearing share may vary, but V1 does not support multiple gameplay map-resolution scales.
 
 ## 6.2 Segments
@@ -776,3 +782,4 @@ The following are the game-wide invariants this document owns:
 14. `atWar` is symmetric team-normalized recent controller-directed hostility with a ruleset-bound 600-tick post-hostility grace; autonomous unit violence does not itself create or refresh it.
 15. Tactical operational visibility is requester-relative and uses one authoritative projection with explicit-public/direct-reveal/concealment/remote-observation precedence; player controllers, Official AI, derived/debug surfaces, and reference/entity-addressed surfaces receive no hidden-state bypass.
 16. Cell identity, coordinates, base terrain, canonical Segment membership, and political ownership are public controller information across the map; tactical operational contents remain governed by requester-relative visibility.
+17. Map-cell-resolved physical occupancy is exclusive: at most one physical thing may occupy a cell, and an occupied cell is unreachable and impassable to every other physical thing at both route-planning and authoritative state-transition boundaries.
