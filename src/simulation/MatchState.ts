@@ -60,6 +60,9 @@ const STRUCTURE_TYPES = new Set<StructureType>([
   "COMMAND_POST",
 ]);
 
+type MatchTankOperationalState = TankOperationalState &
+  Readonly<{ roamingOrdinal?: number }>;
+
 export interface MatchFactionState {
   readonly id: string;
   readonly status: FactionStatus;
@@ -82,7 +85,7 @@ export interface MatchState {
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
   readonly tankProductionJobs: readonly TankProductionJobState[];
-  readonly tankOperationalStates: readonly TankOperationalState[];
+  readonly tankOperationalStates: readonly MatchTankOperationalState[];
   readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -99,7 +102,7 @@ export interface MatchStateUpdate {
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
   readonly tankProductionJobs?: readonly TankProductionJobState[];
-  readonly tankOperationalStates?: readonly TankOperationalState[];
+  readonly tankOperationalStates?: readonly MatchTankOperationalState[];
   readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
@@ -415,10 +418,10 @@ function freezeTankRetainedTarget(
 }
 
 function freezeTankOperationalStates(
-  entries: readonly TankOperationalState[],
+  entries: readonly MatchTankOperationalState[],
   mobileUnits: readonly MobileUnitState[],
   map: SimulationMap,
-): readonly TankOperationalState[] {
+): readonly MatchTankOperationalState[] {
   if (!Array.isArray(entries)) {
     throw new Error("tankOperationalStates must be an array");
   }
@@ -449,6 +452,8 @@ function freezeTankOperationalStates(
     }
     assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
     assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    const roamingOrdinal = entry.roamingOrdinal ?? 0;
+    assertNonNegativeSafeInteger(roamingOrdinal, "Tank roamingOrdinal");
     const retainedTarget = freezeTankRetainedTarget(entry.retainedTarget, map);
     if (
       entry.repairFactoryId !== undefined &&
@@ -471,6 +476,7 @@ function freezeTankOperationalStates(
       operatingAnchorCellId: entry.operatingAnchorCellId,
       eligibleFromTick: entry.eligibleFromTick,
       attackReadyAtTick: entry.attackReadyAtTick,
+      roamingOrdinal,
       ...(retainedTarget === undefined ? {} : { retainedTarget }),
       ...(entry.repairFactoryId === undefined
         ? {}
@@ -807,6 +813,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       operatingAnchorCellId: entry.operatingAnchorCellId,
       eligibleFromTick: entry.eligibleFromTick,
       attackReadyAtTick: entry.attackReadyAtTick,
+      roamingOrdinal: entry.roamingOrdinal ?? 0,
       ...(entry.retainedTarget === undefined
         ? {}
         : {
