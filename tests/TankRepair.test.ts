@@ -436,4 +436,27 @@ describe("Tank Factory two-tier repair service", () => {
     expect(repaired).not.toHaveProperty("repairFactoryId");
     expect(repaired).not.toHaveProperty("repairArrivalTick");
   });
+
+  it("clears the repair route when broad repair reaches full health before fast service", () => {
+    const seeded = repairFixture({
+      width: 16,
+      factoryLevel: 1,
+      tanks: [{ cellId: 15, health: 999n, assigned: false }],
+    });
+    const unitId = seeded.tankOperationalStates[0]!.unitId;
+    const intended = advanceTankRepairIntentPhase(seeded);
+
+    expect(
+      intended.mobileUnits.find((unit) => unit.id === unitId)?.route,
+    ).toMatchObject({ destinationCellId: 10 });
+
+    const repaired = advanceTankRepairPhase(intended);
+    expectHealth(repaired.tankOperationalStates[0]?.health, 1_000n);
+    expect(repaired.tankOperationalStates[0]).not.toHaveProperty(
+      "repairFactoryId",
+    );
+    expect(repaired.mobileUnits.find((unit) => unit.id === unitId)).not.toHaveProperty(
+      "route",
+    );
+  });
 });
