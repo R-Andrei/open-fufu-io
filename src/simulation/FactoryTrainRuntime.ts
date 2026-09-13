@@ -41,9 +41,11 @@ export type FactoryTrainRuntimeUpdate = Readonly<
 export type FactoryTrainDestructionLifecycleUpdate = Readonly<
   Pick<
     MatchState,
-    "factions" | "factoryRailLoops" | "factoryTrainEpochs" | "trainServices"
+    "factoryRailLoops" | "factoryTrainEpochs" | "trainServices"
   >
 >;
+
+export type FactoryTrainEconomicUpdate = Readonly<Pick<MatchState, "factions">>;
 
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
@@ -149,7 +151,6 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     factoryTrainEpochs.map((epoch) => [epoch.factoryId, epoch]),
   );
   const consumedTrainIds = new Set<string>();
-  const positiveEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
 
   for (const event of destructionEvents) {
     if (event.tick !== state.tick) {
@@ -159,6 +160,68 @@ export function applyFactoryTrainDestructionLifecycleEvents(
 
     const trainId = event.payload.unit.unitId;
     const service = trainServices.find((entry) => entry.trainId === trainId);
+    if (service === undefined) continue;
+    if (consumedTrainIds.has(trainId)) {
+      throw new Error(`duplicate Factory Train destruction event: ${trainId}`);
+    }
+    consumedTrainIds.add(trainId);
+
+    const lifecycle = loopsByFactory.get(service.factoryId);
+    if (lifecycle === undefined) {
+      throw new Error(
+        `Train service ${service.trainId} has no Factory rail lifecycle`,
+      );
+    }
+    const releasedLifecycle = releaseFactoryRailLoopSnapshot(
+      lifecycle,
+      service.loopSnapshotId,
+    );
+    factoryRailLoops = factoryRailLoops.map((entry) =>
+      entry.factoryId === service.factoryId ? releasedLifecycle : entry,
+    );
+    loopsByFactory.set(service.factoryId, releasedLifecycle);
+
+    if (service.isPrimary) {
+      const activeEpoch = epochsByFactory.get(service.factoryId);
+      if (activeEpoch?.activePrimaryTrainId === service.trainId) {
+        const finishedEpoch = finishFactoryPrimaryTrain(
+          activeEpoch,
+          service.trainId,
+        );
+        factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
+          entry.factoryId === service.factoryId ? finishedEpoch : entry,
+        );
+        epochsByFactory.set(service.factoryId, finishedEpoch);
+      }
+    }
+
+    trainServices = trainServices.filter((entry) => entry.trainId !== trainId);
+  }
+
+  if (consumedTrainIds.size === 0) return null;
+  return Object.freeze({
+    factoryRailLoops: Object.freeze(factoryRailLoops),
+    factoryTrainEpochs: Object.freeze(factoryTrainEpochs),
+    trainServices: Object.freeze(trainServices),
+  });
+}
+
+export function settleFactoryTrainEconomicEvents(
+  state: MatchState,
+  servicesAtInterception: readonly MatchState["trainServices"][number][],
+  destructionEvents: readonly UnitDestroyedEvent[],
+): FactoryTrainEconomicUpdate | null {
+  const positiveEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
+  const consumedTrainIds = new Set<string>();
+
+  for (const event of destructionEvents) {
+    if (event.tick !== state.tick) {
+      throw new Error("Factory Train destruction event tick must match runtime tick");
+    }
+    if (event.payload.unit.unitType !== "TRAIN") continue;
+
+    const trainId = event.payload.unit.unitId;
+    const service = servicesAtInterception.find((entry) => entry.trainId === trainId);
     if (service === undefined) continue;
     if (consumedTrainIds.has(trainId)) {
       throw new Error(`duplicate Factory Train destruction event: ${trainId}`);
@@ -196,40 +259,9 @@ export function applyFactoryTrainDestructionLifecycleEvents(
       existing.push(economicResolution.economic.raiderEvent);
       positiveEventsByOwnerId.set(economicResolution.raiderOwnerId, existing);
     }
-
-    const lifecycle = loopsByFactory.get(service.factoryId);
-    if (lifecycle === undefined) {
-      throw new Error(
-        `Train service ${service.trainId} has no Factory rail lifecycle`,
-      );
-    }
-    const releasedLifecycle = releaseFactoryRailLoopSnapshot(
-      lifecycle,
-      service.loopSnapshotId,
-    );
-    factoryRailLoops = factoryRailLoops.map((entry) =>
-      entry.factoryId === service.factoryId ? releasedLifecycle : entry,
-    );
-    loopsByFactory.set(service.factoryId, releasedLifecycle);
-
-    if (service.isPrimary) {
-      const activeEpoch = epochsByFactory.get(service.factoryId);
-      if (activeEpoch?.activePrimaryTrainId === service.trainId) {
-        const finishedEpoch = finishFactoryPrimaryTrain(
-          activeEpoch,
-          service.trainId,
-        );
-        factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
-          entry.factoryId === service.factoryId ? finishedEpoch : entry,
-        );
-        epochsByFactory.set(service.factoryId, finishedEpoch);
-      }
-    }
-
-    trainServices = trainServices.filter((entry) => entry.trainId !== trainId);
   }
 
-  for (const service of trainServices
+  for (const service of state.trainServices
     .slice()
     .sort((left, right) => compareIds(left.trainId, right.trainId))) {
     if (!isCurrentTickStationOccurrence(state, service.resumeAtTick)) continue;
@@ -248,9 +280,7 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     positiveEventsByOwnerId.set(ownerId, existing);
   }
 
-  if (consumedTrainIds.size === 0 && positiveEventsByOwnerId.size === 0) {
-    return null;
-  }
+  if (positiveEventsByOwnerId.size === 0) return null;
   const factions = state.factions.map((faction) => {
     const positiveEvents = positiveEventsByOwnerId.get(faction.id);
     if (positiveEvents === undefined || positiveEvents.length === 0) {
@@ -265,12 +295,7 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     });
     return Object.freeze({ ...faction, ffy: resolved.balance });
   });
-  return Object.freeze({
-    factions: Object.freeze(factions),
-    factoryRailLoops: Object.freeze(factoryRailLoops),
-    factoryTrainEpochs: Object.freeze(factoryTrainEpochs),
-    trainServices: Object.freeze(trainServices),
-  });
+  return Object.freeze({ factions: Object.freeze(factions) });
 }
 
 export function advanceFactoryTrainRuntimePhase(
