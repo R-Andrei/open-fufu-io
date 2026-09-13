@@ -19,7 +19,7 @@
     "src/simulation/Navigation.ts": "MAP_SUBSTRATE",
     "src/simulation/Population.ts": "POPULATION",
     "src/simulation/RailNetwork.ts": "MAP_SUBSTRATE",
-    "src/simulation/RepairService.ts": "TANK",
+    "src/simulation/RepairService.ts": "MOBILE_UNITS",
     "src/simulation/Segments.ts": "MAP_SUBSTRATE",
     "src/simulation/SimulationEvents.ts": "SIMULATION_EVENTS",
     "src/simulation/SimulationMap.ts": "MAP_SUBSTRATE",
@@ -54,7 +54,7 @@
       "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/SimulationMap.ts",
       "classification": "CURRENT_STATE_READ",
-      "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; it does not convey an occurrence."
+      "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; map state is not an occurrence channel."
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
@@ -318,7 +318,7 @@
       "from": "src/simulation/SpawnSemantics.ts",
       "to": "src/simulation/LandOperations.ts",
       "classification": "SHARED_CONTRACT",
-      "rationale": "Spawn semantics reuses Land terrain legality and base-spec contracts rather than duplicating them."
+      "rationale": "Spawn semantics reuses Land terrain base-spec contracts rather than duplicating them."
     },
     {
       "from": "src/simulation/SpawnSemantics.ts",
@@ -421,6 +421,12 @@
       "to": "src/simulation/MobileUnits.ts",
       "classification": "ORCHESTRATION",
       "rationale": "Tank repair invokes MobileUnits-owned deterministic route and movement primitives for repair retreat."
+    },
+    {
+      "from": "src/simulation/TankRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Tank repair adapts Factory/Tank-specific eligibility, rules, health, and navigation into the MobileUnits-owned shared vehicle-repair lifecycle rather than duplicating that lifecycle."
     },
     {
       "from": "src/simulation/TankRepair.ts",
@@ -558,7 +564,7 @@
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/TankRepair.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "TickEngine invokes Tank-owned repair intent, retreat movement, and service phases in deterministic order."
+      "rationale": "TickEngine invokes the Tank/Factory repair adapter around the shared vehicle-repair lifecycle in deterministic order."
     },
     {
       "from": "src/simulation/TickEngine.ts",
