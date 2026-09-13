@@ -14,7 +14,7 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
-function originRules(traitIds: readonly ("P07" | "P33")[]) {
+function originRules(traitIds: readonly ("P07" | "P33" | "P34")[]) {
   const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
     contributions: origin.contributions,
@@ -29,6 +29,10 @@ function p07Rules() {
 
 function p33Rules() {
   return originRules(["P33"]);
+}
+
+function p34Rules() {
+  return originRules(["P34"]);
 }
 
 function createP07RuntimeFixture(
@@ -177,6 +181,57 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
   return prepared;
 }
 
+function createP34RuntimeFixture(
+  seed: string,
+  acquisitionPath: "GRANT" | "CAPTURE_TRANSFER",
+) {
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width: 12,
+      height: 1,
+      factions: [
+        { id: "alpha", rules: p34Rules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze(
+    Array.from({ length: 11 }, (_, index) => index + 1),
+  );
+  return createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath,
+      },
+      {
+        id: "city-a",
+        ownerId: "alpha",
+        type: "CITY",
+        cellId: 10,
+        completedLevel: 1,
+        active: false,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+  });
+}
+
 describe("P07 Factory Train runtime dispatch", () => {
   it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
@@ -309,5 +364,32 @@ describe("P33 Factory Train runtime settlement", () => {
     expect(advanced.mobileUnits.some((unit) => unit.type === "TRAIN")).toBe(false);
     expect(advanced.factions[0]?.population.total).toBe(0);
     expect(advanced.factions[0]?.population.available).toBe(0);
+  });
+});
+
+describe("P34 Factory Train runtime dispatch", () => {
+  it("snapshots 1.50x base cargo only for a conquered Factory", () => {
+    const granted = new TickEngine().advance(
+      createP34RuntimeFixture("factory-train-runtime-p34-granted", "GRANT"),
+      [],
+    );
+    const conquered = new TickEngine().advance(
+      createP34RuntimeFixture(
+        "factory-train-runtime-p34-conquered",
+        "CAPTURE_TRANSFER",
+      ),
+      [],
+    );
+
+    expect(granted.trainServices).toHaveLength(1);
+    expect(granted.trainServices[0]?.dispatchSnapshot.baseCargoFfy).toEqual({
+      numerator: 10_000n,
+      denominator: 1n,
+    });
+    expect(conquered.trainServices).toHaveLength(1);
+    expect(conquered.trainServices[0]?.dispatchSnapshot.baseCargoFfy).toEqual({
+      numerator: 15_000n,
+      denominator: 1n,
+    });
   });
 });
