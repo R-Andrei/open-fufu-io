@@ -942,11 +942,11 @@ export function tryStartTankProduction(
 
   const chassisType = effectiveTankChassisType(state, request.ownerId);
   if (
-    tankCellTraversalTiming(
+    tankTerrainMovementTiming(
       state,
       request.ownerId,
       chassisType,
-      request.strategicDestinationCellId,
+      state.map.terrainAt(request.strategicDestinationCellId),
     ) === undefined
   ) {
     return failure(state, "INVALID_REQUEST");
