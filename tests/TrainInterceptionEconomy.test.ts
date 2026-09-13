@@ -368,6 +368,7 @@ describe("Factory Train interception economic consequence", () => {
         seed: "train-interception-runtime-convergence",
         width: 12,
         height: 1,
+        terrain: Array.from({ length: 12 }, () => "PLAINS" as const),
         factions: [
           { id: "alpha", rules },
           { id: "beta", rules },
