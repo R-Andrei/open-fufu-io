@@ -8,6 +8,8 @@
     "src/simulation/ControllerSpatialSurface.ts": "CONTROLLER_ADAPTER",
     "src/simulation/Economy.ts": "ECONOMY",
     "src/simulation/FactoryRailLifecycle.ts": "MAP_SUBSTRATE",
+    "src/simulation/FactoryTrainRuntime.ts": "ECONOMY",
+    "src/simulation/FactoryTrainState.ts": "RUNTIME_CORE",
     "src/simulation/HostilityState.ts": "HOSTILITY",
     "src/simulation/LandOperations.ts": "LAND",
     "src/simulation/LandOperationsCore.ts": "LAND",
@@ -111,6 +113,60 @@
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Economy derives values from current authoritative MatchState without treating current state as an event."
+    },
+    {
+      "from": "src/simulation/FactoryTrainRuntime.ts",
+      "to": "src/simulation/FactoryRailLifecycle.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Factory Train runtime retains and releases map-substrate-owned immutable rail-loop snapshots while orchestrating Train service lifecycle."
+    },
+    {
+      "from": "src/simulation/FactoryTrainRuntime.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Factory Train runtime reads the current authoritative MatchState while producing its Economy-owned deterministic phase update."
+    },
+    {
+      "from": "src/simulation/FactoryTrainRuntime.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Factory Train runtime invokes MobileUnits-owned creation and route-assignment primitives for autonomous Train dispatch."
+    },
+    {
+      "from": "src/simulation/FactoryTrainRuntime.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Factory Train runtime consumes canonical Structure capture facts for ownership-epoch transitions rather than inferring lifecycle changes from snapshots."
+    },
+    {
+      "from": "src/simulation/FactoryTrainState.ts",
+      "to": "src/simulation/FactoryRailLifecycle.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Runtime-Core state aggregation materializes the Map-Substrate-owned Factory rail lifecycle contract inside authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/FactoryTrainState.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Runtime-Core Train state validation joins service state to the canonical MobileUnits physical-unit contract."
+    },
+    {
+      "from": "src/simulation/FactoryTrainState.ts",
+      "to": "src/simulation/RailNetwork.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Runtime-Core state aggregation materializes the Map-Substrate-owned Factory rail-loop plan contract."
+    },
+    {
+      "from": "src/simulation/FactoryTrainState.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Runtime-Core Train state validation consumes the immutable map contract for canonical cell validation."
+    },
+    {
+      "from": "src/simulation/FactoryTrainState.ts",
+      "to": "src/simulation/TrainService.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Runtime-Core state aggregation embeds Economy-owned Train service epoch and dispatch-snapshot contracts in authoritative MatchState."
     },
     {
       "from": "src/simulation/HostilityState.ts",
@@ -519,6 +575,12 @@
       "to": "src/simulation/Economy.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/FactoryTrainRuntime.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Economy-owned Factory Train service phase after Structure lifecycle and before the existing Tank runtime sequence."
     },
     {
       "from": "src/simulation/TickEngine.ts",
