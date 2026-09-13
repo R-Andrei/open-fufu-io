@@ -21,15 +21,19 @@ import {
   type MobileUnitState,
 } from "./MobileUnits";
 import {
-  addRepairClamped,
-  fixedRepairField,
-  repairFieldContainsCell,
+  advanceVehicleRepairIntentPhase,
+  advanceVehicleRepairMovementPhase,
+  advanceVehicleRepairServicePhase,
   repairPerTick,
   repairServiceProfileForLevel,
   scaledRepairField,
-  selectFastServiceUnitIds,
+  vehicleFastServiceUnitIds,
   type ExactRepairAmount,
   type RepairServiceProfile,
+  type VehicleRepairDomain,
+  type VehicleRepairPhaseResult,
+  type VehicleRepairProviderState,
+  type VehicleRepairRoute,
 } from "./RepairService";
 import type { PersistentStructureState } from "./Structures";
 import {
@@ -37,15 +41,14 @@ import {
   tankNavigationRoute,
   type TankChassisType,
   type TankExactHealth,
-  type TankNavigationRoute,
   type TankOperationalState,
 } from "./Tanks";
 
 const TICKS_PER_SECOND = 10n;
 const BASE_TANK_MAX_HEALTH = 1_000n;
 
-function compareIds(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+interface TankRepairProvider extends VehicleRepairProviderState {
+  readonly structure: PersistentStructureState;
 }
 
 function territorialContactCount(state: MatchState, ownerId: string): number {
@@ -164,7 +167,7 @@ function effectiveRepairPerTick(
   factory: PersistentStructureState,
   chassisType: TankChassisType,
   baseHealthPerSecond: ExactRepairAmount,
-): TankExactHealth {
+): ExactRepairAmount {
   const terms = repairTerms(
     state,
     factory,
@@ -175,16 +178,12 @@ function effectiveRepairPerTick(
     RULE_AXIS_REGISTRY.STRUCTURE_REPAIR_RATE,
     terms,
   );
-  const repair = repairPerTick(
+  return repairPerTick(
     baseHealthPerSecond,
     scale.numerator,
     scale.denominator,
     TICKS_PER_SECOND,
   );
-  return Object.freeze({
-    numerator: repair.numerator,
-    denominator: repair.denominator,
-  });
 }
 
 function effectiveTankMaxHealth(
@@ -227,48 +226,7 @@ function chassisTypeOf(unit: MobileUnitState): TankChassisType | undefined {
   return undefined;
 }
 
-function insideField(
-  state: MatchState,
-  factory: PersistentStructureState,
-  unit: MobileUnitState,
-  field: StructureRadialFieldProfile,
-): boolean {
-  return cellInsideField(state, factory, unit.cellId, field);
-}
-
-function cellInsideField(
-  state: MatchState,
-  factory: PersistentStructureState,
-  cellId: number,
-  field: StructureRadialFieldProfile,
-): boolean {
-  const center = state.map.positionOf(factory.cellId);
-  const candidate = state.map.positionOf(cellId);
-  return repairFieldContainsCell(
-    field,
-    center.x,
-    center.y,
-    candidate.x,
-    candidate.y,
-  );
-}
-
-function clearRepairState(
-  operational: TankOperationalState,
-  health: TankExactHealth,
-): TankOperationalState {
-  const {
-    repairFactoryId: _repairFactoryId,
-    repairArrivalTick: _repairArrivalTick,
-    ...withoutRepair
-  } = operational;
-  return Object.freeze({ ...withoutRepair, health });
-}
-
-function clearUnitRoute(
-  state: MatchState,
-  unit: MobileUnitState,
-): MobileUnitState {
+function clearUnitRoute(state: MatchState, unit: MobileUnitState): MobileUnitState {
   if (unit.route === undefined) return unit;
   return assignMobileUnitRoute(state.map, unit, {
     cells: [unit.cellId],
@@ -276,525 +234,192 @@ function clearUnitRoute(
   });
 }
 
-function withRepairFactory(
+function withRepairAssignment(
   operational: TankOperationalState,
   factoryId: string,
+  arrivalTick: number | undefined,
 ): TankOperationalState {
-  const { repairArrivalTick: _repairArrivalTick, ...withoutArrival } = operational;
-  return Object.freeze({ ...withoutArrival, repairFactoryId: factoryId });
-}
-
-function withRepairArrival(
-  operational: TankOperationalState,
-  factoryId: string,
-  tick: number,
-): TankOperationalState {
+  if (arrivalTick === undefined) {
+    const { repairArrivalTick: _arrivalTick, ...withoutArrival } = operational;
+    return Object.freeze({ ...withoutArrival, repairFactoryId: factoryId });
+  }
   return Object.freeze({
     ...operational,
     repairFactoryId: factoryId,
-    repairArrivalTick: tick,
+    repairArrivalTick: arrivalTick,
   });
 }
 
-function isEligibleRepairFactory(
-  factory: PersistentStructureState,
-  unit: MobileUnitState,
-): boolean {
-  return (
-    factory.type === "FACTORY" &&
-    factory.active &&
-    factory.completedLevel !== undefined &&
-    factory.ownerId === unit.ownerId
-  );
+function clearRepairAssignment(
+  operational: TankOperationalState,
+  health: ExactRepairAmount,
+): TankOperationalState {
+  const {
+    repairFactoryId: _repairFactoryId,
+    repairArrivalTick: _repairArrivalTick,
+    ...withoutRepair
+  } = operational;
+  return Object.freeze({
+    ...withoutRepair,
+    health: Object.freeze({
+      numerator: health.numerator,
+      denominator: health.denominator,
+    }),
+  });
 }
 
-function atOrBelowRepairThreshold(
-  health: TankExactHealth,
-  maximum: TankExactHealth,
-): boolean {
-  if (health.numerator <= 0n) return false;
-  return (
-    health.numerator * maximum.denominator * 2n <=
-    maximum.numerator * health.denominator
-  );
-}
-
-function fastServiceCellIds(
-  state: MatchState,
-  factory: PersistentStructureState,
-  profile: RepairServiceProfile,
-): readonly number[] {
-  const field = fixedRepairField(profile.fastRadiusCells);
-  const center = state.map.positionOf(factory.cellId);
-  const cells: number[] = [];
-  const radius = profile.fastRadiusCells;
-  for (let dy = -radius; dy <= radius; dy += 1) {
-    for (let dx = -radius; dx <= radius; dx += 1) {
+function tankRepairProviders(state: MatchState): readonly TankRepairProvider[] {
+  return Object.freeze(
+    state.structures.flatMap((structure) => {
       if (
-        !repairFieldContainsCell(
-          field,
-          center.x,
-          center.y,
-          center.x + dx,
-          center.y + dy,
-        )
+        structure.type !== "FACTORY" ||
+        !structure.active ||
+        structure.completedLevel === undefined
       ) {
-        continue;
+        return [];
       }
-      const cellId = state.map.cellIdAt(center.x + dx, center.y + dy);
-      if (cellId !== undefined) cells.push(cellId);
-    }
-  }
-  cells.sort((left, right) => left - right);
-  return Object.freeze(cells);
+      return [
+        Object.freeze({
+          id: structure.id,
+          cellId: structure.cellId,
+          profile: serviceProfile(structure),
+          structure,
+        }),
+      ];
+    }),
+  );
 }
 
-interface RepairDestination {
-  readonly factory: PersistentStructureState;
-  readonly destinationCellId: number;
-  readonly route: TankNavigationRoute;
-}
-
-function bestDestinationForFactory(
+function tankRepairDomain(
   state: MatchState,
-  unit: MobileUnitState,
-  chassisType: TankChassisType,
-  factory: PersistentStructureState,
-): RepairDestination | undefined {
-  const profile = serviceProfile(factory);
-  let best: RepairDestination | undefined;
-  for (const destinationCellId of fastServiceCellIds(state, factory, profile)) {
-    const routed = tankNavigationRoute(
-      state,
-      unit.ownerId,
-      chassisType,
-      unit.cellId,
-      destinationCellId,
-    );
-    if (routed.status !== "FOUND") continue;
-    const candidate = Object.freeze({
-      factory,
-      destinationCellId,
-      route: routed.route,
-    });
-    if (
-      best === undefined ||
-      candidate.route.totalWeight < best.route.totalWeight ||
-      (candidate.route.totalWeight === best.route.totalWeight &&
-        candidate.destinationCellId < best.destinationCellId)
-    ) {
-      best = candidate;
-      if (candidate.route.totalWeight === 0) break;
-    }
-  }
-  return best;
-}
-
-function bestRepairDestination(
-  state: MatchState,
-  unit: MobileUnitState,
-  chassisType: TankChassisType,
-): RepairDestination | undefined {
-  let best: RepairDestination | undefined;
-  const factories = state.structures
-    .filter((factory) => isEligibleRepairFactory(factory, unit))
-    .sort((left, right) => compareIds(left.id, right.id));
-  for (const factory of factories) {
-    const candidate = bestDestinationForFactory(
-      state,
-      unit,
-      chassisType,
-      factory,
-    );
-    if (candidate === undefined) continue;
-    if (
-      best === undefined ||
-      candidate.route.totalWeight < best.route.totalWeight ||
-      (candidate.route.totalWeight === best.route.totalWeight &&
-        compareIds(candidate.factory.id, best.factory.id) < 0)
-    ) {
-      best = candidate;
-    }
-  }
-  return best;
-}
-
-function existingRepairRouteIsLegal(
-  state: MatchState,
-  unit: MobileUnitState,
-  chassisType: TankChassisType,
-  factory: PersistentStructureState,
-  fastField: StructureRadialFieldProfile,
-): boolean {
-  const route = unit.route;
-  if (
-    route === undefined ||
-    !cellInsideField(state, factory, route.destinationCellId, fastField)
-  ) {
-    return false;
-  }
-  for (let index = route.nextCellIndex - 1; index < route.cells.length; index += 1) {
-    if (
-      tankCellTraversalTiming(
+): VehicleRepairDomain<MobileUnitState, TankOperationalState, TankRepairProvider> {
+  return Object.freeze({
+    map: state.map,
+    tick: state.tick,
+    units: state.mobileUnits,
+    operationalStates: state.tankOperationalStates,
+    providers: tankRepairProviders(state),
+    isRepairableUnit: (unit) => chassisTypeOf(unit) !== undefined,
+    isEligibleProvider: (provider, unit) =>
+      provider.structure.ownerId === unit.ownerId,
+    repairProviderId: (operational) => operational.repairFactoryId,
+    repairArrivalTick: (operational) => operational.repairArrivalTick,
+    withRepairAssignment,
+    clearRepairAssignment,
+    withHealth: (operational, health) =>
+      Object.freeze({
+        ...operational,
+        health: Object.freeze({
+          numerator: health.numerator,
+          denominator: health.denominator,
+        }),
+      }),
+    maximumHealth: (unit) => effectiveTankMaxHealth(state, unit.ownerId),
+    routeTo: (unit, destinationCellId): VehicleRepairRoute | undefined => {
+      const chassisType = chassisTypeOf(unit);
+      if (chassisType === undefined) return undefined;
+      const route = tankNavigationRoute(
         state,
         unit.ownerId,
         chassisType,
-        route.cells[index]!,
-      ) === undefined
-    ) {
-      return false;
-    }
-  }
-  return true;
+        unit.cellId,
+        destinationCellId,
+      );
+      return route.status === "FOUND" ? route.route : undefined;
+    },
+    isTraversableCell: (unit, cellId) => {
+      const chassisType = chassisTypeOf(unit);
+      return (
+        chassisType !== undefined &&
+        tankCellTraversalTiming(
+          state,
+          unit.ownerId,
+          chassisType,
+          cellId,
+        ) !== undefined
+      );
+    },
+    movementWorkPerTick: (unit) => {
+      const chassisType = chassisTypeOf(unit);
+      if (chassisType === undefined) return undefined;
+      const route = tankNavigationRoute(
+        state,
+        unit.ownerId,
+        chassisType,
+        unit.cellId,
+        unit.cellId,
+      );
+      return route.status === "FOUND" ? route.route.movementWorkPerTick : undefined;
+    },
+    assignRoute: (unit, route) =>
+      assignMobileUnitRoute(state.map, unit, {
+        cells: route.cells,
+        edgeWeights: route.edgeWeights,
+      }),
+    clearRoute: (unit) => clearUnitRoute(state, unit),
+    advanceUnit: (unit, movementWorkPerTick) =>
+      advanceMobileUnit(unit, movementWorkPerTick).unit,
+    broadRepairField: (provider, unit) => {
+      const chassisType = chassisTypeOf(unit);
+      if (chassisType === undefined) {
+        throw new Error(`unsupported Factory repair unit type: ${unit.type}`);
+      }
+      return effectiveBroadRepairField(
+        state,
+        provider.structure,
+        chassisType,
+        provider.profile,
+      );
+    },
+    repairPerTick: (provider, unit, fastService) => {
+      const chassisType = chassisTypeOf(unit);
+      if (chassisType === undefined) {
+        throw new Error(`unsupported Factory repair unit type: ${unit.type}`);
+      }
+      return effectiveRepairPerTick(
+        state,
+        provider.structure,
+        chassisType,
+        fastService
+          ? provider.profile.fastHealthPerSecond
+          : provider.profile.broadHealthPerSecond,
+      );
+    },
+  });
 }
 
-function assignRepairDestination(
+function applyRepairPhase(
   state: MatchState,
-  unit: MobileUnitState,
-  operational: TankOperationalState,
-  chassisType: TankChassisType,
-  destination: RepairDestination,
-  preserveExistingRoute: boolean,
-): Readonly<{
-  unit: MobileUnitState;
-  operational: TankOperationalState;
-}> {
-  const profile = serviceProfile(destination.factory);
-  const fastField = fixedRepairField(profile.fastRadiusCells);
-  if (insideField(state, destination.factory, unit, fastField)) {
-    return Object.freeze({
-      unit: clearUnitRoute(state, unit),
-      operational: withRepairArrival(
-        operational,
-        destination.factory.id,
-        state.tick,
-      ),
-    });
-  }
-  if (
-    preserveExistingRoute &&
-    existingRepairRouteIsLegal(
-      state,
-      unit,
-      chassisType,
-      destination.factory,
-      fastField,
-    )
-  ) {
-    return Object.freeze({
-      unit,
-      operational: withRepairFactory(operational, destination.factory.id),
-    });
-  }
-  const routed = assignMobileUnitRoute(state.map, unit, {
-    cells: destination.route.cells,
-    edgeWeights: destination.route.edgeWeights,
+  result: VehicleRepairPhaseResult<MobileUnitState, TankOperationalState>,
+): MatchState {
+  if (!result.changed) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: result.units,
+    tankOperationalStates: result.operationalStates,
   });
-  return Object.freeze({
-    unit: routed,
-    operational:
-      routed.route === undefined
-        ? withRepairArrival(operational, destination.factory.id, state.tick)
-        : withRepairFactory(operational, destination.factory.id),
-  });
-}
-
-function preserveExistingRepairAssignment(
-  state: MatchState,
-  unit: MobileUnitState,
-  operational: TankOperationalState,
-  chassisType: TankChassisType,
-  factory: PersistentStructureState,
-): Readonly<{
-  unit: MobileUnitState;
-  operational: TankOperationalState;
-}> | undefined {
-  if (!isEligibleRepairFactory(factory, unit)) return undefined;
-  const profile = serviceProfile(factory);
-  const fastField = fixedRepairField(profile.fastRadiusCells);
-  if (
-    operational.repairArrivalTick !== undefined &&
-    insideField(state, factory, unit, fastField)
-  ) {
-    return Object.freeze({
-      unit: clearUnitRoute(state, unit),
-      operational,
-    });
-  }
-  if (
-    operational.repairArrivalTick === undefined &&
-    existingRepairRouteIsLegal(state, unit, chassisType, factory, fastField)
-  ) {
-    return Object.freeze({ unit, operational });
-  }
-  const destination = bestDestinationForFactory(
-    state,
-    unit,
-    chassisType,
-    factory,
-  );
-  if (destination === undefined) return undefined;
-  return assignRepairDestination(
-    state,
-    unit,
-    operational,
-    chassisType,
-    destination,
-    false,
-  );
 }
 
 export function advanceTankRepairIntentPhase(state: MatchState): MatchState {
-  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
-  const structuresById = new Map(
-    state.structures.map((structure) => [structure.id, structure]),
+  return applyRepairPhase(
+    state,
+    advanceVehicleRepairIntentPhase(tankRepairDomain(state)),
   );
-  const unitUpdates = new Map<string, MobileUnitState>();
-  const operationalUpdates = new Map<string, TankOperationalState>();
-
-  for (const operational of state.tankOperationalStates) {
-    const unit = unitsById.get(operational.unitId);
-    if (unit === undefined) continue;
-    const chassisType = chassisTypeOf(unit);
-    if (chassisType === undefined) continue;
-
-    if (operational.repairFactoryId !== undefined) {
-      const assignedFactory = structuresById.get(operational.repairFactoryId);
-      if (assignedFactory !== undefined) {
-        const preserved = preserveExistingRepairAssignment(
-          state,
-          unit,
-          operational,
-          chassisType,
-          assignedFactory,
-        );
-        if (preserved !== undefined) {
-          if (preserved.unit !== unit) unitUpdates.set(unit.id, preserved.unit);
-          if (preserved.operational !== operational) {
-            operationalUpdates.set(unit.id, preserved.operational);
-          }
-          continue;
-        }
-      }
-
-      const replacement = bestRepairDestination(state, unit, chassisType);
-      if (replacement !== undefined) {
-        const assigned = assignRepairDestination(
-          state,
-          unit,
-          operational,
-          chassisType,
-          replacement,
-          false,
-        );
-        if (assigned.unit !== unit) unitUpdates.set(unit.id, assigned.unit);
-        operationalUpdates.set(unit.id, assigned.operational);
-      } else {
-        const cleared = clearRepairState(operational, operational.health);
-        const clearedUnit = clearUnitRoute(state, unit);
-        if (clearedUnit !== unit) unitUpdates.set(unit.id, clearedUnit);
-        operationalUpdates.set(unit.id, cleared);
-      }
-      continue;
-    }
-
-    const maximum = effectiveTankMaxHealth(state, unit.ownerId);
-    if (!atOrBelowRepairThreshold(operational.health, maximum)) continue;
-    const destination = bestRepairDestination(state, unit, chassisType);
-    if (destination === undefined) continue;
-    const assigned = assignRepairDestination(
-      state,
-      unit,
-      operational,
-      chassisType,
-      destination,
-      false,
-    );
-    if (assigned.unit !== unit) unitUpdates.set(unit.id, assigned.unit);
-    operationalUpdates.set(unit.id, assigned.operational);
-  }
-
-  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
-  return createProspectiveMatchState(state, {
-    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
-    tankOperationalStates: state.tankOperationalStates.map(
-      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
-    ),
-  });
 }
 
 export function advanceTankRepairMovementPhase(state: MatchState): MatchState {
-  const operationalById = new Map(
-    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  return applyRepairPhase(
+    state,
+    advanceVehicleRepairMovementPhase(tankRepairDomain(state)),
   );
-  const structuresById = new Map(
-    state.structures.map((structure) => [structure.id, structure]),
-  );
-  const unitUpdates = new Map<string, MobileUnitState>();
-  const operationalUpdates = new Map<string, TankOperationalState>();
-
-  for (const unit of state.mobileUnits) {
-    const operational = operationalById.get(unit.id);
-    if (
-      operational === undefined ||
-      operational.repairFactoryId === undefined ||
-      operational.repairArrivalTick !== undefined ||
-      unit.route === undefined
-    ) {
-      continue;
-    }
-    const chassisType = chassisTypeOf(unit);
-    if (chassisType === undefined) continue;
-    const movementProfile = tankNavigationRoute(
-      state,
-      unit.ownerId,
-      chassisType,
-      unit.cellId,
-      unit.cellId,
-    );
-    if (movementProfile.status !== "FOUND") continue;
-
-    const advanced = advanceMobileUnit(
-      unit,
-      movementProfile.route.movementWorkPerTick,
-    ).unit;
-    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
-    if (advanced.route !== undefined) continue;
-
-    const factory = structuresById.get(operational.repairFactoryId);
-    if (factory === undefined || !isEligibleRepairFactory(factory, advanced)) {
-      continue;
-    }
-    const fastField = fixedRepairField(serviceProfile(factory).fastRadiusCells);
-    if (!insideField(state, factory, advanced, fastField)) continue;
-    operationalUpdates.set(
-      unit.id,
-      withRepairArrival(
-        operational,
-        operational.repairFactoryId,
-        state.tick,
-      ),
-    );
-  }
-
-  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
-  return createProspectiveMatchState(state, {
-    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
-    tankOperationalStates: state.tankOperationalStates.map(
-      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
-    ),
-  });
 }
 
-interface RepairCandidate {
-  readonly operational: TankOperationalState;
-  readonly unit: MobileUnitState;
-  readonly chassisType: TankChassisType;
-  readonly broadField: StructureRadialFieldProfile;
+export function tankFastServiceUnitIds(state: MatchState): ReadonlySet<string> {
+  return vehicleFastServiceUnitIds(tankRepairDomain(state));
 }
 
 export function advanceTankRepairPhase(state: MatchState): MatchState {
-  const unitById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
-  const updates = new Map<string, TankOperationalState>();
-  const unitUpdates = new Map<string, MobileUnitState>();
-  const factories = state.structures
-    .filter(
-      (structure) =>
-        structure.type === "FACTORY" &&
-        structure.active &&
-        structure.completedLevel !== undefined,
-    )
-    .sort((left, right) => compareIds(left.id, right.id));
-
-  for (const factory of factories) {
-    const profile = serviceProfile(factory);
-    const fastField = fixedRepairField(profile.fastRadiusCells);
-    const candidates: RepairCandidate[] = state.tankOperationalStates
-      .filter((operational) => operational.repairFactoryId === factory.id)
-      .flatMap((operational) => {
-        const unit = unitById.get(operational.unitId);
-        if (unit === undefined || unit.ownerId !== factory.ownerId) return [];
-        const chassisType = chassisTypeOf(unit);
-        if (chassisType === undefined) return [];
-        return [
-          {
-            operational,
-            unit,
-            chassisType,
-            broadField: effectiveBroadRepairField(
-              state,
-              factory,
-              chassisType,
-              profile,
-            ),
-          },
-        ];
-      });
-
-    const fastRecipients = new Set(
-      selectFastServiceUnitIds(
-        candidates.flatMap((candidate) => {
-          const arrival = candidate.operational.repairArrivalTick;
-          if (
-            arrival === undefined ||
-            !insideField(state, factory, candidate.unit, fastField)
-          ) {
-            return [];
-          }
-          return [
-            {
-              unitId: candidate.operational.unitId,
-              repairArrivalTick: arrival,
-            },
-          ];
-        }),
-        profile.fastCapacity,
-      ),
-    );
-
-    for (const candidate of candidates) {
-      const useFast = fastRecipients.has(candidate.operational.unitId);
-      const useBroad =
-        !useFast &&
-        insideField(state, factory, candidate.unit, candidate.broadField);
-      if (!useFast && !useBroad) continue;
-
-      const maximum = effectiveTankMaxHealth(state, candidate.unit.ownerId);
-      const repair = effectiveRepairPerTick(
-        state,
-        factory,
-        candidate.chassisType,
-        useFast
-          ? profile.fastHealthPerSecond
-          : profile.broadHealthPerSecond,
-      );
-      const result = addRepairClamped(
-        candidate.operational.health,
-        repair,
-        maximum,
-      );
-      const health = Object.freeze({
-        numerator: result.amount.numerator,
-        denominator: result.amount.denominator,
-      });
-      const updated = result.full
-        ? clearRepairState(candidate.operational, health)
-        : Object.freeze({ ...candidate.operational, health });
-      if (result.full) {
-        const clearedUnit = clearUnitRoute(state, candidate.unit);
-        if (clearedUnit !== candidate.unit) {
-          unitUpdates.set(candidate.unit.id, clearedUnit);
-        }
-      }
-      updates.set(candidate.operational.unitId, updated);
-    }
-  }
-
-  if (updates.size === 0 && unitUpdates.size === 0) return state;
-  return createProspectiveMatchState(state, {
-    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
-    tankOperationalStates: state.tankOperationalStates.map(
-      (operational) => updates.get(operational.unitId) ?? operational,
-    ),
-  });
+  return applyRepairPhase(
+    state,
+    advanceVehicleRepairServicePhase(tankRepairDomain(state)),
+  );
 }

@@ -48,6 +48,7 @@ import {
   advanceTankRepairIntentPhase,
   advanceTankRepairMovementPhase,
   advanceTankRepairPhase,
+  tankFastServiceUnitIds,
 } from "./TankRepair";
 import {
   planTankPursuitRoute,
@@ -188,6 +189,7 @@ function sameTankTarget(
 
 function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const fastServiceUnitIds = tankFastServiceUnitIds(state);
   const observationByOwner = new Map<
     string,
     ReturnType<typeof projectTankTargetObservation>
@@ -196,7 +198,7 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
   const tankOperationalStates = state.tankOperationalStates.map((operational) => {
     if (
       operational.eligibleFromTick > state.tick ||
-      operational.repairFactoryId !== undefined
+      fastServiceUnitIds.has(operational.unitId)
     ) {
       return operational;
     }
@@ -674,6 +676,7 @@ function tankAttackCooldownTicks(
 
 function advanceTankUnitCombatPhase(state: MatchState): MatchState {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const fastServiceUnitIds = tankFastServiceUnitIds(state);
   const observationByOwner = new Map<
     string,
     ReturnType<typeof projectTankTargetObservation>
@@ -686,7 +689,7 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     const retainedTarget = operational.retainedTarget;
     if (
       operational.eligibleFromTick > state.tick ||
-      operational.repairFactoryId !== undefined ||
+      fastServiceUnitIds.has(operational.unitId) ||
       operational.attackReadyAtTick > state.tick ||
       retainedTarget === undefined
     ) {
