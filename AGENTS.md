@@ -6,7 +6,9 @@ Applies to automated coding/documentation agents in this repository.
 
 Before repository work, freshly read this file. Re-read before every commit or merge and whenever rules, claim, scope, or materially relevant repository state changes. Batch related read-only steps.
 
-When working on an approved plan, limit each work session to roughly 25 minutes. At the end of the session, finish the current atomic action, report material findings, and state the exact next action.
+When working on an approved plan, limit each work session to roughly 25 minutes. At the end of the session, finish the current atomic action, post a work-log checkpoint to the owning GitHub issue, report material findings, and state the exact next action.
+
+For claimed issue work, the owning GitHub issue MUST be the durable work log. Material progress, findings, decisions, blockers, plan/scope changes, validation results, and current/next status MUST be recorded there throughout the work. Chat, commits, branches, PRs, reviews, or local notes do not satisfy this obligation by themselves. No material work may exist only outside the issue record.
 
 Every repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion and a concrete recommended next action grounded in them and these rules. Investigations/work MUST disclose results. Repository file content is excluded.
 
