@@ -544,17 +544,12 @@ Factories produce Trains and Tanks and repair Tank chassis.
 
 Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
-Factory armored-unit repair has two non-stacking service tiers. The completed-level broad profile is listed in Section 2.6. Broad repair applies only to a chassis already assigned to that Factory for repair; while inside the Factory's current effective broad field, that chassis may continue moving toward fast service and receives the broad rate. Broad service has no Factory-level simultaneous-count cap: every chassis assigned to that Factory and currently inside its broad field is eligible unless that same chassis is receiving fast service that tick.
-
-Fast service is the stationary queue tier:
+Factory armored-unit repair is an explicit **two-tier vehicle-repair profile** and therefore uses the shared lifecycle in Section 2.8. Its completed-level broad radius/rate and fast-service rate are listed in Section 2.6. Its focused fast-service parameters are:
 
 ```text
 fast-service radius = 10 cells at every Factory level
 fast-service capacity = 1 chassis at every Factory level
-fast-service rate = completed-level rate from Section 2.6
 ```
-
-A chassis selected for fast service receives the fast rate only; broad and fast repair never stack on the same chassis in one tick. A queued chassis not selected for the one fast slot receives broad repair when it lies inside the broad field. Repair from one assigned Factory does not stack with another Factory.
 
 The ordinary Factory repair-radius rule axis modifies **broad repair radius only**. The ordinary Factory repair-rate axis scales **both broad and fast repair rates**. Fast-service radius and one-slot capacity are fixed baseline parameters rather than those axes. Factory consumers must request the effective typed repair profile rather than infer a generic `Factory effect multiplier`. Exact P34 transformation values and Origin interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`; Echo identities/scopes are owned by `ECHO_CATALOGUE.md`.
 
@@ -639,6 +634,30 @@ Origin transformations may replace the Observation field's ordinary effect, but 
 A completed Command Post gives its listed offensive-pressure modifier to an ordinary Population-based land engagement lane when the attacking source cell lies inside friendly Command-Post coverage.
 
 It does not modify Tank weapon damage, Warship damage, strategic weapons, or unrelated FFY effects.
+
+## 2.8 Shared two-tier vehicle-repair lifecycle
+
+This section owns the common assignment, routing, queue, broad-service, fast-service, and completion lifecycle for vehicle-repair profiles that explicitly opt into the **two-tier vehicle-repair** contract. A repair field does not inherit this lifecycle merely because it uses radial repair geometry. The Factory armored-unit profile in Section 2.7 explicitly uses it; another provider profile uses it only when that provider/unit contract explicitly adopts it.
+
+The focused consumer remains responsible for determining which vehicles are repairable, which providers are eligible, the repair-retreat trigger/intent priority, legal traversal and route timing, effective maximum health, the provider's effective broad/fast profile, and the vehicle's focused combat/raiding capabilities. Once repair retreat is active, this section owns the generic lifecycle below.
+
+For an eligible vehicle, consider only eligible providers whose current fast-service field contains at least one legally reachable cell. For each provider, choose the reachable cell in that fast-service field with the least legal traversal time under the vehicle's current effective movement profile; equal traversal-time cells tie by ascending stable `cellId`. Choose the provider with the least such traversal time; provider ties use ascending stable `structureId`.
+
+The selected provider assignment persists rather than being recomputed opportunistically. Preserve it while the provider remains eligible and the retained route/queue position remains legal. If the provider becomes ineligible or its fast-service field no longer has a reachable legal cell, deterministically reselect under the same rule; if no replacement exists, clear the repair assignment and repair route.
+
+An assigned vehicle receives that provider's broad repair whenever it is inside the provider's current effective broad field and is not receiving fast service that tick. Broad repair does not stop movement, has no simultaneous-unit capacity limit, and may apply while the vehicle is still travelling toward fast service or waiting in the fast-service queue. A vehicle is assigned to at most one provider, so repair from several providers never stacks on one vehicle.
+
+When the vehicle reaches its selected legal cell inside the provider's fast-service field, it joins that provider's stable queue with key:
+
+```text
+(repairArrivalTick, unitId)
+```
+
+Queue order is ascending by arrival tick and then stable unit ID. Queued vehicles hold their arrival position while waiting. Each service phase selects at most the provider profile's fast-service capacity from the head of that queue. A selected fast-service recipient receives fast repair only; broad and fast repair never stack on the same vehicle in one tick.
+
+Repair retreat is the highest-priority **movement** intent, not a general combat-inactive state. A vehicle travelling toward repair remains otherwise operational for its focused lawful target acquisition and firing, and combat does not replace or divert the repair route. A queued vehicle that is not selected for fast service likewise remains otherwise operational while holding its queue position. Only a vehicle actually selected as a fast-service recipient is inactive for ordinary target acquisition/firing during that service phase.
+
+Every repair application uses the provider's current effective profile and the vehicle's current effective maximum health, retaining exact deterministic fractional health where required and clamping at that maximum. Reaching full health clears the repair assignment/queue state and repair route. Repair never changes the vehicle's strategic operating anchor; after service it resumes the focused unit owner's ordinary intent from that unchanged anchor.
 
 ---
 
@@ -817,17 +836,11 @@ Health and repair may retain deterministic fractional values where effective mod
 
 ## 3.8 Automatic repair retreat and contention
 
-At the intent phase, a living Tank-derived chassis at or below **50% of its current effective maximum health** enters automatic repair retreat unless an explicit effective rule changes that threshold. Repair retreat outranks combat pursuit and strategic movement.
+At the intent phase, a living Tank-derived chassis at or below **50% of its current effective maximum health** enters automatic repair retreat unless an explicit effective rule changes that threshold. Repair retreat is the highest-priority Tank movement intent under Section 3.6.
 
-Choose among active owned Factories whose current fast-service field contains at least one legally reachable cell. For each Factory, the route destination is the reachable cell inside that current fast-service field with the least expected legal traversal time under the chassis's current effective movement profile; equal-time destination cells tie by ascending stable `cellId`. Choose the Factory with the least such traversal time; Factory ties use stable ascending `structureId`. The selected Factory assignment is persistent rather than recomputed opportunistically. It is cleared/reselected only if that Factory is destroyed, changes owner, becomes ineligible, or no cell in its current fast-service field remains reachable.
+Tank/Factory repair consumes the shared two-tier vehicle-repair lifecycle in Section 2.8 without a Tank-specific routing, queue, or service override. Eligible providers are active owned Factories. Reachability and route timing use the chassis's current effective Tank traversal/movement profile; repair clamps against its current effective maximum health; and service uses the Factory profile and effective repair axes defined in Sections 2.6–2.7.
 
-Once assigned, the chassis receives that Factory's broad repair whenever it is inside the Factory's current effective broad field, including while it is still moving toward fast service. Broad repair does not stop movement. One chassis is assigned to at most one Factory, so overlapping Factory fields never stack repair from multiple Factories.
-
-A chassis enters the Factory's fast-service queue when it reaches its selected eligible cell in the current fast-service field. Its stable queue key is `(repairArrivalTick, unitId)`. Queued chassis hold their arrival position while waiting; later arrivals cannot jump ahead because of insertion/enumeration order. Each Tank repair phase, exactly the first queued chassis receives the Factory's one fast-service slot regardless of Factory level. Other queued chassis continue to receive broad repair when they are within the broad field. The fast-serviced chassis receives fast repair only; broad and fast repair never stack in the same tick.
-
-Service reads the Factory's current effective broad radius and repair-rate scale when repair is applied. The broad-radius axis changes broad geometry only; the repair-rate axis scales both broad and fast rates. The fast-service radius remains **10 cells** and fast-service capacity remains **1 chassis** unless a future explicit rule creates separate axes for those parameters. Repair is capped at the chassis's current effective maximum health.
-
-On reaching full health, the chassis exits repair mode/queue and resumes ordinary intent toward its unchanged operating anchor. Factory repair never changes that anchor.
+Factory repair never changes the Tank's operating anchor. On leaving repair at full health, the chassis resumes ordinary Tank intent from that unchanged anchor under Sections 3.3 and 3.6.
 
 ## 3.9 Authoritative Tank-stage ordering
 
