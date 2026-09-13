@@ -248,14 +248,14 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
       width,
       height: 1,
       terrain: Array.from({ length: width }, () => "PLAINS" as const),
-      initialOwners: ["alpha", "alpha", "beta", "alpha", "alpha", "alpha"],
+      initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha", "beta"],
       factions: [
         { id: "alpha", rules: withP08 ? p08Rules() : emptyRules() },
         { id: "beta", rules: emptyRules() },
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([0, 1, 2, 3, 4, 5]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -271,7 +271,7 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 5,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -285,13 +285,6 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
         cells: loopCells,
         sharedExistingEdgeCount: 0,
       }),
-    ],
-    hostilityGrace: [
-      {
-        sideA: { kind: "FACTION", id: "alpha" },
-        sideB: { kind: "FACTION", id: "beta" },
-        expiresAtTickExclusive: 100,
-      },
     ],
   });
 }
@@ -459,32 +452,51 @@ describe("P34 Factory Train runtime dispatch", () => {
 });
 
 describe("P08 Factory Train runtime settlement", () => {
-  it("samples current atWar for an external station and replaces only the wartime multiplier", () => {
-    const baseline = createExternalWartimeRuntimeFixture(
+  it("samples current atWar after dispatch and replaces only the wartime multiplier", () => {
+    const baselinePeace = createExternalWartimeRuntimeFixture(
       "factory-train-runtime-wartime-baseline",
       false,
     );
-    const p08 = createExternalWartimeRuntimeFixture(
+    const p08Peace = createExternalWartimeRuntimeFixture(
       "factory-train-runtime-wartime-p08",
       true,
     );
-    const baselineBefore = baseline.factions.find(
-      (faction) => faction.id === "alpha",
-    )!.ffy;
-    const p08Before = p08.factions.find(
-      (faction) => faction.id === "alpha",
-    )!.ffy;
     const passivePerTick =
       BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
 
-    const baselineAdvanced = new TickEngine().advance(baseline, []);
-    const p08Advanced = new TickEngine().advance(p08, []);
+    const baselineDispatched = new TickEngine().advance(baselinePeace, []);
+    const p08Dispatched = new TickEngine().advance(p08Peace, []);
+    expect(baselineDispatched.trainServices).toHaveLength(1);
+    expect(p08Dispatched.trainServices).toHaveLength(1);
+
+    const wartimeGrace = [
+      {
+        sideA: { kind: "FACTION" as const, id: "alpha" },
+        sideB: { kind: "FACTION" as const, id: "beta" },
+        expiresAtTickExclusive: 100,
+      },
+    ];
+    const baselineWartime = createProspectiveMatchState(baselineDispatched, {
+      hostilityGrace: wartimeGrace,
+    });
+    const p08Wartime = createProspectiveMatchState(p08Dispatched, {
+      hostilityGrace: wartimeGrace,
+    });
+    const baselineBeforeEvent = baselineWartime.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const p08BeforeEvent = p08Wartime.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+
+    const baselineAdvanced = new TickEngine().advance(baselineWartime, []);
+    const p08Advanced = new TickEngine().advance(p08Wartime, []);
 
     expect(
       baselineAdvanced.factions.find((faction) => faction.id === "alpha")?.ffy,
-    ).toBe(baselineBefore + passivePerTick + 5_000);
+    ).toBe(baselineBeforeEvent + passivePerTick + 5_000);
     expect(
       p08Advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
-    ).toBe(p08Before + passivePerTick + 10_000);
+    ).toBe(p08BeforeEvent + passivePerTick + 10_000);
   });
 });
