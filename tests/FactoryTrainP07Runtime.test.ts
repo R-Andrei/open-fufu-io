@@ -1,6 +1,10 @@
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import {
+  BASELINE_PASSIVE_FFY_PER_SECOND,
+  ECONOMY_TICKS_PER_SECOND,
+} from "../src/simulation/Economy";
 import { createFactoryRailLoopLifecycleState } from "../src/simulation/FactoryRailLifecycle";
 import {
   createInitialMatchState,
@@ -14,7 +18,7 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
-function originRules(traitIds: readonly ("P07" | "P33" | "P34")[]) {
+function originRules(traitIds: readonly ("P07" | "P08" | "P33" | "P34")[]) {
   const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
     contributions: origin.contributions,
@@ -25,6 +29,10 @@ function originRules(traitIds: readonly ("P07" | "P33" | "P34")[]) {
 
 function p07Rules() {
   return originRules(["P07"]);
+}
+
+function p08Rules() {
+  return originRules(["P08"]);
 }
 
 function p33Rules() {
@@ -232,6 +240,62 @@ function createP34RuntimeFixture(
   });
 }
 
+function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
+  const width = 6;
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS" as const),
+      initialOwners: ["alpha", "alpha", "beta", "alpha", "alpha", "alpha"],
+      factions: [
+        { id: "alpha", rules: withP08 ? p08Rules() : emptyRules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  return createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-beta",
+        ownerId: "beta",
+        type: "CITY",
+        cellId: 2,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-beta"]),
+        servicedStructureIds: Object.freeze(["city-beta"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+    hostilityGrace: [
+      {
+        sideA: { kind: "FACTION", id: "alpha" },
+        sideB: { kind: "FACTION", id: "beta" },
+        expiresAtTickExclusive: 100,
+      },
+    ],
+  });
+}
+
 describe("P07 Factory Train runtime dispatch", () => {
   it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
@@ -391,5 +455,36 @@ describe("P34 Factory Train runtime dispatch", () => {
       numerator: 15_000n,
       denominator: 1n,
     });
+  });
+});
+
+describe("P08 Factory Train runtime settlement", () => {
+  it("samples current atWar for an external station and replaces only the wartime multiplier", () => {
+    const baseline = createExternalWartimeRuntimeFixture(
+      "factory-train-runtime-wartime-baseline",
+      false,
+    );
+    const p08 = createExternalWartimeRuntimeFixture(
+      "factory-train-runtime-wartime-p08",
+      true,
+    );
+    const baselineBefore = baseline.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const p08Before = p08.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+
+    const baselineAdvanced = new TickEngine().advance(baseline, []);
+    const p08Advanced = new TickEngine().advance(p08, []);
+
+    expect(
+      baselineAdvanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(baselineBefore + passivePerTick + 5_000);
+    expect(
+      p08Advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(p08Before + passivePerTick + 10_000);
   });
 });
