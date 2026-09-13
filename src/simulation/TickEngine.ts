@@ -6,6 +6,7 @@ import { resolvePassiveFfyTick } from "./Economy";
 import {
   advanceFactoryTrainRuntimePhase,
   applyFactoryTrainDestructionLifecycleEvents,
+  settleFactoryTrainEconomicEvents,
 } from "./FactoryTrainRuntime";
 import { resolveHostilityGraceFromEvents } from "./HostilityState";
 import {
@@ -620,7 +621,7 @@ function advanceTankRoamingMovementPhase(
     if (
       unit.route !== undefined &&
       tankRouteInsideOperatingLeash(
-        state,
+        state.map,
         operational.operatingAnchorCellId,
         unit.route.cells.slice(unit.route.nextCellIndex - 1),
       )
@@ -849,10 +850,18 @@ function advanceTankUnitCombatPhase(state: MatchState) {
   const destructionEvents = physicalCombat.events.filter(
     (event): event is UnitDestroyedEvent => event.kind === "UNIT_DESTROYED",
   );
+  const servicesAtInterception = preCombat.trainServices;
+  const trainDestructionUpdate = applyFactoryTrainDestructionLifecycleEvents(
+    preCombat,
+    destructionEvents,
+  );
   const physicalState =
-    physicalCombat.update === null
+    physicalCombat.update === null && trainDestructionUpdate === null
       ? preCombat
-      : createProspectiveMatchState(preCombat, physicalCombat.update);
+      : createProspectiveMatchState(preCombat, {
+          ...(physicalCombat.update ?? {}),
+          ...(trainDestructionUpdate ?? {}),
+        });
   const targetPopulationByFactionId = new Map(
     populationCombat.targets.map((target) => [
       target.targetFactionId,
@@ -891,6 +900,7 @@ function advanceTankUnitCombatPhase(state: MatchState) {
   return Object.freeze({
     state: createProspectiveMatchState(territorialApplied, { directReveals }),
     destructionEvents: Object.freeze(destructionEvents),
+    servicesAtInterception,
   });
 }
 
@@ -1173,8 +1183,9 @@ export class TickEngine {
     const combatResolved = advanceTankUnitCombatPhase(roamed);
     const repaired = advanceTankRepairPhase(combatResolved.state);
     const produced = advanceTankProductionPhase(repaired);
-    const trainEconomicUpdate = applyFactoryTrainDestructionLifecycleEvents(
+    const trainEconomicUpdate = settleFactoryTrainEconomicEvents(
       produced,
+      combatResolved.servicesAtInterception,
       combatResolved.destructionEvents,
     );
     return trainEconomicUpdate === null
