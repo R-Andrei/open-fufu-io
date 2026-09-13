@@ -1,4 +1,8 @@
-import { resolveFfyEconomicStage, type PositiveFfyEventInput } from "./Economy";
+import {
+  resolveEffectivePopulationCapacities,
+  resolveFfyEconomicStage,
+  type PositiveFfyEventInput,
+} from "./Economy";
 import {
   releaseFactoryRailLoopSnapshot,
   retainFactoryRailLoopSnapshot,
@@ -16,6 +20,7 @@ import {
   TRAIN_STATION_DWELL_TICKS,
   advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
+  applyTrainCityPopulationGrant,
   canDispatchFactoryPrimaryTrain,
   createFactoryTrainDispatchRoutes,
   createFactoryTrainServiceEpoch,
@@ -212,6 +217,7 @@ export function settleFactoryTrainEconomicEvents(
   destructionEvents: readonly UnitDestroyedEvent[],
 ): FactoryTrainEconomicUpdate | null {
   const positiveEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
+  const survivingCityStations: MatchState["structures"][number][] = [];
   const consumedTrainIds = new Set<string>();
 
   for (const event of destructionEvents) {
@@ -252,7 +258,7 @@ export function settleFactoryTrainEconomicEvents(
         raiderEventId: trainInterceptionRaiderEventId(event),
         pendingStationEvent,
       },
-    );
+     );
     if (economicResolution !== null) {
       const existing =
         positiveEventsByOwnerId.get(economicResolution.raiderOwnerId) ?? [];
@@ -278,10 +284,27 @@ export function settleFactoryTrainEconomicEvents(
     const existing = positiveEventsByOwnerId.get(ownerId) ?? [];
     existing.push(event);
     positiveEventsByOwnerId.set(ownerId, existing);
+
+    const cityStation = state.structures.find(
+      (structure) =>
+        structure.cellId === unit.cellId &&
+        structure.type === "CITY" &&
+        structure.active &&
+        structure.completedLevel !== undefined,
+     );
+    if (cityStation !== undefined) {
+      survivingCityStations.push(cityStation);
+    }
   }
 
-  if (positiveEventsByOwnerId.size === 0) return null;
-  const factions = state.factions.map((faction) => {
+  if (
+    positiveEventsByOwnerId.size === 0 &&
+    survivingCityStations.length === 0
+  ) {
+    return null;
+  }
+
+  let factions = state.factions.map((faction) => {
     const positiveEvents = positiveEventsByOwnerId.get(faction.id);
     if (positiveEvents === undefined || positiveEvents.length === 0) {
       return faction;
@@ -295,6 +318,41 @@ export function settleFactoryTrainEconomicEvents(
     });
     return Object.freeze({ ...faction, ffy: resolved.balance });
   });
+
+  if (survivingCityStations.length > 0) {
+    const capacities = resolveEffectivePopulationCapacities(state);
+    for (const station of survivingCityStations) {
+      const ownerIndex = factions.findIndex(
+        (faction) => faction.id === station.ownerId,
+      );
+      if (ownerIndex < 0) {
+        throw new Error(
+          `Train City station ${station.id} references unknown owner ${station.ownerId}`,
+        );
+      }
+      const owner = factions[ownerIndex]!;
+      const capacity = capacities.get(owner.id);
+      if (capacity === undefined) {
+        throw new Error(
+          `missing effective Population Capacity for Train City owner ${owner.id}`,
+        );
+      }
+      const grant = applyTrainCityPopulationGrant(
+        owner.rules,
+        station,
+        owner.population,
+        capacity,
+      );
+      if (grant.population !== owner.population) {
+        factions = factions.map((faction, index) =>
+          index === ownerIndex
+            ? Object.freeze({ ...owner, population: grant.population })
+            : faction,
+        );
+      }
+    }
+  }
+
   return Object.freeze({ factions: Object.freeze(factions) });
 }
 
@@ -354,7 +412,7 @@ export function advanceFactoryTrainRuntimePhase(
       const transferredEpoch = transferFactoryTrainServiceEpoch(
         epoch,
         factory.ownerId,
-      );
+       );
       factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
         entry.factoryId === factory.id ? transferredEpoch : entry,
       );
