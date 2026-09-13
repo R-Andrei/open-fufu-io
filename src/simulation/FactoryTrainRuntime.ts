@@ -13,12 +13,14 @@ import type {
   UnitDestroyedEvent,
 } from "./SimulationEvents";
 import {
+  TRAIN_STATION_DWELL_TICKS,
   advanceFactoryTrainServiceSchedulerTick,
   advanceTrainMovementTick,
   canDispatchFactoryPrimaryTrain,
   createFactoryTrainDispatchRoutes,
   createFactoryTrainServiceEpoch,
   createTrainDispatchEconomicSnapshot,
+  createTrainStationFfyEvent,
   dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
   resolveTrainDestroyedEconomicOutcome,
@@ -114,6 +116,25 @@ function trainInterceptionRaiderEventId(event: UnitDestroyedEvent): string {
   return JSON.stringify(["TRAIN_INTERCEPTION", event.id]);
 }
 
+function trainStationEventId(
+  tick: number,
+  trainId: string,
+  stationCellId: number,
+): string {
+  return JSON.stringify(["TRAIN_STATION", tick, trainId, stationCellId]);
+}
+
+function isCurrentTickStationOccurrence(
+  state: MatchState,
+  resumeAtTick: number | null,
+): boolean {
+  return (
+    resumeAtTick !== null &&
+    state.tick <= Number.MAX_SAFE_INTEGER - TRAIN_STATION_DWELL_TICKS &&
+    resumeAtTick === state.tick + TRAIN_STATION_DWELL_TICKS
+  );
+}
+
 export function applyFactoryTrainDestructionLifecycleEvents(
   state: MatchState,
   destructionEvents: readonly UnitDestroyedEvent[],
@@ -128,7 +149,7 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     factoryTrainEpochs.map((epoch) => [epoch.factoryId, epoch]),
   );
   const consumedTrainIds = new Set<string>();
-  const raiderEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
+  const positiveEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
 
   for (const event of destructionEvents) {
     if (event.tick !== state.tick) {
@@ -144,6 +165,18 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     }
     consumedTrainIds.add(trainId);
 
+    const pendingStationEvent = isCurrentTickStationOccurrence(
+      state,
+      service.resumeAtTick,
+    )
+      ? createTrainStationFfyEvent(service.dispatchSnapshot, {
+          eventId: trainStationEventId(
+            state.tick,
+            service.trainId,
+            event.payload.unit.cellId,
+          ),
+        })
+      : null;
     const economicResolution = resolveTrainDestroyedEconomicOutcome(
       Object.freeze([
         Object.freeze({
@@ -154,13 +187,14 @@ export function applyFactoryTrainDestructionLifecycleEvents(
       event,
       {
         raiderEventId: trainInterceptionRaiderEventId(event),
+        pendingStationEvent,
       },
     );
     if (economicResolution !== null) {
       const existing =
-        raiderEventsByOwnerId.get(economicResolution.raiderOwnerId) ?? [];
+        positiveEventsByOwnerId.get(economicResolution.raiderOwnerId) ?? [];
       existing.push(economicResolution.economic.raiderEvent);
-      raiderEventsByOwnerId.set(economicResolution.raiderOwnerId, existing);
+      positiveEventsByOwnerId.set(economicResolution.raiderOwnerId, existing);
     }
 
     const lifecycle = loopsByFactory.get(service.factoryId);
@@ -195,9 +229,30 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     trainServices = trainServices.filter((entry) => entry.trainId !== trainId);
   }
 
-  if (consumedTrainIds.size === 0) return null;
+  for (const service of trainServices
+    .slice()
+    .sort((left, right) => compareIds(left.trainId, right.trainId))) {
+    if (!isCurrentTickStationOccurrence(state, service.resumeAtTick)) continue;
+    const unit = state.mobileUnits.find((candidate) => candidate.id === service.trainId);
+    if (unit === undefined || unit.type !== "TRAIN") {
+      throw new Error(
+        `surviving Train station occurrence lost physical Train ${service.trainId}`,
+      );
+    }
+    const event = createTrainStationFfyEvent(service.dispatchSnapshot, {
+      eventId: trainStationEventId(state.tick, service.trainId, unit.cellId),
+    });
+    const ownerId = service.dispatchSnapshot.dispatchOwnerId;
+    const existing = positiveEventsByOwnerId.get(ownerId) ?? [];
+    existing.push(event);
+    positiveEventsByOwnerId.set(ownerId, existing);
+  }
+
+  if (consumedTrainIds.size === 0 && positiveEventsByOwnerId.size === 0) {
+    return null;
+  }
   const factions = state.factions.map((faction) => {
-    const positiveEvents = raiderEventsByOwnerId.get(faction.id);
+    const positiveEvents = positiveEventsByOwnerId.get(faction.id);
     if (positiveEvents === undefined || positiveEvents.length === 0) {
       return faction;
     }
