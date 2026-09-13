@@ -491,7 +491,7 @@ describe("Tank ordinary roaming", () => {
 });
 
 describe("Tank production initial strategic destination", () => {
-  it("requires and snapshots the player-selected destination through deployment without changing the initial anchor", async () => {
+  it("requires intrinsic legality and snapshots the player-selected destination through deployment without changing the initial anchor", async () => {
     const { advanceTankProductionPhase, tryStartTankProduction } = await import(
       "../src/simulation/Tanks"
     );
@@ -501,7 +501,7 @@ describe("Tank production initial strategic destination", () => {
         width: 5,
         height: 1,
         terrain: ["PLAINS", "PLAINS", "MOUNTAIN", "PLAINS", "PLAINS"],
-        initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha"],
+        initialOwners: ["alpha", "alpha", "alpha", "alpha", null],
         initialStructureGrants: [
           {
             structureId: "alpha-factory",
@@ -528,6 +528,18 @@ describe("Tank production initial strategic destination", () => {
     }
     expect(missingDestination.failure.code).toBe("INVALID_REQUEST");
     expect(missingDestination.state).toBe(state);
+
+    const blockedDestination = tryStartTankProduction(state, {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+      strategicDestinationCellId: 2,
+    });
+    expect(blockedDestination.ok).toBe(false);
+    if (blockedDestination.ok) {
+      throw new Error("expected intrinsically blocked destination rejection");
+    }
+    expect(blockedDestination.failure.code).toBe("INVALID_REQUEST");
+    expect(blockedDestination.state).toBe(state);
 
     const accepted = tryStartTankProduction(state, {
       ownerId: "alpha",
