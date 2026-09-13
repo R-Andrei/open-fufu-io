@@ -54,6 +54,16 @@ Human chat SHOULD put the claim ID first. The PR body MUST also identify the own
 
 A missing audit token MUST be corrected before further substantive repository work.
 
+## Durable issue work log
+
+For claimed work, the owning issue is the durable coordination/work log. Use chronological issue comments; routine progress MUST NOT be maintained by rewriting the issue body.
+
+Post a checkpoint at every work-session end and whenever material findings, blockers, decisions/assumptions, failed approaches, plan/scope changes, validation/certification results, or status transitions occur; also post before handoff, transfer, abandonment, extended interruption, or completion.
+
+Each checkpoint MUST state material work/results, relevant decisions/evidence/blockers, current status, and the exact next action, with enough state for another agent to continue without reconstructing branch history.
+
+Commits, branches, PRs/reviews, human chat, and local notes are supporting evidence only and do not replace the issue log. Do not defer multiple material sessions into one retrospective summary. Before further substantive work, bring a stale issue log current.
+
 ## Branch ownership
 
 Every issue-attributable remote branch has exactly one active claim ID unless a human explicitly establishes coordinated shared scope. Branches MUST be attributable to issue + claim and SHOULD name both.
