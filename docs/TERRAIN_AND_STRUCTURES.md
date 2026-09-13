@@ -779,6 +779,12 @@ The selected target is sticky. It remains retained rather than being replaced me
 
 The ordinary 100-cell leash is measured between cell centers around the current operating anchor. During ordinary settled operation, a target/firing-position pursuit may not cause the chassis to operate outside that leash, and autonomous roaming remains inside it. Active strategic travel uses the shared leash exception in `OPEN_FUFU_DESIGN.md` §6.5.1.
 
+Ordinary roaming runs only when no repair assignment, retained target, or active strategic destination is taking the higher-priority movement intent. If a completed repair detour leaves the chassis outside its unchanged operating leash, ordinary movement first routes back toward the operating anchor and does not consume a roaming waypoint ordinal until the chassis is again inside the leash.
+
+While inside the leash and without a retained local roaming route, form the stable ascending-`cellId` list of other cells whose centers are inside the inclusive 100-cell leash and are individually traversable under the chassis's current effective Tank movement profile. The chassis owns a persisted non-negative `roamingOrdinal`, initially `0`. A stable deterministic hash of `(unitId, roamingOrdinal)` chooses the starting index in that candidate list; scan cyclically from there and select the first candidate whose legal least-traversal-time Tank route remains entirely inside the leash. If no candidate qualifies, hold position and do not advance the ordinal. Selecting a waypoint persists that route and increments `roamingOrdinal` exactly once; following the same waypoint on later ticks does not increment it again. Reaching a roaming waypoint never changes the operating anchor, and the next ordinary-roaming opportunity uses the next persisted ordinal. Any higher-priority repair, retained-combat, or strategic-travel intent may replace the local roaming route.
+
+When the requested strategic destination is actually reached, that order is fulfilled and ceases to be active; the reached cell remains the new operating/wander anchor under `OPEN_FUFU_DESIGN.md` §6.5.1. Later local roaming away from that anchor does not reactivate the fulfilled strategic order.
+
 ## 3.7 Range, attacks, and same-tick combat resolution
 
 Every Tank-derived weapon range uses an inclusive cell-center circle. For attacker/target cell-center offsets `(dx, dy)` and effective range `R`, the target is in range exactly when:
