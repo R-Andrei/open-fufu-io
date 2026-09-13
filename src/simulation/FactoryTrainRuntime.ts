@@ -28,6 +28,7 @@ import {
   createTrainStationFfyEvent,
   dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
+  resolveFactoryTrainEventBaseMultiplier,
   resolveTrainDestroyedEconomicOutcome,
   transferFactoryTrainServiceEpoch,
 } from "./TrainService";
@@ -496,10 +497,16 @@ export function advanceFactoryTrainRuntimePhase(
       lifecycle!,
       routed.id,
     );
+    const factoryBaseMultiplier = resolveFactoryTrainEventBaseMultiplier(
+      owner.rules,
+      trainEconomicRuleDynamicState(state, owner.id),
+      factory.acquisitionPath,
+    );
     const dispatchSnapshot = createTrainDispatchEconomicSnapshot(
       factory.id,
       factory.ownerId,
       factory.completedLevel!,
+      factoryBaseMultiplier,
     );
     trainServices.push({
       trainId: routed.id,
