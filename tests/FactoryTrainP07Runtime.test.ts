@@ -7,19 +7,28 @@ import {
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { TickEngine } from "../src/simulation/TickEngine";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
-function p07Rules() {
-  const origin = originRuleProfileInput(["P07"]);
+function originRules(traitIds: readonly ("P07" | "P33")[]) {
+  const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
     contributions: origin.contributions,
     dynamicProviders: origin.dynamicProviders,
     customDomains: origin.customDomains,
   });
+}
+
+function p07Rules() {
+  return originRules(["P07"]);
+}
+
+function p33Rules() {
+  return originRules(["P33"]);
 }
 
 function createP07RuntimeFixture(
@@ -85,6 +94,87 @@ function createP07RuntimeFixture(
         }),
   });
   return { prepared, loopCells };
+}
+
+function createP33RuntimeFixture(seed: string, withInterception: boolean) {
+  const width = 30;
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: width }, () => "alpha"),
+      factions: [
+        { id: "alpha", rules: p33Rules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const tankState = withInterception
+    ? createMobileUnit(
+        base.map,
+        base.factions.map((faction) => faction.id),
+        {
+          mobileUnits: base.mobileUnits,
+          nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+        },
+        {
+          ownerId: "beta",
+          type: "TANK",
+          movementClass: "TANK",
+          cellId: 2,
+        },
+      )
+    : null;
+  const prepared = createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-a",
+        ownerId: "alpha",
+        type: "CITY",
+        cellId: 2,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+    ...(tankState === null
+      ? {}
+      : {
+          mobileUnits: tankState.mobileUnits,
+          nextMobileUnitOrdinal: tankState.nextMobileUnitOrdinal,
+          tankOperationalStates: [
+            {
+              unitId: tankState.unit.id,
+              health: { numerator: 1_000n, denominator: 1n },
+              operatingAnchorCellId: tankState.unit.cellId,
+              eligibleFromTick: 0,
+              attackReadyAtTick: 0,
+            },
+          ],
+        }),
+  });
+  return prepared;
 }
 
 describe("P07 Factory Train runtime dispatch", () => {
@@ -190,5 +280,34 @@ describe("P07 Factory Train runtime dispatch", () => {
       snapshot.cells.length === loopCells.length &&
       snapshot.cells.every((cellId, index) => cellId === loopCells[index]),
     )).toBe(true);
+  });
+});
+
+describe("P33 Factory Train runtime settlement", () => {
+  it("grants exactly 20 Population for a surviving L1 City station event", () => {
+    const prepared = createP33RuntimeFixture(
+      "factory-train-runtime-p33-survives",
+      false,
+    );
+    expect(prepared.factions[0]?.population.total).toBe(0);
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.some((unit) => unit.type === "TRAIN")).toBe(true);
+    expect(advanced.factions[0]?.population.total).toBe(20);
+    expect(advanced.factions[0]?.population.available).toBe(20);
+  });
+
+  it("does not grant P33 Population when same-tick Tank interception cancels the City event", () => {
+    const prepared = createP33RuntimeFixture(
+      "factory-train-runtime-p33-intercepted",
+      true,
+    );
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.some((unit) => unit.type === "TRAIN")).toBe(false);
+    expect(advanced.factions[0]?.population.total).toBe(0);
+    expect(advanced.factions[0]?.population.available).toBe(0);
   });
 });
