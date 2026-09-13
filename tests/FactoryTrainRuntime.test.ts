@@ -4,6 +4,7 @@ import {
   createFactoryRailLoopLifecycleState,
   retainFactoryRailLoopSnapshot,
 } from "../src/simulation/FactoryRailLifecycle";
+import { advanceFactoryTrainRuntimePhase } from "../src/simulation/FactoryTrainRuntime";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
@@ -16,6 +17,7 @@ import {
   createMobileUnit,
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createStructureCaptureResolvedEvent } from "../src/simulation/SimulationEvents";
 import { TickEngine } from "../src/simulation/TickEngine";
 import {
   createFactoryTrainServiceEpoch,
@@ -26,6 +28,23 @@ import {
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
+
+function factoryTransferEvent(tick: number) {
+  return createStructureCaptureResolvedEvent({
+    id: `test:factory-transfer:${tick}`,
+    tick,
+    structure: {
+      structureId: "factory-a",
+      structureType: "FACTORY",
+      cellId: 0,
+      previousOwnerId: "alpha",
+      capturingFactionId: "beta",
+      completedLevel: 1,
+      active: true,
+    },
+    result: "STRUCTURE_TRANSFERRED",
+  });
 }
 
 describe("authoritative Factory Train runtime state", () => {
@@ -532,7 +551,10 @@ describe("authoritative Factory Train runtime state", () => {
       ],
     });
 
-    const transferred = new TickEngine().advance(prepared, []);
+    const transferred = createAdvancedMatchState(
+      prepared,
+      advanceFactoryTrainRuntimePhase(prepared, 1, [factoryTransferEvent(1)]),
+    );
     const newPrimaryId = transferred.factoryTrainEpochs[0]?.activePrimaryTrainId;
 
     expect(transferred.factoryTrainEpochs).toHaveLength(1);
@@ -653,7 +675,10 @@ describe("authoritative Factory Train runtime state", () => {
       ],
     });
 
-    const transferred = new TickEngine().advance(prepared, []);
+    const transferred = createAdvancedMatchState(
+      prepared,
+      advanceFactoryTrainRuntimePhase(prepared, 1, [factoryTransferEvent(1)]),
+    );
     const newPrimaryId = transferred.factoryTrainEpochs[0]?.activePrimaryTrainId;
     const alphaTrain = transferred.mobileUnits.find(
       (unit) => unit.ownerId === "alpha",
