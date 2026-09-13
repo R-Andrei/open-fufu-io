@@ -102,6 +102,7 @@ function completeBaselineTank(state: MatchState): MatchState {
   const accepted = tryStartTankProduction(state, {
     ownerId: "alpha",
     factoryId: "alpha-factory",
+    strategicDestinationCellId: 2,
   });
   expect(accepted.ok).toBe(true);
   if (!accepted.ok) throw new Error("expected Tank production admission");

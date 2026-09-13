@@ -293,6 +293,7 @@ function freezeDirectReveals(
 
 function freezeTankProductionJobs(
   entries: readonly TankProductionJobState[],
+  map: SimulationMap,
 ): readonly TankProductionJobState[] {
   const seenFactories = new Set<string>();
   const jobs = entries.map((job) => {
@@ -312,6 +313,9 @@ function freezeTankProductionJobs(
     if (job.chassisType !== "TANK" && job.chassisType !== "HEAVY_ARTILLERY") {
       throw new Error("Tank production chassis type is invalid");
     }
+    if (!map.isValidCellId(job.strategicDestinationCellId)) {
+      throw new Error("Tank production strategic destination must be a valid map cell");
+    }
     if (job.state === "BUILDING") {
       if (
         !Number.isSafeInteger(job.remainingTicks) ||
@@ -326,6 +330,7 @@ function freezeTankProductionJobs(
         factoryId: job.factoryId,
         ownerId: job.ownerId,
         chassisType: job.chassisType,
+        strategicDestinationCellId: job.strategicDestinationCellId,
         state: "BUILDING" as const,
         remainingTicks: job.remainingTicks,
       });
@@ -337,6 +342,7 @@ function freezeTankProductionJobs(
       factoryId: job.factoryId,
       ownerId: job.ownerId,
       chassisType: job.chassisType,
+      strategicDestinationCellId: job.strategicDestinationCellId,
       state: "WAITING_DEPLOYMENT" as const,
     });
   });
@@ -533,6 +539,7 @@ function createState(
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
+      previous.map,
     ),
     tankOperationalStates,
     directReveals: freezeDirectReveals(
@@ -791,6 +798,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
             factoryId: job.factoryId,
             ownerId: job.ownerId,
             chassisType: job.chassisType,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
             remainingTicks: job.remainingTicks,
           }
@@ -798,6 +806,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
             factoryId: job.factoryId,
             ownerId: job.ownerId,
             chassisType: job.chassisType,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
           },
     );

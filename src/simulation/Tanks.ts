@@ -20,6 +20,7 @@ import {
 } from "./MatchState";
 import {
   createMobileUnit,
+  setMobileUnitStrategicDestination,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
 import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
@@ -60,6 +61,7 @@ export type TankProductionJobState =
       readonly factoryId: string;
       readonly ownerId: string;
       readonly chassisType: TankChassisType;
+      readonly strategicDestinationCellId: number;
       readonly state: "BUILDING";
       readonly remainingTicks: number;
     }
@@ -67,12 +69,14 @@ export type TankProductionJobState =
       readonly factoryId: string;
       readonly ownerId: string;
       readonly chassisType: TankChassisType;
+      readonly strategicDestinationCellId: number;
       readonly state: "WAITING_DEPLOYMENT";
     };
 
 export interface StartTankProductionRequest {
   readonly ownerId: string;
   readonly factoryId: string;
+  readonly strategicDestinationCellId: number;
 }
 
 export interface ResolveTankPopulationShotRequest {
@@ -903,7 +907,11 @@ export function tryStartTankProduction(
     typeof request.ownerId !== "string" ||
     request.ownerId.length === 0 ||
     typeof request.factoryId !== "string" ||
-    request.factoryId.length === 0
+    request.factoryId.length === 0 ||
+    typeof request.strategicDestinationCellId !== "number" ||
+    !Number.isSafeInteger(request.strategicDestinationCellId) ||
+    Object.is(request.strategicDestinationCellId, -0) ||
+    !state.map.isValidCellId(request.strategicDestinationCellId)
   ) {
     return failure(state, "INVALID_REQUEST");
   }
@@ -933,6 +941,16 @@ export function tryStartTankProduction(
   }
 
   const chassisType = effectiveTankChassisType(state, request.ownerId);
+  if (
+    tankCellTraversalTiming(
+      state,
+      request.ownerId,
+      chassisType,
+      request.strategicDestinationCellId,
+    ) === undefined
+  ) {
+    return failure(state, "INVALID_REQUEST");
+  }
   const debit = tryDebitFfy(
     owner.ffy,
     effectiveTankPurchaseCost(state, request.ownerId, chassisType),
@@ -943,6 +961,7 @@ export function tryStartTankProduction(
     factoryId: factory.id,
     ownerId: request.ownerId,
     chassisType,
+    strategicDestinationCellId: request.strategicDestinationCellId,
     state: "BUILDING" as const,
     remainingTicks: effectiveTankBuildTicks(
       state,
@@ -1012,6 +1031,7 @@ function waitingDeploymentJob(
     factoryId: job.factoryId,
     ownerId: job.ownerId,
     chassisType: job.chassisType,
+    strategicDestinationCellId: job.strategicDestinationCellId,
     state: "WAITING_DEPLOYMENT" as const,
   });
 }
@@ -1054,14 +1074,29 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
         movementClass: job.chassisType,
         cellId,
       });
-      units = created;
+      const deployedUnit =
+        job.strategicDestinationCellId === cellId
+          ? created.unit
+          : setMobileUnitStrategicDestination(
+              state.map,
+              created.unit,
+              job.strategicDestinationCellId,
+            );
+      units = Object.freeze({
+        mobileUnits: Object.freeze(
+          created.mobileUnits.map((unit) =>
+            unit.id === deployedUnit.id ? deployedUnit : unit,
+          ),
+        ),
+        nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      });
       const eligibleFromTick = state.tick + 1;
       if (!Number.isSafeInteger(eligibleFromTick)) {
         throw new Error("Tank activation tick exceeds the safe-integer range");
       }
       operationalStates.push(
         Object.freeze({
-          unitId: created.unit.id,
+          unitId: deployedUnit.id,
           health: effectiveTankMaxHealth(state, job.ownerId),
           operatingAnchorCellId: cellId,
           eligibleFromTick,
@@ -1082,6 +1117,7 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
           factoryId: job.factoryId,
           ownerId: job.ownerId,
           chassisType: job.chassisType,
+          strategicDestinationCellId: job.strategicDestinationCellId,
           state: "BUILDING" as const,
           remainingTicks: job.remainingTicks - 1,
         }),

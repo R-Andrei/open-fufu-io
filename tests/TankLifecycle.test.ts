@@ -382,6 +382,7 @@ describe("baseline Tank lifecycle", () => {
     const accepted = tryStartTankProduction(affordable, {
       ownerId: "alpha",
       factoryId: "alpha-factory",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -396,6 +397,7 @@ describe("baseline Tank lifecycle", () => {
     const rejected = tryStartTankProduction(unaffordable, {
       ownerId: "alpha",
       factoryId: "alpha-factory",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected.ok).toBe(false);
@@ -454,6 +456,7 @@ describe("baseline Tank lifecycle", () => {
       const accepted = tryStartTankProduction(initial, {
         ownerId: "alpha",
         factoryId: "alpha-factory",
+        strategicDestinationCellId: 2,
       });
 
       expect(accepted.ok).toBe(true);
@@ -496,6 +499,7 @@ describe("baseline Tank lifecycle", () => {
     const accepted = tryStartTankProduction(initial, {
       ownerId: "alpha",
       factoryId: "alpha-factory",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -508,6 +512,7 @@ describe("baseline Tank lifecycle", () => {
         factoryId: "alpha-factory",
         ownerId: "alpha",
         chassisType: "TANK",
+        strategicDestinationCellId: 2,
         state: "WAITING_DEPLOYMENT",
       },
     ]);
@@ -531,6 +536,7 @@ describe("baseline Tank lifecycle", () => {
     const accepted = tryStartTankProduction(productionFixture(250_000), {
       ownerId: "alpha",
       factoryId: "alpha-factory",
+      strategicDestinationCellId: 2,
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok) throw new Error("expected Tank production admission");
@@ -579,6 +585,7 @@ describe("baseline Tank lifecycle", () => {
       {
         ownerId: "alpha",
         factoryId: "alpha-factory",
+        strategicDestinationCellId: 2,
       },
     );
     expect(accepted.ok).toBe(true);
