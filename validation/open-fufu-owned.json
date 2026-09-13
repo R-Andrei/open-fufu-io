@@ -67,6 +67,7 @@
     "tests/StructureTransactions.test.ts",
     "tests/StructureTransactionsCertification.test.ts",
     "tests/TacticalVisibility.test.ts",
+    "tests/TankAffordabilityCertification.test.ts",
     "tests/TankAftershock.test.ts",
     "tests/TankCombatEvents.test.ts",
     "tests/TankLifecycle.test.ts",
