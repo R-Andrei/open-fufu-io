@@ -6,9 +6,23 @@ import {
   type PositiveFfyEventInput,
 } from "../src/simulation/Economy";
 import {
+  createFactoryRailLoopLifecycleState,
+  retainFactoryRailLoopSnapshot,
+} from "../src/simulation/FactoryRailLifecycle";
+import {
+  createInitialMatchState,
+  createProspectiveMatchState,
+} from "../src/simulation/MatchState";
+import {
+  assignMobileUnitRoute,
+  createMobileUnit,
+} from "../src/simulation/MobileUnits";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import {
   createUnitDestroyedEvent,
   type UnitDestroyedEvent,
 } from "../src/simulation/SimulationEvents";
+import { TickEngine } from "../src/simulation/TickEngine";
 import * as TrainService from "../src/simulation/TrainService";
 
 const RULE_STATE = Object.freeze({
@@ -345,5 +359,140 @@ describe("Factory Train interception economic consequence", () => {
         raiderEventId: "ignored-artillery",
       }),
     ).toBeNull();
+  });
+
+  it("routes a real Tank-destroyed active Train into service closure and the exact primary turnaround", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "train-interception-runtime-convergence",
+        width: 12,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const ownerIds = base.factions.map((faction) => faction.id);
+    const loopCells = Object.freeze(
+      Array.from({ length: 11 }, (_, index) => index),
+    );
+
+    const createdTrain = createMobileUnit(
+      base.map,
+      ownerIds,
+      {
+        mobileUnits: base.mobileUnits,
+        nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: loopCells[0]!,
+      },
+    );
+    const train = assignMobileUnitRoute(
+      base.map,
+      createdTrain.unit,
+      TrainService.createTrainRouteInput(loopCells),
+    );
+    const createdTank = createMobileUnit(
+      base.map,
+      ownerIds,
+      {
+        mobileUnits: [train],
+        nextMobileUnitOrdinal: createdTrain.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "beta",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: train.cellId,
+      },
+    );
+    const loop = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+      train.id,
+    );
+    const epoch = TrainService.markFactoryPrimaryTrainDispatched(
+      TrainService.createFactoryTrainServiceEpoch("factory-a", "alpha"),
+      train.id,
+    );
+
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-a",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+        {
+          id: "city-a",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 10,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+      mobileUnits: createdTank.mobileUnits,
+      nextMobileUnitOrdinal: createdTank.nextMobileUnitOrdinal,
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [epoch],
+      trainServices: [
+        {
+          trainId: train.id,
+          factoryId: "factory-a",
+          loopSnapshotId: train.id,
+          isPrimary: true,
+          dispatchSnapshot: TrainService.createTrainDispatchEconomicSnapshot(
+            "factory-a",
+            "alpha",
+            1,
+          ),
+          resumeAtTick: 100,
+        },
+      ],
+      tankOperationalStates: [
+        {
+          unitId: createdTank.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: createdTank.unit.cellId,
+          eligibleFromTick: 0,
+          attackReadyAtTick: 0,
+          retainedTarget: { targetClass: "TRAIN", unitId: train.id },
+        },
+      ],
+    });
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.some((unit) => unit.id === train.id)).toBe(false);
+    expect(
+      advanced.mobileUnits.some((unit) => unit.id === createdTank.unit.id),
+    ).toBe(true);
+    expect(advanced.trainServices.some((service) => service.trainId === train.id)).toBe(
+      false,
+    );
+    expect(advanced.factoryRailLoops[0]?.retainedSnapshots).toEqual([]);
+    expect(advanced.factoryTrainEpochs[0]).toMatchObject({
+      factoryId: "factory-a",
+      ownerId: "alpha",
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 50,
+    });
   });
 });
