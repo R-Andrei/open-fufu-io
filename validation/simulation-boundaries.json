@@ -54,7 +54,7 @@
       "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/SimulationMap.ts",
       "classification": "CURRENT_STATE_READ",
-      "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; map state is not an occurrence channel."
+      "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; it does not convey an occurrence."
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
@@ -318,7 +318,7 @@
       "from": "src/simulation/SpawnSemantics.ts",
       "to": "src/simulation/LandOperations.ts",
       "classification": "SHARED_CONTRACT",
-      "rationale": "Spawn semantics reuses Land terrain base-spec contracts rather than duplicating them."
+      "rationale": "Spawn semantics reuses Land terrain legality and base-spec contracts rather than duplicating them."
     },
     {
       "from": "src/simulation/SpawnSemantics.ts",
