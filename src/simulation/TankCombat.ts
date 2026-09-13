@@ -48,6 +48,16 @@ export interface TankUnitAttackResolution {
   readonly events: readonly PhysicalUnitSimulationEvent[];
 }
 
+export interface TankUnitAttackStateUpdate {
+  readonly mobileUnits: readonly MobileUnitState[];
+  readonly tankOperationalStates: readonly TankOperationalState[];
+}
+
+export interface TankUnitAttackEffects {
+  readonly update: TankUnitAttackStateUpdate | null;
+  readonly events: readonly PhysicalUnitSimulationEvent[];
+}
+
 export interface TankPopulationAttackResolution
   extends TankPopulationShotBatchResolution {
   readonly state: MatchState;
@@ -218,10 +228,10 @@ function effectiveTankAntiArmorDamage(
   });
 }
 
-export function resolveAdmittedTankUnitAttacks(
+export function resolveAdmittedTankUnitAttackEffects(
   state: MatchState,
   attacks: readonly AdmittedTankUnitAttack[],
-): TankUnitAttackResolution {
+): TankUnitAttackEffects {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const operationalByUnitId = new Map(
     state.tankOperationalStates.map((entry) => [entry.unitId, entry]),
@@ -360,31 +370,52 @@ export function resolveAdmittedTankUnitAttacks(
     );
   }
 
-  const nextTankOperationalStates = Object.freeze(
-    state.tankOperationalStates
-      .filter((entry) => !destroyedUnitIds.has(entry.unitId))
-      .map((entry): TankOperationalState => {
-        const damage = damageByTarget.get(entry.unitId);
-        if (damage === undefined) return entry;
-        return Object.freeze({
-          ...entry,
-          health: subtractExactHealth(entry.health, damage),
-        });
-      }),
-  );
-  const nextState =
-    destroyedUnitIds.size === 0 && damageByTarget.size === 0
-      ? state
-      : createProspectiveMatchState(state, {
-          mobileUnits: state.mobileUnits.filter(
-            (unit) => !destroyedUnitIds.has(unit.id),
-          ),
-          tankOperationalStates: nextTankOperationalStates,
-        });
+  const changed = destroyedUnitIds.size > 0 || damageByTarget.size > 0;
+  const nextTankOperationalStates = changed
+    ? Object.freeze(
+        state.tankOperationalStates
+          .filter((entry) => !destroyedUnitIds.has(entry.unitId))
+          .map((entry): TankOperationalState => {
+            const damage = damageByTarget.get(entry.unitId);
+            if (damage === undefined) return entry;
+            return Object.freeze({
+              ...entry,
+              health: subtractExactHealth(entry.health, damage),
+            });
+          }),
+      )
+    : state.tankOperationalStates;
+  const update = changed
+    ? Object.freeze({
+        mobileUnits:
+          destroyedUnitIds.size === 0
+            ? state.mobileUnits
+            : Object.freeze(
+                state.mobileUnits.filter(
+                  (unit) => !destroyedUnitIds.has(unit.id),
+                ),
+              ),
+        tankOperationalStates: nextTankOperationalStates,
+      })
+    : null;
 
   return Object.freeze({
-    state: nextState,
+    update,
     events: Object.freeze([...attackEvents, ...destructionEvents]),
+  });
+}
+
+export function resolveAdmittedTankUnitAttacks(
+  state: MatchState,
+  attacks: readonly AdmittedTankUnitAttack[],
+): TankUnitAttackResolution {
+  const effects = resolveAdmittedTankUnitAttackEffects(state, attacks);
+  return Object.freeze({
+    state:
+      effects.update === null
+        ? state
+        : createProspectiveMatchState(state, effects.update),
+    events: effects.events,
   });
 }
 
