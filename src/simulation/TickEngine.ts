@@ -8,7 +8,10 @@ import {
   applyFactoryTrainDestructionLifecycleEvents,
   settleFactoryTrainEconomicEvents,
 } from "./FactoryTrainRuntime";
-import { resolveHostilityGraceFromEvents } from "./HostilityState";
+import {
+  matchStateAtWar,
+  resolveHostilityGraceFromEvents,
+} from "./HostilityState";
 import {
   resolveLandTick,
   tryApplyPersistentDirectiveChangesWithEvents,
@@ -1187,6 +1190,8 @@ export class TickEngine {
       produced,
       combatResolved.servicesAtInterception,
       combatResolved.destructionEvents,
+      (trainOwnerId, stationOwnerId) =>
+        matchStateAtWar(produced, trainOwnerId, stationOwnerId),
     );
     return trainEconomicUpdate === null
       ? produced

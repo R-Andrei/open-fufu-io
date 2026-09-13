@@ -30,6 +30,7 @@ import {
   finishFactoryPrimaryTrain,
   resolveFactoryTrainEventBaseMultiplier,
   resolveTrainDestroyedEconomicOutcome,
+  resolveTrainExternalWartimeMultiplier,
   transferFactoryTrainServiceEpoch,
 } from "./TrainService";
 
@@ -216,6 +217,7 @@ export function settleFactoryTrainEconomicEvents(
   state: MatchState,
   servicesAtInterception: readonly MatchState["trainServices"][number][],
   destructionEvents: readonly UnitDestroyedEvent[],
+  currentAtWar: (trainOwnerId: string, stationOwnerId: string) => boolean,
 ): FactoryTrainEconomicUpdate | null {
   const positiveEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
   const survivingCityStations: MatchState["structures"][number][] = [];
@@ -259,7 +261,7 @@ export function settleFactoryTrainEconomicEvents(
         raiderEventId: trainInterceptionRaiderEventId(event),
         pendingStationEvent,
       },
-     );
+    );
     if (economicResolution !== null) {
       const existing =
         positiveEventsByOwnerId.get(economicResolution.raiderOwnerId) ?? [];
@@ -278,23 +280,40 @@ export function settleFactoryTrainEconomicEvents(
         `surviving Train station occurrence lost physical Train ${service.trainId}`,
       );
     }
+    const station = state.structures.find(
+      (structure) =>
+        structure.cellId === unit.cellId &&
+        (structure.type === "CITY" || structure.type === "PORT") &&
+        structure.active &&
+        structure.completedLevel !== undefined,
+    );
+    if (station === undefined) continue;
+
+    const ownerId = service.dispatchSnapshot.dispatchOwnerId;
+    const owner = state.factions.find((faction) => faction.id === ownerId);
+    if (owner === undefined) {
+      throw new Error(`Train economic consequence references unknown faction ${ownerId}`);
+    }
+    const externalWartimeMultiplier =
+      station.ownerId === ownerId
+        ? undefined
+        : resolveTrainExternalWartimeMultiplier(
+            owner.rules,
+            trainEconomicRuleDynamicState(state, ownerId),
+            currentAtWar(ownerId, station.ownerId),
+          );
     const event = createTrainStationFfyEvent(service.dispatchSnapshot, {
       eventId: trainStationEventId(state.tick, service.trainId, unit.cellId),
+      ...(externalWartimeMultiplier === undefined
+        ? {}
+        : { externalWartimeMultiplier }),
     });
-    const ownerId = service.dispatchSnapshot.dispatchOwnerId;
     const existing = positiveEventsByOwnerId.get(ownerId) ?? [];
     existing.push(event);
     positiveEventsByOwnerId.set(ownerId, existing);
 
-    const cityStation = state.structures.find(
-      (structure) =>
-        structure.cellId === unit.cellId &&
-        structure.type === "CITY" &&
-        structure.active &&
-        structure.completedLevel !== undefined,
-     );
-    if (cityStation !== undefined) {
-      survivingCityStations.push(cityStation);
+    if (station.type === "CITY") {
+      survivingCityStations.push(station);
     }
   }
 
@@ -413,7 +432,7 @@ export function advanceFactoryTrainRuntimePhase(
       const transferredEpoch = transferFactoryTrainServiceEpoch(
         epoch,
         factory.ownerId,
-       );
+      );
       factoryTrainEpochs = factoryTrainEpochs.map((entry) =>
         entry.factoryId === factory.id ? transferredEpoch : entry,
       );
