@@ -500,6 +500,109 @@ describe("Factory Train interception economic consequence", () => {
     });
   });
 
+  it("settles a surviving station entry after the interception phase", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "train-surviving-station-settlement",
+        width: 6,
+        height: 1,
+        terrain: Array.from({ length: 6 }, () => "PLAINS" as const),
+        initialOwners: Array.from({ length: 6 }, () => "alpha"),
+        factions: [{ id: "alpha", rules }],
+      }),
+    );
+    const ownerIds = base.factions.map((faction) => faction.id);
+    const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+    const createdTrain = createMobileUnit(
+      base.map,
+      ownerIds,
+      {
+        mobileUnits: base.mobileUnits,
+        nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: 0,
+      },
+    );
+    const train = assignMobileUnitRoute(
+      base.map,
+      createdTrain.unit,
+      TrainService.createTrainRouteInput(loopCells),
+    );
+    const loop = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+      train.id,
+    );
+    const epoch = TrainService.markFactoryPrimaryTrainDispatched(
+      TrainService.createFactoryTrainServiceEpoch("factory-a", "alpha"),
+      train.id,
+    );
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-a",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+        {
+          id: "city-a",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 2,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+      mobileUnits: [train],
+      nextMobileUnitOrdinal: createdTrain.nextMobileUnitOrdinal,
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [epoch],
+      trainServices: [
+        {
+          trainId: train.id,
+          factoryId: "factory-a",
+          loopSnapshotId: train.id,
+          isPrimary: true,
+          dispatchSnapshot: TrainService.createTrainDispatchEconomicSnapshot(
+            "factory-a",
+            "alpha",
+            1,
+          ),
+          resumeAtTick: null,
+        },
+      ],
+    });
+    const alphaBefore = prepared.factions[0]!;
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.find((unit) => unit.id === train.id)?.cellId).toBe(2);
+    expect(
+      advanced.trainServices.find((service) => service.trainId === train.id)
+        ?.resumeAtTick,
+    ).toBe(16);
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+    expect(advanced.factions[0]?.ffy).toBe(
+      alphaBefore.ffy + passivePerTick + 10_000,
+    );
+  });
+
   it("cancels a same-tick station payout before settlement and credits exactly one raider event", () => {
     const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
     const base = createInitialMatchState(
