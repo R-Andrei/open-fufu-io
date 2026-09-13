@@ -87,8 +87,8 @@ function repairFixture(options: {
         structure.id === "alpha-factory"
           ? { ...structure, acquisitionPath: "CAPTURE_TRANSFER" as const }
           : structure,
-      ),
-    });
+        ),
+      });
   }
 
   for (let tick = 0; tick < (options.tick ?? 0); tick += 1) {
@@ -458,5 +458,210 @@ describe("Tank Factory two-tier repair service", () => {
     expect(repaired.mobileUnits.find((unit) => unit.id === unitId)).not.toHaveProperty(
       "route",
     );
+  });
+});
+
+function repairCombatFixture(queued: boolean): Readonly<{
+  state: MatchState;
+  travellingUnitId: string;
+  queuedUnitId?: string;
+  targetUnitId: string;
+}> {
+  const width = queued ? 5 : 20;
+  let state = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: queued ? "vehicle-repair-queued-red" : "vehicle-repair-travel-red",
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS"),
+      initialOwners: Array.from({ length: width }, () => "alpha"),
+      initialStructureGrants: [
+        {
+          structureId: "alpha-factory",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules: rules() },
+        { id: "beta", rules: rules() },
+      ],
+    }),
+  );
+  const ownerIds = state.factions.map((faction) => faction.id);
+  const first = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: queued ? 1 : 15,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: first.mobileUnits,
+    nextMobileUnitOrdinal: first.nextMobileUnitOrdinal,
+  });
+
+  let queuedUnitId: string | undefined;
+  if (queued) {
+    const second = createMobileUnit(
+      state.map,
+      ownerIds,
+      {
+        mobileUnits: state.mobileUnits,
+        nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: 2,
+      },
+    );
+    state = createProspectiveMatchState(state, {
+      mobileUnits: second.mobileUnits,
+      nextMobileUnitOrdinal: second.nextMobileUnitOrdinal,
+    });
+    queuedUnitId = second.unit.id;
+  }
+
+  const target = createMobileUnit(
+    state.map,
+    ownerIds,
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: queued ? 3 : 16,
+    },
+  );
+  state = createProspectiveMatchState(state, {
+    mobileUnits: target.mobileUnits,
+    nextMobileUnitOrdinal: target.nextMobileUnitOrdinal,
+  });
+
+  const alphaStates: TankOperationalState[] = [
+    {
+      unitId: first.unit.id,
+      health: { numerator: 500n, denominator: 1n },
+      operatingAnchorCellId: first.unit.cellId,
+      eligibleFromTick: 1,
+      attackReadyAtTick: 1,
+      ...(queued
+        ? { repairFactoryId: "alpha-factory", repairArrivalTick: 0 }
+        : {}),
+    },
+  ];
+  if (queuedUnitId !== undefined) {
+    alphaStates.push({
+      unitId: queuedUnitId,
+      health: { numerator: 500n, denominator: 1n },
+      operatingAnchorCellId: 2,
+      eligibleFromTick: 1,
+      attackReadyAtTick: 1,
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: 0,
+    });
+  }
+  state = createProspectiveMatchState(state, {
+    tankOperationalStates: [
+      ...alphaStates,
+      {
+        unitId: target.unit.id,
+        health: { numerator: 1_000n, denominator: 1n },
+        operatingAnchorCellId: target.unit.cellId,
+        eligibleFromTick: 1_000,
+        attackReadyAtTick: 1_000,
+      },
+    ],
+  });
+
+  return Object.freeze({
+    state,
+    travellingUnitId: first.unit.id,
+    ...(queuedUnitId === undefined ? {} : { queuedUnitId }),
+    targetUnitId: target.unit.id,
+  });
+}
+
+describe("shared vehicle repair activity boundary", () => {
+  it("keeps a repair-travelling vehicle combat-active without diverting its repair route", () => {
+    const fixture = repairCombatFixture(false);
+    const advanced = new TickEngine().advance(fixture.state, []);
+    const travelling = advanced.mobileUnits.find(
+      (unit) => unit.id === fixture.travellingUnitId,
+    );
+    const travellingOperational = advanced.tankOperationalStates.find(
+      (entry) => entry.unitId === fixture.travellingUnitId,
+    );
+    const targetOperational = advanced.tankOperationalStates.find(
+      (entry) => entry.unitId === fixture.targetUnitId,
+    );
+
+    expect(travellingOperational).toMatchObject({
+      repairFactoryId: "alpha-factory",
+      retainedTarget: {
+        targetClass: "TANK_CHASSIS",
+        unitId: fixture.targetUnitId,
+      },
+      attackReadyAtTick: 11,
+    });
+    expect(travelling?.route).toMatchObject({ destinationCellId: 10 });
+    expect(travelling?.route?.edgeProgress).toBeGreaterThan(0);
+    expect(targetOperational?.health).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
+  });
+
+  it("keeps queued vehicles operational while only the active fast-service recipient is inactive", () => {
+    const fixture = repairCombatFixture(true);
+    if (fixture.queuedUnitId === undefined) {
+      throw new Error("expected queued repair fixture to create two repairing vehicles");
+    }
+    const advanced = new TickEngine().advance(fixture.state, []);
+    const fastOperational = advanced.tankOperationalStates.find(
+      (entry) => entry.unitId === fixture.travellingUnitId,
+    );
+    const queuedOperational = advanced.tankOperationalStates.find(
+      (entry) => entry.unitId === fixture.queuedUnitId,
+    );
+    const targetOperational = advanced.tankOperationalStates.find(
+      (entry) => entry.unitId === fixture.targetUnitId,
+    );
+
+    expect(fastOperational?.retainedTarget).toBeUndefined();
+    expect(fastOperational?.attackReadyAtTick).toBe(1);
+    expect(fastOperational?.health).toEqual({
+      numerator: 510n,
+      denominator: 1n,
+    });
+
+    expect(queuedOperational).toMatchObject({
+      repairFactoryId: "alpha-factory",
+      repairArrivalTick: 0,
+      retainedTarget: {
+        targetClass: "TANK_CHASSIS",
+        unitId: fixture.targetUnitId,
+      },
+      attackReadyAtTick: 11,
+      health: { numerator: 501n, denominator: 1n },
+    });
+    expect(targetOperational?.health).toEqual({
+      numerator: 750n,
+      denominator: 1n,
+    });
   });
 });
