@@ -27,6 +27,11 @@ export type NavigationPathResult =
   | { readonly status: "UNREACHABLE" }
   | { readonly status: "LIMIT_REACHED" };
 
+export type NavigationPathTowardResult =
+  | { readonly status: "FOUND"; readonly path: NavigationPath }
+  | { readonly status: "BEST_EFFORT"; readonly path: NavigationPath }
+  | { readonly status: "LIMIT_REACHED" };
+
 export interface ReachableCell {
   readonly cellId: CellId;
   readonly totalWeight: TraversalWeight;
@@ -44,6 +49,13 @@ export interface Navigation {
     policy: NavigationTraversalPolicy,
     options?: NavigationSearchOptions,
   ): NavigationPathResult;
+
+  pathToward(
+    from: CellId,
+    to: CellId,
+    policy: NavigationTraversalPolicy,
+    options?: NavigationSearchOptions,
+  ): NavigationPathTowardResult;
 
   reachable(
     from: CellId,
@@ -222,6 +234,23 @@ export function createNavigation(map: SimulationMap): Navigation {
     return weight;
   };
 
+  const reconstructPath = (
+    scratch: NavigationScratch,
+    from: CellId,
+    destination: CellId,
+    totalWeight: TraversalWeight,
+  ): NavigationPath => {
+    const cells: CellId[] = [];
+    let cursor = destination;
+    while (cursor !== from) {
+      cells.push(cursor);
+      cursor = scratch.predecessor[cursor]!;
+    }
+    cells.push(from);
+    cells.reverse();
+    return { cells, totalWeight };
+  };
+
   const path = (
     from: CellId,
     to: CellId,
@@ -265,18 +294,121 @@ export function createNavigation(map: SimulationMap): Navigation {
         settledCells += 1;
 
         if (current.cellId === to) {
-          const cells: CellId[] = [];
-          let cursor = to;
-          while (cursor !== from) {
-            cells.push(cursor);
-            cursor = scratch.predecessor[cursor]!;
-          }
-          cells.push(from);
-          cells.reverse();
           return {
             status: "FOUND",
-            path: { cells, totalWeight: current.weight },
+            path: reconstructPath(scratch, from, to, current.weight),
           };
+        }
+
+        for (const neighbor of map.cardinalNeighbors(current.cellId)) {
+          const increment = transitionWeight(policy, current.cellId, neighbor);
+          if (increment === undefined) continue;
+
+          const candidate = checkedCumulativeWeight(current.weight, increment);
+          const known =
+            scratch.bestStamp[neighbor] === generation
+              ? scratch.bestWeight[neighbor]!
+              : Number.POSITIVE_INFINITY;
+
+          if (candidate >= known) continue;
+
+          scratch.bestStamp[neighbor] = generation;
+          scratch.bestWeight[neighbor] = candidate;
+          scratch.predecessor[neighbor] = current.cellId;
+          scratch.heap.push(neighbor, candidate);
+        }
+      }
+    } finally {
+      releaseScratch(scratch);
+    }
+  };
+
+  const pathToward = (
+    from: CellId,
+    to: CellId,
+    policy: NavigationTraversalPolicy,
+    options?: NavigationSearchOptions,
+  ): NavigationPathTowardResult => {
+    assertCellId(from);
+    assertCellId(to);
+    const settlementLimit = maxSettledCells(options);
+
+    if (from === to) {
+      return {
+        status: "FOUND",
+        path: { cells: [from], totalWeight: 0 },
+      };
+    }
+
+    const targetX = to % map.width;
+    const targetY = Math.floor(to / map.width);
+    const squaredDistance = (cellId: CellId): number => {
+      const dx = (cellId % map.width) - targetX;
+      const dy = Math.floor(cellId / map.width) - targetY;
+      const distance = dx * dx + dy * dy;
+      if (!Number.isSafeInteger(distance)) {
+        throw new Error("cell-center squared distance exceeds safe integer range");
+      }
+      return distance;
+    };
+
+    const scratch = acquireScratch();
+    try {
+      const generation = scratch.begin();
+      scratch.bestStamp[from] = generation;
+      scratch.bestWeight[from] = 0;
+      scratch.predecessor[from] = from;
+      scratch.heap.push(from, 0);
+
+      let bestCellId = from;
+      let bestDistance = squaredDistance(from);
+      let bestTraversalWeight = 0;
+      let settledCells = 0;
+
+      while (true) {
+        const current = scratch.heap.pop();
+        if (current === undefined) {
+          return {
+            status: "BEST_EFFORT",
+            path: reconstructPath(
+              scratch,
+              from,
+              bestCellId,
+              bestTraversalWeight,
+            ),
+          };
+        }
+
+        if (
+          scratch.bestStamp[current.cellId] !== generation ||
+          scratch.bestWeight[current.cellId] !== current.weight
+        ) {
+          continue;
+        }
+
+        if (settledCells >= settlementLimit) {
+          return { status: "LIMIT_REACHED" };
+        }
+        settledCells += 1;
+
+        if (current.cellId === to) {
+          return {
+            status: "FOUND",
+            path: reconstructPath(scratch, from, to, current.weight),
+          };
+        }
+
+        const distance = squaredDistance(current.cellId);
+        if (
+          distance < bestDistance ||
+          (distance === bestDistance &&
+            (current.weight < bestTraversalWeight ||
+              (current.weight === bestTraversalWeight &&
+                current.cellId < bestCellId)))
+        ) {
+          bestCellId = current.cellId;
+          bestDistance = distance;
+          bestTraversalWeight = current.weight;
         }
 
         for (const neighbor of map.cardinalNeighbors(current.cellId)) {
@@ -370,5 +502,5 @@ export function createNavigation(map: SimulationMap): Navigation {
     }
   };
 
-  return Object.freeze({ path, reachable });
+  return Object.freeze({ path, pathToward, reachable });
 }

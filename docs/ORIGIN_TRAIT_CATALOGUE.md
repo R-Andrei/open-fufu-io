@@ -352,11 +352,13 @@ P34's player-facing `50% increased effectiveness` is a compact description of ex
 ```text
 Train event base value                 ×1.50
 Tank-chassis construction speed        ×1.50
-Tank repair rate                       ×1.50 (100 -> 150 HP/s currently)
-Tank repair radius                     8 cells (5 ordinarily)
+Factory broad repair radius            ×1.50
+Factory armored-unit repair rate       ×1.50
 ```
 
-No other Factory axis is changed by P34. In particular, P34 does **not** change primary Train count/service slots, Train speed, routing, station dwell, the 5-second primary-service turnaround, P07's every-fourth-dispatch cadence, concurrent Tank-build capacity, Tank purchase cost, simultaneous repair capacity, Factory level, Factory construction/upgrade duration, or Factory construction/upgrade cost.
+The repair-radius scalar applies to the Factory's broad armored-unit repair field only. The repair-rate scalar applies to both the broad and fast armored-unit repair rates. Both P34 repair scalars execute after ordinary Factory repair Echo specialization through the canonical contextual-scalar stage. P34 does not change the fixed 10-cell fast-service radius or the fixed one-chassis fast-service slot.
+
+No other Factory axis is changed by P34. In particular, P34 does **not** change primary Train count/service slots, Train speed, routing, station dwell, the 5-second primary-service turnaround, P07's every-fourth-dispatch cadence, concurrent Tank-build capacity, Tank purchase cost, Factory level, Factory construction/upgrade duration, or Factory construction/upgrade cost.
 
 `+50% Tank-chassis construction speed` is a work-rate multiplier, not a 50% duration subtraction. The effective duration is therefore ordinary resulting-chassis duration divided by `1.5`, with authoritative tick scheduling using the canonical deterministic completion rounding. With the current 10-tick/second timing, the baseline 5-second/50-tick Tank completes in `ceil(50 / 1.5) = 34` ticks; P43 Heavy Artillery's 10-second/100-tick build completes in `ceil(100 / 1.5) = 67` ticks. P34 does not alter P43's authored purchase-cost or chassis transformation.
 
@@ -369,7 +371,7 @@ Interaction consequences are exact:
 - **P05 + P34:** one successful Factory transfer may independently produce one P05 conquest event and establish P34 Factory provenance; P34 does not multiply the P05 event.
 - **P07 + P34:** P07's dispatch sequence is unchanged; every actual primary or P07 bonus Train dispatched under the P34 profile uses the `1.50×` Factory Train-event base value.
 - **P33 + P34:** P34 changes the Train's FFY base value only. It does not increase P33's `20 × City level` Population grant and does not create extra Train events.
-- **P43 + P34:** the Heavy-Artillery chassis is produced at `1.50×` construction speed and may receive the Factory's 150 HP/s repair inside the 8-cell radius; P43's other authored chassis values remain unchanged.
+- **P43 + P34:** the Heavy-Artillery chassis is produced at `1.50×` construction speed and receives the same P34-scaled two-tier Factory repair profile as a Tank-derived chassis; P43's other authored chassis values remain unchanged.
 - **N09 + P34:** N09 blocks Factory construction but not legal capture transfer, so captured Factories may qualify for P34.
 - **N17 + P34:** N17 resolves the Factory as destroyed instead of transferred, so P34 never activates.
 

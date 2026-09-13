@@ -15,6 +15,11 @@ import {
   type MatchState,
 } from "./MatchState";
 import {
+  advanceMobileUnit,
+  assignMobileUnitRoute,
+  setMobileUnitStrategicDestination,
+} from "./MobileUnits";
+import {
   grantPopulation,
   removePopulation,
   repartitionPopulation,
@@ -33,6 +38,36 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  resolveAdmittedTankPopulationAttacks,
+  resolveAdmittedTankUnitAttacks,
+  resolveTankPopulationAftershocks,
+  type AdmittedTankUnitAttack,
+} from "./TankCombat";
+import {
+  advanceTankRepairIntentPhase,
+  advanceTankRepairMovementPhase,
+  advanceTankRepairPhase,
+  tankFastServiceUnitIds,
+} from "./TankRepair";
+import {
+  planTankPursuitRoute,
+  selectTankAutonomousUnitTarget,
+  type TankAutonomousUnitTargetSelection,
+} from "./TankTargeting";
+import {
+  advanceTankProductionPhase,
+  tankCellTraversalTiming,
+  tankNavigationRoute,
+  tankOperatingLeashContains,
+  tankStrategicNavigationRoute,
+  type AdmittedTankPopulationShot,
+} from "./Tanks";
+import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
+import {
+  projectTankTargetObservation,
+  resolveDirectRevealsFromTankCombatEvents,
+} from "./VisibilityState";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -111,6 +146,12 @@ export interface AcceptedSimulationInput {
   readonly action: SimulationAction;
 }
 
+type TankRetainedTarget = NonNullable<
+  MatchState["tankOperationalStates"][number]["retainedTarget"]
+>;
+
+const TANK_ROAMING_LEASH_CELLS = 100;
+
 function updateFactionPopulation(
   factions: readonly MatchFactionState[],
   factionId: string,
@@ -132,6 +173,707 @@ function factionCapitulationEventId(
   factionId: string,
 ): string {
   return `faction:capitulated:${tick}:${sequence}:${JSON.stringify(factionId)}`;
+}
+
+function sameTankTarget(
+  left: TankRetainedTarget | undefined,
+  right: TankAutonomousUnitTargetSelection | undefined,
+): boolean {
+  if (left === undefined || right === undefined) return left === right;
+  if (left.targetClass !== right.targetClass) return false;
+  if (left.targetClass === "POPULATION") {
+    return right.targetClass === "POPULATION" && left.cellId === right.cellId;
+  }
+  return right.targetClass !== "POPULATION" && left.unitId === right.unitId;
+}
+
+function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const fastServiceUnitIds = tankFastServiceUnitIds(state);
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectTankTargetObservation>
+  >();
+  let changed = false;
+  const tankOperationalStates = state.tankOperationalStates.map((operational) => {
+    if (
+      operational.eligibleFromTick > state.tick ||
+      fastServiceUnitIds.has(operational.unitId)
+    ) {
+      return operational;
+    }
+    const unit = unitsById.get(operational.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      return operational;
+    }
+    let observation = observationByOwner.get(unit.ownerId);
+    if (observation === undefined) {
+      observation = projectTankTargetObservation(state, unit.ownerId);
+      observationByOwner.set(unit.ownerId, observation);
+    }
+    const selectTarget = (
+      observedUnitIds: readonly string[],
+      observedCellIds: readonly number[],
+    ) =>
+      selectTankAutonomousUnitTarget(state, {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
+        observedUnitIds,
+        observedCellIds,
+      });
+
+    const retainedTarget = operational.retainedTarget;
+    if (retainedTarget !== undefined) {
+      const retainedObservedUnitIds =
+        retainedTarget.targetClass !== "POPULATION" &&
+        observation.observedUnitIds.includes(retainedTarget.unitId)
+          ? Object.freeze([retainedTarget.unitId])
+          : Object.freeze([] as string[]);
+      const retainedObservedCellIds =
+        retainedTarget.targetClass === "POPULATION" &&
+        observation.observedCellIds.includes(retainedTarget.cellId)
+          ? Object.freeze([retainedTarget.cellId])
+          : Object.freeze([] as number[]);
+      if (
+        sameTankTarget(
+          retainedTarget,
+          selectTarget(retainedObservedUnitIds, retainedObservedCellIds),
+        )
+      ) {
+        return operational;
+      }
+    }
+
+    const target = selectTarget(
+      observation.observedUnitIds,
+      observation.observedCellIds,
+    );
+    if (target === undefined) {
+      if (retainedTarget === undefined) return operational;
+      const { retainedTarget: _staleTarget, ...withoutRetainedTarget } = operational;
+      changed = true;
+      return Object.freeze(withoutRetainedTarget);
+    }
+    changed = true;
+    return Object.freeze({ ...operational, retainedTarget: target });
+  });
+
+  return changed
+    ? createProspectiveMatchState(state, {
+        tankOperationalStates: Object.freeze(tankOperationalStates),
+      })
+    : state;
+}
+
+function advanceTankPursuitMovementPhase(
+  state: MatchState,
+  stateBeforeTargeting: MatchState,
+): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const previousOperationalById = new Map(
+    stateBeforeTargeting.tankOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const previousTarget = previousOperationalById.get(unit.id)?.retainedTarget;
+    const target = operational.retainedTarget;
+    if (target === undefined) {
+      if (previousTarget !== undefined && unit.route !== undefined) {
+        const cleared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+        if (cleared !== unit) unitUpdates.set(unit.id, cleared);
+      }
+      continue;
+    }
+
+    const plan = planTankPursuitRoute(
+      state,
+      {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
+      },
+      target,
+    );
+    if (plan === undefined) continue;
+
+    let prepared = unit;
+    if (plan.cells.length === 1) {
+      if (unit.route !== undefined) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+      }
+    } else if (
+      !sameTankTarget(previousTarget, target) ||
+      unit.route === undefined ||
+      unit.route.destinationCellId !== plan.destinationCellId
+    ) {
+      prepared = assignMobileUnitRoute(state.map, unit, {
+        cells: plan.cells,
+        edgeWeights: plan.edgeWeights,
+      });
+    }
+
+    const advanced = advanceMobileUnit(
+      prepared,
+      plan.movementWorkPerTick,
+    ).unit;
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+  }
+
+  if (unitUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+  });
+}
+
+function routeMatchesTankStrategicPlan(
+  unit: MatchState["mobileUnits"][number],
+  plan: Readonly<{
+    cells: readonly number[];
+    edgeWeights: readonly number[];
+  }>,
+): boolean {
+  const route = unit.route;
+  if (route === undefined) return false;
+  const routeStartIndex = route.nextCellIndex - 1;
+  if (route.cells.length - routeStartIndex !== plan.cells.length) return false;
+  if (route.edgeWeights.length - routeStartIndex !== plan.edgeWeights.length) {
+    return false;
+  }
+  for (let index = 0; index < plan.cells.length; index += 1) {
+    if (route.cells[routeStartIndex + index] !== plan.cells[index]) return false;
+  }
+  for (let index = 0; index < plan.edgeWeights.length; index += 1) {
+    if (route.edgeWeights[routeStartIndex + index] !== plan.edgeWeights[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function advanceTankStrategicMovementPhase(state: MatchState): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["tankOperationalStates"][number]
+  >();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    const destinationCellId = unit.strategicDestinationCellId;
+    if (
+      operational === undefined ||
+      destinationCellId === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.retainedTarget !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const plan = tankStrategicNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      destinationCellId,
+    );
+    if (plan.status === "LIMIT_REACHED") continue;
+
+    let prepared = unit;
+    if (plan.route.cells.length === 1) {
+      if (unit.route !== undefined) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: [unit.cellId],
+          edgeWeights: [],
+        });
+      }
+    } else if (!routeMatchesTankStrategicPlan(unit, plan.route)) {
+      prepared = assignMobileUnitRoute(state.map, unit, {
+        cells: plan.route.cells,
+        edgeWeights: plan.route.edgeWeights,
+      });
+    }
+
+    let advanced = advanceMobileUnit(
+      prepared,
+      plan.route.movementWorkPerTick,
+    ).unit;
+    if (advanced.cellId === destinationCellId) {
+      advanced = setMobileUnitStrategicDestination(state.map, advanced, undefined);
+      if (operational.operatingAnchorCellId !== destinationCellId) {
+        operationalUpdates.set(
+          unit.id,
+          Object.freeze({
+            ...operational,
+            operatingAnchorCellId: destinationCellId,
+          }),
+        );
+      }
+    }
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+  }
+
+  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+    tankOperationalStates: state.tankOperationalStates.map(
+      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
+    ),
+  });
+}
+
+function tankRoamingHash(unitId: string, roamingOrdinal: number): number {
+  let hash = 0x811c9dc5;
+  const key = `${unitId}\u0000${roamingOrdinal}`;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function tankRouteInsideOperatingLeash(
+  state: MatchState,
+  operatingAnchorCellId: number,
+  cells: readonly number[],
+): boolean {
+  return cells.every((cellId) =>
+    tankOperatingLeashContains(state.map, operatingAnchorCellId, cellId),
+  );
+}
+
+function tankRoamingCandidates(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+  operatingAnchorCellId: number,
+): readonly number[] {
+  if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+    return Object.freeze([]);
+  }
+  const anchor = state.map.positionOf(operatingAnchorCellId);
+  const minX = Math.max(0, anchor.x - TANK_ROAMING_LEASH_CELLS);
+  const maxX = Math.min(state.map.width - 1, anchor.x + TANK_ROAMING_LEASH_CELLS);
+  const minY = Math.max(0, anchor.y - TANK_ROAMING_LEASH_CELLS);
+  const maxY = Math.min(state.map.height - 1, anchor.y + TANK_ROAMING_LEASH_CELLS);
+  const candidates: number[] = [];
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const cellId = state.map.cellIdAt(x, y);
+      if (
+        cellId === undefined ||
+        cellId === unit.cellId ||
+        !tankOperatingLeashContains(state.map, operatingAnchorCellId, cellId) ||
+        tankCellTraversalTiming(state, unit.ownerId, unit.type, cellId) === undefined
+      ) {
+        continue;
+      }
+      candidates.push(cellId);
+    }
+  }
+  return Object.freeze(candidates);
+}
+
+function tankRoamingPlan(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+  operatingAnchorCellId: number,
+  roamingOrdinal: number,
+) {
+  if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+    return undefined;
+  }
+  const candidates = tankRoamingCandidates(state, unit, operatingAnchorCellId);
+  if (candidates.length === 0) return undefined;
+  const startIndex = tankRoamingHash(unit.id, roamingOrdinal) % candidates.length;
+  for (let offset = 0; offset < candidates.length; offset += 1) {
+    const destinationCellId = candidates[(startIndex + offset) % candidates.length]!;
+    const route = tankNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      destinationCellId,
+    );
+    if (
+      route.status === "FOUND" &&
+      route.route.cells.length > 1 &&
+      tankRouteInsideOperatingLeash(
+        state,
+        operatingAnchorCellId,
+        route.route.cells,
+      )
+    ) {
+      return route.route;
+    }
+  }
+  return undefined;
+}
+
+function advanceTankRoamingMovementPhase(
+  state: MatchState,
+  stateBeforeStrategicMovement: MatchState,
+): MatchState {
+  const operationalById = new Map(
+    state.tankOperationalStates.map((operational) => [operational.unitId, operational]),
+  );
+  const beforeStrategicById = new Map(
+    stateBeforeStrategicMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["tankOperationalStates"][number]
+  >();
+
+  for (const unit of state.mobileUnits) {
+    const operational = operationalById.get(unit.id);
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick ||
+      operational.repairFactoryId !== undefined ||
+      operational.retainedTarget !== undefined ||
+      unit.strategicDestinationCellId !== undefined ||
+      beforeStrategicById.get(unit.id)?.strategicDestinationCellId !== undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    const movementTiming = tankNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.type,
+      unit.cellId,
+      unit.cellId,
+    );
+    if (movementTiming.status !== "FOUND") continue;
+
+    if (
+      !tankOperatingLeashContains(
+        state.map,
+        operational.operatingAnchorCellId,
+        unit.cellId,
+      )
+    ) {
+      const returnRoute = tankNavigationRoute(
+        state,
+        unit.ownerId,
+        unit.type,
+        unit.cellId,
+        operational.operatingAnchorCellId,
+      );
+      if (returnRoute.status !== "FOUND") continue;
+      let prepared = unit;
+      if (!routeMatchesTankStrategicPlan(unit, returnRoute.route)) {
+        prepared = assignMobileUnitRoute(state.map, unit, {
+          cells: returnRoute.route.cells,
+          edgeWeights: returnRoute.route.edgeWeights,
+        });
+      }
+      const advanced = advanceMobileUnit(
+        prepared,
+        returnRoute.route.movementWorkPerTick,
+      ).unit;
+      if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+      continue;
+    }
+
+    if (
+      unit.route !== undefined &&
+      tankRouteInsideOperatingLeash(
+        state,
+        operational.operatingAnchorCellId,
+        unit.route.cells.slice(unit.route.nextCellIndex - 1),
+      )
+    ) {
+      const advanced = advanceMobileUnit(
+        unit,
+        movementTiming.route.movementWorkPerTick,
+      ).unit;
+      if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+      continue;
+    }
+
+    const roamingOrdinal = operational.roamingOrdinal ?? 0;
+    if (roamingOrdinal >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("Tank roaming ordinal is exhausted");
+    }
+    const plan = tankRoamingPlan(
+      state,
+      unit,
+      operational.operatingAnchorCellId,
+      roamingOrdinal,
+    );
+    if (plan === undefined) continue;
+    const prepared = assignMobileUnitRoute(state.map, unit, {
+      cells: plan.cells,
+      edgeWeights: plan.edgeWeights,
+    });
+    const advanced = advanceMobileUnit(
+      prepared,
+      plan.movementWorkPerTick,
+    ).unit;
+    if (advanced !== unit) unitUpdates.set(unit.id, advanced);
+    operationalUpdates.set(
+      unit.id,
+      Object.freeze({
+        ...operational,
+        roamingOrdinal: roamingOrdinal + 1,
+      }),
+    );
+  }
+
+  if (unitUpdates.size === 0 && operationalUpdates.size === 0) return state;
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((unit) => unitUpdates.get(unit.id) ?? unit),
+    tankOperationalStates: state.tankOperationalStates.map(
+      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
+    ),
+  });
+}
+
+function tankAttackCooldownTicks(
+  unitType: "TANK" | "HEAVY_ARTILLERY",
+  targetClass: TankRetainedTarget["targetClass"],
+): number {
+  if (unitType === "HEAVY_ARTILLERY") return 120;
+  return targetClass === "POPULATION" ? 30 : 10;
+}
+
+function advanceTankUnitCombatPhase(state: MatchState): MatchState {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const fastServiceUnitIds = tankFastServiceUnitIds(state);
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectTankTargetObservation>
+  >();
+  const unitAttacks: AdmittedTankUnitAttack[] = [];
+  const populationShots: AdmittedTankPopulationShot[] = [];
+  const cooldownTicksByUnitId = new Map<string, number>();
+
+  for (const operational of state.tankOperationalStates) {
+    const retainedTarget = operational.retainedTarget;
+    if (
+      operational.eligibleFromTick > state.tick ||
+      fastServiceUnitIds.has(operational.unitId) ||
+      operational.attackReadyAtTick > state.tick ||
+      retainedTarget === undefined
+    ) {
+      continue;
+    }
+    const unit = unitsById.get(operational.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+
+    let observation = observationByOwner.get(unit.ownerId);
+    if (observation === undefined) {
+      observation = projectTankTargetObservation(state, unit.ownerId);
+      observationByOwner.set(unit.ownerId, observation);
+    }
+
+    if (retainedTarget.targetClass === "POPULATION") {
+      if (!observation.observedCellIds.includes(retainedTarget.cellId)) continue;
+      const stillLegal = selectTankAutonomousUnitTarget(state, {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
+        observedUnitIds: Object.freeze([]),
+        observedCellIds: Object.freeze([retainedTarget.cellId]),
+      });
+      if (!sameTankTarget(retainedTarget, stillLegal)) continue;
+
+      const plan = planTankPursuitRoute(
+        state,
+        {
+          ownerId: unit.ownerId,
+          chassisType: unit.type,
+          currentCellId: unit.cellId,
+          operatingAnchorCellId: operational.operatingAnchorCellId,
+          strategicDestinationCellId: unit.strategicDestinationCellId,
+        },
+        retainedTarget,
+      );
+      if (
+        plan === undefined ||
+        plan.cells.length !== 1 ||
+        plan.destinationCellId !== unit.cellId
+      ) {
+        continue;
+      }
+      const targetFactionId = state.ownership[retainedTarget.cellId] ?? null;
+      if (targetFactionId === null) continue;
+      populationShots.push(
+        Object.freeze({
+          attackerOwnerId: unit.ownerId,
+          chassisType: unit.type,
+          targetFactionId,
+          attackerUnitId: unit.id,
+          targetCellId: retainedTarget.cellId,
+        }),
+      );
+      cooldownTicksByUnitId.set(
+        unit.id,
+        tankAttackCooldownTicks(unit.type, retainedTarget.targetClass),
+      );
+      continue;
+    }
+
+    if (
+      retainedTarget.targetClass !== "TANK_CHASSIS" &&
+      retainedTarget.targetClass !== "TRAIN"
+    ) {
+      continue;
+    }
+    const target = unitsById.get(retainedTarget.unitId);
+    if (target === undefined) continue;
+    if (
+      retainedTarget.targetClass === "TANK_CHASSIS"
+        ? target.type !== "TANK" && target.type !== "HEAVY_ARTILLERY"
+        : unit.type !== "TANK" || target.type !== "TRAIN"
+    ) {
+      continue;
+    }
+    if (!observation.observedUnitIds.includes(target.id)) continue;
+
+    const plan = planTankPursuitRoute(
+      state,
+      {
+        ownerId: unit.ownerId,
+        chassisType: unit.type,
+        currentCellId: unit.cellId,
+        operatingAnchorCellId: operational.operatingAnchorCellId,
+        strategicDestinationCellId: unit.strategicDestinationCellId,
+      },
+      retainedTarget,
+    );
+    if (
+      plan === undefined ||
+      plan.cells.length !== 1 ||
+      plan.destinationCellId !== unit.cellId
+    ) {
+      continue;
+    }
+
+    unitAttacks.push(
+      Object.freeze({
+        attackerUnitId: unit.id,
+        targetUnitId: target.id,
+      }),
+    );
+    cooldownTicksByUnitId.set(
+      unit.id,
+      tankAttackCooldownTicks(unit.type, retainedTarget.targetClass),
+    );
+  }
+
+  const preCombat =
+    cooldownTicksByUnitId.size === 0
+      ? state
+      : createProspectiveMatchState(state, {
+          tankOperationalStates: state.tankOperationalStates.map((operational) => {
+            const cooldownTicks = cooldownTicksByUnitId.get(operational.unitId);
+            if (cooldownTicks === undefined) return operational;
+            const unit = unitsById.get(operational.unitId);
+            if (
+              unit === undefined ||
+              (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+            ) {
+              throw new Error(
+                `Tank combat cooldown update lost firing unit ${operational.unitId}`,
+              );
+            }
+            return Object.freeze({
+              ...operational,
+              attackReadyAtTick: state.tick + cooldownTicks,
+            });
+          }),
+        });
+
+  const populationCombat = resolveAdmittedTankPopulationAttacks(
+    preCombat,
+    populationShots,
+  );
+  const aftershocks = resolveTankPopulationAftershocks(
+    preCombat,
+    populationCombat.successfulShots,
+  );
+  const physicalCombat = resolveAdmittedTankUnitAttacks(preCombat, unitAttacks);
+  const targetPopulationByFactionId = new Map(
+    populationCombat.targets.map((target) => [
+      target.targetFactionId,
+      target.targetPopulation,
+    ]),
+  );
+  const populationApplied =
+    targetPopulationByFactionId.size === 0
+      ? physicalCombat.state
+      : createProspectiveMatchState(physicalCombat.state, {
+          factions: physicalCombat.state.factions.map((faction) => {
+            const population = targetPopulationByFactionId.get(faction.id);
+            return population === undefined
+              ? faction
+              : Object.freeze({ ...faction, population });
+          }),
+        });
+  const territorial = applyRadioactiveAttackAftershockEvents(
+    populationApplied,
+    aftershocks.events,
+  );
+  const territorialApplied =
+    territorial.ownership === populationApplied.ownership &&
+    territorial.fallout === populationApplied.fallout
+      ? populationApplied
+      : createProspectiveMatchState(populationApplied, {
+          ownership: territorial.ownership,
+          fallout: territorial.fallout,
+        });
+  const directReveals = resolveDirectRevealsFromTankCombatEvents(
+    territorialApplied,
+    physicalCombat.events,
+    populationCombat.events,
+    state.tick,
+  );
+  return createProspectiveMatchState(territorialApplied, { directReveals });
 }
 
 export class TickEngine {
@@ -381,7 +1123,7 @@ export class TickEngine {
       hostilityEvents,
       nextTick,
     );
-    return createAdvancedMatchState(earningSnapshot, {
+    const advanced = createAdvancedMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
       fallout: land.fallout,
@@ -392,5 +1134,17 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
+    const repairIntended = advanceTankRepairIntentPhase(advanced);
+    const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
+    const pursuitMoved = advanceTankPursuitMovementPhase(
+      targetIntended,
+      repairIntended,
+    );
+    const strategicMoved = advanceTankStrategicMovementPhase(pursuitMoved);
+    const repairMoved = advanceTankRepairMovementPhase(strategicMoved);
+    const roamed = advanceTankRoamingMovementPhase(repairMoved, pursuitMoved);
+    const combatResolved = advanceTankUnitCombatPhase(roamed);
+    const repaired = advanceTankRepairPhase(combatResolved);
+    return advanceTankProductionPhase(repaired);
   }
 }

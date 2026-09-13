@@ -150,7 +150,27 @@ then attackEventId ascending
 
 This order exists only for deterministic serialization/replay and stable comparison. Array position does not mean first hit, last hit, primary cause, or reward credit. Same-tick simultaneous attacks remain simultaneous.
 
-### 5.3 `CELL_OWNERSHIP_CHANGED`
+### 5.3 `RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED`
+
+When a focused combat owner resolves an attack-triggered radioactive aftershock whose physical consequence belongs to the territorial/Fallout subsystem, it emits:
+
+```ts
+RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED {
+  attacker: UnitEventSubject;
+  targetCellId: number;
+  affectedCellIds: readonly number[];
+}
+```
+
+The combat owner resolves the aftershock's legality, trigger, footprint, eligibility, cap, and canonical affected-cell ordering from its authoritative combat snapshot before emitting the fact. Those mechanics remain with the focused gameplay/Origin owners and are not restated here.
+
+`affectedCellIds` is therefore the already-resolved authoritative footprint for this occurrence. A downstream territorial/Fallout consumer applies that exact set and **must not** reselect cells or re-evaluate combat-side eligibility against later state.
+
+The event may contain an empty `affectedCellIds` set when the focused combat rule resolves a qualifying occurrence with no eligible territorial cells. It records the resolved occurrence rather than inventing a second suppression rule at the event boundary.
+
+The payload does not carry ownership snapshots, Fallout snapshots, capture results, Population accounting, structure-capture consequences, or other consumer-owned state. Applying the territorial consequence is not a capture operation merely because political ownership changes.
+
+### 5.4 `CELL_OWNERSHIP_CHANGED`
 
 When an authoritative producer changes the political owner of a simulation cell, it emits exactly one fact for that changed cell:
 
@@ -168,7 +188,7 @@ When one producer phase changes multiple cells, its `CELL_OWNERSHIP_CHANGED` bat
 
 The fact is an in-tick delivery value rather than persistent `MatchState` residual state. Downstream consumers receive it after the producer-owned ownership state has been committed and may query that current authoritative state for facts they own. A consumer that applies one-time consequences must reject duplicate changed-cell facts within the same delivered batch rather than silently applying the same occurrence twice.
 
-### 5.4 `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED`
+### 5.5 `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED`
 
 When a subsystem-owned persistent directed-hostility source that was active for one resolved hostility-side pair ceases to be active because of that subsystem's authoritative lifecycle transition, that producer emits:
 
@@ -187,7 +207,7 @@ A producer must snapshot any identity needed after its owned record/reference di
 
 Within one producer transition, every ended persistent source emits exactly one fact. A stable source that remains active for the same directed side pair emits none; retargeting/replacement that ends the old directed source emits the old source fact even when an implementation reuses a stable local source identifier. Event IDs remain deterministic, producer-owned, unique, and opaque; ordering of a multi-source ended batch must be deterministic.
 
-### 5.5 `FACTION_CAPITULATED`
+### 5.6 `FACTION_CAPITULATED`
 
 When an authoritative faction-lifecycle producer commits the concrete `ACTIVE -> CAPITULATED` transition, it emits:
 

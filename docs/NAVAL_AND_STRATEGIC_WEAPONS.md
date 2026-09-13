@@ -675,9 +675,9 @@ Hard build prohibitions are evaluated before transaction resources are committed
 
 Warships are autonomous combat formations rather than RTS-micro units.
 
-The controller may issue a strategic **move destination**. An accepted move repositions the Warship and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, attack modes, or individual targets.
+The controller may issue a strategic **move destination**. Shared destination admission, persistence, exact-or-best-effort routing, interruption/resumption, and anchor-update semantics are owned by `OPEN_FUFU_DESIGN.md` §6.5.1; this naval owner supplies Warship-specific destination-cell legality, Deep-Water traversal, and autonomous intent priority. The controller does not assign patrol modes, raid modes, attack modes, or individual targets.
 
-Within ordinary operation the Warship wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, target acquisition, pursuit, firing, Trade-Ship capture behavior, and automatic repair retreat are simulation-owned. Baseline Warship path traversal uses Deep Water and cannot traverse Shallow Water. This is a Warship-specific movement rule, not a generic property inherited by other water units.
+Within ordinary settled operation the Warship wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Active strategic travel uses the shared leash/interruption contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Pathfinding, roaming, target acquisition, pursuit, firing, Trade-Ship capture behavior, and automatic repair retreat are simulation-owned. Baseline Warship path traversal uses Deep Water and cannot traverse Shallow Water. This is a Warship-specific movement rule, not a generic property inherited by other water units.
 
 Ordinary autonomous target priority within legal observation is:
 

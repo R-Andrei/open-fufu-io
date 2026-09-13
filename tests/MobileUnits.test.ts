@@ -13,6 +13,7 @@ import {
   createMobileUnitSpatialIndex,
   materializeMobileUnitCollection,
   removeMobileUnit,
+  setMobileUnitStrategicDestination,
   snapshotMobileUnitForProjection,
   type MobileUnitCollectionState,
   type MobileUnitState,
@@ -360,6 +361,66 @@ describe("target mobile-unit runtime foundation", () => {
     expect(() => advanceMobileUnit(routed, -0)).toThrow(/movement work/i);
   });
 
+  it("preserves one shared strategic destination contract for Tank and Warship across temporary routes", () => {
+    const map = syntheticMap(4, 2);
+    const owners = ["alpha"] as const;
+    const tankCreated = createMobileUnit(map, owners, emptyCollection(), {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
+    const warshipCreated = createMobileUnit(map, owners, tankCreated, {
+      ownerId: "alpha",
+      type: "WARSHIP",
+      movementClass: "NAVAL",
+      cellId: 4,
+    });
+
+    const tankIntent = setMobileUnitStrategicDestination(
+      map,
+      tankCreated.unit,
+      3,
+    );
+    const warshipIntent = setMobileUnitStrategicDestination(
+      map,
+      warshipCreated.unit,
+      7,
+    );
+    const tankTemporaryRoute = assignMobileUnitRoute(map, tankIntent, {
+      cells: [0, 1],
+      edgeWeights: [10],
+    });
+    const warshipTemporaryRoute = assignMobileUnitRoute(map, warshipIntent, {
+      cells: [4, 5],
+      edgeWeights: [10],
+    });
+
+    expect(tankTemporaryRoute.strategicDestinationCellId).toBe(3);
+    expect(warshipTemporaryRoute.strategicDestinationCellId).toBe(7);
+    expect(snapshotMobileUnitForProjection(tankTemporaryRoute).movementDestinationCellId).toBe(3);
+    expect(snapshotMobileUnitForProjection(warshipTemporaryRoute).movementDestinationCellId).toBe(7);
+
+    const tankAtTemporaryEndpoint = advanceMobileUnit(tankTemporaryRoute, 10).unit;
+    const warshipAtTemporaryEndpoint = advanceMobileUnit(warshipTemporaryRoute, 10).unit;
+    expect(tankAtTemporaryEndpoint.route).toBeUndefined();
+    expect(warshipAtTemporaryEndpoint.route).toBeUndefined();
+    expect(tankAtTemporaryEndpoint.strategicDestinationCellId).toBe(3);
+    expect(warshipAtTemporaryEndpoint.strategicDestinationCellId).toBe(7);
+
+    const rematerialized = materializeMobileUnitCollection(map, owners, {
+      mobileUnits: [warshipAtTemporaryEndpoint, tankAtTemporaryEndpoint],
+      nextMobileUnitOrdinal: warshipCreated.nextMobileUnitOrdinal,
+    });
+    expect(rematerialized.mobileUnits.map((unit) => unit.strategicDestinationCellId)).toEqual([
+      3,
+      7,
+    ]);
+
+    expect(() => setMobileUnitStrategicDestination(map, tankCreated.unit, 8)).toThrow(/CellId/i);
+    expect(setMobileUnitStrategicDestination(map, tankIntent, undefined).strategicDestinationCellId).toBeUndefined();
+  });
+
   it("advances simultaneous units in stable identity order independent of input enumeration", () => {
     const map = syntheticMap();
     const first = createMobileUnit(map, ["alpha", "beta"], emptyCollection(), {
@@ -476,7 +537,8 @@ describe("target mobile-unit runtime foundation", () => {
       movementClass: "RAIL",
       cellId: 4,
     });
-    const routed = assignMobileUnitRoute(base.map, first.unit, {
+    const strategic = setMobileUnitStrategicDestination(base.map, first.unit, 3);
+    const routed = assignMobileUnitRoute(base.map, strategic, {
       cells: [0, 1, 2],
       edgeWeights: [10, 20],
     });
@@ -505,6 +567,7 @@ describe("target mobile-unit runtime foundation", () => {
       type: "TANK",
       movementClass: "TANK",
       cellId: 0,
+      strategicDestinationCellId: 3,
       route: {
         destinationCellId: 2,
         cells: [0, 1, 2],

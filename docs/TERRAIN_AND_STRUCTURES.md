@@ -502,7 +502,9 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 | **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
 | **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
 | **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
-| **Factory — simultaneous Tank repair capacity** | 1 | 2 | 3 | 4 | **5** |
+| **Factory — broad armored-unit repair radius** | 20 | 40 | 60 | 80 | **100** |
+| **Factory — broad armored-unit repair rate** | 10 HP/s | 20 HP/s | 30 HP/s | 40 HP/s | **50 HP/s** |
+| **Factory — fast armored-unit repair rate** | 100 HP/s | 137.5 HP/s | 175 HP/s | 212.5 HP/s | **250 HP/s** |
 | **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — interception range** | 70 | 80 | 90 | 100 | **105** |
@@ -542,15 +544,14 @@ Factories produce Trains and Tanks and repair Tank chassis.
 
 Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
-Baseline Tank repair:
+Factory armored-unit repair is an explicit **two-tier vehicle-repair profile** and therefore uses the shared lifecycle in Section 2.8. Its completed-level broad radius/rate and fast-service rate are listed in Section 2.6. Its focused fast-service parameters are:
 
 ```text
-repair radius = 5 cells
-repair rate = 100 HP/s per repairing Tank chassis
-simultaneous repair capacity = completed Factory level
+fast-service radius = 10 cells at every Factory level
+fast-service capacity = 1 chassis at every Factory level
 ```
 
-Factory consumers must request an **effective Factory profile** rather than infer a generic `Factory effect multiplier`. The current P34 conquest transformation is explicitly axis-specific: a qualifying conquered Factory uses `1.50×` Train-event base value, `1.50×` Tank-chassis construction speed, `150 HP/s` Tank repair, and an `8-cell` repair radius. Its primary Train-service capacity, turnaround, Tank-build concurrency, Tank purchase price, simultaneous repair capacity, Factory level, and Factory construction/upgrade rules remain ordinary. Exact Origin semantics and interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+The ordinary Factory repair-radius rule axis modifies **broad repair radius only**. The ordinary Factory repair-rate axis scales **both broad and fast repair rates**. Fast-service radius and one-slot capacity are fixed baseline parameters rather than those axes. Factory consumers must request the effective typed repair profile rather than infer a generic `Factory effect multiplier`. Exact P34 transformation values and Origin interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`; Echo identities/scopes are owned by `ECHO_CATALOGUE.md`.
 
 ### Missile Silo
 
@@ -634,6 +635,30 @@ A completed Command Post gives its listed offensive-pressure modifier to an ordi
 
 It does not modify Tank weapon damage, Warship damage, strategic weapons, or unrelated FFY effects.
 
+## 2.8 Shared two-tier vehicle-repair lifecycle
+
+This section owns the common assignment, routing, queue, broad-service, fast-service, and completion lifecycle for vehicle-repair profiles that explicitly opt into the **two-tier vehicle-repair** contract. A repair field does not inherit this lifecycle merely because it uses radial repair geometry. The Factory armored-unit profile in Section 2.7 explicitly uses it; another provider profile uses it only when that provider/unit contract explicitly adopts it.
+
+The focused consumer remains responsible for determining which vehicles are repairable, which providers are eligible, the repair-retreat trigger/intent priority, legal traversal and route timing, effective maximum health, the provider's effective broad/fast profile, and the vehicle's focused combat/raiding capabilities. Once repair retreat is active, this section owns the generic lifecycle below.
+
+For an eligible vehicle, consider only eligible providers whose current fast-service field contains at least one legally reachable cell. For each provider, choose the reachable cell in that fast-service field with the least legal traversal time under the vehicle's current effective movement profile; equal traversal-time cells tie by ascending stable `cellId`. Choose the provider with the least such traversal time; provider ties use ascending stable `structureId`.
+
+The selected provider assignment persists rather than being recomputed opportunistically. Preserve it while the provider remains eligible and the retained route/queue position remains legal. If the provider becomes ineligible or its fast-service field no longer has a reachable legal cell, deterministically reselect under the same rule; if no replacement exists, clear the repair assignment and repair route.
+
+An assigned vehicle receives that provider's broad repair whenever it is inside the provider's current effective broad field and is not receiving fast service that tick. Broad repair does not stop movement, has no simultaneous-unit capacity limit, and may apply while the vehicle is still travelling toward fast service or waiting in the fast-service queue. A vehicle is assigned to at most one provider, so repair from several providers never stacks on one vehicle.
+
+When the vehicle reaches its selected legal cell inside the provider's fast-service field, it joins that provider's stable queue with key:
+
+```text
+(repairArrivalTick, unitId)
+```
+
+Queue order is ascending by arrival tick and then stable unit ID. Queued vehicles hold their arrival position while waiting. Each service phase selects at most the provider profile's fast-service capacity from the head of that queue. A selected fast-service recipient receives fast repair only; broad and fast repair never stack on the same vehicle in one tick.
+
+Repair retreat is the highest-priority **movement** intent, not a general combat-inactive state. A vehicle travelling toward repair remains otherwise operational for its focused lawful target acquisition and firing, and combat does not replace or divert the repair route. A queued vehicle that is not selected for fast service likewise remains otherwise operational while holding its queue position. Only a vehicle actually selected as a fast-service recipient is inactive for ordinary target acquisition/firing during that service phase.
+
+Every repair application uses the provider's current effective profile and the vehicle's current effective maximum health, retaining exact deterministic fractional health where required and clamping at that maximum. Reaching full health clears the repair assignment/queue state and repair route. Repair never changes the vehicle's strategic operating anchor; after service it resumes the focused unit owner's ordinary intent from that unchanged anchor.
+
 ---
 
 # 3. Baseline Tank
@@ -701,15 +726,25 @@ Baseline Plains movement speed is **5 cells/s**.
 | **Deep Water** | Blocked | — | — |
 | **Impassable** | Blocked | — | — |
 
+For one legal cardinal Tank edge from traversable cell `A` to traversable cell `B`, let `vA` and `vB` be that chassis's current effective movement speeds on the two endpoint terrains after all applicable chassis/Origin/Echo movement effects. The edge traversal time is symmetric half-edge time:
+
+```text
+edgeTime(A, B) = 0.5 / vA + 0.5 / vB
+```
+
+Authoritative routing accumulates this value with exact rational arithmetic; it must not round each edge through floating point. Therefore `A -> B` and `B -> A` have the same terrain-derived traversal time, and a same-terrain edge reduces exactly to `1 / v`. If either endpoint terrain is blocked for the chassis, or the territorial-corridor predicate rejects the transition, that edge is unavailable rather than assigned a finite traversal time.
+
 Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
 ## 3.3 Strategic/autonomous control
 
 Tanks are autonomous combat formations rather than RTS-micro units.
 
-The controller may issue a strategic **move destination**. An accepted move repositions the Tank and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
+The controller may issue a strategic **move destination**. Shared destination admission, persistence, exact-or-best-effort routing, interruption/resumption, and anchor-update semantics are owned by `OPEN_FUFU_DESIGN.md` §6.5.1; this Tank owner supplies Tank-specific destination-cell legality, traversal, and intent priority. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
 
-Within ordinary operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned. Tank attacks require legal observation.
+Within ordinary settled operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Active strategic travel uses the shared leash/interruption contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned.
+
+A Tank-derived chassis provides its owning faction ordinary local tactical observation out to that chassis's **current effective weapon range**. That local observation is subject to the game-wide visibility precedence in `OPEN_FUFU_DESIGN.md`: concealment/blackout still defeats ordinary observation, while an active source-specific direct reveal may expose a source through concealment. Tank attacks require legal observation.
 
 ## 3.4 Combat and raiding
 
@@ -724,3 +759,115 @@ Autonomous anti-armor combat and Train interception do **not** require, create, 
 Population attacks never capture territory by themselves.
 
 Train interception payout semantics are owned by `FFY_ECONOMY.md`.
+
+## 3.5 Deterministic production lifecycle
+
+A Tank-production admission is one atomic transaction against the authoritative pre-state. It must validate the selected Factory's current ownership/activity and completed L1+ state, its free Tank-build slot, the faction's current active Tank-derived chassis count, the resulting effective chassis profile and purchase cost, the controller-selected initial strategic destination, and FFY affordability before committing anything. Rejection consumes no FFY and no slot. Acceptance debits the final FFY cost exactly once and creates exactly one Factory-owned production job.
+
+The initial strategic destination must be a cell the resulting chassis may intrinsically occupy at admission. Current route connectivity is not an admission requirement; after deployment, persistence and exact-or-best-effort travel use the shared strategic-destination contract in `OPEN_FUFU_DESIGN.md` §6.5.1.
+
+For the purchase-cost curve, `activeTankChassis` means currently deployed, living `TANK` or Origin-transformed Tank-derived chassis such as `HEAVY_ARTILLERY` owned by that faction. In-progress jobs, completed output waiting for a deployment cell, and destroyed chassis do not count.
+
+The accepted job snapshots the resulting chassis identity/profile, its finalized build duration, and the exact controller-selected initial strategic destination at admission. Later rule/profile changes do not retroactively change that job's duration or resulting chassis, and later route-connectivity changes do not replace its selected destination. The finalized duration uses the Section 3.1 work-rate rule exactly once. An accepted job receives its first production-progress tick in that same authoritative tick's final production phase. The snapshotted destination persists unchanged while the job is building or waiting for a deployment cell.
+
+If the producing Factory still exists under the same owner but is temporarily ineligible/inactive, the job pauses with its remaining work unchanged. If that Factory is destroyed or changes owner, the unfinished job is cancelled; it is not transferred and its already committed FFY is not refunded.
+
+When work is complete, deployment considers the Factory's cardinal neighbors that are currently owned by the job owner and traversable by the resulting chassis. The deployment cell is the lowest stable `cellId` among those legal neighbors. If no such cell exists, the completed output remains waiting at the Factory and continues occupying the Factory's one Tank-build slot until deployment becomes possible. Deployment creates exactly one chassis at full effective maximum health; the deployment cell is its initial operating anchor. If the snapshotted strategic destination differs from that deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
+
+## 3.6 Autonomous intent, target selection, and pursuit
+
+A deployed Tank-derived chassis resolves one movement intent per Tank stage in this priority order:
+
+1. automatic repair retreat when the repair threshold is active;
+2. pursuit of an already retained legal target;
+3. a current controller-issued strategic move destination;
+4. ordinary autonomous search/roaming around the operating anchor.
+
+Strategic destination persistence, best-effort unreachable routing, active-travel leash treatment, interruption/resumption, and anchor update use the shared contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Repair movement never replaces the operating anchor.
+
+When the chassis has no retained target, autonomous target acquisition considers lawfully observed, legal targets in this class priority:
+
+```text
+Tank-derived chassis
+Warship
+Train
+Population
+```
+
+Within the first non-empty eligible class, choose the target requiring the least expected legal traversal time to a firing position under the chassis's current effective movement profile. A target already legally in range has traversal time zero. Equal traversal-time candidates break ties by stable target identity; Population-cell ties use ascending stable `cellId`. When pursuit has more than one legal firing position at the same minimum traversal time, choose the position with the lowest stable `cellId`.
+
+The selected target is sticky. It remains retained rather than being replaced merely because another candidate later becomes nearer or belongs to a higher-priority class. Clear it only when the target is destroyed/ceases to exist, is no longer lawfully observed, is no longer a legal target, has no legal reachable firing position, or, during ordinary settled operation, is outside the chassis's 100-cell operating leash. A new acquisition then repeats the class-priority and tie rules above.
+
+The ordinary 100-cell leash is measured between cell centers around the current operating anchor. During ordinary settled operation, a target/firing-position pursuit may not cause the chassis to operate outside that leash, and autonomous roaming remains inside it. Active strategic travel uses the shared leash exception in `OPEN_FUFU_DESIGN.md` §6.5.1.
+
+Ordinary roaming runs only when no repair assignment, retained target, or active strategic destination is taking the higher-priority movement intent. If a completed repair detour leaves the chassis outside its unchanged operating leash, ordinary movement first routes back toward the operating anchor and does not consume a roaming waypoint ordinal until the chassis is again inside the leash.
+
+While inside the leash and without a retained local roaming route, form the stable ascending-`cellId` list of other cells whose centers are inside the inclusive 100-cell leash and are individually traversable under the chassis's current effective Tank movement profile. The chassis owns a persisted non-negative `roamingOrdinal`, initially `0`. A stable deterministic hash of `(unitId, roamingOrdinal)` chooses the starting index in that candidate list; scan cyclically from there and select the first candidate whose legal least-traversal-time Tank route remains entirely inside the leash. If no candidate qualifies, hold position and do not advance the ordinal. Selecting a waypoint persists that route and increments `roamingOrdinal` exactly once; following the same waypoint on later ticks does not increment it again. Reaching a roaming waypoint never changes the operating anchor, and the next ordinary-roaming opportunity uses the next persisted ordinal. Any higher-priority repair, retained-combat, or strategic-travel intent may replace the local roaming route.
+
+When the requested strategic destination is actually reached, that order is fulfilled and ceases to be active; the reached cell remains the new operating/wander anchor under `OPEN_FUFU_DESIGN.md` §6.5.1. Later local roaming away from that anchor does not reactivate the fulfilled strategic order.
+
+## 3.7 Range, attacks, and same-tick combat resolution
+
+Every Tank-derived weapon range uses an inclusive cell-center circle. For attacker/target cell-center offsets `(dx, dy)` and effective range `R`, the target is in range exactly when:
+
+```text
+dx² + dy² <= R²
+```
+
+Range is geometric weapon reach, not path distance. Chassis path barriers therefore do not by themselves block a shot to an otherwise legal observed target in range. P43's explicit projectile-traversal rule remains owned by the Origin catalogue.
+
+A hostile Warship is a legal anti-armor target between Tank-derived chassis and Train in the priority above. A baseline Tank attacks it with the ordinary anti-armor profile: effective Tank anti-armor range/damage/cooldown. This Tank-originated attack does not require, create, or refresh `atWar`. P43 applies its transformed anti-armor profile. This rule adds no reciprocal Warship-to-Tank behavior; Warship mechanics remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+
+A Population target is one enemy-owned population-bearing cell that is currently visible to the Tank owner's faction, within effective Population-weapon range, within the ordinary operating leash when that leash applies under Section 3.6, and whose owning hostility side is currently `atWar` with the Tank owner's side. Public political ownership alone does not make an otherwise unseen enemy cell a legal Population target. Direct Population damage is finalized once per committed shot after applicable damage modifiers and floored to a non-negative whole Population amount. The actual direct casualty debit is:
+
+```text
+min(finalPopulationDamage, targetFaction.AvailablePopulation)
+```
+
+Only Available Population pays this Tank attack. Committed offensive Population, committed counter-response Population, and Population aboard Transports are not debited by the direct shot. The selected Population cell remains the spatial target for any successful post-hit effect such as P44; P44's candidate ordering/footprint remains owned by `ORIGIN_TRAIT_CATALOGUE.md`. Direct Population casualties do not change ownership.
+
+Tank combat uses a frozen **post-movement** combat snapshot. All attack eligibility, retained/acquired targets, range checks, cooldown readiness, and attack payloads for that combat phase are resolved from that snapshot before any same-phase damage/destruction is committed. Every admitted attack then resolves simultaneously. Therefore mutually lethal attackers both fire, and multiple attackers that selected the same target all retain their admitted shots even if aggregate damage is lethal.
+
+After simultaneous direct attack effects are collected, apply chassis HP damage, physical Train/other-unit destruction results, and direct Population casualties, then remove destroyed mobile units. Successful Population-shot follow-up effects such as P44 resolve from the same post-direct-attack territorial/occupancy snapshot so their result is independent of attacker enumeration order; overlapping candidate cells do not become newly eligible merely because another same-phase P44 effect neutralized a nearer cell first.
+
+A successful shot starts its authored cooldown from the current authoritative tick. It is next eligible on the first tick at or after `shotTick + effectiveCooldownTicks`. Cooldown state is authoritative replay state. No cooldown is consumed for a candidate attack that fails legality before commit.
+
+Health and repair may retain deterministic fractional values where effective modifiers/rates require them; HP is clamped only at zero and the current effective maximum.
+
+## 3.8 Automatic repair retreat and contention
+
+At the intent phase, a living Tank-derived chassis at or below **50% of its current effective maximum health** enters automatic repair retreat unless an explicit effective rule changes that threshold. Repair retreat is the highest-priority Tank movement intent under Section 3.6.
+
+Tank/Factory repair consumes the shared two-tier vehicle-repair lifecycle in Section 2.8 without a Tank-specific routing, queue, or service override. Eligible providers are active owned Factories. Reachability and route timing use the chassis's current effective Tank traversal/movement profile; repair clamps against its current effective maximum health; and service uses the Factory profile and effective repair axes defined in Sections 2.6–2.7.
+
+Factory repair never changes the Tank's operating anchor. On leaving repair at full health, the chassis resumes ordinary Tank intent from that unchanged anchor under Sections 3.3 and 3.6.
+
+## 3.9 Authoritative Tank-stage ordering
+
+For a simulation tick that contains these systems, the relevant authoritative order is:
+
+```text
+accepted simulation inputs / ordinary pre-land economy
+    ↓
+land resolution, including territorial capture and structure fate
+    ↓
+persistent-structure lifecycle progression/completion
+    ↓
+Tank intent / repair assignment / target retention-or-acquisition
+    ↓
+Tank movement
+    ↓
+freeze post-movement Tank combat snapshot
+    ↓
+simultaneous Tank attacks and direct effects
+    ↓
+destruction + Population/P44 follow-up consequences
+    ↓
+Factory Tank repair
+    ↓
+Tank production progress/completion/deployment
+```
+
+Thus a Factory that completes or upgrades during persistent-structure lifecycle progression is already active at its new completed level for same-tick Tank repair/production queries. Conversely, Tank production is the final Tank-local phase, so a chassis deployed there cannot participate in earlier phases until the following tick.
+
+The Tank stage consumes the canonical land/capture, structure, hostility/visibility, Population, FFY, navigation, Origin/effective-rule, and mobile-unit states; it does not create parallel copies of those authorities.

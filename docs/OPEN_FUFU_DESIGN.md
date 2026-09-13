@@ -208,7 +208,7 @@ UNREVEALED
 
 Multiple applicable concealment/blackout predicates compose as a boolean union. They do not stack into concealment strength. Remote observation never defeats an applicable concealment/blackout; an explicit-public rule or an active source-specific direct reveal does.
 
-A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. Each faction to which that resolved manifestation itself is lawfully observable receives the direct reveal independently. An affected faction is therefore a recipient, and an independent third-party witness receives the reveal only when the same manifestation is lawfully observable to that viewer; a faction that does not lawfully observe the manifestation receives no reveal merely because the action occurred.
+A **direct hostile manifestation** occurs only when the authoritative simulation actually resolves a hostile effect from an identifiable unit, structure, or operation against another faction. Target selection, tracking, prospective acquisition, rejected/failed actions, movement, and other private intent are not manifestations and reveal nothing. A resolved direct hostile manifestation grants source-specific direct reveal only to the faction or factions directly attacked by that resolved effect. Independent third parties receive no attack-derived direct reveal merely because they can observe the source, target cell, projectile path, or effect. If one resolved effect directly attacks multiple factions, each directly attacked faction receives its own source-specific reveal.
 
 Direct reveal exposes the **source itself at its complete ordinary visible representation**, exactly as that unit, structure, or operation would be surfaced outside concealment. It does not reveal neighboring units, structures, operations, same-cell contents, or any other concealed state. The reveal follows source identity as it moves rather than leaving a marker at the manifestation location.
 
@@ -278,6 +278,18 @@ There is no engine-level canonical `Front` object that dictates strategy. Contro
 Simulation-owned physical route selection minimizes **expected traversal time** across legal transitions under the moving subject's current effective movement profile. Focused terrain, unit, naval, rail, Origin, and other mechanic owners remain authoritative for transition legality and movement rates; generic navigation must not invent or shadow-copy those rules.
 
 Physical routing does not fold strategic danger, desirability, target value, or other controller/AI preferences into traversal time unless an explicit focused mechanic makes such a factor part of physical movement. Equal-traversal-time alternatives resolve deterministically.
+
+### 6.5.1 Strategic mobile-unit destinations
+
+For a mobile-unit class whose focused owner permits a controller-issued strategic move destination, this section owns the shared destination lifecycle; the focused unit owner still owns whether that class supports the command, which destination cells are intrinsically legal, its transition legality/movement profile, and the priority of strategic travel relative to that unit's other intents.
+
+An accepted destination must be a cell the moving subject can legally occupy. Intrinsically illegal destinations are rejected. Connectivity is not an admission requirement: a legal destination remains valid even when no complete current route reaches it.
+
+The authoritative unit retains the exact accepted destination until it reaches that cell or a later accepted order replaces it. The simulation does not randomize, substitute, or silently cancel that destination because the route is incomplete. If the destination is currently reachable, ordinary physical routing chooses the least-traversal-time legal path. If it is unreachable, the unit instead routes toward the currently reachable legal cell whose cell center is geometrically closest to the requested destination; equal geometric distance is resolved by least legal traversal time from the unit and then ascending stable `cellId`. Reaching that best-effort frontier does not replace the requested destination. The unit retains the order and retries from later authoritative state.
+
+A settled operating-anchor leash constrains ordinary autonomous operation only. While a not-yet-reached strategic destination is active, that old anchor leash does not limit the player-directed travel itself or otherwise-legal autonomous target acquisition, pursuit, and combat encountered during the travel. A higher-priority local intent such as focused-owner repair behavior or retained legal combat may temporarily pre-empt movement; once that interruption ends, the same retained strategic destination resumes without controller reissue.
+
+The requested destination becomes the unit's new operating/wander anchor only on actual arrival at that requested cell. Reaching an intermediate best-effort frontier, entering combat, or taking a repair detour does not move the anchor by itself.
 
 ---
 
