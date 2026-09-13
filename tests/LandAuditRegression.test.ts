@@ -48,6 +48,7 @@ function runtime(options: {
           : { fixedTeamId: faction.fixedTeamId }),
       })),
     }),
+    { controllerReferenceNamespace: options.seed },
   );
 }
 
@@ -344,6 +345,7 @@ describe("#88 audit regressions", () => {
       match.spec,
       match.acceptedInputs(),
       match.snapshot().tick,
+      { controllerReferenceNamespace: match.spec.seed },
     );
     expect(regenerated.stateFingerprint()).toBe(match.stateFingerprint());
   });

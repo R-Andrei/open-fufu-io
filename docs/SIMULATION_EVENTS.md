@@ -9,7 +9,9 @@ Neighboring concerns remain owned elsewhere:
 - authoritative simulation runtime topology, `MatchRuntime`, `MatchState`, `TickEngine`, persistence architecture, and implementation sequencing: [`OPENFRONT_INTEGRATION_PLAN.md`](./OPENFRONT_INTEGRATION_PLAN.md);
 - gameplay legality, damage, target selection, timing, and subsystem-specific physical outcomes: the focused gameplay owners registered in [`README.md`](./README.md);
 - FFY event valuation and economic consequences: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
-- Origin-specific gameplay transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
+- Origin-specific gameplay transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md);
+- controller-visible projected-event schemas: [`../src/core/controller/ControllerApi.ts`](../src/core/controller/ControllerApi.ts);
+- live participant/spectator transport envelopes and stream-event schemas: [`service/PARTICIPANT_PROTOCOL.md`](./service/PARTICIPANT_PROTOCOL.md).
 
 This contract does not replace those owners and does not make every state transition an event.
 
@@ -101,9 +103,9 @@ The snapshot records the authoritative identity/location facts relevant at event
 
 ---
 
-## 5. Initial physical-combat vocabulary
+## 5. Initial shared event vocabulary
 
-The first concrete event vocabulary is the shared physical-combat seam.
+The shared vocabulary begins with physical-combat facts, cell-level political-ownership transitions, and the producer-owned lifecycle facts currently required by cross-system hostility-state consequences.
 
 ### 5.1 `UNIT_ATTACK_RESOLVED`
 
@@ -148,6 +150,79 @@ then attackEventId ascending
 
 This order exists only for deterministic serialization/replay and stable comparison. Array position does not mean first hit, last hit, primary cause, or reward credit. Same-tick simultaneous attacks remain simultaneous.
 
+### 5.3 `RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED`
+
+When a focused combat owner resolves an attack-triggered radioactive aftershock whose physical consequence belongs to the territorial/Fallout subsystem, it emits:
+
+```ts
+RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED {
+  attacker: UnitEventSubject;
+  targetCellId: number;
+  affectedCellIds: readonly number[];
+}
+```
+
+The combat owner resolves the aftershock's legality, trigger, footprint, eligibility, cap, and canonical affected-cell ordering from its authoritative combat snapshot before emitting the fact. Those mechanics remain with the focused gameplay/Origin owners and are not restated here.
+
+`affectedCellIds` is therefore the already-resolved authoritative footprint for this occurrence. A downstream territorial/Fallout consumer applies that exact set and **must not** reselect cells or re-evaluate combat-side eligibility against later state.
+
+The event may contain an empty `affectedCellIds` set when the focused combat rule resolves a qualifying occurrence with no eligible territorial cells. It records the resolved occurrence rather than inventing a second suppression rule at the event boundary.
+
+The payload does not carry ownership snapshots, Fallout snapshots, capture results, Population accounting, structure-capture consequences, or other consumer-owned state. Applying the territorial consequence is not a capture operation merely because political ownership changes.
+
+### 5.4 `CELL_OWNERSHIP_CHANGED`
+
+When an authoritative producer changes the political owner of a simulation cell, it emits exactly one fact for that changed cell:
+
+```ts
+CELL_OWNERSHIP_CHANGED {
+  cellId: CellId;
+  previousOwnerId: FactionId | null;
+  nextOwnerId: FactionId | null;
+}
+```
+
+`previousOwnerId` and `nextOwnerId` must be distinct. `null` means politically neutral. The event reports only the ownership transition that already resolved; it does not decide downstream persistent-structure disposition, economic rewards, Population consequences, or other consumer policy.
+
+When one producer phase changes multiple cells, its `CELL_OWNERSHIP_CHANGED` batch is ordered by `cellId` ascending and contains exactly one fact per changed cell. The producer owns deterministic event identity under the common envelope; consumers must continue to treat the identity string as opaque.
+
+The fact is an in-tick delivery value rather than persistent `MatchState` residual state. Downstream consumers receive it after the producer-owned ownership state has been committed and may query that current authoritative state for facts they own. A consumer that applies one-time consequences must reject duplicate changed-cell facts within the same delivered batch rather than silently applying the same occurrence twice.
+
+### 5.5 `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED`
+
+When a subsystem-owned persistent directed-hostility source that was active for one resolved hostility-side pair ceases to be active because of that subsystem's authoritative lifecycle transition, that producer emits:
+
+```ts
+PERSISTENT_DIRECTED_HOSTILITY_SOURCE_ENDED {
+  sourceSide: HostilitySideIdentity;
+  targetSide: HostilitySideIdentity;
+}
+```
+
+`sourceSide` and `targetSide` are immutable lifecycle-safe snapshots of the directed sides for that source immediately before it ended. They remain directed even though game-wide `atWar` is symmetric. They must be distinct.
+
+This event reports only source termination. It does **not** contain or decide `atWar`, grace expiry, current active-source counts, operation bodies, Population, rewards, attribution, or any other Hostility-consumer policy. The Hostility owner may query current authoritative faction/source state after producer mutation to determine whether the affected unordered pair still has another active persistent source and what consequence follows.
+
+A producer must snapshot any identity needed after its owned record/reference disappears. In particular, a persistent source whose opposing side is resolved through another lifecycle record must capture that side before the reference can be removed or invalidated.
+
+Within one producer transition, every ended persistent source emits exactly one fact. A stable source that remains active for the same directed side pair emits none; retargeting/replacement that ends the old directed source emits the old source fact even when an implementation reuses a stable local source identifier. Event IDs remain deterministic, producer-owned, unique, and opaque; ordering of a multi-source ended batch must be deterministic.
+
+### 5.6 `FACTION_CAPITULATED`
+
+When an authoritative faction-lifecycle producer commits the concrete `ACTIVE -> CAPITULATED` transition, it emits:
+
+```ts
+FACTION_CAPITULATED {
+  factionId: FactionId;
+}
+```
+
+The payload contains only the faction identity whose transition occurred. Immutable fixed-team/hostility-side identity remains ordinary current authoritative faction state and is not duplicated into this fact. A no-op application to a faction that is already capitulated emits no event.
+
+The event does not decide whether a hostility side still has another active member, which war relations remain live, or whether any grace state starts or is cleared. Those are Hostility-owned consequences derived from this occurrence plus current authoritative state.
+
+A dedicated `PERSISTENT_DIRECTED_HOSTILITY_SOURCE_STARTED` fact is not required merely to mirror this termination fact. Presence of active persistent sources is current authoritative state and remains an ordinary direct query unless a separate cross-system consequence later proves that a start occurrence itself must cross an ownership boundary.
+
 ---
 
 ## 6. Consumer attribution and policy
@@ -169,7 +244,37 @@ This separation allows additional consumers such as economy, statistics, diploma
 
 ---
 
-## 7. Extension rule
+## 7. Event layers and adapters
+
+`SimulationEvent` is the canonical **internal authoritative simulation-domain fact** used when an occurrence crosses simulation ownership boundaries. Other surfaces that use the word `event` are consumers/adapters with their own narrower contracts; they are not alternate simulation buses.
+
+In particular:
+
+- FFY positive-event and signed-fact inputs are Economy-owned valuation/application inputs. A physical or lifecycle producer must not bypass the simulation-domain boundary by writing Economy-private event inputs directly when the economic consequence originates in another subsystem; the Economy adapter derives those inputs from the relevant canonical fact plus Economy-owned/current authoritative state.
+- controller-facing `ControllerEvent` values are requester-lawful observation projections. They may be derived from canonical simulation facts and current lawful state, but their public payload vocabulary, visibility filtering, retention window, and controller API versioning remain owned by `ControllerApi.ts`.
+- participant/spectator stream events and envelopes are transport/projection messages. Their stream sequence is not a simulation-event ID, and their schemas/versioning remain owned by `PARTICIPANT_PROTOCOL.md`.
+- diagnostics, statistics, replay evidence, or presentation may consume canonical facts where their focused contracts require occurrences, but they must not create a second authoritative occurrence channel back into gameplay state.
+
+### 7.1 Live operational reference bookkeeping
+
+MatchRuntime-owned live controller-reference identity bookkeeping is not a simulation subsystem or simulation-domain event consumer merely because it needs ordered lifecycle information. A live reference session may receive deterministic lifecycle hints directly from `MatchRuntime` solely to preserve opaque controller-reference incarnation identity when a before/after authoritative-state comparison would collapse a same-tick lifecycle boundary.
+
+That direct operational channel is permitted only while all of the following remain true:
+
+- it owns only live reference identity, incarnation, tombstone, and resolution bookkeeping;
+- its state is not canonical `MatchState`, does not alter accepted-input replay/fingerprints or archival gameplay state, and is discarded with the live runtime;
+- its lifecycle hints do not mutate authoritative gameplay state, decide mechanics, or apply a consequence owned by any simulation subsystem;
+- trusted resolution still applies requester-lawful visibility before any differentiated controller-visible result is materialized;
+- lifecycle-hint order is derived from deterministic authoritative transition/input order rather than listener registration, asynchronous completion, or observation timing;
+- no simulation subsystem may consume the private reference-lifecycle queue as an authoritative occurrence channel.
+
+This is a narrow operational-identity exemption, not a second simulation event family. If an occurrence must drive a gameplay consequence, inform another authoritative simulation owner, or become a canonical cross-system fact, it must use `SimulationEvent` under this document instead. Controller-facing `ControllerEvent` projection remains governed by the adapter rule above and is not covered by this exemption.
+
+A focused gameplay owner may define the meaning and minimum factual context of one of its occurrences. When that occurrence must cross into another subsystem, implementation uses the common `SimulationEvent` envelope and the deterministic delivery rules here rather than inventing a sibling callback/listener/result-delivery architecture. Exact focused mechanics remain with the focused owner.
+
+---
+
+## 8. Extension rule
 
 New cross-system event kinds must follow the same ownership discipline:
 

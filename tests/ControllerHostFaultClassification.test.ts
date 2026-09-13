@@ -301,6 +301,10 @@ describe("controller-host internal fault classification", () => {
           { id: "beta", rules },
         ],
       }),
+      {
+        controllerReferenceNamespace:
+          "controller-passive-rate-balance-independence-red",
+      },
     );
     const base = match.snapshot();
     const state = createProspectiveMatchState(base, {

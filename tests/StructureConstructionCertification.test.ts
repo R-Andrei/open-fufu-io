@@ -10,6 +10,7 @@ import {
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createCellOwnershipChangedEvent } from "../src/simulation/SimulationEvents";
 import {
   effectiveStructureConstructionTicks,
   evaluateStructureAcquisitionAdmission,
@@ -149,91 +150,6 @@ describe("persistent structure adversarial certification", () => {
     });
   });
 
-  it("enforces the global 10-cell center spacing for builds and grants without rechecking transfers", () => {
-    const width = 30;
-    const height = 20;
-    const terrain = Array.from({ length: width * height }, () => "PLAINS" as const);
-    const state = createInitialMatchState(
-      createMicroSimulationSpec({
-        seed: "structure-certification-min-spacing",
-        width,
-        height,
-        terrain,
-        initialOwners: terrain.map(() => "alpha"),
-        factions: [
-          { id: "alpha", rules: emptyRules() },
-          { id: "beta", rules: emptyRules() },
-        ],
-      }),
-    );
-    const anchorCellId = 5 * width + 5;
-    const withAnchor = createProspectiveMatchState(state, {
-      structures: [
-        materializePersistentStructureState({
-          id: "spacing-anchor",
-          ownerId: "alpha",
-          type: "CITY",
-          cellId: anchorCellId,
-          completedLevel: 1,
-          active: true,
-          acquisitionPath: "GRANT",
-        }),
-      ],
-    });
-
-    const admissionAt = (
-      structureId: string,
-      cellId: number,
-      acquisitionPath: "PURCHASE_BUILD" | "GRANT",
-    ) =>
-      evaluateStructureAcquisitionAdmission(withAnchor, {
-        structureId,
-        ownerId: "alpha",
-        type: "FORT",
-        cellId,
-        level: 1,
-        acquisitionPath,
-      });
-
-    expect(admissionAt("straight-nine", 5 * width + 14, "PURCHASE_BUILD")).toEqual({
-      ok: false,
-      failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
-    });
-    expect(admissionAt("diagonal-under-ten", 12 * width + 11, "GRANT")).toEqual({
-      ok: false,
-      failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
-    });
-    expect(admissionAt("straight-ten", 5 * width + 15, "PURCHASE_BUILD")).toEqual({
-      ok: true,
-    });
-    expect(admissionAt("diagonal-ten", 13 * width + 11, "GRANT")).toEqual({
-      ok: true,
-    });
-
-    const closeCaptured = materializePersistentStructureState({
-      id: "captured-close-port",
-      ownerId: "beta",
-      type: "PORT",
-      cellId: 5 * width + 14,
-      completedLevel: 1,
-      active: true,
-      acquisitionPath: "GRANT",
-    });
-    const transferState = createProspectiveMatchState(withAnchor, {
-      structures: [...withAnchor.structures, closeCaptured],
-    });
-    expect(
-      evaluateStructureAcquisitionAdmission(transferState, {
-        structureId: closeCaptured.id,
-        ownerId: "alpha",
-        type: "PORT",
-        cellId: closeCaptured.cellId,
-        level: 1,
-        acquisitionPath: "CAPTURE_TRANSFER",
-      }),
-    ).toEqual({ ok: true });
-  });
-
   it("re-evaluates a transferred Fort field from the new owner's effective rules", async () => {
     const terrain = Array.from({ length: 50 }, () => "PLAINS" as const);
     const state = createInitialMatchState(
@@ -276,13 +192,24 @@ describe("persistent structure adversarial certification", () => {
     ).toBe(31);
 
     const nextOwnership = terrain.map(() => "alpha");
-    const transferredStructures = resolvePersistentStructureLifecycleTick(
-      withFort,
-      nextOwnership,
-      1,
-    );
-    const transferred = createProspectiveMatchState(withFort, {
+    const transitionTick = 1;
+    const postLand = createProspectiveMatchState(withFort, {
       ownership: nextOwnership,
+    });
+    const transferredStructures = resolvePersistentStructureLifecycleTick(
+      postLand,
+      nextOwnership.map((nextOwnerId, cellId) =>
+        createCellOwnershipChangedEvent({
+          id: `test:cell-ownership:${transitionTick}:${cellId}`,
+          tick: transitionTick,
+          cellId,
+          previousOwnerId: "beta",
+          nextOwnerId,
+        }),
+      ),
+      transitionTick,
+    );
+    const transferred = createProspectiveMatchState(postLand, {
       structures: transferredStructures,
     });
     const after = createControllerQuerySession(transferred, "alpha", {

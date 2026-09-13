@@ -45,6 +45,7 @@ function runtime(options: {
         ...(faction.fixedTeamId === undefined ? {} : { fixedTeamId: faction.fixedTeamId }),
       })),
     }),
+    { controllerReferenceNamespace: options.seed },
   );
 }
 

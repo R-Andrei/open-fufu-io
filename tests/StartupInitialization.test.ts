@@ -117,7 +117,9 @@ describe("explicit MatchRuntime startup initialization contract", () => {
       Object.freeze({ kind: "SYNTHETIC_FIXTURE" as const }),
     );
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: spec.seed,
+    });
     expect(ownerCount(runtime, "alpha")).toBe(5_000);
     expect(runtime.snapshot().structures).toEqual([
       expect.objectContaining({
@@ -136,7 +138,9 @@ describe("explicit MatchRuntime startup initialization contract", () => {
       Object.freeze({ kind: "SPAWN" as const, input: fixedSpawnInput(width) }),
     );
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: spec.seed,
+    });
     expect(ownerCount(runtime, "alpha")).toBe(1_000);
     expect(ownerCount(runtime, "beta")).toBe(1_000);
     expect(runtime.snapshot()).toMatchObject({
@@ -144,7 +148,9 @@ describe("explicit MatchRuntime startup initialization contract", () => {
       spawnSnapshot: { spawnMode: "FIXED" },
     });
 
-    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+    const regenerated = MatchRuntime.regenerate(spec, [], 0, {
+      controllerReferenceNamespace: spec.seed,
+    });
     expect(regenerated.spec.initialization.kind).toBe("SPAWN");
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());

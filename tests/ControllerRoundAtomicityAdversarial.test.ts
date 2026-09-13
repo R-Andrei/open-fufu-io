@@ -25,6 +25,7 @@ function runtime() {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: "controller-round-atomicity-adversarial" },
   );
 }
 
@@ -42,6 +43,7 @@ function structureRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -68,6 +70,7 @@ function grantedFortRuntime(seed: string, level: 1 | 2 | 3 | 4 | 5 = 1) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -76,39 +79,16 @@ function twoBuildRuntime(seed: string) {
   return new MatchRuntime(
     createMicroSimulationSpec({
       seed,
-      width: 11,
+      width: 3,
       height: 1,
-      terrain: [
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-      ],
-      initialOwners: [
-        "alpha",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "alpha",
-      ],
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta"],
       factions: [
         { id: "alpha", rules },
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -428,7 +408,7 @@ describe("controller-round transaction adversarial behavior", () => {
               kind: "BUILD_STRUCTURE" as const,
               key: "second-fort",
               structure: "FORT" as const,
-              cellId: 10,
+              cellId: 1,
             },
           ],
         };
@@ -557,6 +537,7 @@ describe("controller-round transaction adversarial behavior", () => {
       buildController.spec,
       buildController.acceptedInputs(),
       buildController.snapshot().tick,
+      { controllerReferenceNamespace: buildController.spec.seed },
     );
     expect(regeneratedBuild.stateFingerprint()).toBe(
       buildController.stateFingerprint(),
@@ -592,6 +573,7 @@ describe("controller-round transaction adversarial behavior", () => {
       upgradeController.spec,
       upgradeController.acceptedInputs(),
       upgradeController.snapshot().tick,
+      { controllerReferenceNamespace: upgradeController.spec.seed },
     );
     expect(regeneratedUpgrade.stateFingerprint()).toBe(
       upgradeController.stateFingerprint(),

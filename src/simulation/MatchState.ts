@@ -3,9 +3,8 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
-import { reducedRational } from "../core/rules/RuleComposition";
+import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
-import type { FactoryRailLoopLifecycleState } from "./FactoryRailLifecycle";
 import {
   canonicalHostilitySideKey,
   materializeHostilityGraceState,
@@ -35,7 +34,6 @@ import {
   createPopulationState,
   type PopulationState,
 } from "./Population";
-import type { FactoryRailLoopPlan } from "./RailNetwork";
 import {
   createSimulationMap,
   type SimulationMap,
@@ -47,9 +45,9 @@ import {
   type PersistentStructureState,
 } from "./Structures";
 import type {
-  FactoryTrainServiceEpochState,
-  TrainDispatchEconomicSnapshot,
-} from "./TrainService";
+  TankOperationalState,
+  TankProductionJobState,
+} from "./Tanks";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
   "CITY",
@@ -62,6 +60,9 @@ const STRUCTURE_TYPES = new Set<StructureType>([
   "COMMAND_POST",
 ]);
 
+type MatchTankOperationalState = TankOperationalState &
+  Readonly<{ roamingOrdinal?: number }>;
+
 export interface MatchFactionState {
   readonly id: string;
   readonly status: FactionStatus;
@@ -71,15 +72,6 @@ export interface MatchFactionState {
   readonly successfulStructurePurchaseTypes: readonly StructureType[];
   readonly testMarker: number;
   readonly fixedTeamId?: string;
-}
-
-export interface TrainServiceRuntimeState {
-  readonly trainId: string;
-  readonly factoryId: string;
-  readonly loopSnapshotId: string;
-  readonly isPrimary: boolean;
-  readonly dispatchSnapshot: TrainDispatchEconomicSnapshot;
-  readonly resumeAtTick: number | null;
 }
 
 export interface MatchState {
@@ -92,9 +84,9 @@ export interface MatchState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
-  readonly factoryRailLoops: readonly FactoryRailLoopLifecycleState[];
-  readonly factoryTrainEpochs: readonly FactoryTrainServiceEpochState[];
-  readonly trainServices: readonly TrainServiceRuntimeState[];
+  readonly tankProductionJobs: readonly TankProductionJobState[];
+  readonly tankOperationalStates: readonly MatchTankOperationalState[];
+  readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
@@ -109,9 +101,9 @@ export interface MatchStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
-  readonly factoryRailLoops?: readonly FactoryRailLoopLifecycleState[];
-  readonly factoryTrainEpochs?: readonly FactoryTrainServiceEpochState[];
-  readonly trainServices?: readonly TrainServiceRuntimeState[];
+  readonly tankProductionJobs?: readonly TankProductionJobState[];
+  readonly tankOperationalStates?: readonly MatchTankOperationalState[];
+  readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
   readonly captureProgress?: readonly CaptureProgressState[];
@@ -173,18 +165,6 @@ function compareIds(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
   return 0;
-}
-
-function assertNonEmptyId(value: string, label: string): void {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new Error(`${label} must be a non-empty string`);
-  }
-}
-
-function assertNonNegativeSafeInteger(value: number, label: string): void {
-  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
-    throw new Error(`${label} must be a non-negative safe integer`);
-  }
 }
 
 function freezeOwnership(
@@ -254,254 +234,266 @@ function freezeHostilityGrace(
   );
 }
 
-function freezeFactoryLoopPlan(
-  loop: FactoryRailLoopPlan | null,
-  factoryId: string,
-  map: SimulationMap,
-): FactoryRailLoopPlan | null {
-  if (loop === null) return null;
-  if (loop === undefined || typeof loop !== "object" || Array.isArray(loop)) {
-    throw new Error("Factory rail loop must be an object or null");
+function freezeDirectReveals(
+  entries: readonly DirectRevealRecord[],
+): readonly DirectRevealRecord[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("directReveals must be an array");
   }
-  if (loop.factoryId !== factoryId) {
-    throw new Error(`Factory rail loop ${loop.factoryId} cannot belong to ${factoryId}`);
-  }
-  if (
-    !Array.isArray(loop.targetStructureIds) ||
-    !Array.isArray(loop.servicedStructureIds) ||
-    !Array.isArray(loop.cells)
-  ) {
-    throw new Error("Factory rail loop collections must be arrays");
-  }
-  for (const id of loop.targetStructureIds) {
-    assertNonEmptyId(id, "Factory rail target structure ID");
-  }
-  for (const id of loop.servicedStructureIds) {
-    assertNonEmptyId(id, "Factory rail serviced structure ID");
-  }
-  for (const cellId of loop.cells) {
-    if (!map.isValidCellId(cellId)) {
-      throw new Error(`Factory rail loop cell is outside the map: ${String(cellId)}`);
+  const seen = new Set<string>();
+  const materialized = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("direct reveal record must be an object");
     }
-  }
-  assertNonNegativeSafeInteger(
-    loop.sharedExistingEdgeCount,
-    "Factory rail shared edge count",
-  );
-  return Object.freeze({
-    factoryId,
-    targetStructureIds: Object.freeze([...loop.targetStructureIds]),
-    servicedStructureIds: Object.freeze([...loop.servicedStructureIds]),
-    cells: Object.freeze([...loop.cells]),
-    sharedExistingEdgeCount: loop.sharedExistingEdgeCount,
+    if (
+      typeof entry.viewerFactionId !== "string" ||
+      entry.viewerFactionId.length === 0
+    ) {
+      throw new Error("direct reveal viewerFactionId must be a non-empty string");
+    }
+    if (
+      entry.sourceKind !== "UNIT" &&
+      entry.sourceKind !== "STRUCTURE" &&
+      entry.sourceKind !== "OPERATION"
+    ) {
+      throw new Error("direct reveal sourceKind is invalid");
+    }
+    if (typeof entry.sourceId !== "string" || entry.sourceId.length === 0) {
+      throw new Error("direct reveal sourceId must be a non-empty string");
+    }
+    if (
+      !Number.isSafeInteger(entry.expiryExclusiveTick) ||
+      entry.expiryExclusiveTick < 0 ||
+      Object.is(entry.expiryExclusiveTick, -0)
+    ) {
+      throw new Error(
+        "direct reveal expiryExclusiveTick must be a non-negative safe integer",
+      );
+    }
+    const key = `${JSON.stringify(entry.viewerFactionId)}\u0000${entry.sourceKind}\u0000${JSON.stringify(entry.sourceId)}`;
+    if (seen.has(key)) {
+      throw new Error("duplicate direct reveal viewer/source record");
+    }
+    seen.add(key);
+    return Object.freeze({
+      viewerFactionId: entry.viewerFactionId,
+      sourceKind: entry.sourceKind,
+      sourceId: entry.sourceId,
+      expiryExclusiveTick: entry.expiryExclusiveTick,
+    });
   });
+  materialized.sort(
+    (left, right) =>
+      compareIds(left.viewerFactionId, right.viewerFactionId) ||
+      compareIds(left.sourceKind, right.sourceKind) ||
+      compareIds(left.sourceId, right.sourceId),
+  );
+  return Object.freeze(materialized);
 }
 
-function freezeFactoryRailLoops(
-  entries: readonly FactoryRailLoopLifecycleState[],
+function freezeTankProductionJobs(
+  entries: readonly TankProductionJobState[],
   map: SimulationMap,
-): readonly FactoryRailLoopLifecycleState[] {
+): readonly TankProductionJobState[] {
   const seenFactories = new Set<string>();
-  return Object.freeze(
-    [...entries]
-      .sort((left, right) => compareIds(left.factoryId, right.factoryId))
-      .map((entry) => {
-        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-          throw new Error("Factory rail lifecycle state must be an object");
-        }
-        assertNonEmptyId(entry.factoryId, "Factory rail lifecycle factory ID");
-        if (seenFactories.has(entry.factoryId)) {
-          throw new Error(`duplicate Factory rail lifecycle: ${entry.factoryId}`);
-        }
-        seenFactories.add(entry.factoryId);
-        if (!Array.isArray(entry.retainedSnapshots)) {
-          throw new Error("Factory rail retained snapshots must be an array");
-        }
-        const seenSnapshots = new Set<string>();
-        const retainedSnapshots = Object.freeze(
-          [...entry.retainedSnapshots]
-            .sort((left, right) => compareIds(left.snapshotId, right.snapshotId))
-            .map((snapshot) => {
-              if (
-                snapshot === null ||
-                typeof snapshot !== "object" ||
-                Array.isArray(snapshot) ||
-                !Array.isArray(snapshot.cells)
-              ) {
-                throw new Error("Factory rail retained snapshot must be an object");
-              }
-              assertNonEmptyId(snapshot.snapshotId, "Factory rail snapshot ID");
-              if (seenSnapshots.has(snapshot.snapshotId)) {
-                throw new Error(`duplicate Factory rail snapshot ID: ${snapshot.snapshotId}`);
-              }
-              seenSnapshots.add(snapshot.snapshotId);
-              for (const cellId of snapshot.cells) {
-                if (!map.isValidCellId(cellId)) {
-                  throw new Error(
-                    `Factory rail snapshot cell is outside the map: ${String(cellId)}`,
-                  );
-                }
-              }
-              return Object.freeze({
-                snapshotId: snapshot.snapshotId,
-                cells: Object.freeze([...snapshot.cells]),
-              });
-            }),
+  const jobs = entries.map((job) => {
+    if (job === null || typeof job !== "object" || Array.isArray(job)) {
+      throw new Error("Tank production job must be an object");
+    }
+    if (typeof job.factoryId !== "string" || job.factoryId.length === 0) {
+      throw new Error("Tank production factoryId must be a non-empty string");
+    }
+    if (seenFactories.has(job.factoryId)) {
+      throw new Error(`duplicate Tank production Factory: ${job.factoryId}`);
+    }
+    seenFactories.add(job.factoryId);
+    if (typeof job.ownerId !== "string" || job.ownerId.length === 0) {
+      throw new Error("Tank production ownerId must be a non-empty string");
+    }
+    if (job.chassisType !== "TANK" && job.chassisType !== "HEAVY_ARTILLERY") {
+      throw new Error("Tank production chassis type is invalid");
+    }
+    if (!map.isValidCellId(job.strategicDestinationCellId)) {
+      throw new Error("Tank production strategic destination must be a valid map cell");
+    }
+    if (job.state === "BUILDING") {
+      if (
+        !Number.isSafeInteger(job.remainingTicks) ||
+        job.remainingTicks <= 0 ||
+        Object.is(job.remainingTicks, -0)
+      ) {
+        throw new Error(
+          "Tank production remainingTicks must be a positive safe integer",
         );
-        return Object.freeze({
-          factoryId: entry.factoryId,
-          currentLoop: freezeFactoryLoopPlan(entry.currentLoop, entry.factoryId, map),
-          pendingLoop: freezeFactoryLoopPlan(entry.pendingLoop, entry.factoryId, map),
-          retainedSnapshots,
-        });
-      }),
+      }
+      return Object.freeze({
+        factoryId: job.factoryId,
+        ownerId: job.ownerId,
+        chassisType: job.chassisType,
+        strategicDestinationCellId: job.strategicDestinationCellId,
+        state: "BUILDING" as const,
+        remainingTicks: job.remainingTicks,
+      });
+    }
+    if (job.state !== "WAITING_DEPLOYMENT") {
+      throw new Error("Tank production job state is invalid");
+    }
+    return Object.freeze({
+      factoryId: job.factoryId,
+      ownerId: job.ownerId,
+      chassisType: job.chassisType,
+      strategicDestinationCellId: job.strategicDestinationCellId,
+      state: "WAITING_DEPLOYMENT" as const,
+    });
+  });
+  jobs.sort(
+    (left, right) =>
+      compareIds(left.factoryId, right.factoryId) ||
+      compareIds(left.ownerId, right.ownerId),
   );
+  return Object.freeze(jobs);
 }
 
-function freezeFactoryTrainEpochs(
-  entries: readonly FactoryTrainServiceEpochState[],
-): readonly FactoryTrainServiceEpochState[] {
-  const seenFactories = new Set<string>();
-  return Object.freeze(
-    [...entries]
-      .sort((left, right) => compareIds(left.factoryId, right.factoryId))
-      .map((entry) => {
-        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-          throw new Error("Factory Train epoch state must be an object");
-        }
-        assertNonEmptyId(entry.factoryId, "Factory Train epoch factory ID");
-        assertNonEmptyId(entry.ownerId, "Factory Train epoch owner ID");
-        if (seenFactories.has(entry.factoryId)) {
-          throw new Error(`duplicate Factory Train epoch: ${entry.factoryId}`);
-        }
-        seenFactories.add(entry.factoryId);
-        if (entry.activePrimaryTrainId !== null) {
-          assertNonEmptyId(entry.activePrimaryTrainId, "active primary Train ID");
-        }
-        assertNonNegativeSafeInteger(
-          entry.turnaroundRemainingActiveTicks,
-          "Factory Train turnaround",
-        );
-        if (
-          !Number.isInteger(entry.p07PrimaryDispatchPhase) ||
-          entry.p07PrimaryDispatchPhase < 0 ||
-          entry.p07PrimaryDispatchPhase > 3
-        ) {
-          throw new Error("Factory Train P07 phase must be 0 through 3");
-        }
-        return Object.freeze({
-          factoryId: entry.factoryId,
-          ownerId: entry.ownerId,
-          activePrimaryTrainId: entry.activePrimaryTrainId,
-          turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-          p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
-        });
-      }),
-  );
-}
-
-function freezeDispatchSnapshot(
-  snapshot: TrainDispatchEconomicSnapshot,
-  expectedFactoryId: string,
-): TrainDispatchEconomicSnapshot {
-  if (snapshot === null || typeof snapshot !== "object" || Array.isArray(snapshot)) {
-    throw new Error("Train dispatch economic snapshot must be an object");
-  }
-  if (snapshot.factoryId !== expectedFactoryId) {
-    throw new Error("Train dispatch snapshot Factory does not match service Factory");
-  }
-  assertNonEmptyId(snapshot.factoryId, "Train dispatch Factory ID");
-  assertNonEmptyId(snapshot.dispatchOwnerId, "Train dispatch owner ID");
+function freezeTankHealth(
+  health: TankOperationalState["health"],
+): TankOperationalState["health"] {
   if (
-    !Number.isSafeInteger(snapshot.factoryLevel) ||
-    snapshot.factoryLevel < 1 ||
-    snapshot.factoryLevel > 5
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator < 0n ||
+    health.denominator <= 0n
   ) {
-    throw new Error("Train dispatch Factory level must be an integer from 1 through 5");
+    throw new Error("Tank health must be a non-negative exact ratio");
   }
-  if (
-    snapshot.baseCargoFfy === null ||
-    typeof snapshot.baseCargoFfy !== "object" ||
-    typeof snapshot.baseCargoFfy.numerator !== "bigint" ||
-    typeof snapshot.baseCargoFfy.denominator !== "bigint" ||
-    snapshot.baseCargoFfy.numerator < 0n ||
-    snapshot.baseCargoFfy.denominator <= 0n
-  ) {
-    throw new Error("Train dispatch base cargo must be a non-negative exact rational");
+  if (health.numerator === 0n) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
   }
   return Object.freeze({
-    factoryId: snapshot.factoryId,
-    dispatchOwnerId: snapshot.dispatchOwnerId,
-    factoryLevel: snapshot.factoryLevel,
-    baseCargoFfy: Object.freeze(
-      reducedRational(
-        snapshot.baseCargoFfy.numerator,
-        snapshot.baseCargoFfy.denominator,
-      ),
-    ),
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
   });
 }
 
-function freezeTrainServices(
-  entries: readonly TrainServiceRuntimeState[],
+function assertNonNegativeSafeInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
+    throw new Error(`${label} must be a non-negative safe integer`);
+  }
+}
+
+function freezeTankRetainedTarget(
+  target: TankOperationalState["retainedTarget"],
+  map: SimulationMap,
+): TankOperationalState["retainedTarget"] {
+  if (target === undefined) return undefined;
+  if (target === null || typeof target !== "object" || Array.isArray(target)) {
+    throw new Error("Tank retained target must be an object");
+  }
+  if (target.targetClass === "POPULATION") {
+    if (!map.isValidCellId(target.cellId)) {
+      throw new Error("Tank retained Population target must be a valid map cell");
+    }
+    return Object.freeze({
+      targetClass: "POPULATION" as const,
+      cellId: target.cellId,
+    });
+  }
+  if (
+    target.targetClass !== "TANK_CHASSIS" &&
+    target.targetClass !== "WARSHIP" &&
+    target.targetClass !== "TRAIN"
+  ) {
+    throw new Error("Tank retained target class is invalid");
+  }
+  if (typeof target.unitId !== "string" || target.unitId.length === 0) {
+    throw new Error("Tank retained unit target must have a non-empty unitId");
+  }
+  return Object.freeze({
+    targetClass: target.targetClass,
+    unitId: target.unitId,
+  });
+}
+
+function freezeTankOperationalStates(
+  entries: readonly MatchTankOperationalState[],
   mobileUnits: readonly MobileUnitState[],
-  factoryRailLoops: readonly FactoryRailLoopLifecycleState[],
-): readonly TrainServiceRuntimeState[] {
-  const seenTrains = new Set<string>();
+  map: SimulationMap,
+): readonly MatchTankOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tankOperationalStates must be an array");
+  }
   const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
-  const loopsByFactory = new Map(
-    factoryRailLoops.map((loop) => [loop.factoryId, loop]),
-  );
-  return Object.freeze(
-    [...entries]
-      .sort((left, right) => compareIds(left.trainId, right.trainId))
-      .map((entry) => {
-        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-          throw new Error("Train service runtime state must be an object");
-        }
-        assertNonEmptyId(entry.trainId, "Train service Train ID");
-        assertNonEmptyId(entry.factoryId, "Train service Factory ID");
-        assertNonEmptyId(entry.loopSnapshotId, "Train service loop snapshot ID");
-        if (seenTrains.has(entry.trainId)) {
-          throw new Error(`duplicate Train service state: ${entry.trainId}`);
-        }
-        seenTrains.add(entry.trainId);
-        if (typeof entry.isPrimary !== "boolean") {
-          throw new Error("Train service primary marker must be boolean");
-        }
-        if (entry.resumeAtTick !== null) {
-          assertNonNegativeSafeInteger(entry.resumeAtTick, "Train resume tick");
-        }
-        const dispatchSnapshot = freezeDispatchSnapshot(
-          entry.dispatchSnapshot,
-          entry.factoryId,
-        );
-        const unit = unitsById.get(entry.trainId);
-        if (unit === undefined || unit.type !== "TRAIN" || unit.movementClass !== "RAIL") {
-          throw new Error(`Train service ${entry.trainId} requires a physical RAIL Train`);
-        }
-        if (unit.ownerId !== dispatchSnapshot.dispatchOwnerId) {
-          throw new Error("Train physical owner must match dispatch owner snapshot");
-        }
-        const loop = loopsByFactory.get(entry.factoryId);
-        if (
-          loop === undefined ||
-          !loop.retainedSnapshots.some(
-            (snapshot) => snapshot.snapshotId === entry.loopSnapshotId,
-          )
-        ) {
-          throw new Error("Train service requires its retained Factory loop snapshot");
-        }
-        return Object.freeze({
-          trainId: entry.trainId,
-          factoryId: entry.factoryId,
-          loopSnapshotId: entry.loopSnapshotId,
-          isPrimary: entry.isPrimary,
-          dispatchSnapshot,
-          resumeAtTick: entry.resumeAtTick,
-        });
-      }),
-  );
+  const seenUnitIds = new Set<string>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Tank operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Tank operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Tank operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (
+      unit === undefined ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      throw new Error(
+        `Tank operational state must reference a deployed Tank-derived unit: ${entry.unitId}`,
+      );
+    }
+    if (!map.isValidCellId(entry.operatingAnchorCellId)) {
+      throw new Error("Tank operating anchor must be a valid map cell");
+    }
+    assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
+    assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    const roamingOrdinal = entry.roamingOrdinal ?? 0;
+    assertNonNegativeSafeInteger(roamingOrdinal, "Tank roamingOrdinal");
+    const retainedTarget = freezeTankRetainedTarget(entry.retainedTarget, map);
+    if (
+      entry.repairFactoryId !== undefined &&
+      (typeof entry.repairFactoryId !== "string" || entry.repairFactoryId.length === 0)
+    ) {
+      throw new Error("Tank repairFactoryId must be a non-empty string");
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Tank repairArrivalTick",
+      );
+      if (entry.repairFactoryId === undefined) {
+        throw new Error("Tank repairArrivalTick requires repairFactoryId");
+      }
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      health: freezeTankHealth(entry.health),
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      roamingOrdinal,
+      ...(retainedTarget === undefined ? {} : { retainedTarget }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+    });
+  });
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
 }
 
 function createState(
@@ -528,17 +520,10 @@ function createState(
         update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
     },
   );
-  const factoryRailLoops = freezeFactoryRailLoops(
-    update.factoryRailLoops ?? previous.factoryRailLoops ?? [],
-    previous.map,
-  );
-  const factoryTrainEpochs = freezeFactoryTrainEpochs(
-    update.factoryTrainEpochs ?? previous.factoryTrainEpochs ?? [],
-  );
-  const trainServices = freezeTrainServices(
-    update.trainServices ?? previous.trainServices ?? [],
+  const tankOperationalStates = freezeTankOperationalStates(
+    update.tankOperationalStates ?? previous.tankOperationalStates ?? [],
     mobileUnits.mobileUnits,
-    factoryRailLoops,
+    previous.map,
   );
   return Object.freeze({
     seed: previous.seed,
@@ -552,9 +537,14 @@ function createState(
     ),
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
-    factoryRailLoops,
-    factoryTrainEpochs,
-    trainServices,
+    tankProductionJobs: freezeTankProductionJobs(
+      update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
+      previous.map,
+    ),
+    tankOperationalStates,
+    directReveals: freezeDirectReveals(
+      update.directReveals ?? previous.directReveals ?? [],
+    ),
     operations: Object.freeze(
       (update.operations ?? previous.operations).map(materializeLandOperationState),
     ),
@@ -628,9 +618,9 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
-    factoryRailLoops: Object.freeze([]),
-    factoryTrainEpochs: Object.freeze([]),
-    trainServices: Object.freeze([]),
+    tankProductionJobs: Object.freeze([]),
+    tankOperationalStates: Object.freeze([]),
+    directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -700,17 +690,6 @@ export function createAdvancedMatchState(
   update: MatchStateUpdate,
 ): MatchState {
   return createState(previous, previous.tick + 1, update);
-}
-
-function serializeFactoryLoopPlan(loop: FactoryRailLoopPlan | null): unknown {
-  if (loop === null) return null;
-  return {
-    factoryId: loop.factoryId,
-    targetStructureIds: [...loop.targetStructureIds],
-    servicedStructureIds: [...loop.servicedStructureIds],
-    cells: [...loop.cells],
-    sharedExistingEdgeCount: loop.sharedExistingEdgeCount,
-  };
 }
 
 export function canonicalMatchStateSerialization(state: MatchState): string {
@@ -791,6 +770,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       type: unit.type,
       movementClass: unit.movementClass,
       cellId: unit.cellId,
+      ...(unit.strategicDestinationCellId === undefined
+        ? {}
+        : { strategicDestinationCellId: unit.strategicDestinationCellId }),
       ...(unit.route === undefined
         ? {}
         : {
@@ -804,39 +786,70 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
-  const factoryRailLoops = state.factoryRailLoops.map((entry) => ({
-    factoryId: entry.factoryId,
-    currentLoop: serializeFactoryLoopPlan(entry.currentLoop),
-    pendingLoop: serializeFactoryLoopPlan(entry.pendingLoop),
-    retainedSnapshots: entry.retainedSnapshots.map((snapshot) => ({
-      snapshotId: snapshot.snapshotId,
-      cells: [...snapshot.cells],
-    })),
-  }));
+  const tankProductionJobs = [...state.tankProductionJobs]
+    .sort(
+      (left, right) =>
+        compareIds(left.factoryId, right.factoryId) ||
+        compareIds(left.ownerId, right.ownerId),
+    )
+    .map((job) =>
+      job.state === "BUILDING"
+        ? {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            strategicDestinationCellId: job.strategicDestinationCellId,
+            state: job.state,
+            remainingTicks: job.remainingTicks,
+          }
+        : {
+            factoryId: job.factoryId,
+            ownerId: job.ownerId,
+            chassisType: job.chassisType,
+            strategicDestinationCellId: job.strategicDestinationCellId,
+            state: job.state,
+          },
+    );
 
-  const factoryTrainEpochs = state.factoryTrainEpochs.map((entry) => ({
-    factoryId: entry.factoryId,
-    ownerId: entry.ownerId,
-    activePrimaryTrainId: entry.activePrimaryTrainId,
-    turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-    p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
-  }));
-
-  const trainServices = state.trainServices.map((entry) => ({
-    trainId: entry.trainId,
-    factoryId: entry.factoryId,
-    loopSnapshotId: entry.loopSnapshotId,
-    isPrimary: entry.isPrimary,
-    dispatchSnapshot: {
-      factoryId: entry.dispatchSnapshot.factoryId,
-      dispatchOwnerId: entry.dispatchSnapshot.dispatchOwnerId,
-      factoryLevel: entry.dispatchSnapshot.factoryLevel,
-      baseCargoFfy: {
-        numerator: entry.dispatchSnapshot.baseCargoFfy.numerator.toString(),
-        denominator: entry.dispatchSnapshot.baseCargoFfy.denominator.toString(),
+  const tankOperationalStates = [...state.tankOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      health: {
+        numerator: entry.health.numerator.toString(),
+        denominator: entry.health.denominator.toString(),
       },
-    },
-    resumeAtTick: entry.resumeAtTick,
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+      eligibleFromTick: entry.eligibleFromTick,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      roamingOrdinal: entry.roamingOrdinal ?? 0,
+      ...(entry.retainedTarget === undefined
+        ? {}
+        : {
+            retainedTarget:
+              entry.retainedTarget.targetClass === "POPULATION"
+                ? {
+                    targetClass: "POPULATION" as const,
+                    cellId: entry.retainedTarget.cellId,
+                  }
+                : {
+                    targetClass: entry.retainedTarget.targetClass,
+                    unitId: entry.retainedTarget.unitId,
+                  },
+          }),
+      ...(entry.repairFactoryId === undefined
+        ? {}
+        : { repairFactoryId: entry.repairFactoryId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+    }));
+
+  const directReveals = state.directReveals.map((entry) => ({
+    viewerFactionId: entry.viewerFactionId,
+    sourceKind: entry.sourceKind,
+    sourceId: entry.sourceId,
+    expiryExclusiveTick: entry.expiryExclusiveTick,
   }));
 
   const operations = [...state.operations]
@@ -900,9 +913,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
-    factoryRailLoops,
-    factoryTrainEpochs,
-    trainServices,
+    tankProductionJobs,
+    tankOperationalStates,
+    directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]
       .sort(

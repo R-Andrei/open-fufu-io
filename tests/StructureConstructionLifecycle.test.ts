@@ -9,12 +9,13 @@ import {
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
+import { createCellOwnershipChangedEvent } from "../src/simulation/SimulationEvents";
 import {
   effectiveStructureConstructionTicks,
   effectiveStructureRechargeTicks,
   evaluateStructureAcquisitionAdmission,
   materializePersistentStructureState,
-  resolvePersistentStructureLifecycleTick,
+  resolvePersistentStructureLifecycleTick as resolvePersistentStructureLifecycleFromEvents,
   tryBeginStructureUpgrade,
   tryMaterializeStructureBuild,
   type PersistentStructureState,
@@ -80,6 +81,37 @@ function withStructures(
   structures: readonly PersistentStructureState[],
 ) {
   return createProspectiveMatchState(state, { structures });
+}
+
+function resolvePersistentStructureLifecycleTick(
+  state: Parameters<typeof resolvePersistentStructureLifecycleFromEvents>[0],
+  nextOwnership: readonly (string | null)[],
+  currentTick: number,
+) {
+  if (nextOwnership.length !== state.ownership.length) {
+    throw new Error("test ownership fixture length must match MatchState");
+  }
+  const events = nextOwnership.flatMap((nextOwnerId, cellId) => {
+    const previousOwnerId = state.ownership[cellId] ?? null;
+    if (previousOwnerId === nextOwnerId) return [];
+    return [
+      createCellOwnershipChangedEvent({
+        id: `test:cell-ownership:${currentTick}:${cellId}`,
+        tick: currentTick,
+        cellId,
+        previousOwnerId,
+        nextOwnerId,
+      }),
+    ];
+  });
+  const postLandState = createProspectiveMatchState(state, {
+    ownership: Object.freeze([...nextOwnership]),
+  });
+  return resolvePersistentStructureLifecycleFromEvents(
+    postLandState,
+    Object.freeze(events),
+    currentTick,
+  );
 }
 
 describe("persistent structure construction lifecycle", () => {

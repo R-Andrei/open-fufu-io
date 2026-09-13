@@ -6,6 +6,7 @@ This file is the **canonical owner for baseline Open Fufu FFY economy, Factory T
 
 Neighboring concerns are owned elsewhere:
 
+- deterministic simulation-domain event boundary and cross-system delivery: [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md);
 - physical rail topology, station attachment, connectivity, and rail-routing semantics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - persistent Factory/Port structure construction and level mechanics: [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md);
 - Warship combat and Transport/strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
@@ -61,6 +62,8 @@ Ordinary yield modifiers use four broad source families:
 - **Industrial FFY**.
 
 Individual event identities remain distinct internally for simulation, replay, and debugging even when they share a modifier family.
+
+An FFY `event` in this document is an Economy-owned valuation/application input and does not by itself define the authoritative physical or lifecycle occurrence that caused it. When that occurrence is owned by another simulation subsystem, Economy consumes the canonical simulation-domain fact under [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md) and derives the FFY input from that fact plus Economy-owned/current authoritative state. Economy-local sources and transactions do not require a redundant second simulation event merely because their valuation unit is also called an event.
 
 Ordinary same-axis yield percentages add before multiplication unless an explicit structural rule says otherwise.
 
@@ -131,9 +134,9 @@ Purchase prices, Transport embarkation costs, strategic-weapon costs, and other 
 
 ## 3.1 P05 structure-transfer conquest event
 
-P05 **Big Shot** consumes the canonical persistent-structure capture result rather than defining another capture path.
+P05 **Big Shot** consumes the canonical immutable `StructureCaptureResolved` simulation-domain fact from `TERRAIN_AND_STRUCTURES.md` rather than defining another capture path or receiving a producer-private Economy input.
 
-Exactly one P05 **Military / conquest FFY** event is produced for each enemy persistent structure that reaches the canonical `STRUCTURE_TRANSFERRED` capture consequence for a P05 holder. A structure that is destroyed on capture, rejected by transfer admission, or otherwise never reaches `STRUCTURE_TRANSFERRED` produces no P05 event.
+Exactly one P05 **Military / conquest FFY** event is derived for each enemy persistent structure whose canonical capture fact reaches the `STRUCTURE_TRANSFERRED` result for a P05 holder. A structure that is destroyed on capture, rejected by transfer admission, or otherwise never reaches `STRUCTURE_TRANSFERRED` produces no P05 event.
 
 The event's ordinary base value is:
 
@@ -162,7 +165,7 @@ For simulation tick `T`, every P05 event caused by a successful territorial capt
 
 The snapshot includes every mutable input that the ordinary positive-event pipeline would otherwise read while resolving P05, including faction-wide derived earning state such as terrain-share All-FFY effects, the captured cell's terrain identity, qualifying structure-field membership, and effective Origin/Echo/ruleset modifiers already in force for the capturing faction.
 
-The structure-capture resolver may subsequently determine that a particular occupied-cell capture transfers or destroys its structure. Only final `STRUCTURE_TRANSFERRED` results emit P05, but every emitted P05 event still consumes the capturing faction's frozen earning-state view from the tick boundary above.
+The structure-capture resolver may subsequently determine that a particular occupied-cell capture transfers or destroys its structure. Only final `STRUCTURE_TRANSFERRED` facts produce P05, but every emitted P05 event still consumes the capturing faction's frozen earning-state view from the tick boundary above.
 
 State changed or created by **any** ownership change on that same tick therefore cannot retroactively change a P05 event from that tick. In particular:
 
@@ -178,58 +181,47 @@ Given the same pre-mutation state and same authoritative territorial-capture res
 
 # 4. Factory Train service
 
-Physical rail topology, Factory-loop generation/regeneration, station attachment, shared-rail provenance, connectivity, and deterministic rail/path tie semantics are owned by [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). This section consumes each Factory's stored ordered service loop and owns Train dispatch, movement/event timing, ownership epochs, and economics.
+Physical rail topology, station attachment, connectivity, deterministic shortest routing, and physical route reconstruction are owned by [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md). This section consumes that substrate and owns Train service/economics only.
 
-Factories produce autonomous physical Trains. Each dispatched Train snapshots the Factory's current ordered physical service loop and follows that exact loop for its lifetime; after dispatch it never asks the global rail graph which branch to choose at an intersection.
+Factories produce autonomous physical Trains. Each Factory supports at most **one active primary Train** at a time.
 
-Baseline Train speed is **25 rail cells/second**. At the authoritative `10 Hz` simulation cadence, movement may use an exact integer work representation equivalent to `2.5 rail cells/tick`; no floating authoritative position is required.
+Baseline service rules:
 
-Generated rail is capacity-free for Train traffic in V1. Multiple Trains may occupy the same rail cell or edge. Trains do not collide, block one another, signal, queue, or require right-of-way arbitration.
+- **Train speed:** `25 rail cells/second`.
+- A Factory may dispatch its next primary Train only after the prior primary Train returns to the originating Factory or is destroyed, followed by a **5-second turnaround**.
+- Each normal dispatch selects up to **five distinct connected eligible City/Port stations** as route-construction targets. Five is a target count, not an event cap.
+- Target selection uses a deterministic rotating/shuffled service queue so large connected networks are not permanently reduced to the nearest few stations.
+- Route ordering/path construction minimizes expected travel time for a finite closed tour beginning and ending at the originating Factory. With uniform rail speed this reduces to shortest physical rail distance between service points.
+- The route generator does not intentionally add arbitrary loops solely to farm events; retracing produced naturally by the rail topology is legal.
 
-## 4.1 Factory Train-service ownership epoch and dispatch
+Whenever a Train physically reaches or passes through an eligible City/Port station on its finite route, Train service resolves one canonical station occurrence whether or not it was a selected route target. Within this owning subsystem the occurrence directly feeds the ordinary Train FFY valuation below. When another subsystem consumes the same occurrence—for example P33 Population accounting—the occurrence crosses that ownership boundary as the canonical immutable simulation-domain fact required by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md); consumers do not invent a second route/station event definition.
+
+Every paying station event imposes a **1.5-second / 15-tick dwell** before the Train continues. Repeated qualifying passes through the same station trigger repeated events and dwells. There is no hard per-tour event cap.
+
+Dense/highly optimized rail layouts are intentionally allowed to outperform ordinary layouts; balance intervention is reserved for demonstrated pathological scaling.
+
+## 4.1 Factory Train-service ownership epoch
 
 Factory Train scheduling is owner-scoped operational state rather than an indivisible part of the physical structure state.
 
-Each owned Factory has one current **Train-service ownership epoch** containing primary-service scheduler state and any owner-specific scheduler state such as P07's normal-primary-dispatch phase. The epoch is serialized/replayed as authoritative state; implementations must not reconstruct it from aggregate Train history.
+Each owned Factory has one current **Train-service ownership epoch** containing the primary-service scheduler state and any owner-specific scheduler state such as P07's normal-primary-dispatch phase. The epoch is serialized/replayed as authoritative state; implementations must not reconstruct it from aggregate Train history.
 
-Each ownership epoch supports at most **one active primary Train**. A freshly operational Factory or freshly created ownership epoch is immediately dispatch-ready once the Factory has a valid non-empty stored service loop. There is no artificial initial 5-second wait. If no service loop exists, no Train is created and the epoch remains dispatch-ready until a valid loop becomes available.
+A newly operational Factory begins its service through the ordinary deterministic initial-service path. Temporary inactivity pauses the current service epoch without discarding its scheduler state. Factory upgrades preserve the current service epoch.
 
-When a primary Train returns or is destroyed on tick `T`, its epoch starts a **50 active-scheduler-tick / 5-second turnaround**. If the Factory remains continuously active, the next primary becomes dispatch-eligible on exactly `T + 50`. Temporary Factory inactivity pauses the remaining turnaround and scheduler progression; inactive ticks do not consume the remaining wait. Inactivity does not freeze already-dispatched physical Trains.
+A successful Factory `STRUCTURE_TRANSFERRED` occurrence is first committed by the Structure owner and delivered as the canonical immutable structure-capture fact. Train service consumes that fact and, as one Economy-owned transition, closes the previous owner's service epoch and creates a fresh epoch for the new owner. The new epoch does not inherit the previous owner's turnaround, active-primary occupancy, route queue position, or P07 dispatch phase. The physical Factory's structure identity, completed level, health, construction state, and other transfer-preserved structure state remain governed by `TERRAIN_AND_STRUCTURES.md`; the Structure resolver does not mutate this owner-scoped Train-service state directly.
 
-Factory upgrades preserve the current service epoch. A successful Factory ownership transfer atomically closes the old owner's epoch and creates a fresh epoch for the new owner. The new epoch inherits no old-owner turnaround, primary occupancy, or P07 phase. The physical Factory and its current physical loop infrastructure remain governed by the physical-rail/structure owner.
+Every dispatched Train snapshots the Factory service epoch that created it. If the Factory later changes owner while that Train is still in flight:
 
-Every dispatched Train snapshots both the Factory loop and the Factory economic profile that apply at dispatch. If the Factory later transfers while an old-owner Train is still in flight:
+- the Train remains owned by its dispatching owner and is not transferred with the Factory;
+- it continues its already generated finite route and retains its dispatch-time economic profile;
+- it no longer occupies or blocks the new owner's Factory primary-service slot;
+- its later return, route termination, or destruction closes only its old dispatch and cannot mutate the new ownership epoch's primary scheduler, turnaround, route queue, or P07 phase.
 
-- the Train remains owned by its dispatching owner;
-- it completes its snapshotted loop and retains its dispatch-time Factory economic profile;
-- it does not occupy or block the new owner's primary-service slot;
-- its return, termination, or destruction cannot mutate the new ownership epoch's turnaround or P07 phase;
-- after completing its old-epoch loop it terminates normally rather than transferring ownership or attaching to the new epoch.
+At completion of an old-epoch route after the origin Factory has changed ownership, the Train terminates normally rather than transferring ownership or reattaching itself to the new epoch.
 
-Origin-specific scheduler transformations, including P07, are owned by [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
+## 4.2 Train FFY event value and dispatch snapshot
 
-## 4.2 Station traversal and dwell
-
-A Train station event is triggered only by physical **entry into** the occupied cell of a currently active completed City or Port that lies on the Train's snapshotted loop. Adjacency never counts. Station ownership does not affect this physical qualification.
-
-Current station existence, type, activity, completed state, and ownership are sampled when the event would resolve. A structure removed, inactive, or not yet completed at that traversal produces no Train station event and no paying dwell merely because its cell was present in the stored loop.
-
-On a qualifying paying entry:
-
-1. movement for that Train stops immediately for the current tick;
-2. unused movement work for that tick is discarded;
-3. the station event is created for same-tick economic settlement subject to §4.4 interception precedence;
-4. dwell begins with `resumeAtTick = arrivalTick + 15`.
-
-The Train performs no movement while `currentTick < resumeAtTick` and may resume on exactly `arrivalTick + 15`. Remaining on the station cell during dwell emits no additional event. Leaving and later re-entering the same qualifying station cell creates another event and another dwell. There is no hard per-tour payout/event cap.
-
-A Factory loop may therefore service more than five stations when additional eligible structures lie incidentally on its physical path. The physical loop owner defines construction-target selection and loop regeneration; this economy consumes every qualifying station entry actually encountered by the Train.
-
-## 4.3 Train FFY event value and state sampling
-
-Each qualifying station event is an **Industrial FFY** event owned by the Train owner. The canonical event location is the traversed station structure's occupied `cellId` at event resolution.
-
-Its ordinary base value is determined by the originating Factory's completed level at dispatch:
+Each qualifying station event is an **Industrial FFY** event owned by the Train owner. Its ordinary base value is determined by the originating Factory's completed level:
 
 | Factory level | Base Train event value |
 | ---: | ---: |
@@ -239,53 +231,25 @@ Its ordinary base value is determined by the originating Factory's completed lev
 | **L4** | **13,750 FFY** |
 | **L5** | **15,000 FFY** |
 
-Dispatch snapshots only the Factory-side base profile: the originating Factory's completed level plus any explicit Factory-specific transformation of Train-event **base value**. All station events and pending interception cargo for that Train use this dispatch-time Factory profile for the Train's lifetime. Later Factory upgrade, transfer, or loss of an owner-specific Factory transformation does not retroactively alter it.
+At dispatch, each Train snapshots the originating Factory's completed level and any explicit Factory-specific transformation of the Train-event **base value**. All station events and pending interception cargo for that Train use this dispatch-time Factory economic profile for the Train's lifetime. A later Factory upgrade, ownership transfer, or loss of an owner-specific Factory transformation does not retroactively alter an already dispatched Train.
 
-P34 is the current V1 Factory-specific base-value transformation: a Train dispatched from a qualifying P34 conquered Factory snapshots a `1.50×` Factory Train-event base-value multiplier. That multiplier is applied at step 2 of the FFY ordering in §3, before ordinary earning-side yield percentages. P34 does not modify Train speed, physical loop geometry, dwell, turnaround, service capacity, or P07 cadence.
+P34 is the current V1 Factory-specific base-value transformation: a Train dispatched from a qualifying P34 conquered Factory snapshots a `1.50×` Factory Train-event base-value multiplier. That multiplier is applied at step 2 of the FFY ordering in §3, before ordinary earning-side yield percentages. A P07 bonus Train dispatched simultaneously with a primary Train snapshots the same Factory economic profile while retaining its independently generated route.
 
-Ordinary earning-side state is **not** dispatch-snapshotted. At station-event resolution, evaluate the Train owner's then-current ordinary earning-side state at the canonical station cell, including applicable P14/N04 terrain qualification, P24/N11 structure-field qualification, All-FFY/Industrial-FFY yield state, and the current external `atWar` relation. A qualifying external station currently at war with the Train owner uses the ordinary wartime external-trade multiplier from §6. A foreign station receives no automatic payout merely for being traversed.
+A foreign station does not receive an automatic payout merely for being traversed.
 
-P33 consumes this same canonical Train economic-event identity. When the qualifying station is a City currently owned by a P33 holder, P33 grants `20 × current completed City level` Available Population to that current City owner, Capacity-capped, independently of the final FFY amount. Exact trait semantics remain owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+If a qualifying external station belongs to a faction currently `atWar` with the Train owner, the earning-side event uses the ordinary wartime external-trade multiplier from §6.
 
-## 4.4 Train interception / land piracy
+## 4.3 Train interception / land piracy
 
-For its next eligible paying station entry, a Train carries pending base cargo equal to its dispatch-time Factory event base value after any explicit Factory-specific base-value transformation such as P34.
+For its next eligible paying stop, a Train carries a snapshotted pending base cargo value equal to the Train's dispatch-time Factory event base value after any explicit Factory-specific base-value transformation such as P34.
 
-After Train movement for tick `T`, legal Tank/Train interception resolves **before** a pending Train station payout commits. Physical Tank interception legality, range, cadence, target selection, and chassis capability are owned by [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md).
-
-If a Train enters a paying station on `T` and a hostile Tank legally intercepts it on that same tick before settlement:
+If a hostile Tank successfully intercepts the Train before that payout:
 
 - the pending Industrial event is canceled;
 - the Train is destroyed;
-- the Tank owner receives a **Military / conquest FFY** event whose base value equals the Train's pending base cargo;
+- the Tank owner receives a **Military / conquest FFY** event whose base value equals the pending base cargo;
 - the raider's own eligible yield modifiers apply;
-- previously resolved Train station events are not clawed back.
-
-A Train destroyed away from a newly pending paying entry likewise cancels any still-pending next payout carried for interception purposes; destruction never retroactively reverses earlier settled events.
-
-## 4.5 Same-tick autonomous order
-
-For the Train/Factory seam, authoritative tick order is:
-
-```text
-accepted inputs
--> passive FFY snapshot/resolution
--> land/capture
--> structure lifecycle/transfer/completion
--> Factory loop/epoch reconciliation + dispatch
--> Train movement
--> legal Tank/Train interception
--> surviving Train station-event settlement
--> final authoritative state
-```
-
-Consequently:
-
-- a Factory that becomes operational on tick `T` may reconcile/create its physical service loop and dispatch on `T`;
-- a Factory transfer on `T` establishes the fresh owner epoch before Train dispatch for `T`;
-- a City or Port completing on `T` is eligible for same-tick Factory-loop service/regeneration decisions;
-- an old-owner in-flight Train remains bound only to its old loop/economic snapshots;
-- same-tick legal interception outranks a newly pending station payout as specified in §4.4.
+- previously resolved Train events are not clawed back.
 
 Origin-specific Train transformations are defined only in `ORIGIN_TRAIT_CATALOGUE.md`.
 

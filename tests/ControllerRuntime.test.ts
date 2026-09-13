@@ -27,6 +27,7 @@ function twoFactionRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: `controller-runtime:${seed}` },
   );
 }
 
@@ -261,6 +262,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-query-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,
@@ -292,6 +294,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-cell-view-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,
@@ -334,6 +337,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-spatial-query-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,
@@ -401,6 +405,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-selector-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,
@@ -465,6 +470,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-query-budget-red" },
     );
     const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
       queriesPerDecision: 128,
@@ -500,6 +506,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-materialization-budget-red" },
     );
     const state = runtime.snapshot();
     const makeSession = () =>
@@ -570,6 +577,7 @@ describe("controller runtime production-host foundation", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "controller-segment-red" },
     );
     const compiled = compileSegments({ width: 4, height: 4, terrain });
     const map = createSimulationMap({

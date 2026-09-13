@@ -15,6 +15,7 @@ import {
   type MatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createCellOwnershipChangedEvent } from "../src/simulation/SimulationEvents";
 import * as StructureTransactions from "../src/simulation/Structures";
 import type { PersistentStructureState } from "../src/simulation/Structures";
 import { TickEngine } from "../src/simulation/TickEngine";
@@ -306,8 +307,7 @@ describe("transactional persistent-structure purchases", () => {
 
   it("persists P21 per-type purchase entitlement, ignores grants, and requires affordability before a free spend", () => {
     const rules = rulesWith(["P21"]);
-    const terrain = Array.from({ length: 31 }, () => "PLAINS" as const);
-    const initial = stateFor({ alphaRules: rules, ffy: 50_000, terrain });
+    const initial = stateFor({ alphaRules: rules, ffy: 50_000 });
     const grant = StructureTransactions.tryMaterializeStructureGrant(initial, {
       structureId: "fort-grant",
       ownerId: "alpha",
@@ -325,7 +325,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-first-purchase",
       ownerId: "alpha",
       type: "FORT",
-      cellId: 10,
+      cellId: 1,
     });
     const afterFirst = commitTransaction(granted, firstPurchase);
     expect(alphaFfy(afterFirst)).toBe(50_000);
@@ -335,7 +335,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-second-purchase",
       ownerId: "alpha",
       type: "FORT",
-      cellId: 20,
+      cellId: 2,
     });
     const afterSecond = commitTransaction(afterFirst, secondPurchase);
     expect(alphaFfy(afterSecond)).toBe(0);
@@ -606,13 +606,24 @@ describe("transactional persistent-structure purchases", () => {
 
     const nextOwnership = [...upgraded.ownership];
     nextOwnership[0] = "beta";
-    const structures = StructureTransactions.resolvePersistentStructureLifecycleTick(
-      upgraded,
-      nextOwnership,
-      upgraded.tick + 1,
-    );
-    const captured = createProspectiveMatchState(upgraded, {
+    const transitionTick = upgraded.tick + 1;
+    const postLand = createProspectiveMatchState(upgraded, {
       ownership: nextOwnership,
+    });
+    const structures = StructureTransactions.resolvePersistentStructureLifecycleTick(
+      postLand,
+      [
+        createCellOwnershipChangedEvent({
+          id: `test:cell-ownership:${transitionTick}:0`,
+          tick: transitionTick,
+          cellId: 0,
+          previousOwnerId: "alpha",
+          nextOwnerId: "beta",
+        }),
+      ],
+      transitionTick,
+    );
+    const captured = createProspectiveMatchState(postLand, {
       structures,
     });
 
@@ -673,18 +684,18 @@ describe("transactional persistent-structure purchases", () => {
     const alphaRules = rulesWith(["P21"]);
     const spec = createMicroSimulationSpec({
       seed: "structure-purchase-replay",
-      width: 31,
+      width: 4,
       height: 1,
-      terrain: Array.from({ length: 31 }, () => "PLAINS" as const),
-      initialOwners: Array.from({ length: 31 }, (_, index) =>
-        index === 30 ? "beta" : "alpha",
-      ),
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "alpha", "beta"],
       factions: [
         { id: "alpha", rules: alphaRules },
         { id: "beta", rules: rulesWith() },
       ],
     });
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "structure-purchase-replay",
+    });
     for (let tick = 0; tick < 250; tick += 1) runtime.tick();
     expect(alphaFfy(runtime.snapshot())).toBe(50_000);
 
@@ -700,7 +711,7 @@ describe("transactional persistent-structure purchases", () => {
       structureId: "fort-runtime-b",
       ownerId: "alpha",
       structureType: "FORT",
-      cellId: 10,
+      cellId: 1,
     } as never);
     expect(first.sequence).toBe(0);
     expect(second.sequence).toBe(1);
@@ -720,7 +731,7 @@ describe("transactional persistent-structure purchases", () => {
         structureId: "fort-runtime-balance-conflict",
         ownerId: "alpha",
         structureType: "FORT",
-        cellId: 20,
+        cellId: 2,
       } as never),
     ).toThrow(/INSUFFICIENT_FFY/i);
     expect(runtime.acceptedInputs()).toHaveLength(2);
@@ -747,6 +758,7 @@ describe("transactional persistent-structure purchases", () => {
       spec,
       runtime.acceptedInputs(),
       finalState.tick,
+      { controllerReferenceNamespace: "structure-purchase-replay:replay" },
     );
     expect(regenerated.snapshot()).toEqual(finalState);
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());

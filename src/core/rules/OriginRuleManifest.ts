@@ -789,12 +789,11 @@ define("P34", "MIXED", {
         15_000,
         [p34Captured, p34Target(unit)],
       ),
-      finalOverride(
+      contextualScalar(
         "P34",
         "STRUCTURE_REPAIR_RADIUS",
         scope.structure("FACTORY"),
-        "CELLS",
-        8,
+        15_000,
         [p34Captured, p34Target(unit)],
       ),
     ]),

@@ -133,6 +133,7 @@ describe("authoritative FFY event, signed-consequence, and payment substrate", (
           { id: "beta", rules: rulesWith() },
         ],
       }),
+      { controllerReferenceNamespace: "ffy-additive-passive" },
     );
 
     match.tick();

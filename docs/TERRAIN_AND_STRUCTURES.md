@@ -7,6 +7,7 @@ This file is the **canonical owner for Open Fufu base terrain, physical rail top
 Neighboring concerns are owned elsewhere:
 
 - game-wide teams, hostility, and `atWar` lifecycle: [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md);
+- deterministic cross-system simulation-event boundary and delivery: [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md);
 - FFY, Factory Train service, and Trade Ship economics: [`FFY_ECONOMY.md`](./FFY_ECONOMY.md);
 - Warships, Transports, and strategic-weapon mechanics: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
 - Origin transformations of terrain, structures, or units: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md).
@@ -69,7 +70,7 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 | **Forest** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **90%** | **`-5%`** | **`+10%`** | — |
 | **Tundra** | Yes | **No** | **`0`** | Yes | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
 | **Marsh** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
-| **Shallow Water** | **Yes** | **No** | `0` | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
+| **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
 | **Deep Water** | No | No | `0` | No | No | No | — | — | — | — |
 | **Impassable** | No | No | `0` | No | No | No | — | — | — | — |
 
@@ -144,9 +145,11 @@ Origin-specific Fallout interactions are defined in `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ## 1.8 Physical rail topology overlay
 
-Rail is a physical overlay on the simulation raster. Immutable baseline rail may be supplied by the bound production map artifact; exact artifact package, manifest, encoding, serialization, content identity, and validation are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts). Runtime Factory service may additionally contribute generated rail under this section.
+Rail is an immutable physical overlay on the simulation raster for the V1 baseline. The authoritative production rail topology is supplied by the bound production map artifact. Exact artifact package, manifest, encoding, serialization, content-identity, and validation details are owned by [`../src/simulation/MapArtifact.ts`](../src/simulation/MapArtifact.ts), not duplicated here.
 
-Each rail node is exactly an existing simulation `cellId`; V1 creates no second rail coordinate or node space. Rail occupancy remains distinct from base-terrain identity. Rail edges are explicit cardinal connections. A connection is legal only when both endpoint cells are valid rail cells, are cardinally adjacent on the raster, and both endpoints encode the reciprocal connection. Connections may not cross a map edge or wrap between raster rows. Every legal rail edge costs exactly one rail-cell step.
+Each rail node is exactly an existing simulation `cellId`; V1 creates no second rail coordinate or node space. Rail occupancy is a separate overlay field from base-terrain identity. This section does not add or infer terrain-specific rail purchase, build, placement, capture, removal, or generation rules.
+
+Rail edges are explicit cardinal connections. A connection is legal only when both endpoint cells are valid rail cells, are cardinally adjacent on the raster, and both endpoints encode the reciprocal connection. Connections may not cross a map edge or wrap between raster rows. Every legal rail edge costs exactly one rail-cell step.
 
 For deterministic rail adjacency and shortest-path enumeration, the canonical direction order is:
 
@@ -154,19 +157,9 @@ For deterministic rail adjacency and shortest-path enumeration, the canonical di
 top -> right -> bottom -> left
 ```
 
-This ordering breaks equal-cost physical-path ties. Rail routing must not derive ties from `Map`/`Set` insertion order, artifact enumeration order, or another incidental runtime order.
+This ordering breaks equal-cost shortest-path ties. Rail routing must not derive ties from `Map`/`Set` insertion order, artifact enumeration order, or another incidental runtime order.
 
-Authoritative physical rail is the union of:
-
-```text
-immutable artifact rail
-+ current Factory-loop generated-rail contributions
-+ generated-rail contributions retained by in-flight Train loop snapshots
-```
-
-Generated rail therefore has deterministic contributor provenance at cell/edge granularity. Regenerating, destroying, or otherwise releasing one Factory loop removes a generated cell/edge only when no current Factory loop and no still-live in-flight Train snapshot requires it, and it never removes immutable artifact rail. Reference/provenance state is authoritative serialized/replay state; replay must not infer it from current visual geometry alone.
-
-A City, Port, or Factory is attached to the current physical rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
+A City, Port, or Factory is attached to the rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
 
 A rail route query distinguishes three outcomes:
 
@@ -176,75 +169,11 @@ A rail route query distinguishes three outcomes:
 
 For a valid rail source equal to its destination, the found path contains exactly that one cell and has distance `0`. Otherwise route distance is the number of traversed rail edges in rail-cell steps.
 
-### 1.8.1 Factory service-loop generation
+Natural retracing uses the same physical rail cells in reverse. The routing substrate must not fabricate a synthetic closure edge to close a higher-level Train tour.
 
-Every active completed Factory may own one canonical ordered physical **service loop**. Loop generation consumes deterministic physical inputs supplied by the Factory/structure geometry layer:
+Rail topology is immutable after map materialization in V1. Its authoritative identity is therefore bound through the production map artifact and the match's existing artifact/replay binding; this registry defines no mutable runtime rail state.
 
-- the Factory's persistent `structureId`;
-- its fixed outbound and inbound rail-port cells, established by the Factory's physical geometry/orientation rather than selected by route optimization;
-- the deterministic membership set for that Factory's current area of influence;
-- current rail-buildable/pathable cells available to the generator;
-- current active completed City/Port structures and existing physical/generated rail.
-
-This contract intentionally does **not** invent a numeric Factory influence radius. The authoritative influence membership supplied to the generator is an input; a future owner may define/change that geometry without changing the loop algorithm here.
-
-Eligible deliberate construction targets are active completed Cities and Ports whose occupied cells lie inside the Factory's supplied influence membership. Target ownership is irrelevant to physical eligibility.
-
-The external ordered loop path is:
-
-```text
-Factory outbound port
--> zero or more selected City/Port target cells
--> Factory inbound port
-```
-
-The Factory closes the circuit internally between its fixed inbound/outbound ports. External generation must not fabricate another closure edge through unrelated terrain.
-
-Selection rules are exact:
-
-- with zero eligible targets, no service loop exists and the Factory dispatches no Train;
-- with one through five eligible targets, the minimum valid loop deliberately includes all of them;
-- with more than five eligible targets, select exactly five **and** their visit order jointly to minimize total valid loop length.
-
-Five is only the deliberate construction-target cap. Any additional active completed City/Port whose occupied cell lies exactly on the generated ordered loop is an incidental serviced station and may raise the serviced-station count above five.
-
-Among equal-length valid target/order choices, compare the selected structures by their canonical `structureId` sequence; then use the canonical physical path order `top -> right -> bottom -> left` for equal physical-path choices. No RNG or incidental enumeration order resolves loop ties.
-
-The generated result is stored as one ordered rail-cell sequence. Outside the Factory, the generator must not add arbitrary repeated cells, branches, or loops merely to manufacture station events. When a valid simple/non-branching minimum solution exists, that solution class is required.
-
-### 1.8.2 Regeneration and newly eligible stations
-
-Loop maintenance uses the Factory's **current serviced-station count**, including incidental on-loop stations, rather than remembering only the historical construction targets.
-
-When a newly completed eligible City/Port appears inside the Factory influence membership:
-
-- if its occupied cell is already on the current loop, it joins service immediately with no geometry regeneration;
-- if it is off-loop and the current loop services fewer than five stations, schedule full loop regeneration against the complete current eligible set;
-- if it is off-loop and the current loop already services at least five stations, it does not by itself trigger regeneration.
-
-A regeneration recomputes the entire current eligible set under §1.8.1; old target identities are not pinned merely because they were selected before.
-
-If no Train still depends on the current loop snapshot, a pending regeneration may commit immediately. If one or more moving/dwelling Trains still use the old loop snapshot, the regeneration remains pending until all old-loop users release it. Those Trains finish their snapshotted old loop; required generated rail remains referenced until their snapshots terminate. The replacement loop then commits atomically.
-
-### 1.8.3 Multiple Factories and shared rail
-
-Each Factory owns its own ordered service loop even where physical rail overlaps. Physical generated rail is shared through contributor provenance rather than copied into collision-isolated networks.
-
-When a new or regenerated Factory can reach existing generated Factory rail inside its supplied influence membership, its chosen loop **must share at least one existing rail edge** whenever a valid loop satisfying its ordinary required-station rules can do so. Sharing a single cell without a shared edge does not satisfy this preference/requirement.
-
-If enforcing one shared existing edge makes every otherwise-required valid loop impossible, the Factory may generate an independent valid loop rather than becoming unusable.
-
-Candidate ordering is:
-
-1. satisfy required target/station inclusion;
-2. when any such valid intersecting solution exists, require at least one shared existing edge;
-3. minimize total loop length;
-4. among equal lengths, prefer the candidate sharing more existing generated rail edges;
-5. if still tied, use the §1.8.1 canonical structure-ID sequence and physical path tie order.
-
-When several Factory loop creations/regenerations are committed in the same authoritative reconciliation stage, process Factories by ascending persistent `structureId`; each later Factory sees generated rail already committed by earlier Factories in that stage. Regenerating one Factory never recursively forces another Factory to regenerate merely because their overlap changed. A City/Port lying on several Factory loops is independently serviceable by every such loop.
-
-Train dispatch, movement/dwell, station-event economics, Factory ownership epochs, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume these stored physical loop snapshots.
+Factory Train target selection, dispatch, dwell, economic events, ownership epochs, turnaround, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume this physical topology rather than redefining it.
 
 ---
 
@@ -375,7 +304,7 @@ Baseline subsystem effects may define another explicit subject/owner relation wh
 
 For boolean conditions such as “inside a qualifying Fort/SAM Launcher area,” same-type overlap is union/existence: one or more qualifying fields makes the condition true once. Overlap does not multiply P18/P24 and cannot make N11 “more zero.” Numeric pressure/support consumers separately retain the strongest-applicable same-type reducer and the canonical Fort/Command cross-type composition rule.
 
-#### 2.1.1.3 Canonical consumers and controller projection
+#### 2.1.1.3 Canonical consumers
 
 All authoritative consumers query the same effective field profile. Current required consequences include:
 
@@ -385,8 +314,6 @@ All authoritative consumers query the same effective field profile. Current requ
 - N11 consumes self-owned SAM Launcher membership;
 - N11 uses the SAM Launcher's **current effective interception range geometry**, including P40 and ordinary SAM-range Echo specialization; it has no separate economic radius;
 - P40 changes N11 geometry only because it changes that canonical effective SAM range; charge READY/RECHARGING state does not change membership.
-
-Controller/Official-AI mechanics projection must expose the same authoritative physical-structure field as a queryable selector/helper. Numeric compatibility fields such as a displayed coverage radius or interception range are derived ergonomic information only; they must never become a second raster-membership authority, especially for area-scaled fields where an exact radius may be irrational.
 
 Every physical persistent structure blocks deliberate relinquishment of its containing cell for as long as that structure exists, regardless of completed level, health, activity, or construction/upgrade state. This registry owns the structure-occupancy predicate only; the atomic relinquishment transaction, ownership result, and failure behavior are owned by `OPEN_FUFU_DESIGN.md`. Relinquishment never uses structure destruction or ownerless-structure state as an implicit workaround.
 
@@ -416,14 +343,6 @@ Hard **build/purchase** constraints apply only to paths that actually build/purc
 
 Likewise, ordinary terrain/build permission, Port-interface requirements, construction-site occupancy, and purchase affordability are build/grant inputs; they are not retroactively re-applied to a physical structure already present during `CAPTURE_TRANSFER`.
 
-Every `PURCHASE_BUILD` or `GRANT` also obeys the global persistent-structure spacing invariant. Let `(dx, dy)` be the integer cell-center offset from the requested structure cell to each existing persistent structure cell. Admission requires, for **every** existing persistent structure regardless of owner, type, activity, level, or construction state:
-
-```text
-dx² + dy² >= 100
-```
-
-Thus structures must be at least **10 cells center-to-center** apart; exact distance 10 is legal. `CAPTURE_TRANSFER` does not revalidate this build/grant spacing for a structure that already physically exists. Upgrades and other non-moving lifecycle transitions likewise do not rerun it.
-
 ### 2.2.2 Ownership-slot occupancy and reservations
 
 After an admission commits, one intended future owned object consumes exactly one ownership slot throughout its lifecycle. Slot accounting therefore uses disjoint buckets:
@@ -437,7 +356,7 @@ occupied slots
 
 A materialized under-construction structure appears only in the first bucket; it is never counted again as a separate pending acquisition. An admitted construction occupies its ownership slot from transaction commit, not only from later activation. An upgrade does not create a new structure and consumes no additional ownership slot.
 
-A controller/mechanics quote is informational only and does **not** reserve a slot. Several individually legal quotes may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling commands cannot oversubscribe the same cap.
+A non-committing prospective admission evaluation does **not** reserve a slot. Several individually legal prospective evaluations may therefore form an illegal aggregate decision. Atomic decision validation must reserve slots against the complete proposal before commit so sibling acquisitions cannot oversubscribe the same cap.
 
 The slot is released when authoritative ownership of that physical structure ends, including successful transfer away or destruction/deletion. A committed pre-materialization reservation is released on authoritative cancellation/rollback. Failed admissions leave no phantom reservation.
 
@@ -457,14 +376,20 @@ The Origin catalogue owns which traits create grants. Strategic Spawn owns P20 s
 
 ## 2.4 Structure capture resolution
 
-A successful territorial capture of a cell containing an enemy persistent structure does **not** directly call a raw ownership setter. It creates a deterministic structure-capture resolution inside the same authoritative capture transaction.
+A successful territorial capture of a cell containing an enemy persistent structure first commits the territorial owner's political-ownership transition. That producer emits the canonical `CELL_OWNERSHIP_CHANGED` fact defined by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md). The persistent-structure resolver consumes that already-resolved occurrence and determines only the structure-owned fate of the physical structure on the changed cell.
 
-Territorial capture success is already established before this resolver runs. Structure rules may determine the structure's fate and capture consequences, but they do not retroactively veto the successful cell capture unless a separate territorial-acquisition rule explicitly says so.
+Territorial capture success is therefore established before the structure resolver runs. Structure rules may determine the structure's fate, but they do not retroactively veto the successful cell capture unless a separate territorial-acquisition rule explicitly says so.
 
 Canonical pipeline:
 
 ```text
 successful territorial capture of occupied cell
+    ↓
+commit political ownership
+    ↓
+emit CELL_OWNERSHIP_CHANGED
+    ↓
+Structures consumes the ownership fact
     ↓
 freeze StructureCaptureContext
     ↓
@@ -475,18 +400,22 @@ if disposition remains TRANSFER:
     ↓
 resolve final structure disposition
     ↓
-resolve typed capture consequences from the final result
+commit structure fate
     ↓
-commit cell ownership + structure fate + consequences atomically
+emit immutable StructureCaptureResolved simulation fact
     ↓
-emit immutable StructureCaptureResolved fact
+explicitly ordered downstream consumers apply only their owned consequences
 ```
 
-For the simulation tick that contains this capture, that entire territorial-capture/structure-fate transaction resolves **before** end-of-tick persistent-structure construction progression. The frozen capture context therefore observes the pre-progress `construction.remainingTicks`; a successful transfer preserves that exact value. Only after the capture transaction commits does lifecycle progression subtract the tick and perform any resulting completion. Consequently, a structure captured with `remainingTicks = 1` transfers while still incomplete and may then complete later in the same tick under the new owner. Post-transfer field queries use the new owner's effective rules at the structure's still-current completed level until any later atomic completion changes that level.
+`StructureCaptureResolved` is a cross-system simulation-domain fact and therefore uses the common envelope/delivery invariants in [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md). This structure owner defines its factual capture meaning; downstream Economy, Factory-service, Origin, statistics, projection, and other consumers own their own consequences. A downstream consequence is not rolled into the Structure state commit merely because it reacts on the same tick.
+
+For the simulation tick that contains this capture, territorial ownership resolution precedes structure-fate resolution, and structure-fate resolution completes **before** end-of-tick persistent-structure construction progression. The frozen capture context therefore observes the pre-progress `construction.remainingTicks`; a successful transfer preserves that exact value. Only after the structure fate commits does lifecycle progression subtract the tick and perform any resulting completion. Consequently, a structure captured with `remainingTicks = 1` transfers while still incomplete and may then complete later in the same tick under the new owner. Post-transfer field queries use the new owner's effective rules at the structure's still-current completed level until any later atomic completion changes that level.
+
+Focused downstream owners may require an earlier tick snapshot for their own consequence valuation. Event routing does not move or redefine such a focused snapshot boundary: for example, P05's capture-tick earning snapshot remains owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md). The canonical fact determines whether the qualifying structure occurrence happened; the consumer applies its own already-defined temporal sampling rule.
 
 ### 2.4.1 Capture context and disposition
 
-The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time.
+The frozen capture context includes at minimum the physical structure identity/type/cell, previous owner, capturing faction, completed level when one exists, active state, health where applicable, and any in-progress construction target level plus remaining construction time. `StructureCaptureResolved` preserves the lifecycle-safe factual context needed after a `DESTROY` result removes the physical structure from current state.
 
 V1 has exactly two generic final dispositions:
 
@@ -517,13 +446,13 @@ Fresh construction therefore remains fresh construction after transfer, includin
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
-Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`, and a focused subsystem may close the previous owner's operational epoch and initialize the new owner's epoch while preserving the physical structure. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
+Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`. A focused subsystem that owns an operational epoch reacts to the immutable transfer result through the canonical simulation-event boundary rather than being mutated inside the structure resolver. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved Structure state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
 
-### 2.4.3 Typed capture consequences, not mutating event listeners
+### 2.4.3 Typed capture facts, not mutating event listeners
 
-Gameplay systems that care about structure capture participate through typed deterministic resolver inputs/consequences rather than arbitrary post-hoc listeners that mutate canonical state in unspecified order.
+Gameplay systems that care about structure capture consume the immutable deterministic `StructureCaptureResolved` occurrence through explicit phase ordering. They do not register arbitrary post-hoc listeners, feed consumer-private state back into the structure resolver, or ask the structure resolver to commit another subsystem's consequence.
 
-The resolver distinguishes at least these trigger stages:
+The resolved fact distinguishes at least these factual trigger stages/results:
 
 ```text
 STRUCTURE_PRESENT_ON_CAPTURE
@@ -531,11 +460,11 @@ STRUCTURE_TRANSFERRED
 STRUCTURE_DESTROYED_ON_CAPTURE
 ```
 
-A future rule may therefore punish/reward capturing a City merely because it was present, only when it is successfully acquired, or only when capture destroys it, without depending on listener registration order. Consequence producers return declarative effects; the capture transaction collects and commits those effects atomically with the structure fate.
+A future rule may therefore punish/reward capturing a City merely because it was present, only when it is successfully acquired, or only when capture destroys it, without depending on listener registration order. Each downstream consumer applies only the consequence it owns after the Structure state transition is committed.
 
-Current examples are Origin-owned: P05 consumes `STRUCTURE_TRANSFERRED` to create its conquest FFY event, while P34 consumes a successfully transferred Factory as conquest acquisition/provenance. If N17 or failed transfer admission produces `STRUCTURE_DESTROYED_ON_CAPTURE`, those successful-transfer effects do not fire.
+Current examples are Origin/economy owned: P05 consumes `STRUCTURE_TRANSFERRED` to create its conquest FFY event, P34 consumes a successfully transferred Factory as conquest acquisition/provenance, and Factory Train service consumes successful Factory transfer to replace its owner-scoped service epoch. If N17 or failed transfer admission produces `STRUCTURE_DESTROYED_ON_CAPTURE`, successful-transfer effects do not fire.
 
-After commit, the simulation emits an immutable resolved fact suitable for replay, diagnostics, statistics, presentation, and lawful controller-event projection. Post-resolution observers cannot change the already committed structure fate.
+The immutable resolved fact is also suitable for replay-derived evidence, diagnostics, statistics, presentation, and lawful controller-event projection. Those consumers cannot change the already committed structure fate.
 
 ### 2.4.4 Same-tick ownership-slot resolution
 
@@ -573,7 +502,9 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 | **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
 | **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
 | **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
-| **Factory — simultaneous Tank repair capacity** | 1 | 2 | 3 | 4 | **5** |
+| **Factory — broad armored-unit repair radius** | 20 | 40 | 60 | 80 | **100** |
+| **Factory — broad armored-unit repair rate** | 10 HP/s | 20 HP/s | 30 HP/s | 40 HP/s | **50 HP/s** |
+| **Factory — fast armored-unit repair rate** | 100 HP/s | 137.5 HP/s | 175 HP/s | 212.5 HP/s | **250 HP/s** |
 | **Missile Silo — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — simultaneous charges** | 1 | 2 | 3 | 4 | **5** |
 | **SAM Launcher — interception range** | 70 | 80 | 90 | 100 | **105** |
@@ -611,17 +542,16 @@ Trade Ship service/economics are defined in `FFY_ECONOMY.md`. Warship production
 
 Factories produce Trains and Tanks and repair Tank chassis.
 
-Factory-loop physical geometry/generation is owned by Section 1.8. Train dispatch, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
+Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
 
-Baseline Tank repair:
+Factory armored-unit repair is an explicit **two-tier vehicle-repair profile** and therefore uses the shared lifecycle in Section 2.8. Its completed-level broad radius/rate and fast-service rate are listed in Section 2.6. Its focused fast-service parameters are:
 
 ```text
-repair radius = 5 cells
-repair rate = 100 HP/s per repairing Tank chassis
-simultaneous repair capacity = completed Factory level
+fast-service radius = 10 cells at every Factory level
+fast-service capacity = 1 chassis at every Factory level
 ```
 
-Factory consumers must request an **effective Factory profile** rather than infer a generic `Factory effect multiplier`. The current P34 conquest transformation is explicitly axis-specific: a qualifying conquered Factory uses `1.50×` Train-event base value, `1.50×` Tank-chassis construction speed, `150 HP/s` Tank repair, and an `8-cell` repair radius. Its primary Train-service capacity, turnaround, Tank-build concurrency, Tank purchase price, simultaneous repair capacity, Factory level, and Factory construction/upgrade rules remain ordinary. Exact Origin semantics and interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+The ordinary Factory repair-radius rule axis modifies **broad repair radius only**. The ordinary Factory repair-rate axis scales **both broad and fast repair rates**. Fast-service radius and one-slot capacity are fixed baseline parameters rather than those axes. Factory consumers must request the effective typed repair profile rather than infer a generic `Factory effect multiplier`. Exact P34 transformation values and Origin interactions are owned by `ORIGIN_TRAIT_CATALOGUE.md`; Echo identities/scopes are owned by `ECHO_CATALOGUE.md`.
 
 ### Missile Silo
 
@@ -645,7 +575,7 @@ state  : READY
 
 For completed capacity `N`, the slot IDs are exactly `0..N-1`. Existing slots are never renumbered. Initial activation creates the complete current range in ascending ID order; a later capacity increase from `N` to `M` appends exactly `N..M-1` and leaves every earlier slot identity unchanged.
 
-The controller-facing summary may expose only `ready`, `capacity`, and remaining recharge ticks. That projection is derived state. The authoritative simulation/replay retains every `slotId`, state, and absolute deadline so charge consumption cannot be ambiguous or duplicated.
+The authoritative simulation/replay retains every `slotId`, state, and absolute deadline so charge consumption cannot be ambiguous or duplicated.
 
 A fresh Silo contributes **no active charge state while its first construction is incomplete**. When a newly materialized/completed Silo first becomes active, every slot in its current completed-level capacity starts **READY**. This applies equally to ordinary completed construction and to an immediate completed grant unless the grant's own canonical mechanic explicitly says otherwise. Consequently, a successful P20 L1 starting-Silo grant begins with slot `0` READY (`1/1`) immediately.
 
@@ -704,6 +634,30 @@ Origin transformations may replace the Observation field's ordinary effect, but 
 A completed Command Post gives its listed offensive-pressure modifier to an ordinary Population-based land engagement lane when the attacking source cell lies inside friendly Command-Post coverage.
 
 It does not modify Tank weapon damage, Warship damage, strategic weapons, or unrelated FFY effects.
+
+## 2.8 Shared two-tier vehicle-repair lifecycle
+
+This section owns the common assignment, routing, queue, broad-service, fast-service, and completion lifecycle for vehicle-repair profiles that explicitly opt into the **two-tier vehicle-repair** contract. A repair field does not inherit this lifecycle merely because it uses radial repair geometry. The Factory armored-unit profile in Section 2.7 explicitly uses it; another provider profile uses it only when that provider/unit contract explicitly adopts it.
+
+The focused consumer remains responsible for determining which vehicles are repairable, which providers are eligible, the repair-retreat trigger/intent priority, legal traversal and route timing, effective maximum health, the provider's effective broad/fast profile, and the vehicle's focused combat/raiding capabilities. Once repair retreat is active, this section owns the generic lifecycle below.
+
+For an eligible vehicle, consider only eligible providers whose current fast-service field contains at least one legally reachable cell. For each provider, choose the reachable cell in that fast-service field with the least legal traversal time under the vehicle's current effective movement profile; equal traversal-time cells tie by ascending stable `cellId`. Choose the provider with the least such traversal time; provider ties use ascending stable `structureId`.
+
+The selected provider assignment persists rather than being recomputed opportunistically. Preserve it while the provider remains eligible and the retained route/queue position remains legal. If the provider becomes ineligible or its fast-service field no longer has a reachable legal cell, deterministically reselect under the same rule; if no replacement exists, clear the repair assignment and repair route.
+
+An assigned vehicle receives that provider's broad repair whenever it is inside the provider's current effective broad field and is not receiving fast service that tick. Broad repair does not stop movement, has no simultaneous-unit capacity limit, and may apply while the vehicle is still travelling toward fast service or waiting in the fast-service queue. A vehicle is assigned to at most one provider, so repair from several providers never stacks on one vehicle.
+
+When the vehicle reaches its selected legal cell inside the provider's fast-service field, it joins that provider's stable queue with key:
+
+```text
+(repairArrivalTick, unitId)
+```
+
+Queue order is ascending by arrival tick and then stable unit ID. Queued vehicles hold their arrival position while waiting. Each service phase selects at most the provider profile's fast-service capacity from the head of that queue. A selected fast-service recipient receives fast repair only; broad and fast repair never stack on the same vehicle in one tick.
+
+Repair retreat is the highest-priority **movement** intent, not a general combat-inactive state. A vehicle travelling toward repair remains otherwise operational for its focused lawful target acquisition and firing, and combat does not replace or divert the repair route. A queued vehicle that is not selected for fast service likewise remains otherwise operational while holding its queue position. Only a vehicle actually selected as a fast-service recipient is inactive for ordinary target acquisition/firing during that service phase.
+
+Every repair application uses the provider's current effective profile and the vehicle's current effective maximum health, retaining exact deterministic fractional health where required and clamping at that maximum. Reaching full health clears the repair assignment/queue state and repair route. Repair never changes the vehicle's strategic operating anchor; after service it resumes the focused unit owner's ordinary intent from that unchanged anchor.
 
 ---
 
@@ -772,15 +726,25 @@ Baseline Plains movement speed is **5 cells/s**.
 | **Deep Water** | Blocked | — | — |
 | **Impassable** | Blocked | — | — |
 
+For one legal cardinal Tank edge from traversable cell `A` to traversable cell `B`, let `vA` and `vB` be that chassis's current effective movement speeds on the two endpoint terrains after all applicable chassis/Origin/Echo movement effects. The edge traversal time is symmetric half-edge time:
+
+```text
+edgeTime(A, B) = 0.5 / vA + 0.5 / vB
+```
+
+Authoritative routing accumulates this value with exact rational arithmetic; it must not round each edge through floating point. Therefore `A -> B` and `B -> A` have the same terrain-derived traversal time, and a same-terrain edge reduces exactly to `1 / v`. If either endpoint terrain is blocked for the chassis, or the territorial-corridor predicate rejects the transition, that edge is unavailable rather than assigned a finite traversal time.
+
 Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
 
 ## 3.3 Strategic/autonomous control
 
 Tanks are autonomous combat formations rather than RTS-micro units.
 
-The controller may issue a strategic **move destination**. An accepted move repositions the Tank and establishes that destination as its new operating anchor. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
+The controller may issue a strategic **move destination**. Shared destination admission, persistence, exact-or-best-effort routing, interruption/resumption, and anchor-update semantics are owned by `OPEN_FUFU_DESIGN.md` §6.5.1; this Tank owner supplies Tank-specific destination-cell legality, traversal, and intent priority. The controller does not assign patrol modes, raid modes, firing modes, or individual targets.
 
-Within ordinary operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned. Tank attacks require legal observation.
+Within ordinary settled operation the Tank wanders/searches for legal targets around its current operating anchor, with a baseline **100-cell leash**. Active strategic travel uses the shared leash/interruption contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Pathfinding, roaming, local pursuit, target selection, firing, Train interception, Population attacks, and automatic repair retreat are simulation-owned.
+
+A Tank-derived chassis provides its owning faction ordinary local tactical observation out to that chassis's **current effective weapon range**. That local observation is subject to the game-wide visibility precedence in `OPEN_FUFU_DESIGN.md`: concealment/blackout still defeats ordinary observation, while an active source-specific direct reveal may expose a source through concealment. Tank attacks require legal observation.
 
 ## 3.4 Combat and raiding
 
@@ -795,3 +759,115 @@ Autonomous anti-armor combat and Train interception do **not** require, create, 
 Population attacks never capture territory by themselves.
 
 Train interception payout semantics are owned by `FFY_ECONOMY.md`.
+
+## 3.5 Deterministic production lifecycle
+
+A Tank-production admission is one atomic transaction against the authoritative pre-state. It must validate the selected Factory's current ownership/activity and completed L1+ state, its free Tank-build slot, the faction's current active Tank-derived chassis count, the resulting effective chassis profile and purchase cost, the controller-selected initial strategic destination, and FFY affordability before committing anything. Rejection consumes no FFY and no slot. Acceptance debits the final FFY cost exactly once and creates exactly one Factory-owned production job.
+
+The initial strategic destination must be a cell the resulting chassis may intrinsically occupy at admission. Current route connectivity is not an admission requirement; after deployment, persistence and exact-or-best-effort travel use the shared strategic-destination contract in `OPEN_FUFU_DESIGN.md` §6.5.1.
+
+For the purchase-cost curve, `activeTankChassis` means currently deployed, living `TANK` or Origin-transformed Tank-derived chassis such as `HEAVY_ARTILLERY` owned by that faction. In-progress jobs, completed output waiting for a deployment cell, and destroyed chassis do not count.
+
+The accepted job snapshots the resulting chassis identity/profile, its finalized build duration, and the exact controller-selected initial strategic destination at admission. Later rule/profile changes do not retroactively change that job's duration or resulting chassis, and later route-connectivity changes do not replace its selected destination. The finalized duration uses the Section 3.1 work-rate rule exactly once. An accepted job receives its first production-progress tick in that same authoritative tick's final production phase. The snapshotted destination persists unchanged while the job is building or waiting for a deployment cell.
+
+If the producing Factory still exists under the same owner but is temporarily ineligible/inactive, the job pauses with its remaining work unchanged. If that Factory is destroyed or changes owner, the unfinished job is cancelled; it is not transferred and its already committed FFY is not refunded.
+
+When work is complete, deployment considers the Factory's cardinal neighbors that are currently owned by the job owner and traversable by the resulting chassis. The deployment cell is the lowest stable `cellId` among those legal neighbors. If no such cell exists, the completed output remains waiting at the Factory and continues occupying the Factory's one Tank-build slot until deployment becomes possible. Deployment creates exactly one chassis at full effective maximum health; the deployment cell is its initial operating anchor. If the snapshotted strategic destination differs from that deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
+
+## 3.6 Autonomous intent, target selection, and pursuit
+
+A deployed Tank-derived chassis resolves one movement intent per Tank stage in this priority order:
+
+1. automatic repair retreat when the repair threshold is active;
+2. pursuit of an already retained legal target;
+3. a current controller-issued strategic move destination;
+4. ordinary autonomous search/roaming around the operating anchor.
+
+Strategic destination persistence, best-effort unreachable routing, active-travel leash treatment, interruption/resumption, and anchor update use the shared contract in `OPEN_FUFU_DESIGN.md` §6.5.1. Repair movement never replaces the operating anchor.
+
+When the chassis has no retained target, autonomous target acquisition considers lawfully observed, legal targets in this class priority:
+
+```text
+Tank-derived chassis
+Warship
+Train
+Population
+```
+
+Within the first non-empty eligible class, choose the target requiring the least expected legal traversal time to a firing position under the chassis's current effective movement profile. A target already legally in range has traversal time zero. Equal traversal-time candidates break ties by stable target identity; Population-cell ties use ascending stable `cellId`. When pursuit has more than one legal firing position at the same minimum traversal time, choose the position with the lowest stable `cellId`.
+
+The selected target is sticky. It remains retained rather than being replaced merely because another candidate later becomes nearer or belongs to a higher-priority class. Clear it only when the target is destroyed/ceases to exist, is no longer lawfully observed, is no longer a legal target, has no legal reachable firing position, or, during ordinary settled operation, is outside the chassis's 100-cell operating leash. A new acquisition then repeats the class-priority and tie rules above.
+
+The ordinary 100-cell leash is measured between cell centers around the current operating anchor. During ordinary settled operation, a target/firing-position pursuit may not cause the chassis to operate outside that leash, and autonomous roaming remains inside it. Active strategic travel uses the shared leash exception in `OPEN_FUFU_DESIGN.md` §6.5.1.
+
+Ordinary roaming runs only when no repair assignment, retained target, or active strategic destination is taking the higher-priority movement intent. If a completed repair detour leaves the chassis outside its unchanged operating leash, ordinary movement first routes back toward the operating anchor and does not consume a roaming waypoint ordinal until the chassis is again inside the leash.
+
+While inside the leash and without a retained local roaming route, form the stable ascending-`cellId` list of other cells whose centers are inside the inclusive 100-cell leash and are individually traversable under the chassis's current effective Tank movement profile. The chassis owns a persisted non-negative `roamingOrdinal`, initially `0`. A stable deterministic hash of `(unitId, roamingOrdinal)` chooses the starting index in that candidate list; scan cyclically from there and select the first candidate whose legal least-traversal-time Tank route remains entirely inside the leash. If no candidate qualifies, hold position and do not advance the ordinal. Selecting a waypoint persists that route and increments `roamingOrdinal` exactly once; following the same waypoint on later ticks does not increment it again. Reaching a roaming waypoint never changes the operating anchor, and the next ordinary-roaming opportunity uses the next persisted ordinal. Any higher-priority repair, retained-combat, or strategic-travel intent may replace the local roaming route.
+
+When the requested strategic destination is actually reached, that order is fulfilled and ceases to be active; the reached cell remains the new operating/wander anchor under `OPEN_FUFU_DESIGN.md` §6.5.1. Later local roaming away from that anchor does not reactivate the fulfilled strategic order.
+
+## 3.7 Range, attacks, and same-tick combat resolution
+
+Every Tank-derived weapon range uses an inclusive cell-center circle. For attacker/target cell-center offsets `(dx, dy)` and effective range `R`, the target is in range exactly when:
+
+```text
+dx² + dy² <= R²
+```
+
+Range is geometric weapon reach, not path distance. Chassis path barriers therefore do not by themselves block a shot to an otherwise legal observed target in range. P43's explicit projectile-traversal rule remains owned by the Origin catalogue.
+
+A hostile Warship is a legal anti-armor target between Tank-derived chassis and Train in the priority above. A baseline Tank attacks it with the ordinary anti-armor profile: effective Tank anti-armor range/damage/cooldown. This Tank-originated attack does not require, create, or refresh `atWar`. P43 applies its transformed anti-armor profile. This rule adds no reciprocal Warship-to-Tank behavior; Warship mechanics remain owned by `NAVAL_AND_STRATEGIC_WEAPONS.md`.
+
+A Population target is one enemy-owned population-bearing cell that is currently visible to the Tank owner's faction, within effective Population-weapon range, within the ordinary operating leash when that leash applies under Section 3.6, and whose owning hostility side is currently `atWar` with the Tank owner's side. Public political ownership alone does not make an otherwise unseen enemy cell a legal Population target. Direct Population damage is finalized once per committed shot after applicable damage modifiers and floored to a non-negative whole Population amount. The actual direct casualty debit is:
+
+```text
+min(finalPopulationDamage, targetFaction.AvailablePopulation)
+```
+
+Only Available Population pays this Tank attack. Committed offensive Population, committed counter-response Population, and Population aboard Transports are not debited by the direct shot. The selected Population cell remains the spatial target for any successful post-hit effect such as P44; P44's candidate ordering/footprint remains owned by `ORIGIN_TRAIT_CATALOGUE.md`. Direct Population casualties do not change ownership.
+
+Tank combat uses a frozen **post-movement** combat snapshot. All attack eligibility, retained/acquired targets, range checks, cooldown readiness, and attack payloads for that combat phase are resolved from that snapshot before any same-phase damage/destruction is committed. Every admitted attack then resolves simultaneously. Therefore mutually lethal attackers both fire, and multiple attackers that selected the same target all retain their admitted shots even if aggregate damage is lethal.
+
+After simultaneous direct attack effects are collected, apply chassis HP damage, physical Train/other-unit destruction results, and direct Population casualties, then remove destroyed mobile units. Successful Population-shot follow-up effects such as P44 resolve from the same post-direct-attack territorial/occupancy snapshot so their result is independent of attacker enumeration order; overlapping candidate cells do not become newly eligible merely because another same-phase P44 effect neutralized a nearer cell first.
+
+A successful shot starts its authored cooldown from the current authoritative tick. It is next eligible on the first tick at or after `shotTick + effectiveCooldownTicks`. Cooldown state is authoritative replay state. No cooldown is consumed for a candidate attack that fails legality before commit.
+
+Health and repair may retain deterministic fractional values where effective modifiers/rates require them; HP is clamped only at zero and the current effective maximum.
+
+## 3.8 Automatic repair retreat and contention
+
+At the intent phase, a living Tank-derived chassis at or below **50% of its current effective maximum health** enters automatic repair retreat unless an explicit effective rule changes that threshold. Repair retreat is the highest-priority Tank movement intent under Section 3.6.
+
+Tank/Factory repair consumes the shared two-tier vehicle-repair lifecycle in Section 2.8 without a Tank-specific routing, queue, or service override. Eligible providers are active owned Factories. Reachability and route timing use the chassis's current effective Tank traversal/movement profile; repair clamps against its current effective maximum health; and service uses the Factory profile and effective repair axes defined in Sections 2.6–2.7.
+
+Factory repair never changes the Tank's operating anchor. On leaving repair at full health, the chassis resumes ordinary Tank intent from that unchanged anchor under Sections 3.3 and 3.6.
+
+## 3.9 Authoritative Tank-stage ordering
+
+For a simulation tick that contains these systems, the relevant authoritative order is:
+
+```text
+accepted simulation inputs / ordinary pre-land economy
+    ↓
+land resolution, including territorial capture and structure fate
+    ↓
+persistent-structure lifecycle progression/completion
+    ↓
+Tank intent / repair assignment / target retention-or-acquisition
+    ↓
+Tank movement
+    ↓
+freeze post-movement Tank combat snapshot
+    ↓
+simultaneous Tank attacks and direct effects
+    ↓
+destruction + Population/P44 follow-up consequences
+    ↓
+Factory Tank repair
+    ↓
+Tank production progress/completion/deployment
+```
+
+Thus a Factory that completes or upgrades during persistent-structure lifecycle progression is already active at its new completed level for same-tick Tank repair/production queries. Conversely, Tank production is the final Tank-local phase, so a chassis deployed there cannot participate in earlier phases until the following tick.
+
+The Tank stage consumes the canonical land/capture, structure, hostility/visibility, Population, FFY, navigation, Origin/effective-rule, and mobile-unit states; it does not create parallel copies of those authorities.

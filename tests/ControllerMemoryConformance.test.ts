@@ -190,6 +190,7 @@ describe("canonical controller-memory conformance", () => {
           { id: "beta", rules },
         ],
       }),
+      { controllerReferenceNamespace: "memory-gameplay-rejection" },
     );
     const seenMemory: unknown[] = [];
     let invocation = 0;

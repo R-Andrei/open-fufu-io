@@ -96,6 +96,9 @@ function authoritativeQuerySession(): ControllerQuerySession {
         { id: "beta", rules },
       ],
     }),
+    {
+      controllerReferenceNamespace: "controller-sandbox-query-certification",
+    },
   );
   return createControllerQuerySession(runtime.snapshot(), "alpha", {
     queriesPerDecision: 128,

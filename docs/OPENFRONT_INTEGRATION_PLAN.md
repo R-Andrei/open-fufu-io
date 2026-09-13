@@ -4,7 +4,7 @@
 
 This document is the **canonical owner for transforming the OpenFront fork into Open Fufu**. It owns migration strategy, implementation sequencing, development-thread dependency/concurrency gates, authoritative-runtime topology, controller-runtime isolation, persistence architecture, deterministic version binding, inherited-source traceability, branch/cutover discipline, deployment implications, and integration validation.
 
-It does **not** restate target gameplay mechanics. Those belong to the focused canonical owners listed in [`README.md`](./README.md). The high-level target game is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). Repository validation ownership/adoption rules are defined by [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md). Effective-rule composition semantics are defined by [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md).
+It does **not** restate target gameplay mechanics. Those belong to the focused canonical owners listed in [`README.md`](./README.md). The high-level target game is defined by [`OPEN_FUFU_DESIGN.md`](./OPEN_FUFU_DESIGN.md). Repository validation ownership/adoption rules are defined by [`VALIDATION_POLICY.md`](./VALIDATION_POLICY.md). Effective-rule composition semantics are defined by [`RULE_COMPOSITION.md`](./RULE_COMPOSITION.md). Deterministic cross-system simulation-event boundaries, envelopes, and in-tick delivery are defined by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md).
 
 Inherited OpenFront architecture documents and executable code are migration evidence unless this repository explicitly adopts them into the maintained Open Fufu surface.
 
@@ -225,6 +225,8 @@ MatchState
 ```
 
 Focused canonical owners define what those states mean; this plan owns only the implementation topology.
+
+Cross-system consequences use the explicit phase boundary owned by [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md). A producer phase commits only state owned by that subsystem, returns immutable past-tense facts for occurrences that another subsystem must consume, and `TickEngine`/the authoritative orchestrator passes those facts to explicitly ordered downstream consumers. Current-state reads remain direct, and one owner-local atomic transaction does not become an event merely because several fields change together. Do not create subsystem-local callback/listener buses or private result-delivery channels as a parallel replacement for this boundary.
 
 ## 3.2 First implementation — authoritative walking skeleton
 
@@ -611,9 +613,13 @@ Do not maintain target mechanics in this plan. Implement each subsystem from its
 - Warships, Transports, strategic weapons: [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md);
 - Origin transformations: [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md) plus the ordinary effective-rule composition owner.
 
-Implementation rule:
+Implementation rules:
 
 > Build the canonical Open Fufu state/system model first; reuse inherited engineering only at narrow algorithm/data-structure seams.
+
+> When an occurrence owned by one of these workstreams causes a consequence owned by another, implement the crossing through the canonical immutable simulation-event boundary in [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md) and explicit deterministic consumer phases. Do not create a subsystem-local callback/listener bus, consumer-specific producer mutation, or parallel private result-delivery architecture. Current-state reads and state changes contained wholly inside one owning atomic transaction remain direct.
+
+A focused owner may already define the semantic meaning or minimum frozen context of a future occurrence such as a Transport destruction, Train-station result, Factory ownership transfer, structure capture, or strategic physical effect. That focused owner remains authoritative for **what happened**; `SIMULATION_EVENTS.md` remains authoritative for **how that occurrence crosses a subsystem boundary**. Do not invent additional future event kinds or payload fields before a real cross-system contract requires them.
 
 Useful extraction candidates may include:
 
@@ -1668,9 +1674,9 @@ Origins, Echo progression, Segments, controller sandbox/runtime, Open Fufu persi
 ## 18.1 Before implementing a subsystem
 
 1. Freshly follow repository rules and ownership requirements.
-2. Identify/read the focused canonical owner(s) from `docs/README.md`.
+2. Identify/read the focused canonical owner(s) from `docs/README.md`; if the work contains or consumes a cross-system consequence, also read [`SIMULATION_EVENTS.md`](./SIMULATION_EVENTS.md) before designing the integration seam.
 3. Consult §17.1 for inherited implementation evidence and inspect neighboring call sites only as useful.
-4. Define the new Open Fufu boundary/state/port first; do not begin by editing a legacy parent object unless the explicit task is an extraction/adoption.
+4. Define the new Open Fufu boundary/state/port first; do not begin by editing a legacy parent object unless the explicit task is an extraction/adoption. For a cross-owner occurrence, identify producer-owned state, the canonical factual occurrence/context, explicit consumer order, and consumer-owned consequence before implementation; do not replace that analysis with a private callback channel.
 5. Write/extend the focused owned test or validator first where practical.
 6. Implement through the earliest satisfied gate in §16.
 7. Add invariant/property and micro-sim evidence at the lowest practical tier.

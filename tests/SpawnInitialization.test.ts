@@ -136,7 +136,9 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       ]),
     );
 
-    const runtime = new MatchRuntime(spec);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "spawn-fixed-ordinary",
+    });
     const state = runtime.snapshot() as SpawnAwareMatchState;
 
     expect(state.phase).toBe("ACTIVE");
@@ -172,7 +174,9 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       expect(snapshot?.footprints[0]?.cellSetSha256).toMatch(/^[0-9a-f]{64}$/);
     }
 
-    const regenerated = MatchRuntime.regenerate(spec, [], 0);
+    const regenerated = MatchRuntime.regenerate(spec, [], 0, {
+      controllerReferenceNamespace: "spawn-fixed-ordinary",
+    });
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
   });
@@ -195,6 +199,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
           { factionId: "beta", origins: [cellId(width, 90, 90)] },
         ]),
       ),
+      { controllerReferenceNamespace: "spawn-immediate-hostility" },
     );
 
     const allowed = runtime.runControllerRound(attackController());
@@ -232,6 +237,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
 
     const starState = new MatchRuntime(
       makeSpec(["P01", "P20", "P39", "P54"]),
+      { controllerReferenceNamespace: "spawn-origin-composition-star" },
     ).snapshot() as SpawnAwareMatchState;
     const alpha = factionSnapshot(starState, "alpha");
 
@@ -281,7 +287,9 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     ]);
 
     const compactAlpha = factionSnapshot(
-      new MatchRuntime(makeSpec(["P01", "P20", "P39"])).snapshot() as SpawnAwareMatchState,
+      new MatchRuntime(makeSpec(["P01", "P20", "P39"]), {
+        controllerReferenceNamespace: "spawn-origin-composition-compact",
+      }).snapshot() as SpawnAwareMatchState,
       "alpha",
     );
     expect(compactAlpha?.footprints[0]?.cellIds).not.toEqual(alpha?.footprints[0]?.cellIds);
@@ -311,6 +319,7 @@ describe("shared deterministic pre-match Spawn initialization", () => {
           { factionId: "beta", origins: [cellId(width, 90, 90)] },
         ]),
       ),
+      { controllerReferenceNamespace: "spawn-p20-rejected" },
     ).snapshot() as SpawnAwareMatchState;
 
     expect(state.phase).toBe("ACTIVE");
@@ -360,7 +369,9 @@ describe("shared deterministic pre-match Spawn initialization", () => {
         input,
       );
 
-    const state = new MatchRuntime(makeSpec(["P48"])).snapshot() as SpawnAwareMatchState;
+    const state = new MatchRuntime(makeSpec(["P48"]), {
+      controllerReferenceNamespace: "spawn-p48-enabled",
+    }).snapshot() as SpawnAwareMatchState;
     expect(ownerCount(state, "alpha")).toBe(1_000);
     expect(
       state.ownership.filter(
@@ -369,7 +380,12 @@ describe("shared deterministic pre-match Spawn initialization", () => {
     ).toHaveLength(999);
     expect(state.factions.find((faction) => faction.id === "alpha")?.population.total).toBe(500);
 
-    expect(() => new MatchRuntime(makeSpec([]))).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
+    expect(
+      () =>
+        new MatchRuntime(makeSpec([]), {
+          controllerReferenceNamespace: "spawn-p48-baseline",
+        }),
+    ).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
   });
 
   it("rejects an unfillable resolved configuration before any partial match can become active", () => {
@@ -399,6 +415,11 @@ describe("shared deterministic pre-match Spawn initialization", () => {
       ]),
     );
 
-    expect(() => new MatchRuntime(spec)).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
+    expect(
+      () =>
+        new MatchRuntime(spec, {
+          controllerReferenceNamespace: "spawn-unfillable",
+        }),
+    ).toThrow(/FOOTPRINT_QUOTA_UNFILLABLE/);
   });
 });

@@ -59,6 +59,7 @@ function structureRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -85,6 +86,7 @@ function grantedFortRuntime(seed: string, level: 1 | 2 | 3 | 4 | 5 = 1) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -111,6 +113,7 @@ function hiddenForeignFortRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 
@@ -119,42 +122,16 @@ function observedForeignFortRuntime(seed: string) {
   return new MatchRuntime(
     createMicroSimulationSpec({
       seed,
-      width: 12,
+      width: 2,
       height: 1,
-      terrain: [
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-        "PLAINS",
-      ],
-      initialOwners: [
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "beta",
-        "alpha",
-      ],
+      terrain: ["PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "beta"],
       initialStructureGrants: [
         {
           structureId: "observer-alpha-internal",
           ownerId: "alpha",
           type: "OBSERVATION_POST",
-          cellId: 11,
+          cellId: 0,
           level: 1,
         },
         {
@@ -170,6 +147,7 @@ function observedForeignFortRuntime(seed: string) {
         { id: "beta", rules },
       ],
     }),
+    { controllerReferenceNamespace: seed },
   );
 }
 

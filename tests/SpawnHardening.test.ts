@@ -331,6 +331,7 @@ describe("reopened #104 Spawn hardening contracts", () => {
         }),
         input,
       ),
+      { controllerReferenceNamespace: "immediate-opening-pvp" },
     );
 
     const receipts = runtime.runControllerRound(attackController());

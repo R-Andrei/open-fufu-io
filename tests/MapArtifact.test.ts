@@ -44,6 +44,7 @@ interface TestArtifactResolver {
 
 interface TestRuntimeDependencies {
   readonly mapArtifacts: TestArtifactResolver;
+  readonly controllerReferenceNamespace: string;
 }
 
 type TestRules = ReturnType<typeof emptyRules>;
@@ -286,8 +287,10 @@ function constructArtifactRuntime(
     mapHash,
     ...bindingOverrides,
   };
-  return new ArtifactRuntime(artifactSpec(binding), {
+  const spec = artifactSpec(binding);
+  return new ArtifactRuntime(spec, {
     mapArtifacts: resolverFor(artifactPackage),
+    controllerReferenceNamespace: spec.seed,
   });
 }
 
@@ -309,7 +312,10 @@ describe("Open Fufu V1 map artifact and simulation substrate", () => {
       mapVersion: "1",
       mapHash: valid.hash,
     });
-    const dependencies = { mapArtifacts: resolverFor(valid.package) };
+    const dependencies = {
+      mapArtifacts: resolverFor(valid.package),
+      controllerReferenceNamespace: spec.seed,
+    };
     const runtime = new ArtifactRuntime(spec, dependencies);
     const map = runtime.snapshot().map as unknown as TestSimulationMap;
 
@@ -395,6 +401,7 @@ describe("Open Fufu V1 map artifact and simulation substrate", () => {
       () =>
         new ArtifactRuntime(spec, {
           mapArtifacts: resolverFor(undefined),
+          controllerReferenceNamespace: spec.seed,
         }),
     ).toThrow(/map artifact.*not found/i);
   });

@@ -28,6 +28,7 @@ function baselineFixture() {
         { id: "beta", rules: emptyRules() },
       ],
     }),
+    { controllerReferenceNamespace: "controller-spatial-migration" },
   );
   match.acceptAction({
     type: "GRANT_POPULATION",
