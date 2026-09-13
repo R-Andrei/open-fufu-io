@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
+import { advanceFactoryTrainRuntimePhase } from "./FactoryTrainRuntime";
 import { resolveHostilityGraceFromEvents } from "./HostilityState";
 import {
   resolveLandTick,
@@ -1134,7 +1135,16 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
-    const repairIntended = advanceTankRepairIntentPhase(advanced);
+    const factoryTrainUpdate = advanceFactoryTrainRuntimePhase(
+      advanced,
+      nextTick,
+      structurePhase.events,
+    );
+    const trainAdvanced = createProspectiveMatchState(
+      advanced,
+      factoryTrainUpdate,
+    );
+    const repairIntended = advanceTankRepairIntentPhase(trainAdvanced);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const pursuitMoved = advanceTankPursuitMovementPhase(
       targetIntended,
