@@ -679,7 +679,7 @@ function tankAttackCooldownTicks(
   return targetClass === "POPULATION" ? 30 : 10;
 }
 
-function advanceTankUnitCombatPhase(state: MatchState): MatchState {
+function advanceTankUnitCombatPhase(state: MatchState) {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const fastServiceUnitIds = tankFastServiceUnitIds(state);
   const observationByOwner = new Map<
@@ -846,19 +846,13 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     preCombat,
     unitAttacks,
   );
-  const trainDestructionUpdate = applyFactoryTrainDestructionLifecycleEvents(
-    preCombat,
-    physicalCombat.events.filter(
-      (event): event is UnitDestroyedEvent => event.kind === "UNIT_DESTROYED",
-    ),
+  const destructionEvents = physicalCombat.events.filter(
+    (event): event is UnitDestroyedEvent => event.kind === "UNIT_DESTROYED",
   );
   const physicalState =
-    physicalCombat.update === null && trainDestructionUpdate === null
+    physicalCombat.update === null
       ? preCombat
-      : createProspectiveMatchState(preCombat, {
-          ...(physicalCombat.update ?? {}),
-          ...(trainDestructionUpdate ?? {}),
-        });
+      : createProspectiveMatchState(preCombat, physicalCombat.update);
   const targetPopulationByFactionId = new Map(
     populationCombat.targets.map((target) => [
       target.targetFactionId,
@@ -894,7 +888,10 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     populationCombat.events,
     state.tick,
   );
-  return createProspectiveMatchState(territorialApplied, { directReveals });
+  return Object.freeze({
+    state: createProspectiveMatchState(territorialApplied, { directReveals }),
+    destructionEvents: Object.freeze(destructionEvents),
+  });
 }
 
 export class TickEngine {
@@ -1174,7 +1171,14 @@ export class TickEngine {
     const repairMoved = advanceTankRepairMovementPhase(strategicMoved);
     const roamed = advanceTankRoamingMovementPhase(repairMoved, pursuitMoved);
     const combatResolved = advanceTankUnitCombatPhase(roamed);
-    const repaired = advanceTankRepairPhase(combatResolved);
-    return advanceTankProductionPhase(repaired);
+    const repaired = advanceTankRepairPhase(combatResolved.state);
+    const produced = advanceTankProductionPhase(repaired);
+    const trainEconomicUpdate = applyFactoryTrainDestructionLifecycleEvents(
+      produced,
+      combatResolved.destructionEvents,
+    );
+    return trainEconomicUpdate === null
+      ? produced
+      : createProspectiveMatchState(produced, trainEconomicUpdate);
   }
 }
