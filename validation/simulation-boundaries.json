@@ -7,6 +7,7 @@
     "src/simulation/ControllerRuntime.ts": "CONTROLLER_ADAPTER",
     "src/simulation/ControllerSpatialSurface.ts": "CONTROLLER_ADAPTER",
     "src/simulation/Economy.ts": "ECONOMY",
+    "src/simulation/FactoryRailLifecycle.ts": "MAP_SUBSTRATE",
     "src/simulation/HostilityState.ts": "HOSTILITY",
     "src/simulation/LandOperations.ts": "LAND",
     "src/simulation/LandOperationsCore.ts": "LAND",
@@ -35,6 +36,7 @@
     "src/simulation/Tanks.ts": "TANK",
     "src/simulation/TerritoryEffects.ts": "LAND",
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
+    "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/VisibilityState.ts": "VISIBILITY"
   },
   "crossOwnerImports": [
@@ -589,6 +591,30 @@
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
+    },
+    {
+      "from": "src/simulation/TrainService.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Train service invokes MobileUnits-owned deterministic route advancement for autonomous Train movement."
+    },
+    {
+      "from": "src/simulation/TrainService.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Train economics applies Population-owned deterministic grant primitives for the P33 station-event consequence."
+    },
+    {
+      "from": "src/simulation/TrainService.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Train economics consumes canonical physical unit-destruction facts rather than a Tank-specific callback or private occurrence channel."
+    },
+    {
+      "from": "src/simulation/TrainService.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Train service reads current persistent-Structure station state while resolving station eligibility and current event context."
     },
     {
       "from": "src/simulation/VisibilityState.ts",
