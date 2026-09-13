@@ -1,3 +1,4 @@
+import { resolveFfyEconomicStage, type PositiveFfyEventInput } from "./Economy";
 import {
   releaseFactoryRailLoopSnapshot,
   retainFactoryRailLoopSnapshot,
@@ -20,6 +21,7 @@ import {
   createTrainDispatchEconomicSnapshot,
   dispatchFactoryPrimaryTrain,
   finishFactoryPrimaryTrain,
+  resolveTrainDestroyedEconomicOutcome,
   transferFactoryTrainServiceEpoch,
 } from "./TrainService";
 
@@ -37,7 +39,7 @@ export type FactoryTrainRuntimeUpdate = Readonly<
 export type FactoryTrainDestructionLifecycleUpdate = Readonly<
   Pick<
     MatchState,
-    "factoryRailLoops" | "factoryTrainEpochs" | "trainServices"
+    "factions" | "factoryRailLoops" | "factoryTrainEpochs" | "trainServices"
   >
 >;
 
@@ -71,6 +73,47 @@ function factoryTransferEvents(
   return result;
 }
 
+function territorialContactCount(state: MatchState, ownerId: string): number {
+  const activeFactionIds = new Set(
+    state.factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < state.ownership.length; cellId += 1) {
+    if (state.ownership[cellId] !== ownerId) continue;
+    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
+      const neighborOwnerId = state.ownership[neighbor] ?? null;
+      if (
+        neighborOwnerId !== null &&
+        neighborOwnerId !== ownerId &&
+        activeFactionIds.has(neighborOwnerId)
+      ) {
+        contacts.add(neighborOwnerId);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+function trainEconomicRuleDynamicState(state: MatchState, ownerId: string) {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`Train economic consequence references unknown faction ${ownerId}`);
+  }
+  return Object.freeze({
+    ownedPersistentStructureCount: state.structures.filter(
+      (structure) => structure.ownerId === ownerId,
+    ).length,
+    territorialContactCount: territorialContactCount(state, ownerId),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
+function trainInterceptionRaiderEventId(event: UnitDestroyedEvent): string {
+  return JSON.stringify(["TRAIN_INTERCEPTION", event.id]);
+}
+
 export function applyFactoryTrainDestructionLifecycleEvents(
   state: MatchState,
   destructionEvents: readonly UnitDestroyedEvent[],
@@ -85,6 +128,7 @@ export function applyFactoryTrainDestructionLifecycleEvents(
     factoryTrainEpochs.map((epoch) => [epoch.factoryId, epoch]),
   );
   const consumedTrainIds = new Set<string>();
+  const raiderEventsByOwnerId = new Map<string, PositiveFfyEventInput[]>();
 
   for (const event of destructionEvents) {
     if (event.tick !== state.tick) {
@@ -99,6 +143,25 @@ export function applyFactoryTrainDestructionLifecycleEvents(
       throw new Error(`duplicate Factory Train destruction event: ${trainId}`);
     }
     consumedTrainIds.add(trainId);
+
+    const economicResolution = resolveTrainDestroyedEconomicOutcome(
+      Object.freeze([
+        Object.freeze({
+          trainId: service.trainId,
+          dispatchSnapshot: service.dispatchSnapshot,
+        }),
+      ]),
+      event,
+      {
+        raiderEventId: trainInterceptionRaiderEventId(event),
+      },
+    );
+    if (economicResolution !== null) {
+      const existing =
+        raiderEventsByOwnerId.get(economicResolution.raiderOwnerId) ?? [];
+      existing.push(economicResolution.economic.raiderEvent);
+      raiderEventsByOwnerId.set(economicResolution.raiderOwnerId, existing);
+    }
 
     const lifecycle = loopsByFactory.get(service.factoryId);
     if (lifecycle === undefined) {
@@ -133,7 +196,22 @@ export function applyFactoryTrainDestructionLifecycleEvents(
   }
 
   if (consumedTrainIds.size === 0) return null;
+  const factions = state.factions.map((faction) => {
+    const positiveEvents = raiderEventsByOwnerId.get(faction.id);
+    if (positiveEvents === undefined || positiveEvents.length === 0) {
+      return faction;
+    }
+    const resolved = resolveFfyEconomicStage({
+      balance: faction.ffy,
+      rules: faction.rules,
+      ruleDynamicState: trainEconomicRuleDynamicState(state, faction.id),
+      positiveEvents: Object.freeze([...positiveEvents]),
+      signedFacts: Object.freeze([]),
+    });
+    return Object.freeze({ ...faction, ffy: resolved.balance });
+  });
   return Object.freeze({
+    factions: Object.freeze(factions),
     factoryRailLoops: Object.freeze(factoryRailLoops),
     factoryTrainEpochs: Object.freeze(factoryTrainEpochs),
     trainServices: Object.freeze(trainServices),
