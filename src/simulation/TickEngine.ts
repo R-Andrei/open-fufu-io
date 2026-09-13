@@ -3,7 +3,10 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
-import { advanceFactoryTrainRuntimePhase } from "./FactoryTrainRuntime";
+import {
+  advanceFactoryTrainRuntimePhase,
+  applyFactoryTrainDestructionLifecycleEvents,
+} from "./FactoryTrainRuntime";
 import { resolveHostilityGraceFromEvents } from "./HostilityState";
 import {
   resolveLandTick,
@@ -33,6 +36,7 @@ import {
   type CellOwnershipChangedEvent,
   type HostilityLifecycleSimulationEvent,
   type PersistentDirectedHostilitySourceEndedEvent,
+  type UnitDestroyedEvent,
 } from "./SimulationEvents";
 import {
   resolvePersistentStructureLifecycleTickWithEvents,
@@ -41,7 +45,7 @@ import {
 } from "./Structures";
 import {
   resolveAdmittedTankPopulationAttacks,
-  resolveAdmittedTankUnitAttacks,
+  resolveAdmittedTankUnitAttackEffects,
   resolveTankPopulationAftershocks,
   type AdmittedTankUnitAttack,
 } from "./TankCombat";
@@ -838,7 +842,23 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     preCombat,
     populationCombat.successfulShots,
   );
-  const physicalCombat = resolveAdmittedTankUnitAttacks(preCombat, unitAttacks);
+  const physicalCombat = resolveAdmittedTankUnitAttackEffects(
+    preCombat,
+    unitAttacks,
+  );
+  const trainDestructionUpdate = applyFactoryTrainDestructionLifecycleEvents(
+    preCombat,
+    physicalCombat.events.filter(
+      (event): event is UnitDestroyedEvent => event.kind === "UNIT_DESTROYED",
+    ),
+  );
+  const physicalState =
+    physicalCombat.update === null && trainDestructionUpdate === null
+      ? preCombat
+      : createProspectiveMatchState(preCombat, {
+          ...(physicalCombat.update ?? {}),
+          ...(trainDestructionUpdate ?? {}),
+        });
   const targetPopulationByFactionId = new Map(
     populationCombat.targets.map((target) => [
       target.targetFactionId,
@@ -847,9 +867,9 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
   );
   const populationApplied =
     targetPopulationByFactionId.size === 0
-      ? physicalCombat.state
-      : createProspectiveMatchState(physicalCombat.state, {
-          factions: physicalCombat.state.factions.map((faction) => {
+      ? physicalState
+      : createProspectiveMatchState(physicalState, {
+          factions: physicalState.factions.map((faction) => {
             const population = targetPopulationByFactionId.get(faction.id);
             return population === undefined
               ? faction
