@@ -489,3 +489,81 @@ describe("Tank ordinary roaming", () => {
     expect(operationalById(leftTick2, leftFixture.unitId).roamingOrdinal).toBe(1);
   });
 });
+
+describe("Tank production initial strategic destination", () => {
+  it("requires and snapshots the player-selected destination through deployment without changing the initial anchor", async () => {
+    const { advanceTankProductionPhase, tryStartTankProduction } = await import(
+      "../src/simulation/Tanks"
+    );
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "tank-production-initial-destination-red",
+        width: 5,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "MOUNTAIN", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha"],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-factory",
+            ownerId: "alpha",
+            type: "FACTORY",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [{ id: "alpha", rules: emptyRules() }],
+      }),
+    );
+    const state = createProspectiveMatchState(initial, {
+      factions: initial.factions.map((faction) => ({ ...faction, ffy: 250_000 })),
+    });
+
+    const missingDestination = tryStartTankProduction(state, {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+    } as any);
+    expect(missingDestination.ok).toBe(false);
+    if (missingDestination.ok) {
+      throw new Error("expected missing initial destination rejection");
+    }
+    expect(missingDestination.failure.code).toBe("INVALID_REQUEST");
+    expect(missingDestination.state).toBe(state);
+
+    const accepted = tryStartTankProduction(state, {
+      ownerId: "alpha",
+      factoryId: "alpha-factory",
+      strategicDestinationCellId: 4,
+    } as any);
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Tank production admission");
+    expect(accepted.job).toMatchObject({
+      strategicDestinationCellId: 4,
+      state: "BUILDING",
+      remainingTicks: 50,
+    });
+
+    const progressed = advanceTankProductionPhase(accepted.state);
+    expect(progressed.tankProductionJobs[0]).toMatchObject({
+      strategicDestinationCellId: 4,
+      state: "BUILDING",
+      remainingTicks: 49,
+    });
+
+    let completed = accepted.state;
+    for (let tick = 0; tick < 50; tick += 1) {
+      completed = advanceTankProductionPhase(completed);
+    }
+    expect(completed.tankProductionJobs).toHaveLength(0);
+    expect(completed.mobileUnits).toHaveLength(1);
+    expect(completed.mobileUnits[0]).toMatchObject({
+      ownerId: "alpha",
+      type: "TANK",
+      cellId: 0,
+      strategicDestinationCellId: 4,
+    });
+    expect(completed.tankOperationalStates[0]).toMatchObject({
+      unitId: completed.mobileUnits[0]!.id,
+      operatingAnchorCellId: 0,
+    });
+  });
+});
