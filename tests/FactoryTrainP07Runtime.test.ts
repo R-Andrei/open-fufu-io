@@ -241,21 +241,29 @@ function createP34RuntimeFixture(
 }
 
 function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
-  const width = 6;
+  const width = 7;
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
       width,
       height: 1,
       terrain: Array.from({ length: width }, () => "PLAINS" as const),
-      initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha", "beta"],
+      initialOwners: [
+        "alpha",
+        "alpha",
+        "alpha",
+        "alpha",
+        "alpha",
+        "beta",
+        "beta",
+      ],
       factions: [
         { id: "alpha", rules: withP08 ? p08Rules() : emptyRules() },
         { id: "beta", rules: emptyRules() },
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4, 5]);
+  const loopCells = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
   return createProspectiveMatchState(base, {
     structures: [
       {
