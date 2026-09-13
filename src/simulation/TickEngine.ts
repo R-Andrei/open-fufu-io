@@ -621,7 +621,7 @@ function advanceTankRoamingMovementPhase(
     if (
       unit.route !== undefined &&
       tankRouteInsideOperatingLeash(
-        state.map,
+        state,
         operational.operatingAnchorCellId,
         unit.route.cells.slice(unit.route.nextCellIndex - 1),
       )
