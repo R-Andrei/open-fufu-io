@@ -34,6 +34,19 @@ describe("physical occupancy admission", () => {
     ])).toThrow(/occup/i);
   });
 
+  it("rejects duplicate persistent-structure identities during materialization", () => {
+    expect(() => materializePersistentStructures([
+      {
+        id: "city-a", ownerId: "alpha", type: "CITY", cellId: 2,
+        completedLevel: 1, active: true, acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-a", ownerId: "beta", type: "CITY", cellId: 3,
+        completedLevel: 1, active: true, acquisitionPath: "GRANT",
+      },
+    ])).toThrow(/identity|conflict|duplicate/i);
+  });
+
   it("rejects structure acquisition on a cell occupied by a mobile unit", () => {
     const base = baseState("occupancy-structure-admission");
     const created = createMobileUnit(base.map, base.factions.map((f) => f.id), base, {
