@@ -6,9 +6,20 @@ import {
   type FactoryRailLoopPlanningInput,
 } from "./RailNetwork";
 
+export interface FactoryRailStationInterfaceState {
+  readonly structureId: string;
+  readonly cellId: CellId;
+}
+
+type FactoryRailLoopPlanWithInterfaces = FactoryRailLoopPlan &
+  Readonly<{
+    stationInterfaces?: readonly FactoryRailStationInterfaceState[];
+  }>;
+
 export interface FactoryRailLoopSnapshotState {
   readonly snapshotId: string;
   readonly cells: readonly CellId[];
+  readonly stationInterfaces?: readonly FactoryRailStationInterfaceState[];
 }
 
 export interface FactoryRailLoopLifecycleState {
@@ -20,6 +31,26 @@ export interface FactoryRailLoopLifecycleState {
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function freezeStationInterfaces(
+  entries: readonly FactoryRailStationInterfaceState[] | undefined,
+): readonly FactoryRailStationInterfaceState[] | undefined {
+  if (entries === undefined) return undefined;
+  return Object.freeze(
+    entries.map((entry) =>
+      Object.freeze({
+        structureId: entry.structureId,
+        cellId: entry.cellId,
+      }),
+    ),
+  );
+}
+
+function loopStationInterfaces(
+  loop: FactoryRailLoopPlan,
+): readonly FactoryRailStationInterfaceState[] | undefined {
+  return (loop as FactoryRailLoopPlanWithInterfaces).stationInterfaces;
 }
 
 function assertLoopFactory(
@@ -40,12 +71,14 @@ function freezeSnapshots(
     snapshots
       .slice()
       .sort((left, right) => compareIds(left.snapshotId, right.snapshotId))
-      .map((snapshot) =>
-        Object.freeze({
+      .map((snapshot) => {
+        const stationInterfaces = freezeStationInterfaces(snapshot.stationInterfaces);
+        return Object.freeze({
           snapshotId: snapshot.snapshotId,
           cells: snapshot.cells,
-        }),
-      ),
+          ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
+        });
+      }),
   );
 }
 
@@ -91,6 +124,9 @@ export function retainFactoryRailLoopSnapshot(
   ) {
     throw new Error(`duplicate Factory rail-loop snapshot ID: ${snapshotId}`);
   }
+  const stationInterfaces = freezeStationInterfaces(
+    loopStationInterfaces(state.currentLoop),
+  );
   return createLifecycleState({
     factoryId: state.factoryId,
     currentLoop: state.currentLoop,
@@ -100,6 +136,7 @@ export function retainFactoryRailLoopSnapshot(
       Object.freeze({
         snapshotId,
         cells: state.currentLoop.cells,
+        ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
       }),
     ],
   });
@@ -152,14 +189,26 @@ export function releaseFactoryRailLoopSnapshot(
   });
 }
 
+function serializedStationInterfaces(
+  entries: readonly FactoryRailStationInterfaceState[] | undefined,
+): unknown {
+  if (entries === undefined) return undefined;
+  return entries.map((entry) => ({
+    structureId: entry.structureId,
+    cellId: entry.cellId,
+  }));
+}
+
 function serializedLoop(loop: FactoryRailLoopPlan | null): unknown {
   if (loop === null) return null;
+  const stationInterfaces = serializedStationInterfaces(loopStationInterfaces(loop));
   return {
     factoryId: loop.factoryId,
     targetStructureIds: [...loop.targetStructureIds],
     servicedStructureIds: [...loop.servicedStructureIds],
     cells: [...loop.cells],
     sharedExistingEdgeCount: loop.sharedExistingEdgeCount,
+    ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
   };
 }
 
@@ -172,10 +221,14 @@ export function canonicalFactoryRailLoopLifecycleSerialization(
     pendingLoop: serializedLoop(state.pendingLoop),
     retainedSnapshots: [...state.retainedSnapshots]
       .sort((left, right) => compareIds(left.snapshotId, right.snapshotId))
-      .map((snapshot) => ({
-        snapshotId: snapshot.snapshotId,
-        cells: [...snapshot.cells],
-      })),
+      .map((snapshot) => {
+        const stationInterfaces = serializedStationInterfaces(snapshot.stationInterfaces);
+        return {
+          snapshotId: snapshot.snapshotId,
+          cells: [...snapshot.cells],
+          ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
+        };
+      }),
   });
 }
 
