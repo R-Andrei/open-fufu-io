@@ -70,10 +70,7 @@ function n11Rules() {
   return originRules(["N11"]);
 }
 
-function createP07RuntimeFixture(
-  seed: string,
-  phase?: 0 | 1 | 2 | 3,
-) {
+function createP07RuntimeFixture(seed: string) {
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
@@ -121,19 +118,6 @@ function createP07RuntimeFixture(
         ]),
       }),
     ],
-    ...(phase === undefined
-      ? {}
-      : {
-          factoryTrainEpochs: [
-            {
-              factoryId: "factory-a",
-              ownerId: "alpha",
-              activePrimaryTrainId: null,
-              turnaroundRemainingActiveTicks: 0,
-              p07PrimaryDispatchPhase: phase,
-            },
-          ],
-        }),
   });
   return { prepared, loopCells };
 }
@@ -506,7 +490,7 @@ function createFieldConditionRuntimeFixture(
 }
 
 describe("P07 Factory Train runtime dispatch", () => {
-  it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
+  it("dispatches P07 immediately with exactly one primary and no persisted phase state", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
       "factory-train-runtime-p07-first",
     );
@@ -517,9 +501,9 @@ describe("P07 Factory Train runtime dispatch", () => {
     expect(epoch).toMatchObject({
       factoryId: "factory-a",
       ownerId: "alpha",
-      p07PrimaryDispatchPhase: 1,
       turnaroundRemainingActiveTicks: 0,
     });
+    expect(epoch).not.toHaveProperty("p07PrimaryDispatchPhase");
     expect(epoch.activePrimaryTrainId).not.toBeNull();
     expect(advanced.mobileUnits).toHaveLength(1);
     expect(advanced.trainServices).toHaveLength(1);
@@ -541,73 +525,44 @@ describe("P07 Factory Train runtime dispatch", () => {
     ]);
   });
 
-  it("dispatches the P07 phase-3 bonus simultaneously on the same loop without occupying the primary slot", () => {
-    const { prepared, loopCells } = createP07RuntimeFixture(
-      "factory-train-runtime-p07-fourth",
-      3,
+  it("returns the next P07 primary after exactly 40 active turnaround ticks with no bonus Train", () => {
+    const { prepared } = createP07RuntimeFixture(
+      "factory-train-runtime-p07-cadence",
     );
+    const engine = new TickEngine();
+    let current = engine.advance(prepared, []);
 
-    const advanced = new TickEngine().advance(prepared, []);
-    const epoch = advanced.factoryTrainEpochs[0]!;
-    const primaryService = advanced.trainServices.find(
-      (service) => service.isPrimary,
-    );
-    const bonusService = advanced.trainServices.find(
-      (service) => !service.isPrimary,
-    );
+    let completionGuard = 0;
+    while (
+      current.factoryTrainEpochs[0]?.activePrimaryTrainId !== null &&
+      completionGuard < 20
+    ) {
+      current = engine.advance(current, []);
+      completionGuard += 1;
+    }
+    expect(completionGuard).toBeLessThan(20);
+    expect(current.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 40,
+    });
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(0);
+    expect(current.trainServices).toHaveLength(0);
 
-    expect(epoch).toMatchObject({
-      factoryId: "factory-a",
-      ownerId: "alpha",
-      p07PrimaryDispatchPhase: 0,
-      turnaroundRemainingActiveTicks: 0,
+    for (let elapsed = 1; elapsed <= 39; elapsed += 1) {
+      current = engine.advance(current, []);
+    }
+    expect(current.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 1,
     });
-    expect(epoch.activePrimaryTrainId).not.toBeNull();
-    expect(advanced.mobileUnits).toHaveLength(2);
-    expect(advanced.trainServices).toHaveLength(2);
-    expect(primaryService).toMatchObject({
-      trainId: epoch.activePrimaryTrainId,
-      factoryId: "factory-a",
-      isPrimary: true,
-      dispatchSnapshot: {
-        factoryId: "factory-a",
-        dispatchOwnerId: "alpha",
-        factoryLevel: 1,
-      },
-    });
-    expect(bonusService).toMatchObject({
-      factoryId: "factory-a",
-      isPrimary: false,
-      dispatchSnapshot: primaryService?.dispatchSnapshot,
-    });
-    expect(bonusService?.trainId).not.toBe(primaryService?.trainId);
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(0);
 
-    const primaryTrain = advanced.mobileUnits.find(
-      (unit) => unit.id === primaryService?.trainId,
-    );
-    const bonusTrain = advanced.mobileUnits.find(
-      (unit) => unit.id === bonusService?.trainId,
-    );
-    expect(primaryTrain).toBeDefined();
-    expect(bonusTrain).toBeDefined();
-    expect(primaryTrain?.ownerId).toBe("alpha");
-    expect(bonusTrain?.ownerId).toBe("alpha");
-    expect(primaryTrain?.route?.cells).toEqual(loopCells);
-    expect(bonusTrain?.route?.cells).toEqual(loopCells);
-    expect(primaryTrain?.route).toMatchObject({
-      nextCellIndex: bonusTrain?.route?.nextCellIndex,
-      edgeProgress: bonusTrain?.route?.edgeProgress,
-    });
-
-    const snapshots = advanced.factoryRailLoops[0]?.retainedSnapshots ?? [];
-    expect(snapshots).toHaveLength(2);
-    expect(snapshots.map((snapshot) => snapshot.snapshotId).sort()).toEqual(
-      [primaryService?.trainId, bonusService?.trainId].sort(),
-    );
-    expect(snapshots.every((snapshot) =>
-      snapshot.cells.length === loopCells.length &&
-      snapshot.cells.every((cellId, index) => cellId === loopCells[index]),
-    )).toBe(true);
+    current = engine.advance(current, []);
+    expect(current.factoryTrainEpochs[0]?.turnaroundRemainingActiveTicks).toBe(0);
+    expect(current.factoryTrainEpochs[0]?.activePrimaryTrainId).not.toBeNull();
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(1);
+    expect(current.trainServices).toHaveLength(1);
+    expect(current.trainServices[0]?.isPrimary).toBe(true);
   });
 });
 
