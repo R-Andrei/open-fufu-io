@@ -348,4 +348,85 @@ describe("Factory generated rail lifecycle state", () => {
     expect(reversedInput[0]?.sharedExistingEdgeCount).toBe(0);
     expect(reversedInput[1]?.sharedExistingEdgeCount).toBeGreaterThan(0);
   });
+
+  it("routes a serviced structure through a cardinal-adjacent empty rail interface instead of its occupied cell", () => {
+    const width = 9;
+    const height = 5;
+    const structureCellId = 22;
+    const allCells = Array.from({ length: width * height }, (_, cellId) => cellId);
+    const input: FactoryRailLoopPlanningInput = Object.freeze({
+      factoryId: "factory-interface",
+      width,
+      height,
+      outboundPortCellId: 18,
+      inboundPortCellId: 26,
+      influenceCellIds: Object.freeze(allCells),
+      railBuildableCellIds: Object.freeze(
+        allCells.filter((cellId) => cellId !== structureCellId),
+      ),
+      stations: Object.freeze([
+        Object.freeze({
+          id: "city-interface",
+          type: "CITY" as const,
+          cellId: structureCellId,
+          active: true,
+          completedLevel: 1,
+        }),
+      ]),
+      existingGeneratedEdges: Object.freeze([]),
+    });
+
+    const plans = planFactoryRailLoopsInCanonicalOrder([input]);
+    expect(plans).toHaveLength(1);
+    const plan = plans[0];
+    if (plan === undefined) return;
+
+    expect(plan.cells).not.toContain(structureCellId);
+    expect(plan).toMatchObject({
+      targetStructureIds: ["city-interface"],
+      servicedStructureIds: ["city-interface"],
+    });
+    const stationInterfaces = (
+      plan as FactoryRailLoopPlan & {
+        readonly stationInterfaces?: readonly {
+          readonly structureId: string;
+          readonly cellId: number;
+        }[];
+      }
+    ).stationInterfaces;
+    expect(stationInterfaces).toHaveLength(1);
+    const stationInterface = stationInterfaces?.[0];
+    expect(stationInterface?.structureId).toBe("city-interface");
+    expect(input.railBuildableCellIds).toContain(stationInterface?.cellId);
+
+    const structureX = structureCellId % width;
+    const structureY = Math.floor(structureCellId / width);
+    const interfaceX = (stationInterface?.cellId ?? -1) % width;
+    const interfaceY = Math.floor((stationInterface?.cellId ?? -1) / width);
+    expect(
+      Math.abs(structureX - interfaceX) + Math.abs(structureY - interfaceY),
+    ).toBe(1);
+  });
+
+  it("retains the structure-to-interface association in each in-flight loop snapshot", () => {
+    const base = loopPlan("factory-snapshot", [18, 19, 20, 21, 12, 13, 14, 15, 16, 17, 26]);
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 13 }),
+    ]);
+    const loop = Object.freeze({
+      ...base,
+      stationInterfaces,
+    }) as FactoryRailLoopPlan;
+
+    const retained = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-snapshot", loop),
+      "train-a",
+    );
+
+    expect(retained.retainedSnapshots[0]).toMatchObject({
+      snapshotId: "train-a",
+      cells: loop.cells,
+      stationInterfaces,
+    });
+  });
 });
