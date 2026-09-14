@@ -44,6 +44,7 @@ const FACTORY_RULE_SCOPE = Object.freeze({
 });
 const TRAIN_CITY_POPULATION_PER_LEVEL = 20;
 const TRAIN_CITY_POPULATION_GRANT_DOMAIN = "TRAIN_CITY_POPULATION_GRANT";
+const NO_BLOCKED_TRAIN_CELLS: ReadonlySet<CellId> = new Set<CellId>();
 
 export type P07PrimaryDispatchPhase = 0 | 1 | 2 | 3;
 
@@ -417,6 +418,7 @@ export function applyTrainCityPopulationGrant(
 function firstQualifyingStationEntryWithinTick(
   unit: MobileUnitState,
   qualifyingStationCellIds: ReadonlySet<CellId>,
+  blockedCellIds: ReadonlySet<CellId>,
 ): Readonly<{ cellId: CellId; movementWork: number }> | null {
   const route = unit.route;
   if (route === undefined) return null;
@@ -431,6 +433,7 @@ function firstQualifyingStationEntryWithinTick(
     if (movementWork > TRAIN_MOVEMENT_WORK_PER_TICK) return null;
 
     const enteredCellId = route.cells[cellIndex]!;
+    if (blockedCellIds.has(enteredCellId)) return null;
     if (qualifyingStationCellIds.has(enteredCellId)) {
       return Object.freeze({
         cellId: enteredCellId,
@@ -451,6 +454,7 @@ export function advanceTrainMovementTick(
   currentTick: number,
   resumeAtTick: number | null,
   qualifyingStationCellIds: readonly CellId[],
+  blockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_TRAIN_CELLS,
 ): TrainMovementTickResult {
   assertCanonicalTick(currentTick, "Train current tick");
   if (resumeAtTick !== null) {
@@ -467,12 +471,17 @@ export function advanceTrainMovementTick(
   const stationEntry = firstQualifyingStationEntryWithinTick(
     unit,
     new Set(qualifyingStationCellIds),
+    blockedCellIds,
   );
   if (stationEntry !== null) {
     if (currentTick > Number.MAX_SAFE_INTEGER - TRAIN_STATION_DWELL_TICKS) {
       throw new Error("Train dwell resume tick exceeds the safe-integer range");
     }
-    const advanced = advanceMobileUnit(unit, stationEntry.movementWork);
+    const advanced = advanceMobileUnit(
+      unit,
+      stationEntry.movementWork,
+      blockedCellIds,
+    );
     return Object.freeze({
       unit: advanced.unit,
       stationEntryCellId: stationEntry.cellId,
@@ -481,7 +490,11 @@ export function advanceTrainMovementTick(
   }
 
   return Object.freeze({
-    unit: advanceMobileUnit(unit, TRAIN_MOVEMENT_WORK_PER_TICK).unit,
+    unit: advanceMobileUnit(
+      unit,
+      TRAIN_MOVEMENT_WORK_PER_TICK,
+      blockedCellIds,
+    ).unit,
     stationEntryCellId: null,
     resumeAtTick: null,
   });

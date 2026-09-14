@@ -838,6 +838,13 @@ export function advanceFactoryTrainRuntimePhase(
     epochsByFactory.set(factory.id, epoch);
   }
 
+  const movementPhaseStructureCells = new Set(
+    state.structures.map((structure) => structure.cellId),
+  );
+  const movementPhaseUnitCells = new Map(
+    mobileUnits.map((unit) => [unit.id, unit.cellId] as const),
+  );
+
   const survivingTrainServices: typeof trainServices = [];
   for (const service of trainServices
     .slice()
@@ -851,12 +858,17 @@ export function advanceFactoryTrainRuntimePhase(
       state,
       snapshot,
     );
+    const blockedCellIds = new Set(movementPhaseStructureCells);
+    for (const [unitId, cellId] of movementPhaseUnitCells) {
+      if (unitId !== service.trainId) blockedCellIds.add(cellId);
+    }
 
     const moved = advanceTrainMovementTick(
       unit,
       currentTick,
       service.resumeAtTick,
       qualifyingStationCellIds,
+      blockedCellIds,
     );
 
     if (moved.unit.route === undefined) {

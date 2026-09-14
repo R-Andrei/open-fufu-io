@@ -553,6 +553,18 @@ function tankCellCorridorPermitsTraversal(
   return territoryOwner !== undefined && territoryOwner.status === "ACTIVE";
 }
 
+function tankRouteCellIsPhysicallyAvailable(
+  state: MatchState,
+  startCellId: number,
+  cellId: number,
+): boolean {
+  if (cellId === startCellId) return true;
+  return (
+    !state.structures.some((structure) => structure.cellId === cellId) &&
+    !state.mobileUnits.some((unit) => unit.cellId === cellId)
+  );
+}
+
 export function tankCellTraversalTiming(
   state: MatchState,
   ownerId: string,
@@ -616,6 +628,8 @@ export function tankNavigationRoute(
 
   const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
     if (
+      !tankRouteCellIsPhysicallyAvailable(state, startCellId, fromCellId) ||
+      !tankRouteCellIsPhysicallyAvailable(state, startCellId, toCellId) ||
       !tankCellCorridorPermitsTraversal(state, ownerId, fromCellId) ||
       !tankCellCorridorPermitsTraversal(state, ownerId, toCellId)
     ) {
@@ -636,6 +650,7 @@ export function tankNavigationRoute(
   };
 
   if (
+    !tankRouteCellIsPhysicallyAvailable(state, startCellId, destinationCellId) ||
     !tankCellCorridorPermitsTraversal(state, ownerId, startCellId) ||
     !tankCellCorridorPermitsTraversal(state, ownerId, destinationCellId) ||
     tankTerrainHalfEdgeBaseWork(state.map.terrainAt(startCellId)) === undefined ||
@@ -698,6 +713,8 @@ export function tankStrategicNavigationRoute(
     profile.scale.denominator * profile.chassisDenominator;
   const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
     if (
+      !tankRouteCellIsPhysicallyAvailable(state, startCellId, fromCellId) ||
+      !tankRouteCellIsPhysicallyAvailable(state, startCellId, toCellId) ||
       !tankCellCorridorPermitsTraversal(state, ownerId, fromCellId) ||
       !tankCellCorridorPermitsTraversal(state, ownerId, toCellId)
     ) {
@@ -1019,7 +1036,9 @@ function tankDeploymentCell(
     .filter(
       (cellId) =>
         state.ownership[cellId] === job.ownerId &&
-        tankChassisCanTraverse(state.map.terrainAt(cellId)),
+        tankChassisCanTraverse(state.map.terrainAt(cellId)) &&
+        !state.structures.some((structure) => structure.cellId === cellId) &&
+        !state.mobileUnits.some((unit) => unit.cellId === cellId),
     )
     .sort((left, right) => left - right)[0];
 }
