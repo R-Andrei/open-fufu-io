@@ -133,6 +133,70 @@ describe("target mobile-unit runtime foundation", () => {
     expect(reversed.mobileUnits.every(Object.isFrozen)).toBe(true);
   });
 
+  it("rejects duplicate physical occupancy during unit creation and materialization", () => {
+    const map = syntheticMap(3, 1);
+    const owners = ["alpha", "beta"] as const;
+    const first = createMobileUnit(map, owners, emptyCollection(), {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
+
+    expect(() =>
+      createMobileUnit(map, owners, first, {
+        ownerId: "beta",
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: 0,
+      }),
+    ).toThrow(/occup/i);
+
+    const second = createMobileUnit(map, owners, first, {
+      ownerId: "beta",
+      type: "TRAIN",
+      movementClass: "RAIL",
+      cellId: 1,
+    });
+    const duplicatedCell = Object.freeze({ ...second.unit, cellId: 0 });
+
+    expect(() =>
+      materializeMobileUnitCollection(map, owners, {
+        mobileUnits: [first.unit, duplicatedCell],
+        nextMobileUnitOrdinal: second.nextMobileUnitOrdinal,
+      }),
+    ).toThrow(/occup/i);
+  });
+
+  it("rejects cross-domain structure and mobile-unit co-occupancy in authoritative MatchState", () => {
+    const base = createBaseMatch("mobile-unit-cross-domain-occupancy");
+    const owners = base.factions.map((faction) => faction.id);
+    const created = createMobileUnit(base.map, owners, base, {
+      ownerId: "alpha",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 0,
+    });
+
+    expect(() =>
+      createProspectiveMatchState(base, {
+        structures: [
+          {
+            id: "structure-a",
+            ownerId: "alpha",
+            type: "CITY",
+            cellId: 0,
+            completedLevel: 1,
+            active: true,
+            acquisitionPath: "GRANT",
+          },
+        ],
+        mobileUnits: created.mobileUnits,
+        nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      }),
+    ).toThrow(/occup/i);
+  });
+
   it("rejects malformed creation, allocator, identity, and route state at target-owned boundaries", () => {
     const map = syntheticMap(3, 2);
     const owners = ["alpha", "beta"] as const;
@@ -469,13 +533,12 @@ describe("target mobile-unit runtime foundation", () => {
       ownerId: "alpha",
       type: "HEAVY_ARTILLERY",
       movementClass: "HEAVY_ARTILLERY",
-      cellId: 0,
+      cellId: 2,
     });
     const indexBefore = createMobileUnitSpatialIndex(second.mobileUnits);
 
-    expect(indexBefore.atCell(0).map((unit) => unit.id)).toEqual(
-      second.mobileUnits.map((unit) => unit.id),
-    );
+    expect(indexBefore.atCell(0).map((unit) => unit.id)).toEqual([first.unit.id]);
+    expect(indexBefore.atCell(2).map((unit) => unit.id)).toEqual([second.unit.id]);
     expect(indexBefore.ownedBy("alpha").map((unit) => unit.id)).toEqual(
       second.mobileUnits.map((unit) => unit.id),
     );
@@ -496,15 +559,16 @@ describe("target mobile-unit runtime foundation", () => {
     );
     const indexAfter = createMobileUnitSpatialIndex(afterMovement.mobileUnits);
 
-    expect(indexAfter.atCell(0).map((unit) => unit.id)).toEqual([second.unit.id]);
+    expect(indexAfter.atCell(0)).toEqual([]);
     expect(indexAfter.atCell(1).map((unit) => unit.id)).toEqual([first.unit.id]);
-    expect(indexBefore.atCell(0)).toHaveLength(2);
+    expect(indexAfter.atCell(2).map((unit) => unit.id)).toEqual([second.unit.id]);
+    expect(indexBefore.atCell(0)).toHaveLength(1);
 
     const afterRemoval = removeMobileUnit(afterMovement, first.unit.id);
     const indexAfterRemoval = createMobileUnitSpatialIndex(afterRemoval.mobileUnits);
     expect(indexAfterRemoval.get(first.unit.id)).toBeUndefined();
     expect(indexAfterRemoval.atCell(1)).toEqual([]);
-    expect(indexAfterRemoval.atCell(0).map((unit) => unit.id)).toEqual([
+    expect(indexAfterRemoval.atCell(2).map((unit) => unit.id)).toEqual([
       second.unit.id,
     ]);
 
