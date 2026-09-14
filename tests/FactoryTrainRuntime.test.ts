@@ -1,10 +1,15 @@
+import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   createFactoryRailLoopLifecycleState,
   retainFactoryRailLoopSnapshot,
 } from "../src/simulation/FactoryRailLifecycle";
-import { advanceFactoryTrainRuntimePhase } from "../src/simulation/FactoryTrainRuntime";
+import {
+  advanceFactoryTrainRuntimePhase,
+  settleFactoryTrainEconomicEvents,
+} from "../src/simulation/FactoryTrainRuntime";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
@@ -17,7 +22,10 @@ import {
   createMobileUnit,
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
-import { createStructureCaptureResolvedEvent } from "../src/simulation/SimulationEvents";
+import {
+  createStructureCaptureResolvedEvent,
+  createUnitDestroyedEvent,
+} from "../src/simulation/SimulationEvents";
 import { TickEngine } from "../src/simulation/TickEngine";
 import {
   createFactoryTrainServiceEpoch,
@@ -724,5 +732,84 @@ describe("authoritative Factory Train runtime state", () => {
     ]);
     expect(afterOldReturn.trainServices).toHaveLength(1);
     expect(afterOldReturn.trainServices[0]?.trainId).toBe(newPrimaryId);
+  });
+
+  it("keeps location-conditioned raider rules ineligible when Train interception has no canonical event location", () => {
+    const origin = originRuleProfileInput(["P14"]);
+    const raiderRules = compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: [
+        ...origin.contributions,
+        echoRuleContribution(
+          "ffy.military_conquest",
+          "BENEFICIAL",
+          3_000,
+          "test:raider-military",
+        ),
+      ],
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "factory-train-runtime-locationless-raider",
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "DESERT"],
+        initialOwners: ["alpha", "beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: raiderRules },
+        ],
+      }),
+    );
+    const servicesAtInterception = Object.freeze([
+      Object.freeze({
+        trainId: "train-a",
+        factoryId: "factory-a",
+        loopSnapshotId: "train-a",
+        isPrimary: true,
+        dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+          "factory-a",
+          "alpha",
+          1,
+        ),
+        resumeAtTick: null,
+      }),
+    ]);
+    const destruction = createUnitDestroyedEvent({
+      id: "destroy-train-locationless-raider",
+      tick: base.tick,
+      unit: {
+        unitId: "train-a",
+        ownerId: "alpha",
+        unitType: "TRAIN",
+        cellId: 1,
+      },
+      causes: [
+        {
+          kind: "UNIT_ATTACK",
+          attackEventId: "tank-attack-locationless-raider",
+          attacker: {
+            unitId: "tank-beta",
+            ownerId: "beta",
+            unitType: "TANK",
+            cellId: 1,
+          },
+        },
+      ],
+    });
+    const betaBefore = base.factions.find((faction) => faction.id === "beta")!.ffy;
+
+    const update = settleFactoryTrainEconomicEvents(
+      base,
+      servicesAtInterception,
+      [destruction],
+      () => false,
+    );
+
+    expect(update).not.toBeNull();
+    expect(update?.factions.find((faction) => faction.id === "beta")?.ffy).toBe(
+      betaBefore + 13_000,
+    );
   });
 });
