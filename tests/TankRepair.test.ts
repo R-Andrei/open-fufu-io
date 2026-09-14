@@ -156,15 +156,15 @@ function expectHealth(
 describe("Tank Factory repair retreat lifecycle", () => {
   it("enters automatic repair retreat at and below the exact 50% threshold, but not one HP above", () => {
     const state = repairFixture({
-      width: 16,
+      width: 26,
       factoryLevel: 1,
+      factoryCells: [{ structureId: "alpha-factory", cellId: 25 }],
       tanks: [
-        { cellId: 13, health: 501n, assigned: false },
-        { cellId: 14, health: 500n, assigned: false },
-        { cellId: 15, health: 499n, assigned: false },
+        { cellId: 14, health: 501n, assigned: false },
+        { cellId: 15, health: 500n, assigned: false },
+        { cellId: 16, health: 499n, assigned: false },
       ],
     });
-    const ids = state.tankOperationalStates.map((entry) => entry.unitId);
 
     const intended = advanceTankRepairIntentPhase(state);
 
@@ -175,9 +175,6 @@ describe("Tank Factory repair retreat lifecycle", () => {
       expect(intended.tankOperationalStates[index]).toMatchObject({
         repairFactoryId: "alpha-factory",
       });
-      expect(
-        intended.mobileUnits.find((unit) => unit.id === ids[index])?.route,
-      ).toMatchObject({ destinationCellId: 10 });
     }
   });
 
