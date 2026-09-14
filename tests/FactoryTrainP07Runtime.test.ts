@@ -18,7 +18,9 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
-function originRules(traitIds: readonly ("P07" | "P08" | "P33" | "P34")[]) {
+function originRules(
+  traitIds: readonly ("P07" | "P08" | "P14" | "P33" | "P34")[],
+) {
   const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
     contributions: origin.contributions,
@@ -33,6 +35,10 @@ function p07Rules() {
 
 function p08Rules() {
   return originRules(["P08"]);
+}
+
+function p14Rules() {
+  return originRules(["P14"]);
 }
 
 function p33Rules() {
@@ -297,6 +303,55 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
   });
 }
 
+function createP14DesertRuntimeFixture(seed: string) {
+  const width = 5;
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "DESERT", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
+      factions: [
+        { id: "alpha", rules: p14Rules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  return createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-beta",
+        ownerId: "beta",
+        type: "CITY",
+        cellId: 2,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-beta"]),
+        servicedStructureIds: Object.freeze(["city-beta"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+  });
+}
+
 describe("P07 Factory Train runtime dispatch", () => {
   it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
@@ -456,6 +511,26 @@ describe("P34 Factory Train runtime dispatch", () => {
       numerator: 15_000n,
       denominator: 1n,
     });
+  });
+});
+
+describe("P14 Factory Train runtime settlement", () => {
+  it("uses the canonical Desert station cell as the current Train event location", () => {
+    const prepared = createP14DesertRuntimeFixture(
+      "factory-train-runtime-p14-desert-location",
+    );
+    const alphaBefore = prepared.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(
+      advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(alphaBefore + passivePerTick + 13_300);
   });
 });
 
