@@ -271,12 +271,17 @@ export function materializeMobileUnitCollection(
 
   const knownOwners = new Set(ownerIds);
   const seenIds = new Set<UnitId>();
+  const seenCells = new Set<CellId>();
   const units = state.mobileUnits.map((unit) => {
     const materialized = materializeUnit(map, knownOwners, unit);
     if (seenIds.has(materialized.id)) {
       throw new Error(`duplicate mobile-unit identity: ${materialized.id}`);
     }
     seenIds.add(materialized.id);
+    if (seenCells.has(materialized.cellId)) {
+      throw new Error(`duplicate physical occupancy at cell ${materialized.cellId}`);
+    }
+    seenCells.add(materialized.cellId);
     const ordinal = parseMobileUnitOrdinal(materialized.id);
     if (ordinal >= state.nextMobileUnitOrdinal) {
       throw new Error("next mobile-unit ordinal must exceed every allocated unit identity");
@@ -307,6 +312,9 @@ export function createMobileUnit(
   assertKnownUnitType(input.type);
   assertKnownMovementClass(input.movementClass);
   assertCellId(map, input.cellId);
+  if (current.mobileUnits.some((unit) => unit.cellId === input.cellId)) {
+    throw new Error(`physical cell is occupied: ${input.cellId}`);
+  }
 
   const ordinal = current.nextMobileUnitOrdinal;
   if (ordinal >= Number.MAX_SAFE_INTEGER) {
