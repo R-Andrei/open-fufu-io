@@ -116,4 +116,106 @@ describe("physical occupancy movement", () => {
     expect(advanced.find((u) => u.id === routed.id)?.cellId).toBe(1);
     expect(advanced.find((u) => u.id === blocker.unit.id)?.cellId).toBe(2);
   });
+
+  it("rejects same-tick claims to the same previously empty cell symmetrically", () => {
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 3,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+    });
+    const owners = ["alpha", "beta"] as const;
+    const left = createMobileUnit(map, owners, {
+      mobileUnits: Object.freeze([]), nextMobileUnitOrdinal: 0,
+    }, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const right = createMobileUnit(map, owners, left, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 2,
+    });
+    const leftRouted = assignMobileUnitRoute(map, left.unit, {
+      cells: [0, 1], edgeWeights: [1],
+    });
+    const rightRouted = assignMobileUnitRoute(map, right.unit, {
+      cells: [2, 1], edgeWeights: [1],
+    });
+
+    const advanced = advanceMobileUnits([rightRouted, leftRouted], {
+      [leftRouted.id]: 1,
+      [rightRouted.id]: 1,
+    });
+
+    expect(advanced.find((u) => u.id === leftRouted.id)).toMatchObject({
+      cellId: 0,
+      route: { nextCellIndex: 1, edgeProgress: 0 },
+    });
+    expect(advanced.find((u) => u.id === rightRouted.id)).toMatchObject({
+      cellId: 2,
+      route: { nextCellIndex: 1, edgeProgress: 0 },
+    });
+  });
+
+  it("keeps every tick-start occupied cell unavailable even when its occupier leaves", () => {
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 3,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+    });
+    const owners = ["alpha", "beta"] as const;
+    const follower = createMobileUnit(map, owners, {
+      mobileUnits: Object.freeze([]), nextMobileUnitOrdinal: 0,
+    }, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const leader = createMobileUnit(map, owners, follower, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 1,
+    });
+    const followerRouted = assignMobileUnitRoute(map, follower.unit, {
+      cells: [0, 1], edgeWeights: [1],
+    });
+    const leaderRouted = assignMobileUnitRoute(map, leader.unit, {
+      cells: [1, 2], edgeWeights: [1],
+    });
+
+    const advanced = advanceMobileUnits([followerRouted, leaderRouted], {
+      [followerRouted.id]: 1,
+      [leaderRouted.id]: 1,
+    });
+
+    expect(advanced.find((u) => u.id === followerRouted.id)?.cellId).toBe(0);
+    expect(advanced.find((u) => u.id === leaderRouted.id)?.cellId).toBe(2);
+  });
+
+  it("prevents head-on swaps without choosing a hidden unit priority", () => {
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 2,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS"],
+    });
+    const owners = ["alpha", "beta"] as const;
+    const left = createMobileUnit(map, owners, {
+      mobileUnits: Object.freeze([]), nextMobileUnitOrdinal: 0,
+    }, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const right = createMobileUnit(map, owners, left, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 1,
+    });
+    const leftRouted = assignMobileUnitRoute(map, left.unit, {
+      cells: [0, 1], edgeWeights: [1],
+    });
+    const rightRouted = assignMobileUnitRoute(map, right.unit, {
+      cells: [1, 0], edgeWeights: [1],
+    });
+
+    const advanced = advanceMobileUnits([leftRouted, rightRouted], {
+      [leftRouted.id]: 1,
+      [rightRouted.id]: 1,
+    });
+
+    expect(advanced.find((u) => u.id === leftRouted.id)?.cellId).toBe(0);
+    expect(advanced.find((u) => u.id === rightRouted.id)?.cellId).toBe(1);
+  });
 });
