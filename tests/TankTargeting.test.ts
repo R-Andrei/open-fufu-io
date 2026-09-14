@@ -149,7 +149,7 @@ describe("Tank autonomous target arbitration", () => {
       ownerId: "beta",
       type: "TANK",
       movementClass: "TANK",
-      cellId: 40,
+      cellId: 30,
     });
     state = tank.state;
     const warship = addUnit(state, {
