@@ -19,7 +19,15 @@ function emptyRules() {
 }
 
 function originRules(
-  traitIds: readonly ("P07" | "P08" | "P14" | "P33" | "P34")[],
+  traitIds: readonly (
+    | "P07"
+    | "P08"
+    | "P14"
+    | "P24"
+    | "P33"
+    | "P34"
+    | "N11"
+  )[],
 ) {
   const origin = originRuleProfileInput(traitIds);
   return compileRuleProfile(RULE_AXIS_REGISTRY, {
@@ -41,12 +49,20 @@ function p14Rules() {
   return originRules(["P14"]);
 }
 
+function p24Rules() {
+  return originRules(["P24"]);
+}
+
 function p33Rules() {
   return originRules(["P33"]);
 }
 
 function p34Rules() {
   return originRules(["P34"]);
+}
+
+function n11Rules() {
+  return originRules(["N11"]);
 }
 
 function createP07RuntimeFixture(
@@ -352,6 +368,68 @@ function createP14DesertRuntimeFixture(seed: string) {
   });
 }
 
+function createFieldConditionRuntimeFixture(
+  seed: string,
+  fieldType: "FORT" | "SAM_LAUNCHER",
+) {
+  const width = 5;
+  const rules = fieldType === "FORT" ? p24Rules() : n11Rules();
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 1,
+      terrain: Array.from({ length: width }, () => "PLAINS" as const),
+      initialOwners: ["alpha", "alpha", "beta", "beta", "alpha"],
+      factions: [
+        { id: "alpha", rules },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  return createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-beta",
+        ownerId: "beta",
+        type: "CITY",
+        cellId: 2,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "field-a",
+        ownerId: "alpha",
+        type: fieldType,
+        cellId: 4,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-beta"]),
+        servicedStructureIds: Object.freeze(["city-beta"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+  });
+}
+
 describe("P07 Factory Train runtime dispatch", () => {
   it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
@@ -514,8 +592,8 @@ describe("P34 Factory Train runtime dispatch", () => {
   });
 });
 
-describe("P14 Factory Train runtime settlement", () => {
-  it("uses the canonical Desert station cell as the current Train event location", () => {
+describe("Factory Train runtime event-location settlement", () => {
+  it("applies P14 from the canonical Desert station cell", () => {
     const prepared = createP14DesertRuntimeFixture(
       "factory-train-runtime-p14-desert-location",
     );
@@ -531,6 +609,42 @@ describe("P14 Factory Train runtime settlement", () => {
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 13_300);
+  });
+
+  it("applies P24 when the station cell lies inside the Train owner's Fort field", () => {
+    const prepared = createFieldConditionRuntimeFixture(
+      "factory-train-runtime-p24-fort-field",
+      "FORT",
+    );
+    const alphaBefore = prepared.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(
+      advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(alphaBefore + passivePerTick + 12_000);
+  });
+
+  it("applies N11 hard zero when the station cell lies inside the Train owner's SAM field", () => {
+    const prepared = createFieldConditionRuntimeFixture(
+      "factory-train-runtime-n11-sam-field",
+      "SAM_LAUNCHER",
+    );
+    const alphaBefore = prepared.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(
+      advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(alphaBefore + passivePerTick);
   });
 });
 
