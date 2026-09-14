@@ -1,3 +1,12 @@
+import { factionRelationBetween } from "../core/FactionRelations";
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
+import type { RuleCondition } from "../core/rules/RuleComposition";
+import { materializeCompiledScalarScaleFactor } from "../core/rules/RuleMaterialization";
+import {
+  structureRadialFieldContainsCell,
+  structureRadialFieldFromAreaFactor,
+  structureRadialFieldFromRangeFactor,
+} from "../core/rules/StructureFieldGeometry";
 import {
   resolveEffectivePopulationCapacities,
   resolveFfyEconomicStage,
@@ -53,6 +62,41 @@ export type FactoryTrainDestructionLifecycleUpdate = Readonly<
 >;
 
 export type FactoryTrainEconomicUpdate = Readonly<Pick<MatchState, "factions">>;
+
+type EventInsideFieldCondition = Extract<
+  RuleCondition,
+  { readonly kind: "EVENT_INSIDE_FIELD" }
+>;
+
+type EventStructureFieldDefinition = Readonly<{
+  structureType: "FORT" | "SAM_LAUNCHER" | "COMMAND_POST";
+  axis: "STRUCTURE_FIELD_COVERAGE_AREA" | "STRUCTURE_INTERCEPTION_RANGE";
+  scaling: "AREA" | "RANGE";
+  baselineRadii: readonly [number, number, number, number, number];
+}>;
+
+const EVENT_STRUCTURE_FIELD_DEFINITIONS: Readonly<
+  Record<EventInsideFieldCondition["field"], EventStructureFieldDefinition>
+> = Object.freeze({
+  FORT: Object.freeze({
+    structureType: "FORT",
+    axis: "STRUCTURE_FIELD_COVERAGE_AREA",
+    scaling: "AREA",
+    baselineRadii: Object.freeze([30, 35, 40, 45, 50] as const),
+  }),
+  SAM_LAUNCHER: Object.freeze({
+    structureType: "SAM_LAUNCHER",
+    axis: "STRUCTURE_INTERCEPTION_RANGE",
+    scaling: "RANGE",
+    baselineRadii: Object.freeze([70, 80, 90, 100, 105] as const),
+  }),
+  COMMAND_POST: Object.freeze({
+    structureType: "COMMAND_POST",
+    axis: "STRUCTURE_FIELD_COVERAGE_AREA",
+    scaling: "AREA",
+    baselineRadii: Object.freeze([30, 35, 40, 45, 50] as const),
+  }),
+});
 
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
@@ -119,6 +163,129 @@ function trainEconomicRuleDynamicState(state: MatchState, ownerId: string) {
     territorialContactCount: territorialContactCount(state, ownerId),
     peakTotalPopulation: owner.population.peakTotal,
   });
+}
+
+function trainEventFactionIdentity(state: MatchState, ownerId: string) {
+  const faction = state.factions.find((candidate) => candidate.id === ownerId);
+  if (faction === undefined) {
+    throw new Error(`Train event condition references unknown faction ${ownerId}`);
+  }
+  return Object.freeze({
+    factionId: faction.id,
+    ...(faction.fixedTeamId === undefined
+      ? {}
+      : { fixedTeamId: faction.fixedTeamId }),
+  });
+}
+
+function trainEventFieldAffiliationApplies(
+  state: MatchState,
+  ruleHolderId: string,
+  structureOwnerId: string,
+  affiliation: EventInsideFieldCondition["affiliation"],
+): boolean {
+  const relation = factionRelationBetween(
+    trainEventFactionIdentity(state, ruleHolderId),
+    trainEventFactionIdentity(state, structureOwnerId),
+  );
+  if (affiliation === "SELF") return relation === "SELF";
+  return relation === "SELF" || relation === "ALLY";
+}
+
+function trainEventInsideStructureField(
+  state: MatchState,
+  ruleHolderId: string,
+  eventCellId: number,
+  condition: EventInsideFieldCondition,
+): boolean {
+  const definition = EVENT_STRUCTURE_FIELD_DEFINITIONS[condition.field];
+  const eventPosition = state.map.positionOf(eventCellId);
+
+  for (const structure of state.structures) {
+    if (
+      !structure.active ||
+      structure.completedLevel === undefined ||
+      structure.type !== definition.structureType ||
+      !trainEventFieldAffiliationApplies(
+        state,
+        ruleHolderId,
+        structure.ownerId,
+        condition.affiliation,
+      )
+    ) {
+      continue;
+    }
+
+    const structureOwner = state.factions.find(
+      (faction) => faction.id === structure.ownerId,
+    );
+    if (structureOwner === undefined) {
+      throw new Error(
+        `Train event field structure ${structure.id} has unknown owner ${structure.ownerId}`,
+      );
+    }
+    const factor = materializeCompiledScalarScaleFactor(
+      structureOwner.rules,
+      RULE_AXIS_REGISTRY,
+      definition.axis,
+      { kind: "STRUCTURE", structure: structure.type },
+      trainEconomicRuleDynamicState(state, structureOwner.id),
+    );
+    const baselineRadius =
+      definition.baselineRadii[structure.completedLevel - 1];
+    if (baselineRadius === undefined) {
+      throw new Error(
+        `Train event field structure ${structure.id} has unsupported level ${structure.completedLevel}`,
+      );
+    }
+    const profile =
+      definition.scaling === "AREA"
+        ? structureRadialFieldFromAreaFactor(
+            baselineRadius,
+            factor.numerator,
+            factor.denominator,
+          )
+        : structureRadialFieldFromRangeFactor(
+            baselineRadius,
+            factor.numerator,
+            factor.denominator,
+          );
+    const center = state.map.positionOf(structure.cellId);
+    if (
+      structureRadialFieldContainsCell(
+        profile,
+        center.x,
+        center.y,
+        eventPosition.x,
+        eventPosition.y,
+      )
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function trainStationEventConditionApplies(
+  state: MatchState,
+  ruleHolderId: string,
+  eventCellId: number,
+  condition: RuleCondition,
+): boolean {
+  switch (condition.kind) {
+    case "EVENT_TERRAIN_IS":
+      return state.map.terrainAt(eventCellId) === condition.terrain;
+    case "EVENT_INSIDE_FIELD":
+      return trainEventInsideStructureField(
+        state,
+        ruleHolderId,
+        eventCellId,
+        condition,
+      );
+    default:
+      return false;
+  }
 }
 
 function trainInterceptionRaiderEventId(event: UnitDestroyedEvent): string {
@@ -304,6 +471,13 @@ export function settleFactoryTrainEconomicEvents(
           );
     const event = createTrainStationFfyEvent(service.dispatchSnapshot, {
       eventId: trainStationEventId(state.tick, service.trainId, unit.cellId),
+      conditionApplies: (condition) =>
+        trainStationEventConditionApplies(
+          state,
+          ownerId,
+          unit.cellId,
+          condition,
+        ),
       ...(externalWartimeMultiplier === undefined
         ? {}
         : { externalWartimeMultiplier }),
