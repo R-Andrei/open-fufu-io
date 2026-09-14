@@ -12,6 +12,10 @@ import {
   retainFactoryRailLoopSnapshot,
   stageFactoryRailLoopRegeneration,
 } from "../src/simulation/FactoryRailLifecycle";
+import {
+  materializeFactoryTrainState,
+  serializeFactoryTrainState,
+} from "../src/simulation/FactoryTrainState";
 import type {
   FactoryRailLoopPlan,
   FactoryRailLoopPlanningInput,
@@ -428,5 +432,54 @@ describe("Factory generated rail lifecycle state", () => {
       cells: loop.cells,
       stationInterfaces,
     });
+  });
+
+  it("preserves station interfaces through authoritative Factory Train materialization and serialization", () => {
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 13 }),
+    ]);
+    const loop = Object.freeze({
+      ...loopPlan("factory-authoritative", [18, 19, 20, 21, 12, 13, 14, 15, 16, 17, 26]),
+      stationInterfaces,
+    }) as FactoryRailLoopPlan;
+    const lifecycle = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-authoritative", loop),
+      "train-a",
+    );
+    const map = Object.freeze({
+      isValidCellId: (cellId: number) => Number.isSafeInteger(cellId) && cellId >= 0 && cellId < 45,
+    }) as Parameters<typeof materializeFactoryTrainState>[3];
+
+    const materialized = materializeFactoryTrainState(
+      undefined,
+      { factoryRailLoops: [lifecycle] },
+      [],
+      map,
+    );
+
+    expect(
+      (materialized.factoryRailLoops[0]?.currentLoop as FactoryRailLoopPlan & {
+        readonly stationInterfaces?: readonly {
+          readonly structureId: string;
+          readonly cellId: number;
+        }[];
+      })?.stationInterfaces,
+    ).toEqual(stationInterfaces);
+    expect(materialized.factoryRailLoops[0]?.retainedSnapshots[0]?.stationInterfaces).toEqual(
+      stationInterfaces,
+    );
+
+    const serialized = serializeFactoryTrainState(materialized);
+    expect(
+      (serialized.factoryRailLoops[0]?.currentLoop as FactoryRailLoopPlan & {
+        readonly stationInterfaces?: readonly {
+          readonly structureId: string;
+          readonly cellId: number;
+        }[];
+      })?.stationInterfaces,
+    ).toEqual(stationInterfaces);
+    expect(serialized.factoryRailLoops[0]?.retainedSnapshots[0]?.stationInterfaces).toEqual(
+      stationInterfaces,
+    );
   });
 });
