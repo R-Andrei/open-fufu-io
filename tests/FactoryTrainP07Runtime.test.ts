@@ -26,6 +26,7 @@ function originRules(
     | "P24"
     | "P33"
     | "P34"
+    | "N04"
     | "N11"
   )[],
 ) {
@@ -59,6 +60,10 @@ function p33Rules() {
 
 function p34Rules() {
   return originRules(["P34"]);
+}
+
+function n04Rules() {
+  return originRules(["N04"]);
 }
 
 function n11Rules() {
@@ -368,6 +373,55 @@ function createP14DesertRuntimeFixture(seed: string) {
   });
 }
 
+function createN04MountainRuntimeFixture(seed: string) {
+  const width = 5;
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "MOUNTAIN", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
+      factions: [
+        { id: "alpha", rules: n04Rules() },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  return createProspectiveMatchState(base, {
+    structures: [
+      {
+        id: "factory-a",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "city-beta",
+        ownerId: "beta",
+        type: "CITY",
+        cellId: 2,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+    factoryRailLoops: [
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-beta"]),
+        servicedStructureIds: Object.freeze(["city-beta"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+      }),
+    ],
+  });
+}
+
 function createFieldConditionRuntimeFixture(
   seed: string,
   fieldType: "FORT" | "SAM_LAUNCHER",
@@ -609,6 +663,24 @@ describe("Factory Train runtime event-location settlement", () => {
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 13_300);
+  });
+
+  it("applies N04 from the canonical Mountain station cell", () => {
+    const prepared = createN04MountainRuntimeFixture(
+      "factory-train-runtime-n04-mountain-location",
+    );
+    const alphaBefore = prepared.factions.find(
+      (faction) => faction.id === "alpha",
+    )!.ffy;
+    const passivePerTick =
+      BASELINE_PASSIVE_FFY_PER_SECOND / ECONOMY_TICKS_PER_SECOND;
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(
+      advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(alphaBefore + passivePerTick + 5_000);
   });
 
   it("applies P24 when the station cell lies inside the Train owner's Fort field", () => {
