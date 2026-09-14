@@ -155,6 +155,44 @@ describe("physical occupancy movement", () => {
     });
   });
 
+  it("arbitrates a later same-tick cell entry after each mover has advanced one uncontested cell", () => {
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 5,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+    });
+    const owners = ["alpha", "beta"] as const;
+    const left = createMobileUnit(map, owners, {
+      mobileUnits: Object.freeze([]), nextMobileUnitOrdinal: 0,
+    }, {
+      ownerId: "alpha", type: "TRAIN", movementClass: "RAIL", cellId: 0,
+    });
+    const right = createMobileUnit(map, owners, left, {
+      ownerId: "beta", type: "TRAIN", movementClass: "RAIL", cellId: 4,
+    });
+    const leftRouted = assignMobileUnitRoute(map, left.unit, {
+      cells: [0, 1, 2], edgeWeights: [1, 1],
+    });
+    const rightRouted = assignMobileUnitRoute(map, right.unit, {
+      cells: [4, 3, 2], edgeWeights: [1, 1],
+    });
+
+    const advanced = advanceMobileUnits([leftRouted, rightRouted], {
+      [leftRouted.id]: 2,
+      [rightRouted.id]: 2,
+    });
+
+    expect(advanced.find((u) => u.id === leftRouted.id)).toMatchObject({
+      cellId: 1,
+      route: { nextCellIndex: 2, edgeProgress: 0 },
+    });
+    expect(advanced.find((u) => u.id === rightRouted.id)).toMatchObject({
+      cellId: 3,
+      route: { nextCellIndex: 2, edgeProgress: 0 },
+    });
+  });
+
   it("keeps every tick-start occupied cell unavailable even when its occupier leaves", () => {
     const map = createSimulationMap({
       source: "SYNTHETIC",

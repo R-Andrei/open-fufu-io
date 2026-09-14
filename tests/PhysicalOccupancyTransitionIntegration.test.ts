@@ -1,6 +1,9 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
-import { createFactoryRailLoopLifecycleState } from "../src/simulation/FactoryRailLifecycle";
+import {
+  createFactoryRailLoopLifecycleState,
+  retainFactoryRailLoopSnapshot,
+} from "../src/simulation/FactoryRailLifecycle";
 import { createInitialMatchState, createProspectiveMatchState } from "../src/simulation/MatchState";
 import {
   advanceMobileUnit,
@@ -11,6 +14,12 @@ import {
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { tankNavigationRoute } from "../src/simulation/Tanks";
 import { TickEngine } from "../src/simulation/TickEngine";
+import {
+  createFactoryTrainServiceEpoch,
+  createTrainDispatchEconomicSnapshot,
+  createTrainRouteInput,
+  markFactoryPrimaryTrainDispatched,
+} from "../src/simulation/TrainService";
 
 function baseState(seed: string, width: number) {
   const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -95,5 +104,146 @@ describe("physical occupancy transition integration", () => {
     const advanced = new TickEngine().advance(prepared, []);
     expect(advanced.mobileUnits.find((u) => u.type === "TRAIN")?.cellId).toBe(1);
     expect(advanced.mobileUnits.find((u) => u.id === blocker.unit.id)?.cellId).toBe(2);
+  });
+
+  it("does not let Tank iteration order choose a winner for one empty destination cell", () => {
+    const base = baseState("occupancy-tank-tank-contention", 3);
+    const owners = base.factions.map((f) => f.id);
+    const leftCreated = createMobileUnit(base.map, owners, base, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const rightCreated = createMobileUnit(base.map, owners, leftCreated, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 2,
+    });
+    const leftStrategic = setMobileUnitStrategicDestination(base.map, leftCreated.unit, 1);
+    const rightStrategic = setMobileUnitStrategicDestination(base.map, rightCreated.unit, 1);
+    const leftRouted = assignMobileUnitRoute(base.map, leftStrategic, {
+      cells: [0, 1], edgeWeights: [10],
+    });
+    const rightRouted = assignMobileUnitRoute(base.map, rightStrategic, {
+      cells: [2, 1], edgeWeights: [10],
+    });
+    const leftPartial = advanceMobileUnit(leftRouted, 5).unit;
+    const rightPartial = advanceMobileUnit(rightRouted, 5).unit;
+    const prepared = createProspectiveMatchState(base, {
+      mobileUnits: [rightPartial, leftPartial],
+      nextMobileUnitOrdinal: rightCreated.nextMobileUnitOrdinal,
+      tankOperationalStates: [
+        {
+          unitId: leftPartial.id,
+          health: { numerator: 1000n, denominator: 1n },
+          operatingAnchorCellId: 0,
+          eligibleFromTick: 0,
+          attackReadyAtTick: 0,
+        },
+        {
+          unitId: rightPartial.id,
+          health: { numerator: 1000n, denominator: 1n },
+          operatingAnchorCellId: 2,
+          eligibleFromTick: 0,
+          attackReadyAtTick: 0,
+        },
+      ],
+    });
+
+    const advanced = new TickEngine().advance(prepared, []);
+    expect(advanced.mobileUnits.find((u) => u.id === leftPartial.id)).toMatchObject({
+      cellId: 0,
+      route: { nextCellIndex: 1, edgeProgress: 5 },
+    });
+    expect(advanced.mobileUnits.find((u) => u.id === rightPartial.id)).toMatchObject({
+      cellId: 2,
+      route: { nextCellIndex: 1, edgeProgress: 5 },
+    });
+  });
+
+  it("does not let the earlier Train phase win an empty-cell claim against a Tank", () => {
+    const base = baseState("occupancy-train-tank-contention", 6);
+    const owners = base.factions.map((f) => f.id);
+    const trainCreated = createMobileUnit(base.map, owners, base, {
+      ownerId: "alpha", type: "TRAIN", movementClass: "RAIL", cellId: 0,
+    });
+    const trainRouted = assignMobileUnitRoute(
+      base.map,
+      trainCreated.unit,
+      createTrainRouteInput([0, 1, 2, 1, 0]),
+    );
+    const tankCreated = createMobileUnit(
+      base.map,
+      owners,
+      {
+        mobileUnits: [trainRouted],
+        nextMobileUnitOrdinal: trainCreated.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 3,
+      },
+    );
+    const tankStrategic = setMobileUnitStrategicDestination(base.map, tankCreated.unit, 2);
+    const tankRouted = assignMobileUnitRoute(base.map, tankStrategic, {
+      cells: [3, 2], edgeWeights: [10],
+    });
+    const tankPartial = advanceMobileUnit(tankRouted, 5).unit;
+
+    const loopCells = Object.freeze([0, 1, 2, 1, 0]);
+    const loop = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-a", {
+        factoryId: "factory-a",
+        targetStructureIds: Object.freeze(["city-a"]),
+        servicedStructureIds: Object.freeze(["city-a"]),
+        cells: loopCells,
+        sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 2 }),
+        ]),
+      }),
+      trainRouted.id,
+    );
+    const epoch = markFactoryPrimaryTrainDispatched(
+      createFactoryTrainServiceEpoch("factory-a", "alpha"),
+      trainRouted.id,
+    );
+    const prepared = createProspectiveMatchState(base, {
+      structures: [
+        structure("factory-a", "FACTORY", 4),
+        structure("city-a", "CITY", 5),
+      ],
+      mobileUnits: [trainRouted, tankPartial],
+      nextMobileUnitOrdinal: tankCreated.nextMobileUnitOrdinal,
+      factoryRailLoops: [loop],
+      factoryTrainEpochs: [epoch],
+      trainServices: [{
+        trainId: trainRouted.id,
+        factoryId: "factory-a",
+        loopSnapshotId: trainRouted.id,
+        isPrimary: true,
+        dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+          "factory-a",
+          "alpha",
+          1,
+        ),
+        resumeAtTick: null,
+      }],
+      tankOperationalStates: [{
+        unitId: tankPartial.id,
+        health: { numerator: 1000n, denominator: 1n },
+        operatingAnchorCellId: 3,
+        eligibleFromTick: 0,
+        attackReadyAtTick: 0,
+      }],
+    });
+
+    const advanced = new TickEngine().advance(prepared, []);
+    expect(advanced.mobileUnits.find((u) => u.id === trainRouted.id)).toMatchObject({
+      cellId: 1,
+      route: { nextCellIndex: 2, edgeProgress: 0 },
+    });
+    expect(advanced.trainServices.find((service) => service.trainId === trainRouted.id)).toMatchObject({
+      resumeAtTick: null,
+    });
+    expect(advanced.mobileUnits.find((u) => u.id === tankPartial.id)).toMatchObject({
+      cellId: 3,
+      route: { nextCellIndex: 1, edgeProgress: 5 },
+    });
   });
 });
