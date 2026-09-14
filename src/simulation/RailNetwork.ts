@@ -773,27 +773,6 @@ function findSimpleFactoryWaypointRouteAtDistance(
   return best;
 }
 
-function preferSimpleMinimumFactoryRoute(
-  route: FactoryGridPath,
-  geometry: RailMapGeometry,
-  pathableCells: ReadonlySet<CellId>,
-  sharedEdgeKeys: ReadonlySet<string>,
-  waypoints: readonly CellId[],
-  requireSharedEdge: boolean,
-): FactoryGridPath {
-  if (factoryPathIsSimple(route.cells)) return route;
-  return (
-    findSimpleFactoryWaypointRouteAtDistance(
-      geometry,
-      pathableCells,
-      sharedEdgeKeys,
-      waypoints,
-      route.distance,
-      requireSharedEdge,
-    ) ?? route
-  );
-}
-
 function compareLoopCandidates(
   left: FactoryLoopCandidate,
   right: FactoryLoopCandidate,
@@ -941,6 +920,48 @@ export function planFactoryRailLoop(
 
   let bestIndependent: FactoryLoopCandidate | undefined;
   let bestIntersecting: FactoryLoopCandidate | undefined;
+  let minimumIndependentDistance = Number.POSITIVE_INFINITY;
+  let minimumIntersectingDistance = Number.POSITIVE_INFINITY;
+  const minimumIndependentByTargetOrder = new Map<string, FactoryLoopCandidate>();
+  const minimumIntersectingByTargetOrder = new Map<string, FactoryLoopCandidate>();
+
+  const recordMinimumCandidate = (
+    candidate: FactoryLoopCandidate,
+    kind: "INDEPENDENT" | "INTERSECTING",
+  ): void => {
+    const targetOrderKey = JSON.stringify(candidate.targetStructureIds);
+    const currentDistance =
+      kind === "INDEPENDENT"
+        ? minimumIndependentDistance
+        : minimumIntersectingDistance;
+    const candidates =
+      kind === "INDEPENDENT"
+        ? minimumIndependentByTargetOrder
+        : minimumIntersectingByTargetOrder;
+
+    if (candidate.distance < currentDistance) {
+      candidates.clear();
+      candidates.set(targetOrderKey, candidate);
+      if (kind === "INDEPENDENT") {
+        minimumIndependentDistance = candidate.distance;
+      } else {
+        minimumIntersectingDistance = candidate.distance;
+      }
+      return;
+    }
+    if (candidate.distance !== currentDistance) return;
+
+    const previous = candidates.get(targetOrderKey);
+    if (
+      previous === undefined ||
+      (!factoryPathIsSimple(previous.cells) && factoryPathIsSimple(candidate.cells)) ||
+      (factoryPathIsSimple(previous.cells) === factoryPathIsSimple(candidate.cells) &&
+        compareLoopCandidates(candidate, previous) < 0)
+    ) {
+      candidates.set(targetOrderKey, candidate);
+    }
+  };
+
   const targetCount = Math.min(5, eligibleStations.length);
 
   enumerateOrderedSelections(eligibleStations, targetCount, (targets) => {
@@ -963,14 +984,7 @@ export function planFactoryRailLoop(
     }
 
     const targetStructureIds = Object.freeze(targets.map((station) => station.id));
-    const ordinaryRoute = preferSimpleMinimumFactoryRoute(
-      combineFactoryPaths(ordinaryLegs),
-      geometry,
-      pathableCells,
-      sharedEdgeKeys,
-      waypoints,
-      false,
-    );
+    const ordinaryRoute = combineFactoryPaths(ordinaryLegs);
     const ordinaryCandidate: FactoryLoopCandidate = Object.freeze({
       targetStructureIds,
       cells: ordinaryRoute.cells,
@@ -981,6 +995,7 @@ export function planFactoryRailLoop(
       ),
       pathKey: ordinaryRoute.pathKey,
     });
+    recordMinimumCandidate(ordinaryCandidate, "INDEPENDENT");
     if (
       bestIndependent === undefined ||
       compareLoopCandidates(ordinaryCandidate, bestIndependent) < 0
@@ -988,6 +1003,7 @@ export function planFactoryRailLoop(
       bestIndependent = ordinaryCandidate;
     }
     if (ordinaryCandidate.sharedExistingEdgeCount > 0) {
+      recordMinimumCandidate(ordinaryCandidate, "INTERSECTING");
       if (
         bestIntersecting === undefined ||
         compareLoopCandidates(ordinaryCandidate, bestIntersecting) < 0
@@ -1002,14 +1018,7 @@ export function planFactoryRailLoop(
       if (sharedLeg === null) continue;
       const legs = ordinaryLegs.slice();
       legs[forcedLeg] = sharedLeg;
-      const route = preferSimpleMinimumFactoryRoute(
-        combineFactoryPaths(legs),
-        geometry,
-        pathableCells,
-        sharedEdgeKeys,
-        waypoints,
-        true,
-      );
+      const route = combineFactoryPaths(legs);
       const candidate: FactoryLoopCandidate = Object.freeze({
         targetStructureIds,
         cells: route.cells,
@@ -1018,6 +1027,7 @@ export function planFactoryRailLoop(
         pathKey: route.pathKey,
       });
       if (candidate.sharedExistingEdgeCount === 0) continue;
+      recordMinimumCandidate(candidate, "INTERSECTING");
       if (
         bestIntersecting === undefined ||
         compareLoopCandidates(candidate, bestIntersecting) < 0
@@ -1027,7 +1037,63 @@ export function planFactoryRailLoop(
     }
   });
 
-  const selected = bestIntersecting ?? bestIndependent;
+  const requireSharedEdge = bestIntersecting !== undefined;
+  const minimumCandidates = requireSharedEdge
+    ? [...minimumIntersectingByTargetOrder.values()]
+    : [...minimumIndependentByTargetOrder.values()];
+  let selectedSimple: FactoryLoopCandidate | undefined;
+
+  for (const candidate of minimumCandidates) {
+    if (!factoryPathIsSimple(candidate.cells)) continue;
+    if (
+      selectedSimple === undefined ||
+      compareLoopCandidates(candidate, selectedSimple) < 0
+    ) {
+      selectedSimple = candidate;
+    }
+  }
+
+  if (selectedSimple === undefined && minimumCandidates.length > 0) {
+    const stationById = new Map(eligibleStations.map((station) => [station.id, station]));
+    for (const candidate of minimumCandidates) {
+      const targetCells = candidate.targetStructureIds.map((structureId) => {
+        const station = stationById.get(structureId);
+        if (station === undefined) {
+          throw new Error(`Factory loop candidate lost station ${structureId}`);
+        }
+        return station.cellId;
+      });
+      const waypoints: CellId[] = [
+        input.outboundPortCellId,
+        ...targetCells,
+        input.inboundPortCellId,
+      ];
+      const simpleRoute = findSimpleFactoryWaypointRouteAtDistance(
+        geometry,
+        pathableCells,
+        sharedEdgeKeys,
+        waypoints,
+        candidate.distance,
+        requireSharedEdge,
+      );
+      if (simpleRoute === null) continue;
+      const simpleCandidate: FactoryLoopCandidate = Object.freeze({
+        targetStructureIds: candidate.targetStructureIds,
+        cells: simpleRoute.cells,
+        distance: simpleRoute.distance,
+        sharedExistingEdgeCount: countSharedEdges(simpleRoute.cells, sharedEdgeKeys),
+        pathKey: simpleRoute.pathKey,
+      });
+      if (
+        selectedSimple === undefined ||
+        compareLoopCandidates(simpleCandidate, selectedSimple) < 0
+      ) {
+        selectedSimple = simpleCandidate;
+      }
+    }
+  }
+
+  const selected = selectedSimple ?? bestIntersecting ?? bestIndependent;
   if (selected === undefined) return null;
   return Object.freeze({
     factoryId: input.factoryId,
