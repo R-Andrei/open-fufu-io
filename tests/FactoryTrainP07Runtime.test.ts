@@ -77,7 +77,7 @@ function createP07RuntimeFixture(
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
-      width: 12,
+      width: 13,
       height: 1,
       factions: [
         { id: "alpha", rules: p07Rules() },
@@ -103,7 +103,7 @@ function createP07RuntimeFixture(
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 10,
+        cellId: 12,
         completedLevel: 1,
         active: false,
         acquisitionPath: "GRANT",
@@ -116,6 +116,9 @@ function createP07RuntimeFixture(
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 11 }),
+        ]),
       }),
     ],
     ...(phase === undefined
@@ -150,7 +153,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   const tankState = withInterception
     ? createMobileUnit(
         base.map,
@@ -163,7 +166,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
           ownerId: "beta",
           type: "TANK",
           movementClass: "TANK",
-          cellId: 2,
+          cellId: 5,
         },
       )
     : null;
@@ -182,7 +185,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -195,6 +198,9 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 3 }),
+        ]),
       }),
     ],
     ...(tankState === null
@@ -223,7 +229,7 @@ function createP34RuntimeFixture(
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
-      width: 12,
+      width: 13,
       height: 1,
       factions: [
         { id: "alpha", rules: p34Rules() },
@@ -249,7 +255,7 @@ function createP34RuntimeFixture(
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 10,
+        cellId: 12,
         completedLevel: 1,
         active: false,
         acquisitionPath: "GRANT",
@@ -262,6 +268,9 @@ function createP34RuntimeFixture(
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 11 }),
+        ]),
       }),
     ],
   });
@@ -290,7 +299,7 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
+  const loopCells = Object.freeze([1, 2, 3, 4, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -319,6 +328,9 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 4 }),
+        ]),
       }),
     ],
   });
@@ -331,7 +343,7 @@ function createP14DesertRuntimeFixture(seed: string) {
       seed,
       width,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "DESERT", "PLAINS", "PLAINS"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "DESERT"],
       initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
       factions: [
         { id: "alpha", rules: p14Rules() },
@@ -339,7 +351,7 @@ function createP14DesertRuntimeFixture(seed: string) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -355,7 +367,7 @@ function createP14DesertRuntimeFixture(seed: string) {
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -368,6 +380,9 @@ function createP14DesertRuntimeFixture(seed: string) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 3 }),
+        ]),
       }),
     ],
   });
@@ -380,7 +395,7 @@ function createN04MountainRuntimeFixture(seed: string) {
       seed,
       width,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "MOUNTAIN", "PLAINS", "PLAINS"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "MOUNTAIN"],
       initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
       factions: [
         { id: "alpha", rules: n04Rules() },
@@ -388,7 +403,7 @@ function createN04MountainRuntimeFixture(seed: string) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -404,7 +419,7 @@ function createN04MountainRuntimeFixture(seed: string) {
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -417,6 +432,9 @@ function createN04MountainRuntimeFixture(seed: string) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 3 }),
+        ]),
       }),
     ],
   });
@@ -441,7 +459,7 @@ function createFieldConditionRuntimeFixture(
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -457,7 +475,7 @@ function createFieldConditionRuntimeFixture(
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 3,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -479,6 +497,9 @@ function createFieldConditionRuntimeFixture(
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 2 }),
+        ]),
       }),
     ],
   });
@@ -659,7 +680,7 @@ describe("Factory Train runtime event-location settlement", () => {
 
     const advanced = new TickEngine().advance(prepared, []);
 
-    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(3);
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 13_300);
@@ -677,7 +698,7 @@ describe("Factory Train runtime event-location settlement", () => {
 
     const advanced = new TickEngine().advance(prepared, []);
 
-    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(3);
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 5_000);
