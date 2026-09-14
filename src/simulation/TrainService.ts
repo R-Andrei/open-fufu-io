@@ -511,9 +511,7 @@ export function resolveTrainInterceptionEconomicOutcome(
       id: input.raiderEventId,
       family: "MILITARY_CONQUEST",
       baseValue: snapshot.baseCargoFfy,
-      ...(input.conditionApplies === undefined
-        ? {}
-        : { conditionApplies: input.conditionApplies }),
+      conditionApplies: input.conditionApplies ?? (() => false),
     }),
   });
 }
