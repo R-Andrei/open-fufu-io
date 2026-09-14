@@ -75,6 +75,11 @@ type EventStructureFieldDefinition = Readonly<{
   baselineRadii: readonly [number, number, number, number, number];
 }>;
 
+type TrainServiceRuntimeEntry = MatchState["trainServices"][number];
+type FactoryRailLifecycleEntry = MatchState["factoryRailLoops"][number];
+type FactoryRailSnapshotEntry =
+  FactoryRailLifecycleEntry["retainedSnapshots"][number];
+
 const EVENT_STRUCTURE_FIELD_DEFINITIONS: Readonly<
   Record<EventInsideFieldCondition["field"], EventStructureFieldDefinition>
 > = Object.freeze({
@@ -311,6 +316,85 @@ function isCurrentTickStationOccurrence(
   );
 }
 
+function retainedLoopSnapshot(
+  lifecycles: readonly FactoryRailLifecycleEntry[],
+  service: TrainServiceRuntimeEntry,
+): FactoryRailSnapshotEntry {
+  const lifecycle = lifecycles.find(
+    (entry) => entry.factoryId === service.factoryId,
+  );
+  if (lifecycle === undefined) {
+    throw new Error(
+      `Train service ${service.trainId} has no Factory rail lifecycle`,
+    );
+  }
+  const snapshot = lifecycle.retainedSnapshots.find(
+    (entry) => entry.snapshotId === service.loopSnapshotId,
+  );
+  if (snapshot === undefined) {
+    throw new Error(
+      `Train service ${service.trainId} lost retained Factory loop snapshot ${service.loopSnapshotId}`,
+    );
+  }
+  return snapshot;
+}
+
+function activeTrainStation(
+  state: MatchState,
+  structureId: string,
+): MatchState["structures"][number] | null {
+  return (
+    state.structures.find(
+      (structure) =>
+        structure.id === structureId &&
+        (structure.type === "CITY" || structure.type === "PORT") &&
+        structure.active &&
+        structure.completedLevel !== undefined,
+    ) ?? null
+  );
+}
+
+function qualifyingStationInterfaceCellIds(
+  state: MatchState,
+  snapshot: FactoryRailSnapshotEntry,
+): readonly number[] {
+  const result: number[] = [];
+  const seen = new Set<number>();
+  for (const stationInterface of snapshot.stationInterfaces ?? []) {
+    if (
+      seen.has(stationInterface.cellId) ||
+      activeTrainStation(state, stationInterface.structureId) === null
+    ) {
+      continue;
+    }
+    seen.add(stationInterface.cellId);
+    result.push(stationInterface.cellId);
+  }
+  return Object.freeze(result);
+}
+
+function activeMappedStationsAtInterface(
+  state: MatchState,
+  snapshot: FactoryRailSnapshotEntry,
+  interfaceCellId: number,
+): readonly MatchState["structures"][number][] {
+  const result: MatchState["structures"][number][] = [];
+  const seenStructureIds = new Set<string>();
+  for (const stationInterface of snapshot.stationInterfaces ?? []) {
+    if (
+      stationInterface.cellId !== interfaceCellId ||
+      seenStructureIds.has(stationInterface.structureId)
+    ) {
+      continue;
+    }
+    const station = activeTrainStation(state, stationInterface.structureId);
+    if (station === null) continue;
+    seenStructureIds.add(stationInterface.structureId);
+    result.push(station);
+  }
+  return Object.freeze(result);
+}
+
 export function applyFactoryTrainDestructionLifecycleEvents(
   state: MatchState,
   destructionEvents: readonly UnitDestroyedEvent[],
@@ -447,47 +531,53 @@ export function settleFactoryTrainEconomicEvents(
         `surviving Train station occurrence lost physical Train ${service.trainId}`,
       );
     }
-    const station = state.structures.find(
-      (structure) =>
-        structure.cellId === unit.cellId &&
-        (structure.type === "CITY" || structure.type === "PORT") &&
-        structure.active &&
-        structure.completedLevel !== undefined,
+    const snapshot = retainedLoopSnapshot(state.factoryRailLoops, service);
+    const stations = activeMappedStationsAtInterface(
+      state,
+      snapshot,
+      unit.cellId,
     );
-    if (station === undefined) continue;
+    if (stations.length === 0) continue;
 
     const ownerId = service.dispatchSnapshot.dispatchOwnerId;
     const owner = state.factions.find((faction) => faction.id === ownerId);
     if (owner === undefined) {
       throw new Error(`Train economic consequence references unknown faction ${ownerId}`);
     }
-    const externalWartimeMultiplier =
-      station.ownerId === ownerId
-        ? undefined
-        : resolveTrainExternalWartimeMultiplier(
-            owner.rules,
-            trainEconomicRuleDynamicState(state, ownerId),
-            currentAtWar(ownerId, station.ownerId),
-          );
-    const event = createTrainStationFfyEvent(service.dispatchSnapshot, {
-      eventId: trainStationEventId(state.tick, service.trainId, unit.cellId),
-      conditionApplies: (condition) =>
-        trainStationEventConditionApplies(
-          state,
-          ownerId,
-          unit.cellId,
-          condition,
-        ),
-      ...(externalWartimeMultiplier === undefined
-        ? {}
-        : { externalWartimeMultiplier }),
-    });
-    const existing = positiveEventsByOwnerId.get(ownerId) ?? [];
-    existing.push(event);
-    positiveEventsByOwnerId.set(ownerId, existing);
 
-    if (station.type === "CITY") {
-      survivingCityStations.push(station);
+    for (const station of stations) {
+      const externalWartimeMultiplier =
+        station.ownerId === ownerId
+          ? undefined
+          : resolveTrainExternalWartimeMultiplier(
+              owner.rules,
+              trainEconomicRuleDynamicState(state, ownerId),
+              currentAtWar(ownerId, station.ownerId),
+            );
+      const event = createTrainStationFfyEvent(service.dispatchSnapshot, {
+        eventId: trainStationEventId(
+          state.tick,
+          service.trainId,
+          station.cellId,
+        ),
+        conditionApplies: (condition) =>
+          trainStationEventConditionApplies(
+            state,
+            ownerId,
+            station.cellId,
+            condition,
+          ),
+        ...(externalWartimeMultiplier === undefined
+          ? {}
+          : { externalWartimeMultiplier }),
+      });
+      const existing = positiveEventsByOwnerId.get(ownerId) ?? [];
+      existing.push(event);
+      positiveEventsByOwnerId.set(ownerId, existing);
+
+      if (station.type === "CITY") {
+        survivingCityStations.push(station);
+      }
     }
   }
 
@@ -569,14 +659,6 @@ export function advanceFactoryTrainRuntimePhase(
   const loopsByFactory = new Map(
     factoryRailLoops.map((lifecycle) => [lifecycle.factoryId, lifecycle]),
   );
-  const qualifyingStationCellIds = state.structures
-    .filter(
-      (structure) =>
-        (structure.type === "CITY" || structure.type === "PORT") &&
-        structure.active &&
-        structure.completedLevel !== undefined,
-    )
-    .map((structure) => structure.cellId);
 
   const factories = state.structures
     .filter(
@@ -764,6 +846,11 @@ export function advanceFactoryTrainRuntimePhase(
     if (unit === undefined) {
       throw new Error(`Train service ${service.trainId} has no physical Train`);
     }
+    const snapshot = retainedLoopSnapshot(factoryRailLoops, service);
+    const qualifyingStationCellIds = qualifyingStationInterfaceCellIds(
+      state,
+      snapshot,
+    );
 
     const moved = advanceTrainMovementTick(
       unit,
