@@ -8,6 +8,7 @@ import {
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
+import { planTankPursuitRoute } from "../src/simulation/TankTargeting";
 import { tankNavigationRoute, tankStrategicNavigationRoute } from "../src/simulation/Tanks";
 
 function baseState(seed: string) {
@@ -46,6 +47,46 @@ describe("physical occupancy movement", () => {
     if (strategic.status !== "LIMIT_REACHED") {
       expect(strategic.route.cells).not.toContain(1);
     }
+  });
+
+  it("routes autonomous Tank pursuit around current physical occupiers", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(createMicroSimulationSpec({
+      seed: "occupancy-tank-pursuit",
+      width: 40,
+      height: 2,
+      terrain: Array.from({ length: 80 }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: 80 }, () => "alpha"),
+      factions: [{ id: "alpha", rules }, { id: "beta", rules }],
+    }));
+    const owners = base.factions.map((f) => f.id);
+    const mover = createMobileUnit(base.map, owners, base, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const blocker = createMobileUnit(base.map, owners, mover, {
+      ownerId: "beta", type: "TRAIN", movementClass: "RAIL", cellId: 1,
+    });
+    const target = createMobileUnit(base.map, owners, blocker, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 39,
+    });
+    const occupied = createProspectiveMatchState(base, {
+      mobileUnits: target.mobileUnits,
+      nextMobileUnitOrdinal: target.nextMobileUnitOrdinal,
+    });
+
+    const route = planTankPursuitRoute(
+      occupied,
+      {
+        ownerId: "alpha",
+        chassisType: "TANK",
+        currentCellId: 0,
+        operatingAnchorCellId: 0,
+      },
+      { targetClass: "TANK_CHASSIS", unitId: target.unit.id },
+    );
+
+    expect(route).toBeDefined();
+    expect(route?.cells).not.toContain(1);
   });
 
   it("prevents multi-edge movement from tunneling through a stationary occupier", () => {
