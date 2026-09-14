@@ -503,6 +503,25 @@ function freezeTankOperationalStates(
   return Object.freeze(states);
 }
 
+function assertExclusivePhysicalOccupancy(
+  structures: readonly PersistentStructureState[],
+  mobileUnits: readonly MobileUnitState[],
+): void {
+  const occupiedCells = new Set<number>();
+  for (const structure of structures) {
+    if (occupiedCells.has(structure.cellId)) {
+      throw new Error(`duplicate physical occupancy at cell ${structure.cellId}`);
+    }
+    occupiedCells.add(structure.cellId);
+  }
+  for (const unit of mobileUnits) {
+    if (occupiedCells.has(unit.cellId)) {
+      throw new Error(`duplicate physical occupancy at cell ${unit.cellId}`);
+    }
+    occupiedCells.add(unit.cellId);
+  }
+}
+
 function createState(
   previous: MatchState,
   tick: number,
@@ -527,6 +546,10 @@ function createState(
         update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
     },
   );
+  const structures = materializePersistentStructures(
+    update.structures ?? previous.structures,
+  );
+  assertExclusivePhysicalOccupancy(structures, mobileUnits.mobileUnits);
   const factoryTrains = materializeFactoryTrainState(
     previous,
     update,
@@ -545,9 +568,7 @@ function createState(
     ownership: freezeOwnership(ownership, previous.ownership),
     fallout: freezeFallout(fallout),
     factions,
-    structures: materializePersistentStructures(
-      update.structures ?? previous.structures,
-    ),
+    structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
     ...factoryTrains,
