@@ -159,8 +159,8 @@ describe("Tank Factory repair retreat lifecycle", () => {
       width: 16,
       factoryLevel: 1,
       tanks: [
-        { cellId: 15, health: 501n, assigned: false },
-        { cellId: 15, health: 500n, assigned: false },
+        { cellId: 13, health: 501n, assigned: false },
+        { cellId: 14, health: 500n, assigned: false },
         { cellId: 15, health: 499n, assigned: false },
       ],
     });

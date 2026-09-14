@@ -36,7 +36,7 @@ function pursuitFixture(): Readonly<{
           structureId: "alpha-observation",
           ownerId: "alpha",
           type: "OBSERVATION_POST",
-          cellId: 0,
+          cellId: 39,
           level: 1,
         },
       ],
