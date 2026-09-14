@@ -3,7 +3,15 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
-import { resolveHostilityGraceFromEvents } from "./HostilityState";
+import {
+  advanceFactoryTrainRuntimePhase,
+  applyFactoryTrainDestructionLifecycleEvents,
+  settleFactoryTrainEconomicEvents,
+} from "./FactoryTrainRuntime";
+import {
+  matchStateAtWar,
+  resolveHostilityGraceFromEvents,
+} from "./HostilityState";
 import {
   resolveLandTick,
   tryApplyPersistentDirectiveChangesWithEvents,
@@ -32,6 +40,7 @@ import {
   type CellOwnershipChangedEvent,
   type HostilityLifecycleSimulationEvent,
   type PersistentDirectedHostilitySourceEndedEvent,
+  type UnitDestroyedEvent,
 } from "./SimulationEvents";
 import {
   resolvePersistentStructureLifecycleTickWithEvents,
@@ -40,7 +49,7 @@ import {
 } from "./Structures";
 import {
   resolveAdmittedTankPopulationAttacks,
-  resolveAdmittedTankUnitAttacks,
+  resolveAdmittedTankUnitAttackEffects,
   resolveTankPopulationAftershocks,
   type AdmittedTankUnitAttack,
 } from "./TankCombat";
@@ -674,7 +683,7 @@ function tankAttackCooldownTicks(
   return targetClass === "POPULATION" ? 30 : 10;
 }
 
-function advanceTankUnitCombatPhase(state: MatchState): MatchState {
+function advanceTankUnitCombatPhase(state: MatchState) {
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const fastServiceUnitIds = tankFastServiceUnitIds(state);
   const observationByOwner = new Map<
@@ -837,7 +846,25 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     preCombat,
     populationCombat.successfulShots,
   );
-  const physicalCombat = resolveAdmittedTankUnitAttacks(preCombat, unitAttacks);
+  const physicalCombat = resolveAdmittedTankUnitAttackEffects(
+    preCombat,
+    unitAttacks,
+  );
+  const destructionEvents = physicalCombat.events.filter(
+    (event): event is UnitDestroyedEvent => event.kind === "UNIT_DESTROYED",
+  );
+  const servicesAtInterception = preCombat.trainServices;
+  const trainDestructionUpdate = applyFactoryTrainDestructionLifecycleEvents(
+    preCombat,
+    destructionEvents,
+  );
+  const physicalState =
+    physicalCombat.update === null && trainDestructionUpdate === null
+      ? preCombat
+      : createProspectiveMatchState(preCombat, {
+          ...(physicalCombat.update ?? {}),
+          ...(trainDestructionUpdate ?? {}),
+        });
   const targetPopulationByFactionId = new Map(
     populationCombat.targets.map((target) => [
       target.targetFactionId,
@@ -846,9 +873,9 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
   );
   const populationApplied =
     targetPopulationByFactionId.size === 0
-      ? physicalCombat.state
-      : createProspectiveMatchState(physicalCombat.state, {
-          factions: physicalCombat.state.factions.map((faction) => {
+      ? physicalState
+      : createProspectiveMatchState(physicalState, {
+          factions: physicalState.factions.map((faction) => {
             const population = targetPopulationByFactionId.get(faction.id);
             return population === undefined
               ? faction
@@ -873,7 +900,11 @@ function advanceTankUnitCombatPhase(state: MatchState): MatchState {
     populationCombat.events,
     state.tick,
   );
-  return createProspectiveMatchState(territorialApplied, { directReveals });
+  return Object.freeze({
+    state: createProspectiveMatchState(territorialApplied, { directReveals }),
+    destructionEvents: Object.freeze(destructionEvents),
+    servicesAtInterception,
+  });
 }
 
 export class TickEngine {
@@ -1134,7 +1165,16 @@ export class TickEngine {
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
     });
-    const repairIntended = advanceTankRepairIntentPhase(advanced);
+    const factoryTrainUpdate = advanceFactoryTrainRuntimePhase(
+      advanced,
+      nextTick,
+      structurePhase.events,
+    );
+    const trainAdvanced = createProspectiveMatchState(
+      advanced,
+      factoryTrainUpdate,
+    );
+    const repairIntended = advanceTankRepairIntentPhase(trainAdvanced);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const pursuitMoved = advanceTankPursuitMovementPhase(
       targetIntended,
@@ -1144,7 +1184,17 @@ export class TickEngine {
     const repairMoved = advanceTankRepairMovementPhase(strategicMoved);
     const roamed = advanceTankRoamingMovementPhase(repairMoved, pursuitMoved);
     const combatResolved = advanceTankUnitCombatPhase(roamed);
-    const repaired = advanceTankRepairPhase(combatResolved);
-    return advanceTankProductionPhase(repaired);
+    const repaired = advanceTankRepairPhase(combatResolved.state);
+    const produced = advanceTankProductionPhase(repaired);
+    const trainEconomicUpdate = settleFactoryTrainEconomicEvents(
+      produced,
+      combatResolved.servicesAtInterception,
+      combatResolved.destructionEvents,
+      (trainOwnerId, stationOwnerId) =>
+        matchStateAtWar(produced, trainOwnerId, stationOwnerId),
+    );
+    return trainEconomicUpdate === null
+      ? produced
+      : createProspectiveMatchState(produced, trainEconomicUpdate);
   }
 }

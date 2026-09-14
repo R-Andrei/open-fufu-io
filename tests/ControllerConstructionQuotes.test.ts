@@ -122,10 +122,13 @@ function observedForeignFortRuntime(seed: string) {
   return new MatchRuntime(
     createMicroSimulationSpec({
       seed,
-      width: 2,
+      width: 11,
       height: 1,
-      terrain: ["PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "beta"],
+      terrain: Array.from({ length: 11 }, () => "PLAINS" as const),
+      initialOwners: [
+        "alpha",
+        ...Array.from({ length: 10 }, () => "beta" as const),
+      ],
       initialStructureGrants: [
         {
           structureId: "observer-alpha-internal",
@@ -138,7 +141,7 @@ function observedForeignFortRuntime(seed: string) {
           structureId: "fort-beta-internal",
           ownerId: "beta",
           type: "FORT",
-          cellId: 1,
+          cellId: 10,
           level: 1,
         },
       ],
@@ -413,13 +416,13 @@ void ticksOptional;
   it("returns precise NOT_OWNER when the foreign structure is lawfully observed", () => {
     const quote = quoteForAlpha(
       observedForeignFortRuntime("controller-visible-foreign-upgrade-quote-red"),
-      (mechanics) => mechanics.structureUpgradeQuote(1),
+      (mechanics) => mechanics.structureUpgradeQuote(10),
     );
 
     expect(quote).toMatchObject({
       legal: false,
       failureCode: "NOT_OWNER",
-      cellId: 1,
+      cellId: 10,
       currentLevel: 1,
       cost: { ffySpent: 0, populationSpent: 0 },
     });
@@ -492,7 +495,7 @@ void ticksOptional;
     );
     const upgradeReceipt = alphaReceipt(
       syncReceipts(
-        upgradeMatch.runControllerRound(upgradeHost(1, "upgrade-visible-foreign")),
+        upgradeMatch.runControllerRound(upgradeHost(10, "upgrade-visible-foreign")),
       ),
     );
     expect(upgradeReceipt).toMatchObject({

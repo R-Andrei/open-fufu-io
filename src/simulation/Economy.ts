@@ -359,6 +359,16 @@ function derivePassiveTerrainCounts(
   );
 }
 
+export function resolveEffectivePopulationCapacities(
+  state: MatchState,
+): ReadonlyMap<string, number> {
+  return new Map(
+    [...derivePassiveTerrainCounts(state).entries()].map(
+      ([factionId, counts]) => [factionId, counts.capacity],
+    ),
+  );
+}
+
 function structureCounts(state: MatchState): {
   readonly owned: ReadonlyMap<string, number>;
   readonly readyPersistentSiloCharges: ReadonlyMap<string, number>;

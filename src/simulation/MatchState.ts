@@ -6,6 +6,13 @@ import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
+  materializeFactoryTrainState,
+  serializeFactoryTrainState,
+  type FactoryTrainState,
+  type FactoryTrainStateUpdate,
+} from "./FactoryTrainState";
+export type { TrainServiceRuntimeState } from "./FactoryTrainState";
+import {
   canonicalHostilitySideKey,
   materializeHostilityGraceState,
   type HostilityGraceState,
@@ -74,7 +81,7 @@ export interface MatchFactionState {
   readonly fixedTeamId?: string;
 }
 
-export interface MatchState {
+export interface MatchState extends FactoryTrainState {
   readonly seed: string;
   readonly tick: number;
   readonly map: SimulationMap;
@@ -94,7 +101,7 @@ export interface MatchState {
   readonly hostilityGrace: readonly HostilityGraceState[];
 }
 
-export interface MatchStateUpdate {
+export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly factions?: readonly MatchFactionState[];
   readonly ownership?: readonly (string | null)[];
   readonly fallout?: readonly boolean[];
@@ -520,6 +527,12 @@ function createState(
         update.nextMobileUnitOrdinal ?? previous.nextMobileUnitOrdinal,
     },
   );
+  const factoryTrains = materializeFactoryTrainState(
+    previous,
+    update,
+    mobileUnits.mobileUnits,
+    previous.map,
+  );
   const tankOperationalStates = freezeTankOperationalStates(
     update.tankOperationalStates ?? previous.tankOperationalStates ?? [],
     mobileUnits.mobileUnits,
@@ -537,6 +550,7 @@ function createState(
     ),
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    ...factoryTrains,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
       previous.map,
@@ -618,6 +632,9 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    factoryRailLoops: Object.freeze([]),
+    factoryTrainEpochs: Object.freeze([]),
+    trainServices: Object.freeze([]),
     tankProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
     directReveals: Object.freeze([]),
@@ -786,6 +803,8 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const factoryTrains = serializeFactoryTrainState(state);
+
   const tankProductionJobs = [...state.tankProductionJobs]
     .sort(
       (left, right) =>
@@ -913,6 +932,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    factoryRailLoops: factoryTrains.factoryRailLoops,
+    factoryTrainEpochs: factoryTrains.factoryTrainEpochs,
+    trainServices: factoryTrains.trainServices,
     tankProductionJobs,
     tankOperationalStates,
     directReveals,

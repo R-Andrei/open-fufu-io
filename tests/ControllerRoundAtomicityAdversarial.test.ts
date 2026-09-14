@@ -79,10 +79,13 @@ function twoBuildRuntime(seed: string) {
   return new MatchRuntime(
     createMicroSimulationSpec({
       seed,
-      width: 3,
+      width: 12,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "alpha", "beta"],
+      terrain: Array.from({ length: 12 }, () => "PLAINS" as const),
+      initialOwners: [
+        ...Array.from({ length: 11 }, () => "alpha" as const),
+        "beta",
+      ],
       factions: [
         { id: "alpha", rules },
         { id: "beta", rules },
@@ -408,7 +411,7 @@ describe("controller-round transaction adversarial behavior", () => {
               kind: "BUILD_STRUCTURE" as const,
               key: "second-fort",
               structure: "FORT" as const,
-              cellId: 1,
+              cellId: 10,
             },
           ],
         };
