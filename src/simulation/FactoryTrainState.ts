@@ -239,19 +239,11 @@ function freezeFactoryTrainEpochs(
           entry.turnaroundRemainingActiveTicks,
           "Factory Train turnaround",
         );
-        if (
-          !Number.isInteger(entry.p07PrimaryDispatchPhase) ||
-          entry.p07PrimaryDispatchPhase < 0 ||
-          entry.p07PrimaryDispatchPhase > 3
-        ) {
-          throw new Error("Factory Train P07 phase must be 0 through 3");
-        }
         return Object.freeze({
           factoryId: entry.factoryId,
           ownerId: entry.ownerId,
           activePrimaryTrainId: entry.activePrimaryTrainId,
           turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-          p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
         });
       }),
   );
@@ -430,7 +422,6 @@ export function serializeFactoryTrainState(state: FactoryTrainState): FactoryTra
       ownerId: entry.ownerId,
       activePrimaryTrainId: entry.activePrimaryTrainId,
       turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-      p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
     })),
     trainServices: state.trainServices.map((entry) => ({
       trainId: entry.trainId,

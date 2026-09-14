@@ -155,7 +155,6 @@ describe("authoritative Factory Train runtime state", () => {
         ownerId: "alpha",
         activePrimaryTrainId: routed.id,
         turnaroundRemainingActiveTicks: 0,
-        p07PrimaryDispatchPhase: 0,
       },
     ]);
     expect(serialized.trainServices).toEqual([
@@ -259,7 +258,6 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "alpha",
       activePrimaryTrainId: train.id,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(advanced.factoryRailLoops[0]?.retainedSnapshots).toEqual([
       { snapshotId: train.id, cells: loopCells, stationInterfaces },
@@ -391,7 +389,6 @@ describe("authoritative Factory Train runtime state", () => {
         ownerId: "alpha",
         activePrimaryTrainId: null,
         turnaroundRemainingActiveTicks: 50,
-        p07PrimaryDispatchPhase: 0,
       },
     ]);
   });
@@ -452,7 +449,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 2,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -473,7 +469,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 1,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -497,7 +492,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 1,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -514,7 +508,7 @@ describe("authoritative Factory Train runtime state", () => {
     );
   });
 
-  it("replaces inherited turnaround and P07 phase with a fresh new-owner epoch on Factory transfer", () => {
+  it("replaces inherited turnaround with a fresh new-owner epoch on Factory transfer", () => {
     const rules = emptyRules();
     const base = createInitialMatchState(
       createMicroSimulationSpec({
@@ -570,7 +564,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 17,
-          p07PrimaryDispatchPhase: 3,
         },
       ],
     });
@@ -586,7 +579,6 @@ describe("authoritative Factory Train runtime state", () => {
       factoryId: "factory-a",
       ownerId: "beta",
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(newPrimaryId).not.toBeNull();
     expect(transferred.mobileUnits).toHaveLength(1);
@@ -684,7 +676,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: oldOwnerTrain.id,
           turnaroundRemainingActiveTicks: 0,
-          p07PrimaryDispatchPhase: 3,
         },
       ],
       trainServices: [
@@ -719,7 +710,6 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "beta",
       activePrimaryTrainId: newPrimaryId,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(newPrimaryId).not.toBeNull();
     expect(alphaTrain).toMatchObject({
@@ -745,7 +735,6 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "beta",
       activePrimaryTrainId: newPrimaryId,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(afterOldReturn.factoryRailLoops[0]?.retainedSnapshots).toEqual([
       expect.objectContaining({ snapshotId: newPrimaryId }),

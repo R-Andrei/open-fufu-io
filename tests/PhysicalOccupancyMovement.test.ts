@@ -193,6 +193,55 @@ describe("physical occupancy movement", () => {
     });
   });
 
+  it("does not let an upstream contention create a false downstream contention", () => {
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width: 3,
+      height: 2,
+      terrain: Array.from({ length: 6 }, () => "PLAINS" as const),
+    });
+    const owners = ["alpha", "beta"] as const;
+    const through = createMobileUnit(map, owners, {
+      mobileUnits: Object.freeze([]), nextMobileUnitOrdinal: 0,
+    }, {
+      ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 0,
+    });
+    const upstream = createMobileUnit(map, owners, through, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 4,
+    });
+    const downstream = createMobileUnit(map, owners, upstream, {
+      ownerId: "beta", type: "TANK", movementClass: "TANK", cellId: 5,
+    });
+    const throughRouted = assignMobileUnitRoute(map, through.unit, {
+      cells: [0, 1, 2], edgeWeights: [1, 1],
+    });
+    const upstreamRouted = assignMobileUnitRoute(map, upstream.unit, {
+      cells: [4, 1], edgeWeights: [1],
+    });
+    const downstreamRouted = assignMobileUnitRoute(map, downstream.unit, {
+      cells: [5, 2], edgeWeights: [1],
+    });
+
+    const advanced = advanceMobileUnits(
+      [downstreamRouted, throughRouted, upstreamRouted],
+      {
+        [throughRouted.id]: 2,
+        [upstreamRouted.id]: 1,
+        [downstreamRouted.id]: 1,
+      },
+    );
+
+    expect(advanced.find((u) => u.id === throughRouted.id)).toMatchObject({
+      cellId: 0,
+      route: { nextCellIndex: 1, edgeProgress: 0 },
+    });
+    expect(advanced.find((u) => u.id === upstreamRouted.id)).toMatchObject({
+      cellId: 4,
+      route: { nextCellIndex: 1, edgeProgress: 0 },
+    });
+    expect(advanced.find((u) => u.id === downstreamRouted.id)?.cellId).toBe(2);
+  });
+
   it("keeps every tick-start occupied cell unavailable even when its occupier leaves", () => {
     const map = createSimulationMap({
       source: "SYNTHETIC",

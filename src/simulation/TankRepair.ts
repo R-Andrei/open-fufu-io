@@ -24,6 +24,8 @@ import {
   advanceVehicleRepairIntentPhase,
   advanceVehicleRepairMovementPhase,
   advanceVehicleRepairServicePhase,
+  fixedRepairField,
+  repairFieldContainsCell,
   repairPerTick,
   repairServiceProfileForLevel,
   scaledRepairField,
@@ -411,6 +413,75 @@ export function advanceTankRepairMovementPhase(state: MatchState): MatchState {
     state,
     advanceVehicleRepairMovementPhase(tankRepairDomain(state)),
   );
+}
+
+export function settleTankRepairMovementPhase(
+  stateBeforeMovement: MatchState,
+  stateAfterMovement: MatchState,
+): MatchState {
+  const beforeUnitsById = new Map(
+    stateBeforeMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const afterUnitsById = new Map(
+    stateAfterMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const providersById = new Map(
+    tankRepairProviders(stateBeforeMovement).map((provider) => [provider.id, provider]),
+  );
+  const operationalUpdates = new Map<string, TankOperationalState>();
+
+  for (const operational of stateBeforeMovement.tankOperationalStates) {
+    const providerId = operational.repairFactoryId;
+    if (
+      providerId === undefined ||
+      operational.repairArrivalTick !== undefined
+    ) {
+      continue;
+    }
+    const beforeUnit = beforeUnitsById.get(operational.unitId);
+    const afterUnit = afterUnitsById.get(operational.unitId);
+    if (
+      beforeUnit === undefined ||
+      afterUnit === undefined ||
+      beforeUnit.route === undefined ||
+      afterUnit.route !== undefined ||
+      chassisTypeOf(beforeUnit) === undefined
+    ) {
+      continue;
+    }
+    const provider = providersById.get(providerId);
+    if (
+      provider === undefined ||
+      provider.structure.ownerId !== afterUnit.ownerId
+    ) {
+      continue;
+    }
+    const field = fixedRepairField(provider.profile.fastRadiusCells);
+    const center = stateBeforeMovement.map.positionOf(provider.cellId);
+    const candidate = stateBeforeMovement.map.positionOf(afterUnit.cellId);
+    if (
+      !repairFieldContainsCell(
+        field,
+        center.x,
+        center.y,
+        candidate.x,
+        candidate.y,
+      )
+    ) {
+      continue;
+    }
+    operationalUpdates.set(
+      operational.unitId,
+      withRepairAssignment(operational, providerId, stateBeforeMovement.tick),
+    );
+  }
+
+  if (operationalUpdates.size === 0) return stateAfterMovement;
+  return createProspectiveMatchState(stateAfterMovement, {
+    tankOperationalStates: stateAfterMovement.tankOperationalStates.map(
+      (operational) => operationalUpdates.get(operational.unitId) ?? operational,
+    ),
+  });
 }
 
 export function tankFastServiceUnitIds(state: MatchState): ReadonlySet<string> {

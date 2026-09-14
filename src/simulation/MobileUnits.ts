@@ -555,7 +555,7 @@ export function advanceMobileUnit(
 function mobileUnitEntryClaims(
   unit: MobileUnitState,
   movementWork: number,
-  tickStartOccupiedCells: ReadonlySet<CellId>,
+  entryBlockedCellIds: ReadonlySet<CellId>,
 ): readonly CellId[] {
   const route = assertAdvanceableRoute(unit);
   if (route === undefined || movementWork === 0) return Object.freeze([]);
@@ -567,7 +567,7 @@ function mobileUnitEntryClaims(
 
   while (remainingWork > 0 && nextCellIndex < route.cells.length) {
     const nextCellId = route.cells[nextCellIndex]!;
-    if (tickStartOccupiedCells.has(nextCellId)) break;
+    if (entryBlockedCellIds.has(nextCellId)) break;
 
     const edgeWeight = route.edgeWeights[nextCellIndex - 1]!;
     const requiredWork = edgeWeight - edgeProgress;
@@ -582,9 +582,57 @@ function mobileUnitEntryClaims(
   return Object.freeze(claims);
 }
 
+function contestedCellsAfterUpstreamStops(
+  claimsByUnitId: ReadonlyMap<UnitId, readonly CellId[]>,
+): ReadonlySet<CellId> {
+  let reachableClaims = new Map<UnitId, readonly CellId[]>(claimsByUnitId);
+  let contested = new Set<CellId>();
+
+  for (;;) {
+    const claimantsByCell = new Map<CellId, Set<UnitId>>();
+    for (const [unitId, claims] of reachableClaims) {
+      for (const cellId of claims) {
+        let claimants = claimantsByCell.get(cellId);
+        if (claimants === undefined) {
+          claimants = new Set<UnitId>();
+          claimantsByCell.set(cellId, claimants);
+        }
+        claimants.add(unitId);
+      }
+    }
+
+    const nextContested = new Set<CellId>();
+    for (const [cellId, claimants] of claimantsByCell) {
+      if (claimants.size > 1) nextContested.add(cellId);
+    }
+
+    let truncated = false;
+    const nextReachable = new Map<UnitId, readonly CellId[]>();
+    for (const [unitId, claims] of reachableClaims) {
+      const firstContestedIndex = claims.findIndex((cellId) =>
+        nextContested.has(cellId),
+      );
+      if (firstContestedIndex < 0 || firstContestedIndex === claims.length - 1) {
+        nextReachable.set(unitId, claims);
+        continue;
+      }
+      truncated = true;
+      nextReachable.set(
+        unitId,
+        Object.freeze(claims.slice(0, firstContestedIndex + 1)),
+      );
+    }
+
+    contested = nextContested;
+    if (!truncated) return contested;
+    reachableClaims = nextReachable;
+  }
+}
+
 export function advanceMobileUnits(
   units: readonly MobileUnitState[],
   movementWorkByUnitId: Readonly<Record<UnitId, number>>,
+  additionalBlockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_CELLS,
 ): readonly MobileUnitState[] {
   const ordered = [...units].sort((left, right) => compareIds(left.id, right.id));
   const seenIds = new Set<UnitId>();
@@ -604,29 +652,24 @@ export function advanceMobileUnits(
   const tickStartOccupiedCells = new Set<CellId>(
     ordered.map((unit) => unit.cellId),
   );
-  const claimantsByCell = new Map<CellId, Set<UnitId>>();
-  for (const unit of ordered) {
-    const claims = mobileUnitEntryClaims(
-      unit,
-      workById.get(unit.id) ?? 0,
-      tickStartOccupiedCells,
-    );
-    for (const cellId of claims) {
-      let claimants = claimantsByCell.get(cellId);
-      if (claimants === undefined) {
-        claimants = new Set<UnitId>();
-        claimantsByCell.set(cellId, claimants);
-      }
-      claimants.add(unit.id);
-    }
-  }
-
-  const contestedCells = new Set<CellId>();
-  for (const [cellId, claimants] of claimantsByCell) {
-    if (claimants.size > 1) contestedCells.add(cellId);
-  }
-  const blockedCellIds = new Set<CellId>([
+  const entryBlockedCellIds = new Set<CellId>([
     ...tickStartOccupiedCells,
+    ...additionalBlockedCellIds,
+  ]);
+  const claimsByUnitId = new Map<UnitId, readonly CellId[]>();
+  for (const unit of ordered) {
+    claimsByUnitId.set(
+      unit.id,
+      mobileUnitEntryClaims(
+        unit,
+        workById.get(unit.id) ?? 0,
+        entryBlockedCellIds,
+      ),
+    );
+  }
+  const contestedCells = contestedCellsAfterUpstreamStops(claimsByUnitId);
+  const blockedCellIds = new Set<CellId>([
+    ...entryBlockedCellIds,
     ...contestedCells,
   ]);
 
