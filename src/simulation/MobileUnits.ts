@@ -552,6 +552,36 @@ export function advanceMobileUnit(
   });
 }
 
+function mobileUnitEntryClaims(
+  unit: MobileUnitState,
+  movementWork: number,
+  tickStartOccupiedCells: ReadonlySet<CellId>,
+): readonly CellId[] {
+  const route = assertAdvanceableRoute(unit);
+  if (route === undefined || movementWork === 0) return Object.freeze([]);
+
+  let remainingWork = movementWork;
+  let nextCellIndex = route.nextCellIndex;
+  let edgeProgress = route.edgeProgress;
+  const claims: CellId[] = [];
+
+  while (remainingWork > 0 && nextCellIndex < route.cells.length) {
+    const nextCellId = route.cells[nextCellIndex]!;
+    if (tickStartOccupiedCells.has(nextCellId)) break;
+
+    const edgeWeight = route.edgeWeights[nextCellIndex - 1]!;
+    const requiredWork = edgeWeight - edgeProgress;
+    if (remainingWork < requiredWork) break;
+
+    remainingWork -= requiredWork;
+    claims.push(nextCellId);
+    nextCellIndex += 1;
+    edgeProgress = 0;
+  }
+
+  return Object.freeze(claims);
+}
+
 export function advanceMobileUnits(
   units: readonly MobileUnitState[],
   movementWorkByUnitId: Readonly<Record<UnitId, number>>,
@@ -571,22 +601,44 @@ export function advanceMobileUnits(
     workById.set(unit.id, work);
   }
 
-  const stationaryCells = new Set<CellId>();
+  const tickStartOccupiedCells = new Set<CellId>(
+    ordered.map((unit) => unit.cellId),
+  );
+  const claimantsByCell = new Map<CellId, Set<UnitId>>();
   for (const unit of ordered) {
-    const work = workById.get(unit.id) ?? 0;
-    if (work === 0 || unit.route === undefined) stationaryCells.add(unit.cellId);
-  }
-
-  const advanced = ordered.map((unit) => {
-    const blockedCellIds = new Set(stationaryCells);
-    blockedCellIds.delete(unit.cellId);
-    return advanceMobileUnit(
+    const claims = mobileUnitEntryClaims(
       unit,
       workById.get(unit.id) ?? 0,
-      blockedCellIds,
-    ).unit;
-  });
-  return Object.freeze(advanced);
+      tickStartOccupiedCells,
+    );
+    for (const cellId of claims) {
+      let claimants = claimantsByCell.get(cellId);
+      if (claimants === undefined) {
+        claimants = new Set<UnitId>();
+        claimantsByCell.set(cellId, claimants);
+      }
+      claimants.add(unit.id);
+    }
+  }
+
+  const contestedCells = new Set<CellId>();
+  for (const [cellId, claimants] of claimantsByCell) {
+    if (claimants.size > 1) contestedCells.add(cellId);
+  }
+  const blockedCellIds = new Set<CellId>([
+    ...tickStartOccupiedCells,
+    ...contestedCells,
+  ]);
+
+  return Object.freeze(
+    ordered.map((unit) =>
+      advanceMobileUnit(
+        unit,
+        workById.get(unit.id) ?? 0,
+        blockedCellIds,
+      ).unit,
+    ),
+  );
 }
 
 export function createMobileUnitSpatialIndex(
