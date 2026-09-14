@@ -12,7 +12,10 @@ import {
   setMobileUnitStrategicDestination,
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
-import { tankNavigationRoute } from "../src/simulation/Tanks";
+import {
+  tankNavigationRoute,
+  tankStrategicNavigationRoute,
+} from "../src/simulation/Tanks";
 import { TickEngine } from "../src/simulation/TickEngine";
 import {
   createFactoryTrainServiceEpoch,
@@ -115,16 +118,51 @@ describe("physical occupancy transition integration", () => {
     const rightCreated = createMobileUnit(base.map, owners, leftCreated, {
       ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 2,
     });
+    const planningState = createProspectiveMatchState(base, {
+      mobileUnits: rightCreated.mobileUnits,
+      nextMobileUnitOrdinal: rightCreated.nextMobileUnitOrdinal,
+    });
+    const leftPlan = tankStrategicNavigationRoute(
+      planningState,
+      "alpha",
+      "TANK",
+      0,
+      1,
+    );
+    const rightPlan = tankStrategicNavigationRoute(
+      planningState,
+      "alpha",
+      "TANK",
+      2,
+      1,
+    );
+    if (
+      leftPlan.status === "LIMIT_REACHED" ||
+      rightPlan.status === "LIMIT_REACHED" ||
+      leftPlan.route.destinationCellId !== 1 ||
+      rightPlan.route.destinationCellId !== 1
+    ) {
+      throw new Error("expected direct strategic contention fixture");
+    }
     const leftStrategic = setMobileUnitStrategicDestination(base.map, leftCreated.unit, 1);
     const rightStrategic = setMobileUnitStrategicDestination(base.map, rightCreated.unit, 1);
     const leftRouted = assignMobileUnitRoute(base.map, leftStrategic, {
-      cells: [0, 1], edgeWeights: [10],
+      cells: leftPlan.route.cells,
+      edgeWeights: leftPlan.route.edgeWeights,
     });
     const rightRouted = assignMobileUnitRoute(base.map, rightStrategic, {
-      cells: [2, 1], edgeWeights: [10],
+      cells: rightPlan.route.cells,
+      edgeWeights: rightPlan.route.edgeWeights,
     });
-    const leftPartial = advanceMobileUnit(leftRouted, 5).unit;
-    const rightPartial = advanceMobileUnit(rightRouted, 5).unit;
+    const leftPreWork =
+      leftPlan.route.edgeWeights[0]! - leftPlan.route.movementWorkPerTick;
+    const rightPreWork =
+      rightPlan.route.edgeWeights[0]! - rightPlan.route.movementWorkPerTick;
+    if (leftPreWork < 0 || rightPreWork < 0) {
+      throw new Error("expected strategic edge to require at least one full tick");
+    }
+    const leftPartial = advanceMobileUnit(leftRouted, leftPreWork).unit;
+    const rightPartial = advanceMobileUnit(rightRouted, rightPreWork).unit;
     const prepared = createProspectiveMatchState(base, {
       mobileUnits: [rightPartial, leftPartial],
       nextMobileUnitOrdinal: rightCreated.nextMobileUnitOrdinal,
@@ -149,11 +187,11 @@ describe("physical occupancy transition integration", () => {
     const advanced = new TickEngine().advance(prepared, []);
     expect(advanced.mobileUnits.find((u) => u.id === leftPartial.id)).toMatchObject({
       cellId: 0,
-      route: { nextCellIndex: 1, edgeProgress: 5 },
+      route: { nextCellIndex: 1, edgeProgress: leftPreWork },
     });
     expect(advanced.mobileUnits.find((u) => u.id === rightPartial.id)).toMatchObject({
       cellId: 2,
-      route: { nextCellIndex: 1, edgeProgress: 5 },
+      route: { nextCellIndex: 1, edgeProgress: rightPreWork },
     });
   });
 
@@ -179,11 +217,34 @@ describe("physical occupancy transition integration", () => {
         ownerId: "alpha", type: "TANK", movementClass: "TANK", cellId: 3,
       },
     );
+    const planningState = createProspectiveMatchState(base, {
+      mobileUnits: tankCreated.mobileUnits,
+      nextMobileUnitOrdinal: tankCreated.nextMobileUnitOrdinal,
+    });
+    const tankPlan = tankStrategicNavigationRoute(
+      planningState,
+      "alpha",
+      "TANK",
+      3,
+      2,
+    );
+    if (
+      tankPlan.status === "LIMIT_REACHED" ||
+      tankPlan.route.destinationCellId !== 2
+    ) {
+      throw new Error("expected direct Train-vs-Tank contention fixture");
+    }
     const tankStrategic = setMobileUnitStrategicDestination(base.map, tankCreated.unit, 2);
     const tankRouted = assignMobileUnitRoute(base.map, tankStrategic, {
-      cells: [3, 2], edgeWeights: [10],
+      cells: tankPlan.route.cells,
+      edgeWeights: tankPlan.route.edgeWeights,
     });
-    const tankPartial = advanceMobileUnit(tankRouted, 5).unit;
+    const tankPreWork =
+      tankPlan.route.edgeWeights[0]! - tankPlan.route.movementWorkPerTick;
+    if (tankPreWork < 0) {
+      throw new Error("expected strategic edge to require at least one full tick");
+    }
+    const tankPartial = advanceMobileUnit(tankRouted, tankPreWork).unit;
 
     const loopCells = Object.freeze([0, 1, 2, 1, 0]);
     const loop = retainFactoryRailLoopSnapshot(
@@ -243,7 +304,7 @@ describe("physical occupancy transition integration", () => {
     });
     expect(advanced.mobileUnits.find((u) => u.id === tankPartial.id)).toMatchObject({
       cellId: 3,
-      route: { nextCellIndex: 1, edgeProgress: 5 },
+      route: { nextCellIndex: 1, edgeProgress: tankPreWork },
     });
   });
 });
