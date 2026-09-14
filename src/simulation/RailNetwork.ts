@@ -618,6 +618,182 @@ function combineFactoryPaths(paths: readonly FactoryGridPath[]): FactoryGridPath
   });
 }
 
+function factoryPathIsSimple(cells: readonly CellId[]): boolean {
+  return new Set(cells).size === cells.length;
+}
+
+function manhattanCellDistance(
+  geometry: RailMapGeometry,
+  left: CellId,
+  right: CellId,
+): number {
+  const leftX = left % geometry.width;
+  const leftY = Math.floor(left / geometry.width);
+  const rightX = right % geometry.width;
+  const rightY = Math.floor(right / geometry.width);
+  return Math.abs(leftX - rightX) + Math.abs(leftY - rightY);
+}
+
+function remainingWaypointLowerBound(
+  geometry: RailMapGeometry,
+  current: CellId,
+  waypoints: readonly CellId[],
+  nextWaypointIndex: number,
+): number {
+  let total = 0;
+  let cursor = current;
+  for (let index = nextWaypointIndex; index < waypoints.length; index += 1) {
+    const waypoint = waypoints[index]!;
+    total += manhattanCellDistance(geometry, cursor, waypoint);
+    cursor = waypoint;
+  }
+  return total;
+}
+
+function findSimpleFactoryWaypointRouteAtDistance(
+  geometry: RailMapGeometry,
+  pathableCells: ReadonlySet<CellId>,
+  sharedEdgeKeys: ReadonlySet<string>,
+  waypoints: readonly CellId[],
+  exactDistance: number,
+  requireSharedEdge: boolean,
+): FactoryGridPath | null {
+  if (
+    waypoints.length < 2 ||
+    !Number.isSafeInteger(exactDistance) ||
+    exactDistance < 0
+  ) {
+    return null;
+  }
+
+  const waypointIndexByCell = new Map<CellId, number>();
+  for (let index = 0; index < waypoints.length; index += 1) {
+    const waypoint = waypoints[index]!;
+    if (!pathableCells.has(waypoint) || waypointIndexByCell.has(waypoint)) {
+      return null;
+    }
+    waypointIndexByCell.set(waypoint, index);
+  }
+
+  const start = waypoints[0]!;
+  const finalWaypoint = waypoints[waypoints.length - 1]!;
+  const cells: CellId[] = [start];
+  const visited = new Set<CellId>([start]);
+  let best: FactoryGridPath | null = null;
+
+  const visit = (
+    current: CellId,
+    nextWaypointIndex: number,
+    remainingSteps: number,
+    sharedEdgeCount: number,
+    pathKey: string,
+  ): void => {
+    const lowerBound = remainingWaypointLowerBound(
+      geometry,
+      current,
+      waypoints,
+      nextWaypointIndex,
+    );
+    if (
+      lowerBound > remainingSteps ||
+      (remainingSteps - lowerBound) % 2 !== 0 ||
+      remainingSteps > pathableCells.size - visited.size
+    ) {
+      return;
+    }
+
+    if (remainingSteps === 0) {
+      if (
+        current !== finalWaypoint ||
+        nextWaypointIndex !== waypoints.length ||
+        (requireSharedEdge && sharedEdgeCount === 0)
+      ) {
+        return;
+      }
+      if (
+        best === null ||
+        sharedEdgeCount > best.sharedEdgeCount ||
+        (sharedEdgeCount === best.sharedEdgeCount && pathKey < best.pathKey)
+      ) {
+        best = Object.freeze({
+          cells: Object.freeze(cells.slice()),
+          distance: exactDistance,
+          sharedEdgeCount,
+          pathKey,
+        });
+      }
+      return;
+    }
+
+    if (nextWaypointIndex >= waypoints.length) return;
+    const nextRequiredWaypoint = waypoints[nextWaypointIndex]!;
+
+    for (let directionIndex = 0; directionIndex < DIRECTIONS.length; directionIndex += 1) {
+      const neighbor = neighborForDirection(
+        geometry,
+        current,
+        DIRECTIONS[directionIndex]!,
+      );
+      if (
+        neighbor === undefined ||
+        !pathableCells.has(neighbor) ||
+        visited.has(neighbor)
+      ) {
+        continue;
+      }
+
+      const authoredWaypointIndex = waypointIndexByCell.get(neighbor);
+      if (
+        authoredWaypointIndex !== undefined &&
+        authoredWaypointIndex !== nextWaypointIndex
+      ) {
+        continue;
+      }
+
+      const nextIndex =
+        neighbor === nextRequiredWaypoint
+          ? nextWaypointIndex + 1
+          : nextWaypointIndex;
+      const shared = sharedEdgeKeys.has(normalizedEdgeKey(current, neighbor));
+      visited.add(neighbor);
+      cells.push(neighbor);
+      visit(
+        neighbor,
+        nextIndex,
+        remainingSteps - 1,
+        sharedEdgeCount + (shared ? 1 : 0),
+        `${pathKey}${directionIndex}`,
+      );
+      cells.pop();
+      visited.delete(neighbor);
+    }
+  };
+
+  visit(start, 1, exactDistance, 0, "");
+  return best;
+}
+
+function preferSimpleMinimumFactoryRoute(
+  route: FactoryGridPath,
+  geometry: RailMapGeometry,
+  pathableCells: ReadonlySet<CellId>,
+  sharedEdgeKeys: ReadonlySet<string>,
+  waypoints: readonly CellId[],
+  requireSharedEdge: boolean,
+): FactoryGridPath {
+  if (factoryPathIsSimple(route.cells)) return route;
+  return (
+    findSimpleFactoryWaypointRouteAtDistance(
+      geometry,
+      pathableCells,
+      sharedEdgeKeys,
+      waypoints,
+      route.distance,
+      requireSharedEdge,
+    ) ?? route
+  );
+}
+
 function compareLoopCandidates(
   left: FactoryLoopCandidate,
   right: FactoryLoopCandidate,
@@ -787,7 +963,14 @@ export function planFactoryRailLoop(
     }
 
     const targetStructureIds = Object.freeze(targets.map((station) => station.id));
-    const ordinaryRoute = combineFactoryPaths(ordinaryLegs);
+    const ordinaryRoute = preferSimpleMinimumFactoryRoute(
+      combineFactoryPaths(ordinaryLegs),
+      geometry,
+      pathableCells,
+      sharedEdgeKeys,
+      waypoints,
+      false,
+    );
     const ordinaryCandidate: FactoryLoopCandidate = Object.freeze({
       targetStructureIds,
       cells: ordinaryRoute.cells,
@@ -819,7 +1002,14 @@ export function planFactoryRailLoop(
       if (sharedLeg === null) continue;
       const legs = ordinaryLegs.slice();
       legs[forcedLeg] = sharedLeg;
-      const route = combineFactoryPaths(legs);
+      const route = preferSimpleMinimumFactoryRoute(
+        combineFactoryPaths(legs),
+        geometry,
+        pathableCells,
+        sharedEdgeKeys,
+        waypoints,
+        true,
+      );
       const candidate: FactoryLoopCandidate = Object.freeze({
         targetStructureIds,
         cells: route.cells,
