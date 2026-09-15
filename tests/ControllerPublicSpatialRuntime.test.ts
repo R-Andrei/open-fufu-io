@@ -227,12 +227,6 @@ describe("controller local public spatial runtime", () => {
     const factionRef = "ofr1:controller-worker-read:f:000000000001";
     const unitRef = "ofr1:controller-worker-read:u:000000000001";
     const structureRef = "ofr1:controller-worker-read:s:000000000001";
-    const factionView = Object.freeze({
-      ref: factionRef,
-      status: "ACTIVE" as const,
-      relation: "ENEMY" as const,
-      territoryCells: 1,
-    });
     const unitView = Object.freeze({
       ref: unitRef,
       ownerId: "beta",
@@ -249,6 +243,7 @@ describe("controller local public spatial runtime", () => {
       cellId: 5,
       active: true,
     });
+    const publicSpatialState = localSpatialState();
     const queryCalls: unknown[] = [];
     let usage = {
       queries: 0,
@@ -264,13 +259,21 @@ describe("controller local public spatial runtime", () => {
       };
     };
     const querySession = {
-      factions: {
-        find(filter?: unknown) {
-          queryCalls.push({ namespace: "factions", operation: "find", filter });
-          recordQuery();
-          return [factionView];
-        },
-      },
+      publicSpatial: Object.freeze({
+        map: publicSpatialState.map,
+        ownership: publicSpatialState.ownership,
+      }),
+      publicFactions: Object.freeze({
+        requesterFactionId: "alpha",
+        entries: Object.freeze([
+          Object.freeze({
+            authoritativeId: "beta",
+            ref: factionRef,
+            status: "ACTIVE" as const,
+            relation: "ENEMY" as const,
+          }),
+        ]),
+      }),
       units: {
         async find(filter?: unknown) {
           queryCalls.push({ namespace: "units", operation: "find", filter });
@@ -374,11 +377,6 @@ describe("controller local public spatial runtime", () => {
         ).materializedEntityViews,
       ).toBe(2);
       expect(queryCalls).toEqual([
-        {
-          namespace: "factions",
-          operation: "find",
-          filter: { relation: "ENEMY" },
-        },
         {
           namespace: "units",
           operation: "find",
