@@ -152,19 +152,22 @@ function tankDerivedReplacementCapital(
   return total;
 }
 
-function assertWarshipPowerSliceSupported(
+function warshipReplacementCapital(
   state: FactionScoreState,
   factionId: string,
-): void {
-  if (
-    state.mobileUnits.some(
-      (unit) => unit.ownerId === factionId && unit.type === "WARSHIP",
-    )
-  ) {
-    throw new Error(
-      "Faction score Warship replacement valuation is not materialized in this implementation slice",
-    );
+): bigint {
+  let warshipCount = 0;
+  for (const unit of state.mobileUnits) {
+    if (unit.ownerId === factionId && unit.type === "WARSHIP") {
+      warshipCount += 1;
+    }
   }
+
+  let total = 0n;
+  for (let index = 0; index < warshipCount; index += 1) {
+    total += BigInt(Math.min(1_000_000, 250_000 * (index + 1)));
+  }
+  return total;
 }
 
 /**
@@ -174,7 +177,9 @@ function assertWarshipPowerSliceSupported(
  * cannot alter baseline replacement value. Committed construction is valued at
  * its target level. Committed and deployed Tank-derived chassis form one baseline
  * sequential replacement portfolio; Heavy Artillery keeps its canonical 1.5x
- * chassis multiplier. Warships remain a later RED-first slice.
+ * chassis multiplier. Deployed Warships use their ordinary baseline sequential
+ * replacement curve; committed Warship construction is not represented until an
+ * authoritative naval production state exists for the score to consume.
  */
 export function calculateFactionScore(
   state: FactionScoreState,
@@ -184,12 +189,11 @@ export function calculateFactionScore(
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
   if (faction.status !== "ACTIVE") return 0;
 
-  assertWarshipPowerSliceSupported(state, factionId);
-
   const currentPower =
     BigInt(faction.ffy) +
     structureReplacementCapital(state, factionId) +
-    tankDerivedReplacementCapital(state, factionId);
+    tankDerivedReplacementCapital(state, factionId) +
+    warshipReplacementCapital(state, factionId);
   if (currentPower > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("Faction score current power exceeds the safe-integer range");
   }
@@ -210,7 +214,9 @@ export function calculateFactionScore(
       state.mobileUnits.filter(
         (unit) =>
           unit.ownerId !== factionId ||
-          (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY"),
+          (unit.type !== "TANK" &&
+            unit.type !== "HEAVY_ARTILLERY" &&
+            unit.type !== "WARSHIP"),
       ),
     ),
     tankProductionJobs: Object.freeze(
