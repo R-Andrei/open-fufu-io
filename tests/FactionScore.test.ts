@@ -1,3 +1,4 @@
+import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { settleFactoryTrainEconomicEvents } from "../src/simulation/FactoryTrainRuntime";
@@ -6,14 +7,25 @@ import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarn
 import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
+  createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createUnitDestroyedEvent } from "../src/simulation/SimulationEvents";
 import { tryPurchaseStructureUpgrade } from "../src/simulation/StructuresCore";
+import { tryStartTankProduction } from "../src/simulation/Tanks";
 import { TickEngine } from "../src/simulation/TickEngine";
 import { createTrainDispatchEconomicSnapshot } from "../src/simulation/TrainService";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
+
+function rulesWithTraits(traits: readonly OriginTraitId[]) {
+  const origin = originRuleProfileInput(traits);
+  return compileRuleProfile(RULE_AXIS_REGISTRY, {
+    contributions: origin.contributions,
+    dynamicProviders: origin.dynamicProviders,
+    customDomains: origin.customDomains,
+  });
 }
 
 function scoreState(initialOwners: readonly (string | null)[]) {
@@ -31,6 +43,42 @@ function scoreState(initialOwners: readonly (string | null)[]) {
       ],
     }),
   );
+}
+
+function tankProductionScoreState(
+  ffy: number,
+  traits: readonly OriginTraitId[] = [],
+) {
+  const initial = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: `faction-score-tank-job-${traits.join("-") || "baseline"}`,
+      width: 20,
+      height: 1,
+      terrain: Array.from({ length: 20 }, () => "PLAINS" as const),
+      initialOwners: [
+        ...Array.from({ length: 10 }, () => "alpha"),
+        ...Array.from({ length: 10 }, () => "beta"),
+      ],
+      initialStructureGrants: [
+        {
+          structureId: "alpha-factory",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+      factions: [
+        { id: "alpha", rules: rulesWithTraits(traits) },
+        { id: "beta", rules: emptyRules() },
+      ],
+    }),
+  );
+  return createProspectiveMatchState(initial, {
+    factions: initial.factions.map((faction) =>
+      faction.id === "alpha" ? { ...faction, ffy } : faction,
+    ),
+  });
 }
 
 function serializedFaction(state: ReturnType<typeof scoreState>, factionId: string) {
@@ -243,4 +291,51 @@ describe("authoritative faction strength score", () => {
     // floor(300 + 250 + 450 * sqrt(52)) = 3794.
     expect(calculateFactionScore(state, "alpha")).toBe(3794);
   });
+
+  it.each([
+    {
+      label: "baseline Tank",
+      traits: [] as OriginTraitId[],
+      fundedFfy: 500_000,
+      expectedCost: 250_000,
+      expectedChassis: "TANK" as const,
+      expectedScore: 2844,
+    },
+    {
+      label: "P43 Heavy Artillery",
+      traits: ["P43"] as OriginTraitId[],
+      fundedFfy: 750_000,
+      expectedCost: 375_000,
+      expectedChassis: "HEAVY_ARTILLERY" as const,
+      expectedScore: 3250,
+    },
+  ])(
+    "keeps $label purchase value in Current Power while its paid chassis is still a production job",
+    ({ traits, fundedFfy, expectedCost, expectedChassis, expectedScore }) => {
+      const funded = tankProductionScoreState(fundedFfy, traits);
+      expect(calculateFactionScore(funded, "alpha")).toBe(expectedScore);
+
+      const purchase = tryStartTankProduction(funded, {
+        ownerId: "alpha",
+        factoryId: "alpha-factory",
+        strategicDestinationCellId: 1,
+      });
+
+      expect(purchase.ok).toBe(true);
+      if (!purchase.ok) return;
+      expect(purchase.cost).toBe(expectedCost);
+      expect(purchase.job).toMatchObject({
+        ownerId: "alpha",
+        chassisType: expectedChassis,
+        state: "BUILDING",
+      });
+      expect(
+        purchase.state.factions.find((faction) => faction.id === "alpha")?.ffy,
+      ).toBe(fundedFfy - expectedCost);
+
+      // The accepted purchase converts liquid FFY into already-paid committed
+      // chassis capital, so Current Power must not fall while the job is building.
+      expect(calculateFactionScore(purchase.state, "alpha")).toBe(expectedScore);
+    },
+  );
 });
