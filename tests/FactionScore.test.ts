@@ -449,4 +449,96 @@ describe("authoritative faction strength score", () => {
 
     expect(terrainReads).toBe(readsAfterFirstScore);
   });
+
+  it.each(["CAPITULATED", "DEFEATED"] as const)(
+    "returns zero for %s factions while preserving historical economy state",
+    (status) => {
+      const active = scoreState(["alpha", "beta"]);
+      const terminal = createProspectiveMatchState(active, {
+        factions: active.factions.map((faction) =>
+          faction.id === "alpha"
+            ? {
+                ...faction,
+                status,
+                ffy: 500_000,
+                lifetimeGrossPositiveFfyEarned: 123_456,
+              }
+            : faction,
+        ),
+      });
+      const alpha = terminal.factions.find((faction) => faction.id === "alpha")!;
+
+      expect(alpha.lifetimeGrossPositiveFfyEarned).toBe(123_456);
+      expect(calculateFactionScore(terminal, "alpha")).toBe(0);
+    },
+  );
+
+  it("excludes Train, Trade Ship, and Transport Ship state from Current Power", () => {
+    const rules = emptyRules();
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "faction-score-excluded-mobile-capital",
+        width: 6,
+        height: 1,
+        terrain: [
+          "PLAINS",
+          "PLAINS",
+          "DEEP_WATER",
+          "DEEP_WATER",
+          "PLAINS",
+          "PLAINS",
+        ],
+        initialOwners: ["alpha", "beta", null, null, "alpha", "beta"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const funded = createProspectiveMatchState(initial, {
+      factions: initial.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 500_000 } : faction,
+      ),
+    });
+    const baselineScore = calculateFactionScore(funded, "alpha");
+    let collection = {
+      mobileUnits: funded.mobileUnits,
+      nextMobileUnitOrdinal: funded.nextMobileUnitOrdinal,
+    };
+
+    for (const input of [
+      {
+        ownerId: "alpha",
+        type: "TRAIN" as const,
+        movementClass: "RAIL" as const,
+        cellId: 0,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRADE_SHIP" as const,
+        movementClass: "NAVAL" as const,
+        cellId: 2,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRANSPORT_SHIP" as const,
+        movementClass: "TRANSPORT" as const,
+        cellId: 3,
+      },
+    ]) {
+      const created = createMobileUnit(
+        funded.map,
+        funded.factions.map((faction) => faction.id),
+        collection,
+        input,
+      );
+      collection = {
+        mobileUnits: created.mobileUnits,
+        nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      };
+    }
+
+    const withExcludedUnits = createProspectiveMatchState(funded, collection);
+    expect(calculateFactionScore(withExcludedUnits, "alpha")).toBe(baselineScore);
+  });
 });
