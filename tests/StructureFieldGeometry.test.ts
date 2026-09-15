@@ -307,7 +307,7 @@ describe("structure-field qualification", () => {
     ).toContain("INVALID_CONDITION");
   });
 
-  it("rejects legacy SAM as a structure-field ID under rule-composition v3", () => {
+  it("rejects legacy SAM as a structure-field ID under rule-composition v4", () => {
     const legacySam: RuleContribution = {
       axis: "FFY_EVENT_YIELD",
       scope: { kind: "FFY_FAMILY", family: "ALL" },
@@ -331,10 +331,10 @@ describe("structure-field qualification", () => {
     ).toContain("INVALID_CONDITION");
   });
 
-  it("binds affiliation and canonical field IDs into rule-composition version 3 serialization", () => {
+  it("binds affiliation and canonical field IDs into rule-composition version 4 serialization", () => {
     const n11 = ORIGIN_RULE_MANIFEST_BY_ID.get("N11")?.contributions ?? [];
     const serialized = JSON.parse(serializeRuleContributions(n11));
-    expect(serialized.version).toBe("3");
+    expect(serialized.version).toBe("4");
     expect(serialized.contributions[0].conditions).toEqual([
       {
         affiliation: "SELF",

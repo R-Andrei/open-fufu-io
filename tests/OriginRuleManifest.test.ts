@@ -170,7 +170,7 @@ describe("Origin rule manifest", () => {
     ).toEqual(["ATTACK_SHIPS"]);
   });
 
-  it("places P31 Warship-only Port repair specialization after Echo", () => {
+  it("projects P31 onto both Port repair tiers while preserving Warship operation", () => {
     const p31 = ORIGIN_RULE_MANIFEST_BY_ID.get("P31");
     expect(p31?.classification).toBe("MIXED");
     expect(p31?.customDomains).toEqual([
@@ -179,12 +179,23 @@ describe("Origin rule manifest", () => {
     expect(p31?.contributions).toEqual([
       expect.objectContaining({
         axis: "STRUCTURE_REPAIR_RADIUS",
+        scope: { kind: "STRUCTURE", structure: "PORT" },
         stage: "CONTEXTUAL_SCALAR",
+        value: 20_000,
+        conditions: [{ kind: "TARGET_UNIT_IS", unit: "WARSHIP" }],
+      }),
+      expect.objectContaining({
+        axis: "STRUCTURE_FAST_REPAIR_RADIUS",
+        scope: { kind: "STRUCTURE", structure: "PORT" },
+        stage: "CONTEXTUAL_SCALAR",
+        value: 20_000,
         conditions: [{ kind: "TARGET_UNIT_IS", unit: "WARSHIP" }],
       }),
       expect.objectContaining({
         axis: "STRUCTURE_REPAIR_RATE",
+        scope: { kind: "STRUCTURE", structure: "PORT" },
         stage: "CONTEXTUAL_SCALAR",
+        value: 15_000,
         conditions: [{ kind: "TARGET_UNIT_IS", unit: "WARSHIP" }],
       }),
     ]);
