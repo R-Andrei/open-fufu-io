@@ -1,12 +1,25 @@
 import path from "node:path";
 import * as ts from "typescript";
 import type {
+  BuildUnitCommand,
   CaptureCalculation,
+  ControllerCommand,
+  ControllerEvent,
+  FactionsApi,
   GrowthCalculation,
+  HostilityMechanicsSpec,
   MechanicsApi,
+  PersistentDirective,
   PopulationView,
+  PurchasableUnitType,
   RelinquishQuote,
   SpawnInfluenceContext,
+  StructureAcquisitionPath,
+  StructureBuildQuote,
+  StructureMechanicsSpec,
+  StructureView,
+  TransportMechanicsSpec,
+  UnitAttackSpec,
 } from "../src/core/controller/ControllerApi";
 
 // Compile-time fixtures for #47's newly surfaced controller mechanics. This file
@@ -73,6 +86,171 @@ const issue47RelinquishFromMechanics: ReturnType<MechanicsApi["relinquishQuote"]
   issue47RelinquishQuote;
 void issue47RelinquishFromMechanics;
 
+// The historical ControllerApi type fixture used to live under tests/types, which
+// is not an owned mutable validation surface. Keep those compile-time obligations
+// here so API migrations remain RED-first without mutating inherited test support.
+const fixtureTank: PurchasableUnitType = "TANK";
+const fixtureWarship: PurchasableUnitType = "WARSHIP";
+void fixtureTank;
+void fixtureWarship;
+
+// @ts-expect-error Heavy Artillery is a transformed Tank chassis, not directly purchasable.
+const fixtureHeavy: PurchasableUnitType = "HEAVY_ARTILLERY";
+// @ts-expect-error Trains are simulation-owned.
+const fixtureTrain: PurchasableUnitType = "TRAIN";
+// @ts-expect-error Trade Ships are simulation-owned.
+const fixtureTrade: PurchasableUnitType = "TRADE_SHIP";
+void fixtureHeavy;
+void fixtureTrain;
+void fixtureTrade;
+
+const fixtureBuildTank: BuildUnitCommand = {
+  kind: "BUILD_UNIT",
+  key: "build-tank",
+  unit: "TANK",
+  producerId: "factory-1",
+};
+void fixtureBuildTank;
+
+const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
+void fixtureCapturedFactoryPath;
+
+const fixtureConqueredFactorySpec: StructureMechanicsSpec = {
+  type: "FACTORY",
+  level: 1,
+  repairRadius: 8,
+  repairRateHpPerSecond: 150,
+  simultaneousRepairCapacity: 1,
+  trainEventBaseValueMultiplier: 1.5,
+  tankConstructionSpeedMultiplier: 1.5,
+};
+void fixtureConqueredFactorySpec;
+
+const fixtureCappedStructureQuote: StructureBuildQuote = {
+  legal: false,
+  failureCode: "OWNERSHIP_CAP",
+  cost: {
+    ffyRequired: 50_000,
+    ffySpent: 0,
+    populationSpent: 0,
+  },
+  structure: "FORT",
+  cellId: 42,
+  resultingLevel: 1,
+  buildTicks: 50,
+  ownershipCap: 1,
+};
+void fixtureCappedStructureQuote;
+
+const fixtureFreeFirstPurchaseQuote: StructureBuildQuote = {
+  legal: true,
+  cost: {
+    ffyRequired: 100_000,
+    ffySpent: 0,
+    populationSpent: 0,
+  },
+  structure: "CITY",
+  cellId: 43,
+  resultingLevel: 1,
+  buildTicks: 50,
+};
+void fixtureFreeFirstPurchaseQuote;
+
+const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
+const fixtureUpgradingCityRef = "fixture:upgrading-city" as StructureView["ref"];
+
+const fixtureFreshDirectLevel5City: StructureView = {
+  ref: fixtureFreshCityRef,
+  ownerId: "faction-a",
+  type: "CITY",
+  cellId: 43,
+  active: false,
+  construction: {
+    targetLevel: 5,
+    remainingTicks: 25,
+  },
+};
+void fixtureFreshDirectLevel5City;
+
+const fixtureUpgradingCity: StructureView = {
+  ref: fixtureUpgradingCityRef,
+  ownerId: "faction-a",
+  type: "CITY",
+  completedLevel: 2,
+  cellId: 44,
+  active: true,
+  construction: {
+    targetLevel: 3,
+    remainingTicks: 20,
+  },
+};
+void fixtureUpgradingCity;
+
+const fixtureLandingGrant: NonNullable<
+  TransportMechanicsSpec["successfulLandingGrant"]
+> = {
+  structure: "FORT",
+  level: 1,
+  placement: "EXACT_LANDING_CELL",
+  activation: "IMMEDIATE_COMPLETED",
+  failurePolicy: "SKIP_GRANT_KEEP_LANDING",
+};
+void fixtureLandingGrant;
+
+const fixtureMove: ControllerCommand = {
+  kind: "MOVE_UNIT",
+  key: "move-1",
+  unitId: "unit-1",
+  destination: 42,
+};
+void fixtureMove;
+
+const fixtureEmbark: ControllerCommand = {
+  kind: "EMBARK_TRANSPORT",
+  key: "transport-1",
+  sourceCellId: 10,
+  targetCellId: 20,
+  population: 100,
+};
+void fixtureEmbark;
+
+const fixtureWarQuery = (factions: FactionsApi): boolean =>
+  factions.atWar("faction-a", "faction-b");
+void fixtureWarQuery;
+
+const fixtureHostilitySpec: HostilityMechanicsSpec = {
+  atWarGraceTicks: 600,
+};
+void fixtureHostilitySpec;
+
+const fixturePopulationAttack: UnitAttackSpec = {
+  kind: "DAMAGE_POPULATION",
+  rangeCells: 30,
+  cooldownTicks: 30,
+  damage: 250,
+  requiresAtWar: true,
+};
+void fixturePopulationAttack;
+
+const fixtureWarChanged: ControllerEvent = {
+  type: "WAR_STATE_CHANGED",
+  factionAId: "faction-a",
+  factionBId: "faction-b",
+  atWar: true,
+};
+void fixtureWarChanged;
+
+// @ts-expect-error Patrol is deliberately not a controller command.
+const fixturePatrol: ControllerCommand = { kind: "PATROL", key: "patrol-1" };
+// @ts-expect-error Unit orders are deliberately not persistent directives.
+const fixtureUnitOrder: PersistentDirective = {
+  kind: "UNIT_ORDER",
+  key: "u",
+  unitId: "x",
+};
+void fixturePatrol;
+void fixtureUnitOrder;
+
 // Compile-time fixture for #107. Strategic Phase 1 must expose every player's
 // public Spawn information through the single ControllerApi context.
 export type Issue107SpawnParticipantContract =
@@ -118,10 +296,7 @@ function compilerOptions(): ts.CompilerOptions {
 describe("Open Fufu Controller API contract", () => {
   it("typechecks the owned contract fixtures without compiling inherited application code", () => {
     const options = compilerOptions();
-    const fixturePaths = [
-      path.resolve("tests/ControllerApiContract.test.ts"),
-      path.resolve("tests/types/ControllerApiTypes.ts"),
-    ];
+    const fixturePaths = [path.resolve("tests/ControllerApiContract.test.ts")];
     const program = ts.createProgram({
       rootNames: fixturePaths,
       options,
