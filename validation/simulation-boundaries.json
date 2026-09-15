@@ -7,6 +7,7 @@
     "src/simulation/ControllerRuntime.ts": "CONTROLLER_ADAPTER",
     "src/simulation/ControllerSpatialSurface.ts": "CONTROLLER_ADAPTER",
     "src/simulation/Economy.ts": "ECONOMY",
+    "src/simulation/FactionScore.ts": "ECONOMY",
     "src/simulation/FactoryRailLifecycle.ts": "MAP_SUBSTRATE",
     "src/simulation/FactoryTrainRuntime.ts": "ECONOMY",
     "src/simulation/FactoryTrainState.ts": "RUNTIME_CORE",
@@ -113,6 +114,12 @@
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Economy derives values from current authoritative MatchState without treating current state as an event."
+    },
+    {
+      "from": "src/simulation/FactionScore.ts",
+      "to": "src/simulation/StructuresCore.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Faction score consumes Structure-owned ordinary purchase and upgrade cost truth under a neutral rule profile to derive baseline replacement capital without duplicating the canonical price registry."
     },
     {
       "from": "src/simulation/FactoryTrainRuntime.ts",
