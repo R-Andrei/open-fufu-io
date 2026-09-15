@@ -194,6 +194,9 @@ export function calculateFactionScore(
     structures: Object.freeze(
       state.structures.filter((structure) => structure.ownerId !== factionId),
     ),
+    tankProductionJobs: Object.freeze(
+      state.tankProductionJobs.filter((job) => job.ownerId !== factionId),
+    ),
   });
 
   return calculateEconomyOnlyFactionScore(scoringState, factionId);
