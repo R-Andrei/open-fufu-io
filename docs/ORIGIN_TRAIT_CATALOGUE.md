@@ -329,7 +329,7 @@ P31 broad repair rate   = ordinary effective Port broad repair rate × 1.5
 P31 fast repair rate    = ordinary effective Port fast repair rate × 1.5
 ```
 
-The ordinary fast-service radius is therefore doubled by P31 for the qualifying Warship; P31 does not change the Port's fast-service capacity. The Warship may remain operational while receiving P31 repair, including where ordinary shared fast-service behavior would otherwise park an actively serviced unit. P31 does not extend itself to other health-bearing naval units; those use their ordinary eligible Port repair unless another trait modifies them. Port repair baselines, ordinary Echo mapping, routing/queueing, overlap, and provider lifecycle are owned by `TERRAIN_AND_STRUCTURES.md` and `ECHO_CATALOGUE.md`; composition staging/axis identity is owned by `RULE_COMPOSITION.md`.
+The ordinary fast-service radius is therefore doubled by P31 for the qualifying Warship; P31 does not change the Port's fast-service capacity. The Warship may remain operational while receiving P31 repair. If it is selected for fast service, it remains parked/stationary under the ordinary shared fast-service requirement; remaining operational does not grant a movement exemption. Moving the Warship leaves fast service and returns it to the ordinary shared resolver lifecycle. P31 does not extend itself to other health-bearing naval units; those use their ordinary eligible Port repair unless another trait modifies them. Port repair baselines, ordinary Echo mapping, routing/queueing, overlap, and provider lifecycle are owned by `TERRAIN_AND_STRUCTURES.md` and `ECHO_CATALOGUE.md`; composition staging/axis identity is owned by `RULE_COMPOSITION.md`.
 
 ### P32 — armored Port-launched Transport
 
