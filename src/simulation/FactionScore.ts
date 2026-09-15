@@ -93,12 +93,54 @@ function structureReplacementCapital(
   return total;
 }
 
-function assertMilitaryPowerSliceSupported(
+function baselineTankChassisReplacementCost(
+  precedingChassisCount: number,
+  chassisType: "TANK" | "HEAVY_ARTILLERY",
+): bigint {
+  if (
+    !Number.isSafeInteger(precedingChassisCount) ||
+    precedingChassisCount < 0 ||
+    Object.is(precedingChassisCount, -0)
+  ) {
+    throw new Error(
+      "preceding Tank chassis count must be a non-negative safe integer",
+    );
+  }
+  const baseline = BigInt(
+    Math.min(1_000_000, 250_000 * (precedingChassisCount + 1)),
+  );
+  return chassisType === "HEAVY_ARTILLERY"
+    ? (baseline * 3n) / 2n
+    : baseline;
+}
+
+function committedTankProductionReplacementCapital(
+  state: FactionScoreState,
+  factionId: string,
+): bigint {
+  const jobs = state.tankProductionJobs
+    .filter((job) => job.ownerId === factionId)
+    .slice()
+    .sort((left, right) =>
+      left.factoryId < right.factoryId
+        ? -1
+        : left.factoryId > right.factoryId
+          ? 1
+          : 0,
+    );
+
+  return jobs.reduce(
+    (total, job, index) =>
+      total + baselineTankChassisReplacementCost(index, job.chassisType),
+    0n,
+  );
+}
+
+function assertDeployedMilitaryPowerSliceSupported(
   state: FactionScoreState,
   factionId: string,
 ): void {
   if (
-    state.tankProductionJobs.some((job) => job.ownerId === factionId) ||
     state.mobileUnits.some(
       (unit) =>
         unit.ownerId === factionId &&
@@ -108,7 +150,7 @@ function assertMilitaryPowerSliceSupported(
     )
   ) {
     throw new Error(
-      "Faction score military replacement valuation is not materialized in this implementation slice",
+      "Faction score deployed military replacement valuation is not materialized in this implementation slice",
     );
   }
 }
@@ -118,7 +160,9 @@ function assertMilitaryPowerSliceSupported(
  * derived through Structure-owned ordinary purchase/upgrade cost truth under an
  * explicitly neutral rule profile, so acquisition history and faction modifiers
  * cannot alter baseline replacement value. Committed construction is valued at
- * its target level; military capital remains an explicit later RED-first slice.
+ * its target level. Paid Tank/Heavy-Artillery production jobs retain baseline
+ * sequential replacement capital; deployed military remains a later RED-first
+ * slice.
  */
 export function calculateFactionScore(
   state: FactionScoreState,
@@ -128,10 +172,12 @@ export function calculateFactionScore(
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
   if (faction.status !== "ACTIVE") return 0;
 
-  assertMilitaryPowerSliceSupported(state, factionId);
+  assertDeployedMilitaryPowerSliceSupported(state, factionId);
 
   const currentPower =
-    BigInt(faction.ffy) + structureReplacementCapital(state, factionId);
+    BigInt(faction.ffy) +
+    structureReplacementCapital(state, factionId) +
+    committedTankProductionReplacementCapital(state, factionId);
   if (currentPower > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("Faction score current power exceeds the safe-integer range");
   }
