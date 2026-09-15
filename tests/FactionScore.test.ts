@@ -133,4 +133,46 @@ describe("authoritative faction strength score", () => {
       betaBefore.lifetimeGrossPositiveFfyEarned + 10_000,
     );
   });
+
+  it("values granted structures at cumulative ordinary baseline replacement capital", () => {
+    const rules = emptyRules();
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "faction-score-structure-replacement",
+        width: 20,
+        height: 1,
+        terrain: Array.from({ length: 20 }, () => "PLAINS" as const),
+        initialOwners: [
+          ...Array.from({ length: 10 }, () => "alpha"),
+          ...Array.from({ length: 10 }, () => "beta"),
+        ],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-city",
+            ownerId: "alpha",
+            type: "CITY",
+            cellId: 0,
+            level: 3,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+
+    expect(state.structures).toContainEqual(
+      expect.objectContaining({
+        id: "alpha-city",
+        ownerId: "alpha",
+        type: "CITY",
+        completedLevel: 3,
+      }),
+    );
+    // A granted L3 City paid 0 FFY, but its baseline replacement state is
+    // 100k + 200k + 400k = 700k. T=E=1 and P=(25k+700k)/25k=29.
+    // floor(300 + 250 + 450 * sqrt(29)) = 2973.
+    expect(calculateFactionScore(state, "alpha")).toBe(2973);
+  });
 });
