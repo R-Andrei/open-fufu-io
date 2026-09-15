@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { OFFICIAL_AI_BASELINE_CHARACTER_PROFILE } from "../design/official-ai/character-configurations.config";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
@@ -10,6 +11,7 @@ import {
 } from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { createControllerSpatialSurface } from "../src/simulation/ControllerSpatialSurface";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -84,6 +86,76 @@ describe("controller spatial API migration", () => {
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
       true,
     );
+  });
+
+  it("declares opaque public refs, dual locators, find filters, and entity materialization limits", () => {
+    const source = readFileSync("src/core/controller/ControllerApi.ts", "utf8");
+
+    expect(source).toContain("export type FactionRef");
+    expect(source).toContain("export type UnitRef");
+    expect(source).toContain("export type StructureRef");
+    expect(source).toContain("export type UnitLocator");
+    expect(source).toContain("export type StructureLocator");
+    expect(source).toContain("readonly ref: UnitRef;");
+    expect(source).toContain("readonly ref: StructureRef;");
+    expect(source).toContain("find(filter?: UnitFindFilter)");
+    expect(source).toContain("find(filter?: StructureFindFilter)");
+    expect(source).toContain("find(filter?: FactionFindFilter)");
+    expect(source).toContain("materializedEntityViewsPerDecision");
+  });
+
+  it("projects global faction refs and the unit/structure discovery namespaces from one trusted query session", async () => {
+    const match = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "controller-public-entity-read-surface",
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", null],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: "controller-public-entity-read-surface" },
+    );
+    const session = createControllerQuerySession(
+      match.snapshot(),
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      match.controllerReferenceSession(),
+    );
+    const surface = createControllerSpatialSurface(session) as unknown as {
+      factions: {
+        find(filter?: unknown): readonly {
+          ref: string;
+          status: string;
+          relation: string;
+          territoryCells: number;
+        }[];
+        get(ref: string): { ref: string; relation: string } | undefined;
+        proximity(ref: string): number | undefined;
+      };
+      units: {
+        find(filter?: unknown): Promise<{ items: readonly unknown[]; truncated: boolean }>;
+      };
+      structures: {
+        find(filter?: unknown): Promise<{ items: readonly unknown[]; truncated: boolean }>;
+      };
+    };
+
+    const factions = surface.factions.find();
+    expect(factions).toHaveLength(2);
+    expect(factions.map((faction) => faction.ref)).not.toContain("alpha");
+    expect(factions.map((faction) => faction.ref)).not.toContain("beta");
+    const self = factions.find((faction) => faction.relation === "SELF");
+    const enemy = factions.find((faction) => faction.relation === "ENEMY");
+    expect(self).toMatchObject({ status: "ACTIVE", territoryCells: 1 });
+    expect(enemy).toMatchObject({ status: "ACTIVE", territoryCells: 1 });
+    expect(surface.factions.get(enemy!.ref)?.ref).toBe(enemy!.ref);
+    expect(surface.factions.proximity(enemy!.ref)).toBe(1);
+    expect(await surface.units.find()).toEqual({ items: [], truncated: false });
+    expect(await surface.structures.find()).toEqual({ items: [], truncated: false });
   });
 
   it("lets BASELINE_D0 preserve its existing expansion decision without the eager array", () => {

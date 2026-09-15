@@ -64,6 +64,37 @@ describe("controller reference session certification", () => {
     expect(session.resolve("alpha", "STRUCTURE", ref!)).toBe(authoritativeId);
   });
 
+  it("issues stable match-global FactionRefs without exposing FactionId or making them viewer scoped", () => {
+    const state = collidingStructureState("faction-ref-structure");
+    const first = new ControllerReferenceSession("faction-match-a", state);
+    const second = new ControllerReferenceSession("faction-match-b", state);
+    const firstApi = first as unknown as {
+      issueFaction(factionId: string): string | undefined;
+      resolveFaction(ref: string): string | undefined;
+    };
+    const secondApi = second as unknown as {
+      issueFaction(factionId: string): string | undefined;
+      resolveFaction(ref: string): string | undefined;
+    };
+
+    const alpha = firstApi.issueFaction("alpha");
+    const alphaAgain = firstApi.issueFaction("alpha");
+    const beta = firstApi.issueFaction("beta");
+    const otherMatchAlpha = secondApi.issueFaction("alpha");
+
+    expect(alpha).toBeDefined();
+    expect(alphaAgain).toBe(alpha);
+    expect(alpha).not.toBe("alpha");
+    expect(beta).toBeDefined();
+    expect(beta).not.toBe(alpha);
+    expect(otherMatchAlpha).toBeDefined();
+    expect(otherMatchAlpha).not.toBe(alpha);
+    expect(firstApi.resolveFaction(alpha!)).toBe("alpha");
+    expect(firstApi.resolveFaction("fabricated-faction-ref")).toBeUndefined();
+    expect(secondApi.resolveFaction(alpha!)).toBeUndefined();
+    expect(firstApi.issueFaction("does-not-exist")).toBeUndefined();
+  });
+
   it("replaces a simple-domain incarnation when explicit lifecycle transitions reuse the same authoritative ID", () => {
     const authoritativeId = "reused-structure-id";
     const state = collidingStructureState(authoritativeId);
