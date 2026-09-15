@@ -11,6 +11,7 @@ import {
 } from "./StructuresCore";
 
 type FactionScoreState = Parameters<typeof calculateEconomyOnlyFactionScore>[0];
+type TankDerivedChassis = "TANK" | "HEAVY_ARTILLERY";
 
 const BASELINE_REPLACEMENT_RULES = compileRuleProfile(RULE_AXIS_REGISTRY, {
   contributions: [],
@@ -95,7 +96,7 @@ function structureReplacementCapital(
 
 function baselineTankChassisReplacementCost(
   precedingChassisCount: number,
-  chassisType: "TANK" | "HEAVY_ARTILLERY",
+  chassisType: TankDerivedChassis,
 ): bigint {
   if (
     !Number.isSafeInteger(precedingChassisCount) ||
@@ -114,43 +115,54 @@ function baselineTankChassisReplacementCost(
     : baseline;
 }
 
-function committedTankProductionReplacementCapital(
+function tankDerivedReplacementCapital(
   state: FactionScoreState,
   factionId: string,
 ): bigint {
-  const jobs = state.tankProductionJobs
-    .filter((job) => job.ownerId === factionId)
-    .slice()
-    .sort((left, right) =>
-      left.factoryId < right.factoryId
-        ? -1
-        : left.factoryId > right.factoryId
-          ? 1
-          : 0,
-    );
+  let chassisType: TankDerivedChassis | undefined;
+  let chassisCount = 0;
 
-  return jobs.reduce(
-    (total, job, index) =>
-      total + baselineTankChassisReplacementCost(index, job.chassisType),
-    0n,
-  );
+  const includeChassis = (candidate: TankDerivedChassis): void => {
+    if (chassisType === undefined) {
+      chassisType = candidate;
+    } else if (chassisType !== candidate) {
+      throw new Error(
+        "Faction score Tank-derived portfolio contains mixed chassis profiles",
+      );
+    }
+    chassisCount += 1;
+  };
+
+  for (const unit of state.mobileUnits) {
+    if (unit.ownerId !== factionId) continue;
+    if (unit.type === "TANK" || unit.type === "HEAVY_ARTILLERY") {
+      includeChassis(unit.type);
+    }
+  }
+  for (const job of state.tankProductionJobs) {
+    if (job.ownerId === factionId) includeChassis(job.chassisType);
+  }
+
+  if (chassisType === undefined) return 0n;
+
+  let total = 0n;
+  for (let index = 0; index < chassisCount; index += 1) {
+    total += baselineTankChassisReplacementCost(index, chassisType);
+  }
+  return total;
 }
 
-function assertDeployedMilitaryPowerSliceSupported(
+function assertWarshipPowerSliceSupported(
   state: FactionScoreState,
   factionId: string,
 ): void {
   if (
     state.mobileUnits.some(
-      (unit) =>
-        unit.ownerId === factionId &&
-        (unit.type === "TANK" ||
-          unit.type === "HEAVY_ARTILLERY" ||
-          unit.type === "WARSHIP"),
+      (unit) => unit.ownerId === factionId && unit.type === "WARSHIP",
     )
   ) {
     throw new Error(
-      "Faction score deployed military replacement valuation is not materialized in this implementation slice",
+      "Faction score Warship replacement valuation is not materialized in this implementation slice",
     );
   }
 }
@@ -160,9 +172,9 @@ function assertDeployedMilitaryPowerSliceSupported(
  * derived through Structure-owned ordinary purchase/upgrade cost truth under an
  * explicitly neutral rule profile, so acquisition history and faction modifiers
  * cannot alter baseline replacement value. Committed construction is valued at
- * its target level. Paid Tank/Heavy-Artillery production jobs retain baseline
- * sequential replacement capital; deployed military remains a later RED-first
- * slice.
+ * its target level. Committed and deployed Tank-derived chassis form one baseline
+ * sequential replacement portfolio; Heavy Artillery keeps its canonical 1.5x
+ * chassis multiplier. Warships remain a later RED-first slice.
  */
 export function calculateFactionScore(
   state: FactionScoreState,
@@ -172,12 +184,12 @@ export function calculateFactionScore(
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
   if (faction.status !== "ACTIVE") return 0;
 
-  assertDeployedMilitaryPowerSliceSupported(state, factionId);
+  assertWarshipPowerSliceSupported(state, factionId);
 
   const currentPower =
     BigInt(faction.ffy) +
     structureReplacementCapital(state, factionId) +
-    committedTankProductionReplacementCapital(state, factionId);
+    tankDerivedReplacementCapital(state, factionId);
   if (currentPower > BigInt(Number.MAX_SAFE_INTEGER)) {
     throw new Error("Faction score current power exceeds the safe-integer range");
   }
@@ -193,6 +205,13 @@ export function calculateFactionScore(
     ),
     structures: Object.freeze(
       state.structures.filter((structure) => structure.ownerId !== factionId),
+    ),
+    mobileUnits: Object.freeze(
+      state.mobileUnits.filter(
+        (unit) =>
+          unit.ownerId !== factionId ||
+          (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY"),
+      ),
     ),
     tankProductionJobs: Object.freeze(
       state.tankProductionJobs.filter((job) => job.ownerId !== factionId),
