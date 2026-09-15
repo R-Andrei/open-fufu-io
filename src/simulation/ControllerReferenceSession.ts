@@ -1,4 +1,7 @@
-import type { DirectiveChanges } from "../core/controller/ControllerApi";
+import type {
+  DirectiveChanges,
+  FactionRef,
+} from "../core/controller/ControllerApi";
 import type { MatchState } from "./MatchState";
 
 export type ControllerReferenceDomain = "UNIT" | "STRUCTURE" | "OPERATION";
@@ -82,6 +85,8 @@ function operationDirectiveKind(
 export class ControllerReferenceSession {
   private readonly encodedNamespace: string;
   private readonly viewers = new Map<string, number>();
+  private readonly factionRefById = new Map<string, FactionRef>();
+  private readonly factionIdByRef = new Map<string, string>();
   private readonly domains: Record<
     ControllerReferenceDomain,
     DomainIncarnationState
@@ -119,9 +124,28 @@ export class ControllerReferenceSession {
         throw new Error(`duplicate controller reference viewer ${viewerId}`);
       }
       this.viewers.set(viewerId, index);
+      let factionRef = `ofr1:${this.encodedNamespace}:f:${String(index).padStart(12, "0")}` as FactionRef;
+      if (factionRef === viewerId) {
+        factionRef = `${factionRef}:ref` as FactionRef;
+      }
+      if (this.factionIdByRef.has(factionRef)) {
+        throw new Error("controller faction reference token collision");
+      }
+      this.factionRefById.set(viewerId, factionRef);
+      this.factionIdByRef.set(factionRef, viewerId);
     }
 
     this.reconcile(initialState);
+  }
+
+  /** Returns the stable match-global opaque ref for one known faction. */
+  issueFaction(factionId: string): FactionRef | undefined {
+    return this.factionRefById.get(factionId);
+  }
+
+  /** Resolves a match-global faction ref without granting any tactical capability. */
+  resolveFaction(ref: string): string | undefined {
+    return this.factionIdByRef.get(ref);
   }
 
   private allocateIncarnation(
