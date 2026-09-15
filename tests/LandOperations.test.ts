@@ -197,7 +197,7 @@ describe("land-operation focused contracts", () => {
     const resolved = resolveLandTick(before, before.tick + 1);
     expect(resolved.ownership).toEqual(["alpha", "beta"]);
 
-    const manifestationEvents = (resolved.events as readonly Array<{
+    const manifestationEvents = (resolved.events as ReadonlyArray<{
       readonly kind: string;
       readonly payload: Readonly<{
         operationId?: string;
