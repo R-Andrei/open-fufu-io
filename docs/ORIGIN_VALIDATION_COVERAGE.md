@@ -102,7 +102,7 @@ The entries below intentionally identify **validation relationships**, not dupli
 - **P04 — Level 0** — Direct owner: `COMBAT_TUNING.md`. Validate the authored response-side counter-response transformation across representative attacker/responder imbalances without altering attack-side semantics.
 - **P05 — Big Shot** — Direct seam: canonical structure-capture simulation fact -> `FFY_ECONOMY.md`. Validate exactly-one qualifying conquest event only after a successful structure transfer; non-transfer results do not emit it. Explicit interactions: N17, N07, P34, P14/N04, P24/N11. Expected value/location/sampling comes only from the FFY owner.
 - **P06 — See You, Space Cowboy** — Direct owner: `FFY_ECONOMY.md` Trade-Ship movement. Validate effective physical speed through pursuit/capture geometry while preserving route/cargo/event semantics. No bespoke P08 interaction is required.
-- **P07 — Galaxy Express 999** — Direct owner: `FFY_ECONOMY.md` Factory/Train scheduler. Validate owner-epoch scheduler persistence, bonus-Train lifecycle, transfer/reset behavior, and replay from the canonical owner. Explicit interactions: P33, P34, N09, N17.
+- **P07 — Galaxy Express 999** — Direct owner: `ORIGIN_TRAIT_CATALOGUE.md` scheduler work-rate transformation over the `FFY_ECONOMY.md` Factory/Train scheduler. Validate the exact active-turnaround transformation from the ordinary baseline, immediate fresh-epoch dispatch readiness, inactivity pause, owner-epoch transfer/reset behavior, the single-primary limit, absence of bonus/phase state, and deterministic replay from the canonical owners. Explicit interactions: P33, P34, N09, N17.
 - **P08 — Tea Time** — Direct owner: `FFY_ECONOMY.md`, consuming the canonical `atWar` relation from the game-wide hostility contract. Validate current relation state at event resolution for both maritime and rail external trade. Explicit interaction: N14/N16 voyage snapshots must not be retroactively revalued.
 - **P09 — Wall Maria** — Direct owners: `TERRAIN_AND_STRUCTURES.md` Fort profile/transactions and land-combat pressure composition. Validate effective Fort coverage, defensive contribution, and price through their normal pipelines. Explicit interactions: P03, P18, P24, P50, N08, N10, P21.
 - **P10 — Scorpion's Tail** — Direct owner: Origin rule composition; projectile taxonomy/motion is `NAVAL_AND_STRATEGIC_WEAPONS.md`. Validate the authored modifier against the canonical warhead projectile class, physical interception window, MIRV carrier exclusion, and blast-profile independence from travel time.
@@ -237,8 +237,8 @@ This registry identifies relationships that need dedicated conformance beyond in
 
 - P05 + N17 — no transfer means no transfer-triggered conquest event.
 - P05 + P34 — a successful Factory transfer may independently produce conquest FFY and establish captured-Factory provenance.
-- P07 + P33 — bonus Trains create ordinary qualifying Train events.
-- P07 + P34 — Factory scheduler cadence and dispatch-time economic profile remain separate.
+- P07 + P33 — the higher primary-Train turnaround work rate increases the ordinary Train-event opportunity rate; P33 still consumes only actual qualifying Train station events.
+- P07 + P34 — Factory scheduler work rate and dispatch-time economic profile remain separate axes.
 - P14 + P24 — independent eligible spatial FFY modifiers compose through the ordinary FFY pipeline.
 - P14/P24/N04 + N11 — terminal hard zero cannot be resurrected by ordinary yield transforms.
 - N14 + N16 — first-hostile-capture original-owner signed consequences must net deterministically while cargo continues normally.

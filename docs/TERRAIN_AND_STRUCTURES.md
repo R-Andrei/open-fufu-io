@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This file is the **canonical owner for Open Fufu base terrain, physical rail topology, persistent structures, and the baseline Tank chassis**.
+This file is the **canonical owner for Open Fufu base terrain, game-wide physical occupancy and same-tick cell-entry arbitration, physical rail topology, persistent structures, and the baseline Tank chassis**.
 
 Neighboring concerns are owned elsewhere:
 
@@ -71,8 +71,8 @@ If the faction owns no population-bearing cells, terrain-share bonuses are zero.
 | **Tundra** | Yes | **No** | **`0`** | Yes | **No** | **No** | **80%** | `100%` | **`+5%`** | — |
 | **Marsh** | Yes | Yes | `+1/cell` | Yes | Yes | Yes | **70%** | **`-10%`** | **`-10%`** | — |
 | **Shallow Water** | **Yes** | **No** | **`0`** | **Yes** | **No** | **No** | **70%** | **`-15%`** | **`-15%`** | — |
-| **Deep Water** | No | No | `0` | No | No | No | — | — | — | — |
-| **Impassable** | No | No | `0` | No | No | No | — | — | — | — |
+| **Deep Water** | No | No | 0 | No | No | No | — | — | — | — |
+| **Impassable** | No | No | 0 | No | No | No | — | — | — | — |
 
 ## 1.3 Terrain identities
 
@@ -167,7 +167,7 @@ immutable artifact rail
 
 Generated rail therefore has deterministic contributor provenance at cell/edge granularity. Regenerating, destroying, or otherwise releasing one Factory loop removes a generated cell/edge only when no current Factory loop and no still-live in-flight Train snapshot requires it, and it never removes immutable artifact rail. Reference/provenance state is authoritative serialized/replay state; replay must not infer it from current visual geometry alone.
 
-A City, Port, or Factory is attached to the current physical rail network exactly when its physical occupied `cellId` is a rail cell. V1 defines no nearest-track snapping, off-cell connector, or secondary station-node mapping.
+A persistent City or Port occupies its structure cell and is **not** traversed through by Train service. Factory Train station attachment instead uses a cardinally adjacent rail/pathable **station-interface cell**. A Factory contributes its fixed outbound/inbound rail-port cells as the endpoints of its external loop. V1 defines no nearest-track snapping or off-cell free-form connector.
 
 A rail route query distinguishes three outcomes:
 
@@ -189,43 +189,43 @@ Every active completed Factory may own one canonical ordered physical **service 
 
 This contract intentionally does **not** invent a numeric Factory influence radius. The authoritative influence membership supplied to the generator is an input; a future owner may define/change that geometry without changing the loop algorithm here.
 
-Eligible deliberate construction targets are active completed Cities and Ports whose occupied cells lie inside the Factory's supplied influence membership. Target ownership is irrelevant to physical eligibility.
+Eligible deliberate construction targets are active completed Cities and Ports whose occupied cells lie inside the Factory's supplied influence membership. Target ownership is irrelevant to physical eligibility. Each selected target must be serviced through one of its cardinally adjacent rail/pathable station-interface cells; the target's occupied structure cell itself is excluded from Train traversal.
 
 The external ordered loop path is:
 
 ```text
 Factory outbound port
--> zero or more selected City/Port target cells
+-> zero or more selected City/Port station-interface cells
 -> Factory inbound port
 ```
 
 The Factory closes the circuit internally between its fixed inbound/outbound ports. External generation must not fabricate another closure edge through unrelated terrain.
 
-Selection rules are exact:
+Target selection, station-interface assignment, and visit order are solved together. Selection rules are exact:
 
 - with zero eligible targets, no service loop exists and the Factory dispatches no Train;
-- with one through five eligible targets, the minimum valid loop deliberately includes all of them;
-- with more than five eligible targets, select exactly five **and** their visit order jointly to minimize total valid loop length.
+- with one through five eligible targets, a valid minimum loop deliberately services all of them; if no assignment of legal cardinal station interfaces can service every required target, no valid loop exists;
+- with more than five eligible targets, select exactly five, their station-interface assignments, and their visit order jointly to minimize total valid loop length.
 
-Five is only the deliberate construction-target cap. Any additional active completed City/Port whose occupied cell lies exactly on the generated ordered loop is an incidental serviced station and may raise the serviced-station count above five.
+Five is only the deliberate construction-target cap. Any additional active completed City/Port whose occupied cell has a legal cardinally adjacent cell on the generated ordered loop is an incidental serviced station and may raise the serviced-station count above five. For every deliberately or incidentally serviced station, the stored loop retains the exact station `structureId` -> interface `cellId` association used by Train service.
 
-Among equal-length valid target/order choices, compare the selected structures by their canonical `structureId` sequence; then use the canonical physical path order `top -> right -> bottom -> left` for equal physical-path choices. No RNG or incidental enumeration order resolves loop ties.
+Among equal-length valid target/interface/order choices, compare the selected structures by their canonical `structureId` sequence; then use the canonical physical path order `top -> right -> bottom -> left` for equal physical-path/interface choices. No RNG or incidental enumeration order resolves loop ties.
 
-The generated result is stored as one ordered rail-cell sequence. Outside the Factory, the generator must not add arbitrary repeated cells, branches, or loops merely to manufacture station events. When a valid simple/non-branching minimum solution exists, that solution class is required.
+The generated result is stored as one ordered rail-cell sequence plus its deterministic station-interface mapping. Outside the Factory, the generator must not add arbitrary repeated cells, branches, or loops merely to manufacture station events. When a valid simple/non-branching minimum solution exists, that solution class is required.
 
 ### 1.8.2 Regeneration and newly eligible stations
 
-Loop maintenance uses the Factory's **current serviced-station count**, including incidental on-loop stations, rather than remembering only the historical construction targets.
+Loop maintenance uses the Factory's **current serviced-station count**, including incidental station-interface associations, rather than remembering only the historical construction targets.
 
 When a newly completed eligible City/Port appears inside the Factory influence membership:
 
-- if its occupied cell is already on the current loop, it joins service immediately with no geometry regeneration;
-- if it is off-loop and the current loop services fewer than five stations, schedule full loop regeneration against the complete current eligible set;
-- if it is off-loop and the current loop already services at least five stations, it does not by itself trigger regeneration.
+- if at least one of its legal cardinal station-interface candidates is already on the current loop, it joins service immediately using the deterministic retained interface mapping with no geometry regeneration;
+- if it has no interface on the current loop and the current loop services fewer than five stations, schedule full loop regeneration against the complete current eligible set;
+- if it has no interface on the current loop and the current loop already services at least five stations, it does not by itself trigger regeneration.
 
-A regeneration recomputes the entire current eligible set under §1.8.1; old target identities are not pinned merely because they were selected before.
+A regeneration recomputes the entire current eligible set under §1.8.1; old target identities or old interface choices are not pinned merely because they were selected before.
 
-If no Train still depends on the current loop snapshot, a pending regeneration may commit immediately. If one or more moving/dwelling Trains still use the old loop snapshot, the regeneration remains pending until all old-loop users release it. Those Trains finish their snapshotted old loop; required generated rail remains referenced until their snapshots terminate. The replacement loop then commits atomically.
+If no Train still depends on the current loop snapshot, a pending regeneration may commit immediately. If one or more moving/dwelling Trains still use the old loop snapshot, the regeneration remains pending until all old-loop users release it. Those Trains finish their snapshotted old loop and its snapshotted station-interface mapping; required generated rail remains referenced until their snapshots terminate. The replacement loop then commits atomically.
 
 ### 1.8.3 Multiple Factories and shared rail
 
@@ -237,15 +237,33 @@ If enforcing one shared existing edge makes every otherwise-required valid loop 
 
 Candidate ordering is:
 
-1. satisfy required target/station inclusion;
+1. satisfy required target/station-interface inclusion;
 2. when any such valid intersecting solution exists, require at least one shared existing edge;
 3. minimize total loop length;
 4. among equal lengths, prefer the candidate sharing more existing generated rail edges;
 5. if still tied, use the §1.8.1 canonical structure-ID sequence and physical path tie order.
 
-When several Factory loop creations/regenerations are committed in the same authoritative reconciliation stage, process Factories by ascending persistent `structureId`; each later Factory sees generated rail already committed by earlier Factories in that stage. Regenerating one Factory never recursively forces another Factory to regenerate merely because their overlap changed. A City/Port lying on several Factory loops is independently serviceable by every such loop.
+When several Factory loop creations/regenerations are committed in the same authoritative reconciliation stage, process Factories by ascending persistent `structureId`; each later Factory sees generated rail already committed by earlier Factories in that stage. Regenerating one Factory never recursively forces another Factory to regenerate merely because their overlap changed. A City/Port may be independently serviceable by several Factory loops through each loop's retained station-interface mapping.
 
 Train dispatch, movement/dwell, station-event economics, Factory ownership epochs, and interception economics are owned by [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) and consume these stored physical loop snapshots.
+
+## 1.9 Physical occupancy and same-tick cell entry
+
+V1 uses one authoritative physical-cell occupancy rule for persistent structures and physical mobile units. A cell may contain at most **one physical occupier** from those classes. Persistent structures reserve their occupied cell for their complete physical lifetime. Mobile-unit creation, deployment, movement, and structure purchase/grant admission must not create a second physical occupier in an already occupied cell.
+
+Current physical occupancy is also a routing input: a mobile unit must route around cells occupied by another physical object when another legal route exists. Routing is not permission to tunnel through a later conflict; actual same-tick entry is resolved again at the authoritative movement boundary.
+
+For one authoritative simulation tick, mobile-unit entry follows these exact rules:
+
+1. every cell occupied by any physical object at the **start of the movement tick** is unavailable for entry by another mobile unit for that entire tick, even if its current occupier moves away during the same tick;
+2. each mover may spend its lawful movement work cell-by-cell along its retained route until its next cell is unavailable or contested;
+3. if two or more movers would enter the same previously empty cell during that tick, **none** of those movers enters it; each stops immediately before its first such contested cell, retains its uncompleted route/intent, and may retry on a later tick;
+4. when an upstream stop makes a mover's later claimed cells unreachable, those unreachable downstream claims do not create false contention for another mover;
+5. cyclic or mutually dependent same-tick claims never erase one another into a hidden winner: head-on swaps, opposite multi-cell pass-through, and equivalent cyclic crossing are blocked symmetrically.
+
+No UnitId, owner identity, subsystem phase, array/insertion order, or incidental iteration order grants movement priority. A faster unit may traverse several uncontested cells in one tick, but it never passes through an unavailable/contested cell to reach a later one. Partial edge progress may accumulate only toward an entry that is not already forbidden by tick-start physical occupancy; a blocked entry does not consume hidden progress through the blocker.
+
+This section owns only the physical occupancy/admission/arbitration contract. Focused unit owners still own movement speed/work, terrain/corridor legality, route-intent priority, combat, service/dwell, repair, and economic consequences. Projectiles, abstract land operations, fields, and other non-occupying effects do not become physical occupiers merely because they have a cell location.
 
 ---
 
@@ -423,6 +441,8 @@ dx² + dy² >= 100
 
 Thus structures must be at least **10 cells center-to-center** apart; exact distance 10 is legal. `CAPTURE_TRANSFER` does not revalidate this build/grant spacing for a structure that already physically exists. Upgrades and other non-moving lifecycle transitions likewise do not rerun it.
 
+Physical occupancy admission is additionally governed by §1.9: a purchase/build or grant cannot materialize a structure onto a mobile-unit-occupied cell or another structure cell.
+
 ### 2.2.2 Ownership-slot occupancy and reservations
 
 After an admission commits, one intended future owned object consumes exactly one ownership slot throughout its lifecycle. Slot accounting therefore uses disjoint buckets:
@@ -526,7 +546,7 @@ Fresh construction therefore remains fresh construction after transfer, includin
 
 Build-only restrictions and terrain-placement legality are not re-applied. A faction that cannot build Factories may still acquire/use an otherwise admissible captured Factory, and a structure legally standing on terrain the new owner could not build on remains there after transfer.
 
-Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`. A focused subsystem that owns an operational epoch reacts to the immutable transfer result through the canonical simulation-event boundary rather than being mutated inside the structure resolver. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train scheduler/P07 phase resets under `FFY_ECONOMY.md` and `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved Structure state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
+Owner-scoped provenance and subsystem operational epochs are **not** old-owner physical state. On successful transfer, current ownership acquisition provenance becomes `CAPTURE_TRANSFER`. A focused subsystem that owns an operational epoch reacts to the immutable transfer result through the canonical simulation-event boundary rather than being mutated inside the structure resolver. Factory Train service uses exactly this rule: physical Factory structure state persists, while its owner-scoped Train-service scheduler epoch is replaced under `FFY_ECONOMY.md`; any new-owner P07 turnaround work-rate transformation then applies through `ORIGIN_TRAIT_CATALOGUE.md`. A Missile Silo's physical charge bank and existing absolute recharge deadlines are transfer-preserved Structure state as defined by the Missile-Silo lifecycle below; capture does not reload the Silo or restart its cooling charges.
 
 ### 2.4.3 Typed capture facts, not mutating event listeners
 
@@ -596,7 +616,7 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 
 ### City
 
-Each completed City contributes its listed percentage additively to the faction's City-derived Population Growth modifier. Cities never increase Population Capacity. Cities are eligible Train stations under `FFY_ECONOMY.md`.
+Each completed City contributes its listed percentage additively to the faction's City-derived Population Growth modifier. Cities never increase Population Capacity. Cities are eligible Train stations under `FFY_ECONOMY.md` through the rail station-interface contract in §1.8.
 
 ### Fort
 
@@ -622,7 +642,7 @@ Trade Ship service/economics are defined in `FFY_ECONOMY.md`. Warship production
 
 Factories produce Trains and Tanks and repair Tank chassis.
 
-Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`.
+Train routing, timing, station events, dispatch-time Factory economic snapshots, and Train-service ownership epochs are defined in `FFY_ECONOMY.md`; physical loop/station-interface geometry is defined in §1.8.
 
 Factory armored-unit repair is an explicit **two-tier vehicle-repair profile** and therefore uses the shared lifecycle in Section 2.8. Its completed-level broad radius/rate and fast-service rate are listed in Section 2.6. Its focused fast-service parameters are:
 
@@ -814,7 +834,7 @@ edgeTime(A, B) = 0.5 / vA + 0.5 / vB
 
 Authoritative routing accumulates this value with exact rational arithmetic; it must not round each edge through floating point. Therefore `A -> B` and `B -> A` have the same terrain-derived traversal time, and a same-terrain edge reduces exactly to `1 / v`. If either endpoint terrain is blocked for the chassis, or the territorial-corridor predicate rejects the transition, that edge is unavailable rather than assigned a finite traversal time.
 
-Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first.
+Tanks may path through friendly traversable territory and traversable territory belonging to an opposing faction when ordinary unit-hostility rules permit it. `atWar` is not required merely for Tank movement through such territory. Neutral cells do not form a Tank corridor; ordinary territorial control must establish one first. Physical route planning and actual cell entry additionally obey the occupancy/arbitration contract in §1.9.
 
 ## 3.3 Strategic/autonomous control
 
@@ -852,7 +872,7 @@ The accepted job snapshots the resulting chassis identity/profile, its finalized
 
 If the producing Factory still exists under the same owner but is temporarily ineligible/inactive, the job pauses with its remaining work unchanged. If that Factory is destroyed or changes owner, the unfinished job is cancelled; it is not transferred and its already committed FFY is not refunded.
 
-When work is complete, deployment considers the Factory's cardinal neighbors that are currently owned by the job owner and traversable by the resulting chassis. The deployment cell is the lowest stable `cellId` among those legal neighbors. If no such cell exists, the completed output remains waiting at the Factory and continues occupying the Factory's one Tank-build slot until deployment becomes possible. Deployment creates exactly one chassis at full effective maximum health; the deployment cell is its initial operating anchor. If the snapshotted strategic destination differs from that deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
+When work is complete, deployment considers the Factory's cardinal neighbors that are currently owned by the job owner, traversable by the resulting chassis, and physically unoccupied under §1.9. The deployment cell is the lowest stable `cellId` among those legal neighbors. If no such cell exists, the completed output remains waiting at the Factory and continues occupying the Factory's one Tank-build slot until deployment becomes possible. Deployment creates exactly one chassis at full effective maximum health; the deployment cell is its initial operating anchor. If the snapshotted strategic destination differs from that deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
 
 ## 3.6 Autonomous intent, target selection, and pursuit
 
@@ -935,7 +955,9 @@ persistent-structure lifecycle progression/completion
     ↓
 Tank intent / repair assignment / target retention-or-acquisition
     ↓
-Tank movement
+prepare Tank movement together with other participating mobile-unit movement
+    ↓
+shared §1.9 physical cell-entry arbitration + movement commit
     ↓
 freeze post-movement Tank combat snapshot
     ↓
@@ -948,6 +970,6 @@ Factory Tank repair
 Tank production progress/completion/deployment
 ```
 
-Thus a Factory that completes or upgrades during persistent-structure lifecycle progression is already active at its new completed level for same-tick Tank repair/production queries. Conversely, Tank production is the final Tank-local phase, so a chassis deployed there cannot participate in earlier phases until the following tick.
+Thus a Factory that completes or upgrades during persistent-structure lifecycle progression is already active at its new completed level for same-tick Tank repair/production queries. Conversely, Tank production is the final Tank-local phase, so a chassis deployed there cannot participate in earlier phases until the following tick. Train and Tank movement do not obtain physical-cell priority from being implemented in different subsystems; participating mobile movement commits through the shared §1.9 arbitration boundary before the post-movement combat snapshot.
 
 The Tank stage consumes the canonical land/capture, structure, hostility/visibility, Population, FFY, navigation, Origin/effective-rule, and mobile-unit states; it does not create parallel copies of those authorities.
