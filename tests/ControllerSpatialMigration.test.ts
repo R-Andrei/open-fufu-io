@@ -135,6 +135,49 @@ describe("controller spatial API migration", () => {
     );
   });
 
+  it("backs ordinary MatchRuntime controller rounds with the match reference session", () => {
+    const match = baselineFixture();
+    const refsByFaction = new Map<string, readonly string[]>();
+    const host = {
+      invoke(
+        factionId: string,
+        _observation: unknown,
+        querySession?: ReturnType<typeof createControllerQuerySession>,
+      ) {
+        if (querySession === undefined) {
+          throw new Error("normal controller round query session missing");
+        }
+        refsByFaction.set(
+          factionId,
+          querySession.factions.find().map((faction) => faction.ref),
+        );
+        return Object.freeze({ ok: true as const });
+      },
+      chooseInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      reconsiderInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      chooseOrigins() {
+        return Object.freeze({ ok: true as const });
+      },
+    } as unknown as Parameters<MatchRuntime["runControllerRound"]>[0];
+
+    const receipts = match.runControllerRound(host);
+    const references = match.controllerReferenceSession();
+    const alphaRef = references.issueFaction("alpha");
+    const betaRef = references.issueFaction("beta");
+    if (alphaRef === undefined || betaRef === undefined) {
+      throw new Error("expected match-global faction refs");
+    }
+    const expectedRefs = [alphaRef, betaRef].sort();
+
+    expect(refsByFaction.get("alpha")).toEqual(expectedRefs);
+    expect(refsByFaction.get("beta")).toEqual(expectedRefs);
+    expect(receipts.every((entry) => entry.receipt.accepted)).toBe(true);
+  });
+
   it("declares opaque public refs, dual locators, find filters, and entity materialization limits", () => {
     const source = readFileSync("src/core/controller/ControllerApi.ts", "utf8");
 
