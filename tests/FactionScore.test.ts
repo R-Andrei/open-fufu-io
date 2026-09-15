@@ -9,6 +9,7 @@ import {
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
+import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { createUnitDestroyedEvent } from "../src/simulation/SimulationEvents";
 import { tryPurchaseStructureUpgrade } from "../src/simulation/StructuresCore";
 import {
@@ -362,4 +363,59 @@ describe("authoritative faction strength score", () => {
       expect(calculateFactionScore(deployed, "alpha")).toBe(expectedScore);
     },
   );
+
+  it("keeps the first deployed Warship's baseline replacement capital in Current Power", () => {
+    const rules = emptyRules();
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "faction-score-deployed-warship",
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "DEEP_WATER"],
+        initialOwners: ["alpha", "beta", null],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const funded = createProspectiveMatchState(initial, {
+      factions: initial.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 500_000 } : faction,
+      ),
+    });
+    const fundedScore = calculateFactionScore(funded, "alpha");
+    const deployedWarship = createMobileUnit(
+      funded.map,
+      funded.factions.map((faction) => faction.id),
+      {
+        mobileUnits: funded.mobileUnits,
+        nextMobileUnitOrdinal: funded.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 2,
+      },
+    );
+    const deployed = createProspectiveMatchState(funded, {
+      factions: funded.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 250_000 } : faction,
+      ),
+      mobileUnits: deployedWarship.mobileUnits,
+      nextMobileUnitOrdinal: deployedWarship.nextMobileUnitOrdinal,
+    });
+
+    expect(deployedWarship.unit).toMatchObject({
+      ownerId: "alpha",
+      type: "WARSHIP",
+      movementClass: "NAVAL",
+      cellId: 2,
+    });
+
+    // Canonical first-Warship baseline replacement cost is 250k. Converting
+    // 250k liquid FFY into that deployed physical asset must preserve power.
+    expect(calculateFactionScore(deployed, "alpha")).toBe(fundedScore);
+  });
 });
