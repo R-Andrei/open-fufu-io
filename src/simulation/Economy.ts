@@ -879,11 +879,15 @@ function assertFactionScorePowerSliceSupported(
 }
 
 /**
- * Authoritative faction score entry point. Persistent passive positive-FFY
- * accounting is materialized; current power remains liquid-FFY-only until the
- * replacement-value asset slice is implemented.
+ * Score-composition helper for FactionScore.ts. The caller must prepare the
+ * target faction's FFY as full Current Power and remove separately valued
+ * scoreable assets. This is not the authoritative score producer; use
+ * FactionScore.calculateFactionScore for trusted combined score reads.
  */
-export function calculateFactionScore(state: MatchState, factionId: string): number {
+export function calculateFactionScoreFromPreparedPowerState(
+  state: MatchState,
+  factionId: string,
+): number {
   const faction = state.factions.find((candidate) => candidate.id === factionId);
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
   if (faction.status !== "ACTIVE") return 0;

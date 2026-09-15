@@ -4,13 +4,15 @@ import type {
 } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../core/rules/RuleCompiler";
-import { calculateFactionScore as calculateEconomyOnlyFactionScore } from "./Economy";
+import { calculateFactionScoreFromPreparedPowerState } from "./Economy";
 import {
   structureBuildPurchaseFfyPreview,
   structureUpgradePurchaseFfyPreview,
 } from "./StructuresCore";
 
-type FactionScoreState = Parameters<typeof calculateEconomyOnlyFactionScore>[0];
+type FactionScoreState = Parameters<
+  typeof calculateFactionScoreFromPreparedPowerState
+>[0];
 type TankDerivedChassis = "TANK" | "HEAVY_ARTILLERY";
 
 const BASELINE_REPLACEMENT_RULES = compileRuleProfile(RULE_AXIS_REGISTRY, {
@@ -224,5 +226,5 @@ export function calculateFactionScore(
     ),
   });
 
-  return calculateEconomyOnlyFactionScore(scoringState, factionId);
+  return calculateFactionScoreFromPreparedPowerState(scoringState, factionId);
 }
