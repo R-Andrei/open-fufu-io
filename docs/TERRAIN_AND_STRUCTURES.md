@@ -600,8 +600,9 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 | **City — faction Population Growth contribution** | +1% | +2% | +3% | +4% | **+5%** |
 | **Fort — defensive pressure** | +10% | +15% | +20% | +25% | **+30%** |
 | **Fort — coverage radius** | 30 | 35 | 40 | 45 | **50** |
-| **Port — passive naval repair radius** | 20 | 25 | 30 | 35 | **40** |
-| **Port — passive naval repair rate** | 1.00× | 1.25× | 1.50× | 1.75× | **2.00×** |
+| **Port — broad naval repair radius** | 20 | 40 | 60 | 80 | **100** |
+| **Port — broad naval repair rate** | 10 HP/s | 20 HP/s | 30 HP/s | 40 HP/s | **50 HP/s** |
+| **Port — fast naval repair rate** | 100 HP/s | 137.5 HP/s | 175 HP/s | 212.5 HP/s | **250 HP/s** |
 | **Factory — broad armored-unit repair radius** | 20 | 40 | 60 | 80 | **100** |
 | **Factory — broad armored-unit repair rate** | 10 HP/s | 20 HP/s | 30 HP/s | 40 HP/s | **50 HP/s** |
 | **Factory — fast armored-unit repair rate** | 100 HP/s | 137.5 HP/s | 175 HP/s | 212.5 HP/s | **250 HP/s** |
@@ -628,13 +629,16 @@ Ports are Trade Ship origins/destinations, naval repair infrastructure, and Wars
 
 A Port purchase/grant requests one exact physical structure cell; Port placement does not search, snap, or substitute a nearby cell. The requested cell must first satisfy the ordinary effective ownership/buildability/occupancy rules for that acquisition path. In addition, it must have at least one **cardinally adjacent Deep Water** cell. Shallow-Water adjacency alone does not qualify, and diagonal Deep Water does not qualify. The Port itself occupies the requested buildable land-side cell, not the adjacent Deep Water. A rule that expands ordinary structure-build terrain eligibility changes only that ordinary buildability input; it does not waive the distinct Deep-Water Port-interface requirement unless the rule explicitly says so.
 
-Port level affects passive naval repair only through the table above. The L1 baseline repair rate is **50 HP/s**, so the L1→L5 rates are:
+Port naval repair is an explicit **two-tier vehicle-repair profile** and therefore uses the shared lifecycle in Section 2.8. Its completed-level broad radius/rate and fast-service rate are listed in Section 2.6. Its focused fast-service parameters are:
 
 ```text
-50 / 62.5 / 75 / 87.5 / 100 HP/s
+fast-service radius = 10 cells at every Port level
+fast-service capacity = 1 naval unit at every Port level
 ```
 
-Every eligible friendly health-bearing naval unit inside the repair field may receive repair in the same tick. Same-type overlapping Ports use the strongest applicable repair field rather than stacking.
+The ordinary Port repair-radius rule axis modifies **broad repair radius only**. The ordinary Port repair-rate axis scales **both broad and fast repair rates**. Fast-service radius and one-unit capacity are fixed ordinary baseline parameters rather than those ordinary axes. An explicit special rule may target the separate fast-repair-radius surface; P31's exact Warship-only exception is owned by `ORIGIN_TRAIT_CATALOGUE.md`. Echo identities/scopes are owned by `ECHO_CATALOGUE.md`.
+
+Eligible friendly health-bearing naval units may keep moving while receiving broad repair and while travelling/waiting under the shared lifecycle. Fast service uses the Section 2.8 queue/capacity rules; a unit actually selected for fast service is parked/stationary for that service phase. Repair from overlapping Ports never stacks on one naval unit because the shared lifecycle assigns at most one provider and fast service supersedes broad service for that tick.
 
 Trade Ship service/economics are defined in `FFY_ECONOMY.md`. Warship production/unit mechanics are defined in `NAVAL_AND_STRATEGIC_WEAPONS.md`.
 
@@ -737,7 +741,7 @@ It does not modify Tank weapon damage, Warship damage, strategic weapons, or unr
 
 ## 2.8 Shared two-tier vehicle-repair lifecycle
 
-This section owns the common assignment, routing, queue, broad-service, fast-service, and completion lifecycle for vehicle-repair profiles that explicitly opt into the **two-tier vehicle-repair** contract. A repair field does not inherit this lifecycle merely because it uses radial repair geometry. The Factory armored-unit profile in Section 2.7 explicitly uses it; another provider profile uses it only when that provider/unit contract explicitly adopts it.
+This section owns the common assignment, routing, queue, broad-service, fast-service, and completion lifecycle for vehicle-repair profiles that explicitly opt into the **two-tier vehicle-repair** contract. A repair field does not inherit this lifecycle merely because it uses radial repair geometry. The Factory armored-unit profile and Port naval-unit profile in Section 2.7 explicitly use it; another provider profile uses it only when that provider/unit contract explicitly adopts it.
 
 The focused consumer remains responsible for determining which vehicles are repairable, which providers are eligible, the repair-retreat trigger/intent priority, legal traversal and route timing, effective maximum health, the provider's effective broad/fast profile, and the vehicle's focused combat/raiding capabilities. Once repair retreat is active, this section owns the generic lifecycle below.
 

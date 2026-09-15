@@ -65,8 +65,8 @@ A **concrete stat key** is a stat definition plus its resolved scope. For exampl
 |  | Fort defensive pressure | Fort |
 | **Factory** | Armored-unit repair radius | Factory |
 |  | Armored-unit repair rate | Factory |
-| **Port** | Passive repair radius | Port |
-|  | Passive repair rate | Port |
+| **Port** | Broad naval repair radius | Port |
+|  | Naval repair rate | Port |
 | **Observation Post** | Observation radius | Observation Post |
 | **Command Post** | Coverage area | Command Post |
 |  | Offensive-pressure magnitude | Command Post |
@@ -224,7 +224,7 @@ Examples:
 | Fort defensive pressure | stronger | weaker |
 | Factory armored-unit repair radius | larger | smaller |
 | Factory armored-unit repair rate | faster healing | slower healing |
-| Port repair radius | larger | smaller |
+| Port broad repair radius | larger | smaller |
 | Port repair rate | faster healing | slower healing |
 | Observation radius | larger | smaller |
 | Command Post coverage | larger | smaller |
@@ -248,6 +248,8 @@ Counter-response Echoes modify the **response-side** effectiveness hook only unl
 `Industrial FFY` applies to ordinary industrial FFY events, including Factory-driven industrial/train FFY event values. There is no second Factory-specific FFY Echo layer.
 
 Factory repair-radius Echoes affect the canonical **broad** armored-unit repair radius provided by Factories. Factory repair-rate Echoes scale **both broad and fast** Factory armored-unit repair rates. Neither changes the fixed fast-service radius or the fixed one-chassis fast-service capacity.
+
+Port repair-radius Echoes affect the canonical **broad** naval repair radius provided by Ports. Port repair-rate Echoes scale **both broad and fast** Port naval repair rates. Ordinary Port Echoes do not change the fixed fast-service radius or the fixed one-unit fast-service capacity. An Origin-specific exception such as P31 remains owned by `ORIGIN_TRAIT_CATALOGUE.md` rather than changing this Echo mapping.
 
 A Tank-scoped mobile-unit Echo applies to the faction's canonical Tank chassis **after Origin transformation**. If P43 transforms Tanks into Heavy Artillery, Tank cost/speed/range/damage/health Echoes specialize the resulting Heavy-Artillery profile; there is no separate Heavy-Artillery Echo scope.
 
@@ -299,8 +301,8 @@ Beneficial and harmful variants use the same absolute maximum interval for a giv
 | Fort defensive pressure | **4%** |
 | Factory armored-unit repair radius | **5%** |
 | Factory armored-unit repair rate | **5%** |
-| Port passive repair radius | **5%** |
-| Port passive repair rate | **5%** |
+| Port broad repair radius | **5%** |
+| Port repair rate | **5%** |
 | Observation Post radius | **4%** |
 | Command Post coverage area | **4%** |
 | Command Post pressure | **4%** |
@@ -612,8 +614,8 @@ Accepted provisional V1 concrete-key mapping:
 | 64 | Fort Defensive Pressure | **Final Stand** |
 | 65 | Factory Armored-unit Repair Radius | **Pit Stop Episode** |
 | 66 | Factory Armored-unit Repair Rate | **Repair OVA** |
-| 67 | Port Passive Repair Radius | **Beach House** |
-| 68 | Port Passive Repair Rate | **Hot Spring Recovery** |
+| 67 | Port Broad Repair Radius | **Beach House** |
+| 68 | Port Repair Rate | **Hot Spring Recovery** |
 | 69 | Observation Post Radius | **Stare** |
 | 70 | Command Post Coverage Area | **Monologue** |
 | 71 | Command Post Offensive-pressure Magnitude | **Charisma Check** |
@@ -1063,7 +1065,7 @@ The following are intentionally **not** part of the normal Echo pool at this sta
 - split spawning, extra spawn origins, Initial Territory topology transformations, or other strategic-spawn rule changes;
 - free structures/weapons, structure ownership caps, structure grants on landing, defender survival on capture, alternate Population-growth curves, Port-only Transport requirements, armored-Transport conversion, or equivalent structural Origin mechanics;
 - direct creation of special FFY/Population event types that do not exist for ordinary factions;
-- discrete Factory fast-service parameters such as its fixed service radius or one-chassis service-slot capacity;
+- discrete Factory/Port fast-service parameters such as the ordinary fixed fast-service radius or one-unit service capacity;
 - Tank/Heavy-Artillery firing cooldown/reload, operational leash, automatic repair-retreat threshold, terrain traversal permissions, or similar doctrine-defining control axes;
 - P44 radioactive footprint size/radius/cell count or other niche modifiers whose underlying mechanic exists only because one specific Origin enables it.
 

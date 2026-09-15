@@ -428,6 +428,12 @@ export const RULE_AXIS_REGISTRY = {
     "STRUCTURE",
     { contextual: true, finalOverride: true },
   ),
+  STRUCTURE_FAST_REPAIR_RADIUS: standardScalarAxis(
+    "STRUCTURE_FAST_REPAIR_RADIUS",
+    "CELLS",
+    "STRUCTURE",
+    { echo: false, contextual: true },
+  ),
   STRUCTURE_REPAIR_RATE: standardScalarAxis(
     "STRUCTURE_REPAIR_RATE",
     "HEALTH_PER_SECOND",
