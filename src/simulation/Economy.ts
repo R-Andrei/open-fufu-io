@@ -734,7 +734,14 @@ export function resolvePassiveFfyTick(
       throw new Error(`missing passive FFY award for faction ${faction.id}`);
     }
     if (faction.status !== "ACTIVE") return faction;
-    return { ...faction, ffy: checkedCredit(faction.ffy, award) };
+    return {
+      ...faction,
+      ffy: checkedCredit(faction.ffy, award),
+      lifetimeGrossPositiveFfyEarned: checkedCredit(
+        faction.lifetimeGrossPositiveFfyEarned,
+        award,
+      ),
+    };
   });
 }
 
@@ -822,15 +829,10 @@ function scoreOwnableCellCounts(
   return Object.freeze({ owned, total });
 }
 
-function assertInitialFactionScoreSliceSupported(
+function assertFactionScorePowerSliceSupported(
   state: MatchState,
   factionId: string,
 ): void {
-  if (state.tick !== 0) {
-    throw new Error(
-      "Faction score runtime economy accounting is not materialized in this implementation slice",
-    );
-  }
   if (
     state.structures.some((structure) => structure.ownerId === factionId) ||
     state.tankProductionJobs.some((job) => job.ownerId === factionId) ||
@@ -849,16 +851,16 @@ function assertInitialFactionScoreSliceSupported(
 }
 
 /**
- * Authoritative faction score entry point. This first RED/GREEN slice supports
- * the exact tick-0, no-scoreable-asset state and rejects later incomplete states
- * until persistent Economy/Power accounting is added by the next slice.
+ * Authoritative faction score entry point. Persistent passive positive-FFY
+ * accounting is materialized; current power remains liquid-FFY-only until the
+ * replacement-value asset slice is implemented.
  */
 export function calculateFactionScore(state: MatchState, factionId: string): number {
   const faction = state.factions.find((candidate) => candidate.id === factionId);
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
   if (faction.status !== "ACTIVE") return 0;
 
-  assertInitialFactionScoreSliceSupported(state, factionId);
+  assertFactionScorePowerSliceSupported(state, factionId);
 
   const cells = scoreOwnableCellCounts(state, factionId);
   if (cells.total === 0n) {
@@ -877,7 +879,7 @@ export function calculateFactionScore(state: MatchState, factionId: string): num
     "Faction score territory ratio",
   );
   const economyRatio = scoreRatio(
-    BigInt(STARTING_FFY),
+    BigInt(STARTING_FFY) + BigInt(faction.lifetimeGrossPositiveFfyEarned),
     reference,
     "Faction score economy ratio",
   );
