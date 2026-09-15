@@ -23,6 +23,7 @@ Use this file to find the canonical owner of a concern. It is navigation only; i
 | Terrain, game-wide physical occupancy and same-tick cell-entry arbitration, physical rail topology, persistent structures, and baseline Tank | [`TERRAIN_AND_STRUCTURES.md`](./TERRAIN_AND_STRUCTURES.md) |
 | Warships, Transports, and strategic weapons | [`NAVAL_AND_STRATEGIC_WEAPONS.md`](./NAVAL_AND_STRATEGIC_WEAPONS.md) |
 | FFY economy, Factory Trains, Trade Ships, and piracy | [`FFY_ECONOMY.md`](./FFY_ECONOMY.md) |
+| Authoritative Major-Faction combined strength score, normalization, replacement-capital composition, lifecycle, and combined-score visibility | [`FACTION_SCORE.md`](./FACTION_SCORE.md) |
 | Strategic Spawn | [`STRATEGIC_SPAWN.md`](./STRATEGIC_SPAWN.md) |
 | Segment concept, generation priorities/invariants, membership semantics, stable IDs, and validation contract | [`SEGMENTS.md`](./SEGMENTS.md) |
 | Exact executable Segment generator profiles, compiled Segment binary payloads, and runtime Segment indexing | [`../src/simulation/Segments.ts`](../src/simulation/Segments.ts) |

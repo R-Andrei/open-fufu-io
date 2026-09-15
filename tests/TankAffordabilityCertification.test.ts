@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
@@ -12,6 +14,25 @@ function emptyRules() {
 }
 
 describe("Tank production affordability certification", () => {
+  it("keeps faction-score Tank replacement valuation on Tank-owned cost authority", () => {
+    const tankSource = readFileSync(
+      join(process.cwd(), "src", "simulation", "Tanks.ts"),
+      "utf8",
+    );
+    const scoreSource = readFileSync(
+      join(process.cwd(), "src", "simulation", "FactionScore.ts"),
+      "utf8",
+    );
+
+    expect(tankSource).toContain(
+      "export function baselineTankChassisReplacementCost",
+    );
+    expect(scoreSource).toContain("baselineTankChassisReplacementCost");
+    expect(scoreSource).not.toContain(
+      "function baselineTankChassisReplacementCost",
+    );
+  });
+
   it("accepts cost + 1 and debits exactly the canonical Tank cost", () => {
     const initial = createInitialMatchState(
       createMicroSimulationSpec({

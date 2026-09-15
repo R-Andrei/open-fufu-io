@@ -615,7 +615,22 @@ export function settleFactoryTrainEconomicEvents(
       positiveEvents: Object.freeze([...positiveEvents]),
       signedFacts: Object.freeze([]),
     });
-    return Object.freeze({ ...faction, ffy: resolved.balance });
+    const lifetimeGrossPositiveFfyEarned =
+      BigInt(faction.lifetimeGrossPositiveFfyEarned) +
+      resolved.positiveEvents.reduce(
+        (sum, event) => sum + BigInt(event.award),
+        0n,
+      );
+    if (lifetimeGrossPositiveFfyEarned > BigInt(Number.MAX_SAFE_INTEGER)) {
+      throw new Error(
+        "lifetime gross positive FFY earned exceeds the safe-integer range",
+      );
+    }
+    return Object.freeze({
+      ...faction,
+      ffy: resolved.balance,
+      lifetimeGrossPositiveFfyEarned: Number(lifetimeGrossPositiveFfyEarned),
+    });
   });
 
   if (survivingCityStations.length > 0) {
