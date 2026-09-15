@@ -61,6 +61,7 @@ function localSpatialState(): MatchState {
         rules,
         population,
         ffy: 25_000,
+        lifetimeGrossPositiveFfyEarned: 0,
         testMarker: 0,
       }),
       Object.freeze({
@@ -69,6 +70,7 @@ function localSpatialState(): MatchState {
         rules,
         population,
         ffy: 25_000,
+        lifetimeGrossPositiveFfyEarned: 0,
         testMarker: 0,
       }),
     ]),
