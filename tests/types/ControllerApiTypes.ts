@@ -81,8 +81,11 @@ const freeFirstPurchaseQuote: StructureBuildQuote = {
 };
 void freeFirstPurchaseQuote;
 
+declare const freshCityRef: StructureView["ref"];
+declare const upgradingCityRef: StructureView["ref"];
+
 const freshDirectLevel5City: StructureView = {
-  id: "city-p41",
+  ref: freshCityRef,
   ownerId: "faction-a",
   type: "CITY",
   cellId: 43,
@@ -95,7 +98,7 @@ const freshDirectLevel5City: StructureView = {
 void freshDirectLevel5City;
 
 const upgradingCity: StructureView = {
-  id: "city-upgrading",
+  ref: upgradingCityRef,
   ownerId: "faction-a",
   type: "CITY",
   completedLevel: 2,
