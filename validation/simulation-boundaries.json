@@ -122,6 +122,12 @@
       "rationale": "Faction score consumes Structure-owned ordinary purchase and upgrade cost truth under a neutral rule profile to derive baseline replacement capital without duplicating the canonical price registry."
     },
     {
+      "from": "src/simulation/FactionScore.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Faction score consumes Tank-owned baseline Tank and Heavy-Artillery replacement-cost truth so score valuation follows the canonical chassis purchase curve without duplicating it."
+    },
+    {
       "from": "src/simulation/FactoryTrainRuntime.ts",
       "to": "src/simulation/FactoryRailLifecycle.ts",
       "classification": "ORCHESTRATION",

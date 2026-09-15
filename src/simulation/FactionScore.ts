@@ -9,11 +9,14 @@ import {
   structureBuildPurchaseFfyPreview,
   structureUpgradePurchaseFfyPreview,
 } from "./StructuresCore";
+import {
+  baselineTankChassisReplacementCost,
+  type TankChassisType,
+} from "./Tanks";
 
 type FactionScoreState = Parameters<
   typeof calculateFactionScoreFromPreparedPowerState
 >[0];
-type TankDerivedChassis = "TANK" | "HEAVY_ARTILLERY";
 
 const BASELINE_REPLACEMENT_RULES = compileRuleProfile(RULE_AXIS_REGISTRY, {
   contributions: [],
@@ -96,35 +99,14 @@ function structureReplacementCapital(
   return total;
 }
 
-function baselineTankChassisReplacementCost(
-  precedingChassisCount: number,
-  chassisType: TankDerivedChassis,
-): bigint {
-  if (
-    !Number.isSafeInteger(precedingChassisCount) ||
-    precedingChassisCount < 0 ||
-    Object.is(precedingChassisCount, -0)
-  ) {
-    throw new Error(
-      "preceding Tank chassis count must be a non-negative safe integer",
-    );
-  }
-  const baseline = BigInt(
-    Math.min(1_000_000, 250_000 * (precedingChassisCount + 1)),
-  );
-  return chassisType === "HEAVY_ARTILLERY"
-    ? (baseline * 3n) / 2n
-    : baseline;
-}
-
 function tankDerivedReplacementCapital(
   state: FactionScoreState,
   factionId: string,
 ): bigint {
-  let chassisType: TankDerivedChassis | undefined;
+  let chassisType: TankChassisType | undefined;
   let chassisCount = 0;
 
-  const includeChassis = (candidate: TankDerivedChassis): void => {
+  const includeChassis = (candidate: TankChassisType): void => {
     if (chassisType === undefined) {
       chassisType = candidate;
     } else if (chassisType !== candidate) {
@@ -149,7 +131,7 @@ function tankDerivedReplacementCapital(
 
   let total = 0n;
   for (let index = 0; index < chassisCount; index += 1) {
-    total += baselineTankChassisReplacementCost(index, chassisType);
+    total += BigInt(baselineTankChassisReplacementCost(index, chassisType));
   }
   return total;
 }

@@ -349,6 +349,17 @@ export function tankPurchaseCost(activeTankChassis: number): number {
   return Math.min(1_000_000, 250_000 * (activeTankChassis + 1));
 }
 
+export function baselineTankChassisReplacementCost(
+  precedingChassisCount: number,
+  chassisType: TankChassisType,
+): number {
+  if (chassisType !== "TANK" && chassisType !== "HEAVY_ARTILLERY") {
+    throw new Error(`unsupported Tank chassis type: ${String(chassisType)}`);
+  }
+  const baseline = tankPurchaseCost(precedingChassisCount);
+  return chassisType === "HEAVY_ARTILLERY" ? (baseline * 3) / 2 : baseline;
+}
+
 function effectiveTankPurchaseCost(
   state: MatchState,
   ownerId: string,
@@ -368,12 +379,14 @@ function effectiveTankPurchaseCost(
   );
 
   let cost: ExactFfyValue = Object.freeze({
-    numerator: BigInt(tankPurchaseCost(activeTankChassisCount(state, ownerId))),
+    numerator: BigInt(
+      baselineTankChassisReplacementCost(
+        activeTankChassisCount(state, ownerId),
+        chassisType,
+      ),
+    ),
     denominator: 1n,
   });
-  if (chassisType === "HEAVY_ARTILLERY") {
-    cost = exactMultiply(cost, 3n, 2n);
-  }
   if (terms.some((term) => term.stage === "TERMINAL")) {
     return Object.freeze({ numerator: 0n, denominator: 1n });
   }
