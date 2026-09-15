@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 import type { CellSelector } from "../src/core/controller/ControllerApi";
+import { isTerrainScopeId } from "../src/core/rules/RuleComposition";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
@@ -13,6 +14,7 @@ import {
 } from "../src/simulation/LandOperations";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
@@ -187,14 +189,18 @@ describe("land-operation focused contracts", () => {
     );
 
     const before = match.snapshot();
-    const operationIds = before.operations
+    const pendingInputs = match
+      .acceptedInputs()
+      .filter((input) => input.tick === before.tick + 1);
+    const materialized = new TickEngine().applyAcceptedInputs(before, pendingInputs);
+    const operationIds = materialized.operations
       .filter((operation) => operation.kind === "ATTACK")
       .map((operation) => operation.id)
       .sort();
     expect(operationIds).toHaveLength(2);
-    expect(before.ownership).toEqual(["alpha", "beta"]);
+    expect(materialized.ownership).toEqual(["alpha", "beta"]);
 
-    const resolved = resolveLandTick(before, before.tick + 1);
+    const resolved = resolveLandTick(materialized, materialized.tick + 1);
     expect(resolved.ownership).toEqual(["alpha", "beta"]);
 
     const manifestationEvents = (resolved.events as ReadonlyArray<{
