@@ -86,8 +86,22 @@ export interface ControllerPublicSpatialSource {
   readonly ownership: MatchState["ownership"];
 }
 
+/** Parent-process-only faction metadata used to build an opaque worker snapshot. */
+export interface ControllerPublicFactionSource {
+  readonly requesterFactionId: string;
+  readonly entries: readonly Readonly<{
+    readonly authoritativeId: string;
+    readonly ref: FactionReadView["ref"];
+    readonly status: FactionReadView["status"];
+    readonly relation: FactionReadView["relation"];
+    readonly teamId?: string;
+  }>[];
+}
+
 export interface ControllerQuerySession {
   readonly publicSpatial: ControllerPublicSpatialSource;
+  /** Internal transport source; kept non-enumerable by the concrete session. */
+  readonly publicFactions?: ControllerPublicFactionSource;
   readonly mechanics: ControllerConstructionMechanics;
   readonly factions: Readonly<{
     get(ref: string): FactionReadView | undefined;
@@ -1057,7 +1071,7 @@ function compileSelectorMatcher(
     case "SEGMENT": {
       const segments = state.map.segments;
       if (segments === undefined) return () => false;
-      return (id) => segments.segmentIdOf(id) === selector.segmentId;
+      return (id) => state.map.segments?.segmentIdOf(id) === selector.segmentId;
     }
     case "TERRAIN":
       return (id) => state.map.terrainAt(id) === selector.terrain;
@@ -1537,19 +1551,43 @@ export function createControllerQuerySession(
     return visibleStructures(filter).length;
   };
 
+  const publicFactionEntries = Object.freeze(
+    state.factions.flatMap((faction) => {
+      if (references === undefined) return [];
+      const ref = references.issueFaction(faction.id);
+      const relation = factionRelation(state, requesterFactionId, faction.id);
+      if (ref === undefined || relation === undefined) return [];
+      return [
+        Object.freeze({
+          authoritativeId: faction.id,
+          ref,
+          status: faction.status,
+          relation,
+          ...(faction.fixedTeamId === undefined
+            ? {}
+            : { teamId: faction.fixedTeamId }),
+        }),
+      ];
+    }),
+  );
+  const publicFactions: ControllerPublicFactionSource = Object.freeze({
+    requesterFactionId,
+    entries: publicFactionEntries,
+  });
+
   const materializeFaction = (
     faction: MatchFactionState,
   ): FactionReadView | undefined => {
-    if (references === undefined) return undefined;
-    const ref = references.issueFaction(faction.id);
-    const relation = factionRelation(state, requesterFactionId, faction.id);
-    if (ref === undefined || relation === undefined) return undefined;
+    const source = publicFactionEntries.find(
+      (entry) => entry.authoritativeId === faction.id,
+    );
+    if (source === undefined) return undefined;
     return Object.freeze({
-      ref,
-      status: faction.status,
-      relation,
+      ref: source.ref,
+      status: source.status,
+      relation: source.relation,
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
-      ...(faction.fixedTeamId === undefined ? {} : { teamId: faction.fixedTeamId }),
+      ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };
 
@@ -1718,7 +1756,7 @@ export function createControllerQuerySession(
     return Object.freeze(value) as ControllerQueryUsage;
   };
 
-  return Object.freeze({
+  const session = {
     publicSpatial: Object.freeze({
       map: state.map,
       ownership: state.ownership,
@@ -1754,5 +1792,12 @@ export function createControllerQuerySession(
       cells: segmentCells,
     }),
     usage,
+  } as ControllerQuerySession;
+  Object.defineProperty(session, "publicFactions", {
+    value: publicFactions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
   });
+  return Object.freeze(session);
 }
