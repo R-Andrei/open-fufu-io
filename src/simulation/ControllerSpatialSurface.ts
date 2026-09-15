@@ -84,12 +84,18 @@ export function createControllerSpatialSurface(
     },
   });
 
-  return Object.freeze({
+  const surface = {
     map,
     cells,
     segments,
-    factions: session.factions,
     units: session.units,
     structures: session.structures,
+  } as unknown as ControllerSpatialSurface;
+  Object.defineProperty(surface, "factions", {
+    value: session.factions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
   });
+  return Object.freeze(surface);
 }

@@ -49,8 +49,6 @@ import {
 } from "../core/visibility/TacticalVisibility";
 import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
-import type { MobileUnitState } from "./MobileUnits";
-import type { ControllerReferenceSession } from "./ControllerReferenceSession";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -176,6 +174,29 @@ interface StructureVisibilityContext {
   readonly requesterFactionId: string;
   readonly remoteObservationFields: readonly StructureFieldSource[];
   readonly enemyBlackoutFields: readonly StructureFieldSource[];
+}
+
+interface ControllerQueryMobileUnitState {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly type: MobileUnitType;
+  readonly cellId: CellId;
+  readonly strategicDestinationCellId?: CellId;
+}
+
+interface ControllerQueryReferenceSession {
+  issue(
+    viewerFactionId: string,
+    domain: "UNIT" | "STRUCTURE",
+    authoritativeId: string,
+  ): string | undefined;
+  resolve(
+    viewerFactionId: string,
+    domain: "UNIT" | "STRUCTURE",
+    ref: string,
+  ): string | undefined;
+  issueFaction(factionId: string): FactionReadView["ref"] | undefined;
+  resolveFaction(ref: string): string | undefined;
 }
 
 function orderedExplicitCellIds(
@@ -620,7 +641,7 @@ function structureIsLawfullyVisible(
 function unitIsLawfullyVisible(
   state: MatchState,
   context: StructureVisibilityContext,
-  unit: MobileUnitState,
+  unit: ControllerQueryMobileUnitState,
 ): boolean {
   const concealed =
     p45ConcealsCellFromRequester(state, context, unit.cellId) ||
@@ -688,7 +709,10 @@ function materializeStructureView(
   });
 }
 
-function materializeUnitView(unit: MobileUnitState, ref: UnitRef): UnitView {
+function materializeUnitView(
+  unit: ControllerQueryMobileUnitState,
+  ref: UnitRef,
+): UnitView {
   return Object.freeze({
     ref,
     ownerId: unit.ownerId,
@@ -1260,7 +1284,7 @@ export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
   limits: ControllerQueryBudgetLimits,
-  references?: ControllerReferenceSession,
+  references?: ControllerQueryReferenceSession,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
@@ -1335,7 +1359,7 @@ export function createControllerQuerySession(
   };
 
   const unitMatchesFilter = (
-    unit: MobileUnitState,
+    unit: ControllerQueryMobileUnitState,
     filter: UnitFindFilter | undefined,
   ): boolean =>
     factionMatches(unit.ownerId, filter?.faction) &&
@@ -1352,7 +1376,9 @@ export function createControllerQuerySession(
     matchesTypes<StructureType>(structure.type, filter?.types) &&
     matchesLocation(state, structure.cellId, filter?.location);
 
-  const visibleUnits = (filter?: UnitFindFilter): readonly MobileUnitState[] =>
+  const visibleUnits = (
+    filter?: UnitFindFilter,
+  ): readonly ControllerQueryMobileUnitState[] =>
     Object.freeze(
       state.mobileUnits
         .filter(
@@ -1681,6 +1707,17 @@ export function createControllerQuerySession(
   const segmentCells = (id: SegmentId): CellSelector =>
     Object.freeze({ kind: "SEGMENT" as const, segmentId: id });
 
+  const usage = (): ControllerQueryUsage => {
+    const value = { queries, materializedCells };
+    Object.defineProperty(value, "materializedEntityViews", {
+      value: materializedEntityViews,
+      enumerable: false,
+      configurable: false,
+      writable: false,
+    });
+    return Object.freeze(value) as ControllerQueryUsage;
+  };
+
   return Object.freeze({
     publicSpatial: Object.freeze({
       map: state.map,
@@ -1716,7 +1753,6 @@ export function createControllerQuerySession(
       list: listSegments,
       cells: segmentCells,
     }),
-    usage: () =>
-      Object.freeze({ queries, materializedCells, materializedEntityViews }),
+    usage,
   });
 }

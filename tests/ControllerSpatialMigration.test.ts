@@ -202,13 +202,6 @@ describe("controller spatial API migration", () => {
         ],
         initialStructureGrants: [
           {
-            structureId: "alpha-fort",
-            ownerId: "alpha",
-            type: "FORT",
-            cellId: 0,
-            level: 1,
-          },
-          {
             structureId: "beta-fort",
             ownerId: "beta",
             type: "FORT",
@@ -399,6 +392,9 @@ describe("controller spatial API migration", () => {
         width,
         height: 1,
         terrain: Array.from({ length: width }, () => "PLAINS"),
+        initialOwners: Array.from({ length: width }, (_, cellId) =>
+          cellId === width - 1 ? "alpha" : null,
+        ),
         factions: [{ id: "alpha", rules: emptyRules() }],
         initialStructureGrants: [
           {

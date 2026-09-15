@@ -478,7 +478,7 @@ export interface FactionsApi {
   get(ref: FactionRef): FactionReadView | undefined;
   find(filter?: FactionFindFilter): readonly FactionReadView[];
   proximity(ref: FactionRef): number | undefined;
-  /** Symmetric team-normalized current war state; legacy actor-ID migration is later #178 scope. */
+  /** Symmetric team-normalized current war state; legacy actor-ID migration remains deferred. */
   atWar(a: FactionId, b: FactionId): boolean;
 }
 
