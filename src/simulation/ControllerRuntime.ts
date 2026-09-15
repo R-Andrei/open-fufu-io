@@ -1019,6 +1019,7 @@ export function evaluateControllerRound(
   previousFaultCounts: ReadonlyMap<string, number>,
   previousConsecutiveFaultCounts: ReadonlyMap<string, number> = new Map(),
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
+  controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
   const orderedFactionIds = [...state.factions]
     .map((faction) => faction.id)
@@ -1042,6 +1043,7 @@ export function evaluateControllerRound(
       state,
       factionId,
       CONTROLLER_QUERY_LIMITS,
+      controllerReferences,
     );
 
     try {

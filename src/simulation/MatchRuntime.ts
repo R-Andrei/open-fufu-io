@@ -681,6 +681,7 @@ export class MatchRuntime {
         this.controllerFaultCounts,
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
+        this.controllerReferences,
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
