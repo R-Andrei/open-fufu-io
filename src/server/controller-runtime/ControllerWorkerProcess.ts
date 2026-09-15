@@ -3,8 +3,20 @@ import { writeSync } from "node:fs";
 
 import ivm from "isolated-vm";
 
-import type { CellId, CellSelector, SegmentId, TerrainType } from "../../core/controller/ControllerApi";
+import type {
+  CellId,
+  CellSelector,
+  FactionFindFilter,
+  FactionReadView,
+  SegmentId,
+  StructureFindFilter,
+  StructureLocator,
+  TerrainType,
+  UnitFindFilter,
+  UnitLocator,
+} from "../../core/controller/ControllerApi";
 import {
+  PRODUCTION_CONTROLLER_LIMITS,
   validateProductionControllerOutput,
   type ControllerWorkerRequest,
   type ControllerWorkerResponse,
@@ -27,7 +39,19 @@ type ControllerWorkerQueryRequest =
       args: readonly [CellId, CellId];
     }>
   | Readonly<{ operation: "SEGMENTS_GET"; args: readonly [SegmentId] }>
-  | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>;
+  | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>
+  | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
+  | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
+  | Readonly<{
+      operation: "STRUCTURES_FIND";
+      args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_COUNT";
+      args: readonly [StructureFindFilter?];
+    }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
   cacheKey: number;
@@ -44,6 +68,20 @@ type WorkerOwnershipSnapshot = Readonly<{
   ownerCodes: Uint32Array;
 }>;
 
+type WorkerPublicFactionEntry = Readonly<{
+  ref: string;
+  status: FactionReadView["status"];
+  relation: FactionReadView["relation"];
+  territoryCells: number;
+  ownerCode?: number;
+  teamId?: string;
+}>;
+
+type WorkerPublicFactionSnapshot = Readonly<{
+  requesterOwnerCode?: number;
+  entries: readonly WorkerPublicFactionEntry[];
+}>;
+
 type WorkerPublicSpatialUpdate = Readonly<{
   cacheKey: number;
   ownershipCacheKey: number;
@@ -55,6 +93,7 @@ type WorkerRequestEnvelope = Readonly<{
   requestId: number;
   request: ControllerWorkerRequest;
   publicSpatial?: WorkerPublicSpatialUpdate;
+  publicFactions?: WorkerPublicFactionSnapshot;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -325,9 +364,16 @@ const invokeEntrypointSource = `
     }
   };
 
+  let queryCount = 0;
+  const consumeQuery = () => {
+    if (queryCount >= $5) throw new Error("controller query budget exhausted");
+    queryCount += 1;
+  };
+
   let hostQuerySequence = 0;
   let hostQuerySettlement = primordials.promiseResolve();
   const hostQuery = (operation, args) => {
+    consumeQuery();
     hostQuerySequence += 1;
     const bridgeResult = $1.apply(
       undefined,
@@ -353,7 +399,7 @@ const invokeEntrypointSource = `
     return frozenResult;
   };
 
-  const localSpatial = (operation, args) => {
+  const localRead = (operation, args) => {
     const value = $2.applySync(
       undefined,
       [{ operation, args }],
@@ -364,8 +410,14 @@ const invokeEntrypointSource = `
     );
     return deepFreeze(value);
   };
+  const localSpatial = (operation, args) => localRead(operation, args);
+  const localFaction = (operation, args) => {
+    consumeQuery();
+    return localRead(operation, args);
+  };
 
   const hasLocalSpatial = $3 === true;
+  const hasEntityReads = $4 === true;
   const input = deepFreeze({
     ...globalThis.__openFufuInput,
     ...(hasLocalSpatial
@@ -407,7 +459,41 @@ const invokeEntrypointSource = `
       ...(hasLocalSpatial
         ? { cellIds: (id) => localSpatial("SEGMENT_CELL_IDS", [id]) }
         : {})
-    }
+    },
+    ...(hasEntityReads
+      ? {
+          factions: {
+            get: (ref) => localFaction("FACTIONS_GET", [ref]),
+            find: (filter) =>
+              filter === undefined
+                ? localFaction("FACTIONS_FIND", [])
+                : localFaction("FACTIONS_FIND", [filter]),
+            proximity: (ref) => localFaction("FACTIONS_PROXIMITY", [ref])
+          },
+          units: {
+            get: (locator) => hostQuery("UNITS_GET", [locator]),
+            find: (filter) =>
+              filter === undefined
+                ? hostQuery("UNITS_FIND", [])
+                : hostQuery("UNITS_FIND", [filter]),
+            count: (filter) =>
+              filter === undefined
+                ? hostQuery("UNITS_COUNT", [])
+                : hostQuery("UNITS_COUNT", [filter])
+          },
+          structures: {
+            get: (locator) => hostQuery("STRUCTURES_GET", [locator]),
+            find: (filter) =>
+              filter === undefined
+                ? hostQuery("STRUCTURES_FIND", [])
+                : hostQuery("STRUCTURES_FIND", [filter]),
+            count: (filter) =>
+              filter === undefined
+                ? hostQuery("STRUCTURES_COUNT", [])
+                : hostQuery("STRUCTURES_COUNT", [filter])
+          }
+        }
+      : {})
   });
 
   return (async () => {
@@ -415,14 +501,14 @@ const invokeEntrypointSource = `
     try {
       output = await $0(input);
     } catch {
-      return { status: "RUNTIME_ERROR" };
+      return { status: "RUNTIME_ERROR", queries: queryCount };
     }
 
-    if (output === undefined) return { status: "OK" };
+    if (output === undefined) return { status: "OK", queries: queryCount };
     try {
-      return { status: "OK", output: materialize(output) };
+      return { status: "OK", queries: queryCount, output: materialize(output) };
     } catch {
-      return { status: "INVALID_OUTPUT" };
+      return { status: "INVALID_OUTPUT", queries: queryCount };
     }
   })();
 `;
@@ -482,6 +568,26 @@ function isSelectorArgument(value: unknown): value is CellSelector {
   return isPlainRecord(value) && typeof value.kind === "string";
 }
 
+function isEntityFilterArgument(value: unknown): value is UnitFindFilter | StructureFindFilter {
+  return isPlainRecord(value);
+}
+
+function isUnitLocatorArgument(value: unknown): value is UnitLocator {
+  return (
+    isPlainRecord(value) &&
+    ((typeof value.ref === "string" && !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" && !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
+}
+
+function isStructureLocatorArgument(value: unknown): value is StructureLocator {
+  return isUnitLocatorArgument(value) as boolean;
+}
+
+function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {
+  return args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]));
+}
+
 function isControllerWorkerQueryRequest(
   value: unknown,
 ): value is ControllerWorkerQueryRequest {
@@ -510,6 +616,15 @@ function isControllerWorkerQueryRequest(
       );
     case "SEGMENTS_LIST":
       return args.length === 0;
+    case "UNITS_GET":
+      return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_FIND":
+    case "UNITS_COUNT":
+    case "STRUCTURES_FIND":
+    case "STRUCTURES_COUNT":
+      return isOptionalEntityFilterArgs(args);
+    case "STRUCTURES_GET":
+      return args.length === 1 && isStructureLocatorArgument(args[0]);
     default:
       return false;
   }
@@ -703,6 +818,73 @@ function installPublicSpatialUpdate(
   return update.cacheKey;
 }
 
+function validatePublicFactionSnapshot(
+  value: WorkerPublicFactionSnapshot | undefined,
+): WorkerPublicFactionSnapshot | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainRecord(value) || !Array.isArray(value.entries)) {
+    throw new Error("controller public faction snapshot is invalid");
+  }
+  if (
+    value.requesterOwnerCode !== undefined &&
+    (!Number.isSafeInteger(value.requesterOwnerCode) || value.requesterOwnerCode <= 0)
+  ) {
+    throw new Error("controller public faction requester code is invalid");
+  }
+
+  const refs = new Set<string>();
+  const entries = value.entries.map((entry) => {
+    if (!isPlainRecord(entry)) {
+      throw new Error("controller public faction entry is invalid");
+    }
+    const allowed = new Set([
+      "ref",
+      "status",
+      "relation",
+      "territoryCells",
+      "ownerCode",
+      "teamId",
+    ]);
+    if (Object.keys(entry).some((key) => !allowed.has(key))) {
+      throw new Error("controller public faction entry exposes unsupported identity data");
+    }
+    if (
+      typeof entry.ref !== "string" ||
+      entry.ref.length === 0 ||
+      refs.has(entry.ref) ||
+      typeof entry.status !== "string" ||
+      (entry.relation !== "SELF" &&
+        entry.relation !== "ALLY" &&
+        entry.relation !== "ENEMY") ||
+      !Number.isSafeInteger(entry.territoryCells) ||
+      entry.territoryCells < 0 ||
+      (entry.ownerCode !== undefined &&
+        (!Number.isSafeInteger(entry.ownerCode) || entry.ownerCode <= 0)) ||
+      (entry.teamId !== undefined && typeof entry.teamId !== "string")
+    ) {
+      throw new Error("controller public faction entry is invalid");
+    }
+    refs.add(entry.ref);
+    return Object.freeze({
+      ref: entry.ref,
+      status: entry.status as FactionReadView["status"],
+      relation: entry.relation,
+      territoryCells: entry.territoryCells as number,
+      ...(entry.ownerCode === undefined
+        ? {}
+        : { ownerCode: entry.ownerCode as number }),
+      ...(entry.teamId === undefined ? {} : { teamId: entry.teamId as string }),
+    });
+  });
+
+  return Object.freeze({
+    ...(value.requesterOwnerCode === undefined
+      ? {}
+      : { requesterOwnerCode: value.requesterOwnerCode }),
+    entries: Object.freeze(entries),
+  });
+}
+
 function activePublicSpatial(cacheKey: number | undefined): WorkerPublicSpatialCache {
   const cache = publicSpatialCache;
   if (
@@ -815,6 +997,115 @@ function resolvePublicSpatial(
   throw new Error("invalid controller local spatial request");
 }
 
+function materializeFactionView(entry: WorkerPublicFactionEntry): FactionReadView {
+  return Object.freeze({
+    ref: entry.ref as FactionReadView["ref"],
+    status: entry.status,
+    relation: entry.relation,
+    territoryCells: entry.territoryCells,
+    ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
+  });
+}
+
+function factionProximity(
+  cache: WorkerPublicSpatialCache,
+  factions: WorkerPublicFactionSnapshot,
+  target: WorkerPublicFactionEntry,
+): number | undefined {
+  const requesterOwnerCode = factions.requesterOwnerCode;
+  const targetOwnerCode = target.ownerCode;
+  if (requesterOwnerCode === undefined || targetOwnerCode === undefined) {
+    return undefined;
+  }
+
+  const requesterCells: number[] = [];
+  const targetCells: number[] = [];
+  for (let cellId = 0; cellId < cache.ownerCodes.length; cellId += 1) {
+    const ownerCode = cache.ownerCodes[cellId]!;
+    if (ownerCode === requesterOwnerCode) requesterCells.push(cellId);
+    if (ownerCode === targetOwnerCode) targetCells.push(cellId);
+  }
+  if (requesterCells.length === 0 || targetCells.length === 0) return undefined;
+
+  let minimum = Number.POSITIVE_INFINITY;
+  for (const requesterCell of requesterCells) {
+    const requesterX = requesterCell % cache.width;
+    const requesterY = Math.floor(requesterCell / cache.width);
+    for (const targetCell of targetCells) {
+      const targetX = targetCell % cache.width;
+      const targetY = Math.floor(targetCell / cache.width);
+      minimum = Math.min(
+        minimum,
+        Math.hypot(requesterX - targetX, requesterY - targetY),
+      );
+    }
+  }
+  return minimum;
+}
+
+function resolvePublicFactionRead(
+  cacheKey: number | undefined,
+  factions: WorkerPublicFactionSnapshot,
+  value: unknown,
+): unknown {
+  if (!isPlainRecord(value) || !Array.isArray(value.args)) {
+    throw new Error("invalid controller local faction request");
+  }
+  const args = value.args;
+
+  switch (value.operation) {
+    case "FACTIONS_GET": {
+      if (args.length !== 1 || typeof args[0] !== "string") break;
+      const entry = factions.entries.find((candidate) => candidate.ref === args[0]);
+      return entry === undefined ? undefined : materializeFactionView(entry);
+    }
+    case "FACTIONS_FIND": {
+      if (args.length > 1 || (args.length === 1 && !isPlainRecord(args[0]))) break;
+      const filter = args[0] as FactionFindFilter | undefined;
+      const entries = factions.entries.filter(
+        (entry) =>
+          (filter?.relation === undefined || entry.relation === filter.relation) &&
+          (filter?.status === undefined || entry.status === filter.status),
+      );
+      const cache = activePublicSpatial(cacheKey);
+      entries.sort((left, right) => {
+        if (filter?.orderBy === "PROXIMITY") {
+          const leftDistance =
+            factionProximity(cache, factions, left) ?? Number.POSITIVE_INFINITY;
+          const rightDistance =
+            factionProximity(cache, factions, right) ?? Number.POSITIVE_INFINITY;
+          if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+        }
+        return left.ref < right.ref ? -1 : left.ref > right.ref ? 1 : 0;
+      });
+      return entries.map(materializeFactionView);
+    }
+    case "FACTIONS_PROXIMITY": {
+      if (args.length !== 1 || typeof args[0] !== "string") break;
+      const target = factions.entries.find((candidate) => candidate.ref === args[0]);
+      if (target === undefined) return undefined;
+      return factionProximity(activePublicSpatial(cacheKey), factions, target);
+    }
+  }
+  throw new Error("invalid controller local faction request");
+}
+
+function resolveLocalRead(
+  cacheKey: number | undefined,
+  factions: WorkerPublicFactionSnapshot | undefined,
+  value: unknown,
+): unknown {
+  if (isPlainRecord(value) && typeof value.operation === "string") {
+    if (value.operation.startsWith("FACTIONS_")) {
+      if (factions === undefined) {
+        throw new Error("controller public faction snapshot is unavailable");
+      }
+      return resolvePublicFactionRead(cacheKey, factions, value);
+    }
+  }
+  return resolvePublicSpatial(cacheKey, value);
+}
+
 function createModuleInitializationDeadline(timeoutMs: number): bigint {
   return process.hrtime.bigint() + BigInt(timeoutMs) * 1_000_000n;
 }
@@ -891,11 +1182,12 @@ async function evaluateModuleWithinInitializationDeadline(
 async function executeRequest(
   requestId: number,
   request: ControllerWorkerRequest,
-  spatialCacheKey?: number,
+  spatialCacheKey: number | undefined,
+  publicFactions: WorkerPublicFactionSnapshot | undefined,
 ): Promise<ControllerWorkerResponse> {
   let isolate: ivm.Isolate | undefined;
   let queryReference: ivm.Reference | undefined;
-  let spatialReference: ivm.Reference | undefined;
+  let localReference: ivm.Reference | undefined;
 
   try {
     isolate = new ivm.Isolate({
@@ -1006,8 +1298,8 @@ async function executeRequest(
       }
       return requestHostQuery(requestId, sequence as number, query);
     });
-    spatialReference = new ivm.Reference((query: unknown) =>
-      resolvePublicSpatial(spatialCacheKey, query),
+    localReference = new ivm.Reference((query: unknown) =>
+      resolveLocalRead(spatialCacheKey, publicFactions, query),
     );
 
     let invocationResult: unknown;
@@ -1017,8 +1309,10 @@ async function executeRequest(
         [
           entrypoint.derefInto(),
           queryReference,
-          spatialReference,
+          localReference,
           spatialCacheKey !== undefined,
+          publicFactions !== undefined,
+          PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
         ],
         {
           timeout: request.timeoutMs,
@@ -1047,6 +1341,14 @@ async function executeRequest(
     }
 
     const invocationRecord = invocationResult as Record<string, unknown>;
+    const queryCount = invocationRecord.queries;
+    if (
+      !Number.isSafeInteger(queryCount) ||
+      (queryCount as number) < 0 ||
+      (queryCount as number) > PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision
+    ) {
+      return workerFault("RUNTIME_ERROR");
+    }
     if (invocationRecord.status === "RUNTIME_ERROR") {
       return workerFault("RUNTIME_ERROR");
     }
@@ -1069,7 +1371,7 @@ async function executeRequest(
       ok: true as const,
       output: validated.output,
       usage: Object.freeze({
-        queries: 0,
+        queries: queryCount as number,
         materializedCells: 0,
       }),
     });
@@ -1078,7 +1380,7 @@ async function executeRequest(
     if (isMemoryLimitError(error)) return workerFault("MEMORY_LIMIT");
     return workerFault("RUNTIME_ERROR");
   } finally {
-    spatialReference?.release();
+    localReference?.release();
     queryReference?.release();
     if (isolate !== undefined && !isolate.isDisposed) {
       isolate.dispose();
@@ -1093,10 +1395,12 @@ async function handleInvocation(message: WorkerRequestEnvelope): Promise<void> {
   let response: ControllerWorkerResponse;
   try {
     spatialCacheKey = installPublicSpatialUpdate(message.publicSpatial);
+    const publicFactions = validatePublicFactionSnapshot(message.publicFactions);
     response = await executeRequest(
       message.requestId,
       message.request,
       spatialCacheKey,
+      publicFactions,
     );
   } catch {
     response = workerFault("RUNTIME_ERROR");
