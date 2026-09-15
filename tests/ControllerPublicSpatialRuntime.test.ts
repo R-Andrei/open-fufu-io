@@ -4,6 +4,7 @@ import type { ControllerQuerySession } from "../src/simulation/ControllerQueryPr
 import {
   evaluateControllerRound,
 } from "../src/simulation/ControllerRuntime";
+import * as Economy from "../src/simulation/Economy";
 import type { MatchState } from "../src/simulation/MatchState";
 import {
   compileSegments,
@@ -115,6 +116,10 @@ async function waitFor(predicate: () => boolean): Promise<void> {
 }
 
 describe("controller local public spatial runtime", () => {
+  it("keeps the authoritative faction-score producer out of Economy", () => {
+    expect(Economy).not.toHaveProperty("calculateFactionScore");
+  });
+
   it("serves map, public ownership, and canonical Segment cells synchronously inside the isolate", async () => {
     const state = localSpatialState();
     const pool = new ControllerProcessWorkerPool({ size: 1 });
