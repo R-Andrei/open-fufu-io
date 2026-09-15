@@ -76,6 +76,7 @@ export interface MatchFactionState {
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
   readonly ffy: number;
+  readonly lifetimeGrossPositiveFfyEarned: number;
   readonly successfulStructurePurchaseTypes: readonly StructureType[];
   readonly testMarker: number;
   readonly fixedTeamId?: string;
@@ -149,13 +150,19 @@ function freezeFactions(
   factions: readonly MatchFactionState[],
 ): readonly MatchFactionState[] {
   return Object.freeze(
-    factions.map((faction) =>
-      Object.freeze({
+    factions.map((faction) => {
+      assertNonNegativeSafeInteger(
+        faction.lifetimeGrossPositiveFfyEarned,
+        "lifetimeGrossPositiveFfyEarned",
+      );
+      return Object.freeze({
         id: faction.id,
         status: faction.status,
         rules: faction.rules,
         population: createPopulationState(faction.population),
         ffy: materializeFfyBalance(faction.ffy),
+        lifetimeGrossPositiveFfyEarned:
+          faction.lifetimeGrossPositiveFfyEarned,
         successfulStructurePurchaseTypes: freezeSuccessfulStructurePurchaseTypes(
           faction.successfulStructurePurchaseTypes ?? [],
         ),
@@ -163,8 +170,8 @@ function freezeFactions(
         ...(faction.fixedTeamId === undefined
           ? {}
           : { fixedTeamId: faction.fixedTeamId }),
-      }),
-    ),
+      });
+    }),
   );
 }
 
@@ -643,6 +650,7 @@ function createEmptyInitialMatchState(
         rules: faction.rules,
         population: createEmptyPopulationState(),
         ffy: STARTING_FFY,
+        lifetimeGrossPositiveFfyEarned: 0,
         successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
         ...(faction.fixedTeamId === undefined
@@ -750,6 +758,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           faction.population.neutralSettlementHalfResidual,
       },
       ffy: faction.ffy,
+      lifetimeGrossPositiveFfyEarned: faction.lifetimeGrossPositiveFfyEarned,
       successfulStructurePurchaseTypes: [
         ...(faction.successfulStructurePurchaseTypes ?? []),
       ],
