@@ -737,3 +737,159 @@ export function resolvePassiveFfyTick(
     return { ...faction, ffy: checkedCredit(faction.ffy, award) };
   });
 }
+
+interface ScoreExactRatio {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+interface WeightedScoreRatio {
+  readonly weight: bigint;
+  readonly ratio: ScoreExactRatio;
+}
+
+function scoreIntegerSqrt(value: bigint): bigint {
+  if (value < 0n) {
+    throw new Error("Faction score square root requires a non-negative value");
+  }
+  if (value < 2n) return value;
+
+  let estimate = 1n << ((BigInt(value.toString(2).length) + 1n) >> 1n);
+  while (true) {
+    const next = (estimate + value / estimate) >> 1n;
+    if (next >= estimate) return estimate;
+    estimate = next;
+  }
+}
+
+function scoreRatio(
+  numerator: bigint,
+  denominator: bigint,
+  label: string,
+): ScoreExactRatio {
+  if (numerator < 0n || denominator <= 0n) {
+    throw new Error(`${label} must be a non-negative exact ratio`);
+  }
+  return Object.freeze({ numerator, denominator });
+}
+
+function floorWeightedScoreRoots(terms: readonly WeightedScoreRatio[]): number {
+  for (let bits = 32; bits <= 4096; bits *= 2) {
+    const scale = 1n << BigInt(bits);
+    const scaleSquared = scale * scale;
+    let lower = 0n;
+    let upper = 0n;
+    let hasStrictUpper = false;
+
+    for (const term of terms) {
+      const scaledNumerator = term.ratio.numerator * scaleSquared;
+      const rootFloor = scoreIntegerSqrt(
+        scaledNumerator / term.ratio.denominator,
+      );
+      const exactAtScale =
+        rootFloor * rootFloor * term.ratio.denominator === scaledNumerator;
+      lower += term.weight * rootFloor;
+      upper += term.weight * (exactAtScale ? rootFloor : rootFloor + 1n);
+      if (!exactAtScale) hasStrictUpper = true;
+    }
+
+    const minimumFloor = lower / scale;
+    const maximumFloor = hasStrictUpper
+      ? (upper - 1n) / scale
+      : upper / scale;
+    if (minimumFloor === maximumFloor) {
+      if (minimumFloor > MAX_SAFE_BIGINT) {
+        throw new Error("Faction score exceeds the safe-integer range");
+      }
+      return Number(minimumFloor);
+    }
+  }
+
+  throw new Error("Faction score exact square-root floor did not converge");
+}
+
+function scoreOwnableCellCounts(
+  state: MatchState,
+  factionId: string,
+): Readonly<{ owned: bigint; total: bigint }> {
+  let owned = 0n;
+  let total = 0n;
+  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+    if (!landTerrainBaseSpec(state.map.terrainAt(cellId)).conquerable) continue;
+    total += 1n;
+    if ((state.ownership[cellId] ?? null) === factionId) owned += 1n;
+  }
+  return Object.freeze({ owned, total });
+}
+
+function assertInitialFactionScoreSliceSupported(
+  state: MatchState,
+  factionId: string,
+): void {
+  if (state.tick !== 0) {
+    throw new Error(
+      "Faction score runtime economy accounting is not materialized in this implementation slice",
+    );
+  }
+  if (
+    state.structures.some((structure) => structure.ownerId === factionId) ||
+    state.tankProductionJobs.some((job) => job.ownerId === factionId) ||
+    state.mobileUnits.some(
+      (unit) =>
+        unit.ownerId === factionId &&
+        (unit.type === "TANK" ||
+          unit.type === "HEAVY_ARTILLERY" ||
+          unit.type === "WARSHIP"),
+    )
+  ) {
+    throw new Error(
+      "Faction score asset replacement valuation is not materialized in this implementation slice",
+    );
+  }
+}
+
+/**
+ * Authoritative faction score entry point. This first RED/GREEN slice supports
+ * the exact tick-0, no-scoreable-asset state and rejects later incomplete states
+ * until persistent Economy/Power accounting is added by the next slice.
+ */
+export function calculateFactionScore(state: MatchState, factionId: string): number {
+  const faction = state.factions.find((candidate) => candidate.id === factionId);
+  if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
+  if (faction.status !== "ACTIVE") return 0;
+
+  assertInitialFactionScoreSliceSupported(state, factionId);
+
+  const cells = scoreOwnableCellCounts(state, factionId);
+  if (cells.total === 0n) {
+    throw new Error("Faction score requires at least one ownable map cell");
+  }
+  if (state.factions.length <= 0) {
+    throw new Error("Faction score requires at least one starting Major faction");
+  }
+
+  const reference =
+    BigInt(STARTING_FFY) +
+    BigInt(BASELINE_PASSIVE_FFY_PER_TICK) * BigInt(state.tick);
+  const territoryRatio = scoreRatio(
+    cells.owned * BigInt(state.factions.length),
+    cells.total,
+    "Faction score territory ratio",
+  );
+  const economyRatio = scoreRatio(
+    BigInt(STARTING_FFY),
+    reference,
+    "Faction score economy ratio",
+  );
+  const powerRatio = scoreRatio(
+    BigInt(faction.ffy),
+    reference,
+    "Faction score current-power ratio",
+  );
+
+  return floorWeightedScoreRoots([
+    { weight: 300n, ratio: territoryRatio },
+    { weight: 250n, ratio: economyRatio },
+    { weight: 450n, ratio: powerRatio },
+  ]);
+}

@@ -1,6 +1,6 @@
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
-import { calculateFactionScore } from "../src/simulation/FactionScore";
+import { calculateFactionScore } from "../src/simulation/Economy";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { createInitialMatchState } from "../src/simulation/MatchState";
 
