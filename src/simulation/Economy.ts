@@ -815,18 +815,46 @@ function floorWeightedScoreRoots(terms: readonly WeightedScoreRatio[]): number {
   throw new Error("Faction score exact square-root floor did not converge");
 }
 
+interface ScoreTerritoryAggregate {
+  readonly map: MatchState["map"];
+  readonly total: bigint;
+  readonly ownedByFaction: ReadonlyMap<string, bigint>;
+}
+
+const SCORE_TERRITORY_AGGREGATE_CACHE = new WeakMap<
+  MatchState["ownership"],
+  ScoreTerritoryAggregate
+>();
+
 function scoreOwnableCellCounts(
   state: MatchState,
   factionId: string,
 ): Readonly<{ owned: bigint; total: bigint }> {
-  let owned = 0n;
-  let total = 0n;
-  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
-    if (!landTerrainBaseSpec(state.map.terrainAt(cellId)).conquerable) continue;
-    total += 1n;
-    if ((state.ownership[cellId] ?? null) === factionId) owned += 1n;
+  let aggregate = SCORE_TERRITORY_AGGREGATE_CACHE.get(state.ownership);
+  if (aggregate === undefined || aggregate.map !== state.map) {
+    let total = 0n;
+    const ownedByFaction = new Map<string, bigint>();
+    for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+      if (!landTerrainBaseSpec(state.map.terrainAt(cellId)).conquerable) continue;
+      total += 1n;
+      const ownerId = state.ownership[cellId] ?? null;
+      if (ownerId === null) continue;
+      ownedByFaction.set(
+        ownerId,
+        (ownedByFaction.get(ownerId) ?? 0n) + 1n,
+      );
+    }
+    aggregate = Object.freeze({
+      map: state.map,
+      total,
+      ownedByFaction,
+    });
+    SCORE_TERRITORY_AGGREGATE_CACHE.set(state.ownership, aggregate);
   }
-  return Object.freeze({ owned, total });
+  return Object.freeze({
+    owned: aggregate.ownedByFaction.get(factionId) ?? 0n,
+    total: aggregate.total,
+  });
 }
 
 function assertFactionScorePowerSliceSupported(
