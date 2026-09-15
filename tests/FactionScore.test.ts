@@ -11,7 +11,10 @@ import {
 } from "../src/simulation/MatchState";
 import { createUnitDestroyedEvent } from "../src/simulation/SimulationEvents";
 import { tryPurchaseStructureUpgrade } from "../src/simulation/StructuresCore";
-import { tryStartTankProduction } from "../src/simulation/Tanks";
+import {
+  advanceTankProductionPhase,
+  tryStartTankProduction,
+} from "../src/simulation/Tanks";
 import { TickEngine } from "../src/simulation/TickEngine";
 import { createTrainDispatchEconomicSnapshot } from "../src/simulation/TrainService";
 
@@ -310,7 +313,7 @@ describe("authoritative faction strength score", () => {
       expectedScore: 3250,
     },
   ])(
-    "keeps $label purchase value in Current Power while its paid chassis is still a production job",
+    "keeps $label replacement value through paid production and deployment",
     ({ traits, fundedFfy, expectedCost, expectedChassis, expectedScore }) => {
       const funded = tankProductionScoreState(fundedFfy, traits);
       expect(calculateFactionScore(funded, "alpha")).toBe(expectedScore);
@@ -336,6 +339,27 @@ describe("authoritative faction strength score", () => {
       // The accepted purchase converts liquid FFY into already-paid committed
       // chassis capital, so Current Power must not fall while the job is building.
       expect(calculateFactionScore(purchase.state, "alpha")).toBe(expectedScore);
+
+      const buildSteps =
+        purchase.job.state === "BUILDING" ? purchase.job.remainingTicks : 0;
+      expect(buildSteps).toBeGreaterThan(0);
+      let deployed = purchase.state;
+      for (let step = 0; step < buildSteps; step += 1) {
+        deployed = advanceTankProductionPhase(deployed);
+      }
+
+      expect(
+        deployed.tankProductionJobs.some((job) => job.ownerId === "alpha"),
+      ).toBe(false);
+      expect(deployed.mobileUnits).toContainEqual(
+        expect.objectContaining({
+          ownerId: "alpha",
+          type: expectedChassis,
+        }),
+      );
+
+      // Deployment changes lifecycle representation, not replacement capital.
+      expect(calculateFactionScore(deployed, "alpha")).toBe(expectedScore);
     },
   );
 });
