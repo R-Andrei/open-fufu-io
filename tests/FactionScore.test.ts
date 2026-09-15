@@ -1,12 +1,15 @@
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { calculateFactionScore } from "../src/simulation/Economy";
+import { settleFactoryTrainEconomicEvents } from "../src/simulation/FactoryTrainRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   canonicalMatchStateSerialization,
   createInitialMatchState,
 } from "../src/simulation/MatchState";
+import { createUnitDestroyedEvent } from "../src/simulation/SimulationEvents";
 import { TickEngine } from "../src/simulation/TickEngine";
+import { createTrainDispatchEconomicSnapshot } from "../src/simulation/TrainService";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -74,5 +77,60 @@ describe("authoritative faction strength score", () => {
       100,
     );
     expect(calculateFactionScore(advanced, "alpha")).toBe(1000);
+  });
+
+  it("accrues finalized non-passive ordinary FFY awards into lifetime economy", () => {
+    const base = scoreState(["alpha", "beta"]);
+    const servicesAtInterception = Object.freeze([
+      Object.freeze({
+        trainId: "train-a",
+        factoryId: "factory-a",
+        loopSnapshotId: "train-a",
+        isPrimary: true,
+        dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+          "factory-a",
+          "alpha",
+          1,
+        ),
+        resumeAtTick: null,
+      }),
+    ]);
+    const destruction = createUnitDestroyedEvent({
+      id: "destroy-train-score-accounting",
+      tick: base.tick,
+      unit: {
+        unitId: "train-a",
+        ownerId: "alpha",
+        unitType: "TRAIN",
+        cellId: 1,
+      },
+      causes: [
+        {
+          kind: "UNIT_ATTACK",
+          attackEventId: "tank-attack-score-accounting",
+          attacker: {
+            unitId: "tank-beta",
+            ownerId: "beta",
+            unitType: "TANK",
+            cellId: 1,
+          },
+        },
+      ],
+    });
+    const betaBefore = base.factions.find((faction) => faction.id === "beta")!;
+
+    const update = settleFactoryTrainEconomicEvents(
+      base,
+      servicesAtInterception,
+      [destruction],
+      () => false,
+    );
+    const betaAfter = update?.factions.find((faction) => faction.id === "beta");
+
+    expect(update).not.toBeNull();
+    expect(betaAfter?.ffy).toBe(betaBefore.ffy + 10_000);
+    expect(betaAfter?.lifetimeGrossPositiveFfyEarned).toBe(
+      betaBefore.lifetimeGrossPositiveFfyEarned + 10_000,
+    );
   });
 });
