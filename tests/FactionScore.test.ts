@@ -8,6 +8,7 @@ import {
   createInitialMatchState,
 } from "../src/simulation/MatchState";
 import { createUnitDestroyedEvent } from "../src/simulation/SimulationEvents";
+import { tryPurchaseStructureUpgrade } from "../src/simulation/StructuresCore";
 import { TickEngine } from "../src/simulation/TickEngine";
 import { createTrainDispatchEconomicSnapshot } from "../src/simulation/TrainService";
 
@@ -174,5 +175,72 @@ describe("authoritative faction strength score", () => {
     // 100k + 200k + 400k = 700k. T=E=1 and P=(25k+700k)/25k=29.
     // floor(300 + 250 + 450 * sqrt(29)) = 2973.
     expect(calculateFactionScore(state, "alpha")).toBe(2973);
+  });
+
+  it("values committed structure upgrades at cumulative target-level replacement capital", () => {
+    const rules = emptyRules();
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "faction-score-committed-structure-upgrade",
+        width: 20,
+        height: 1,
+        terrain: Array.from({ length: 20 }, () => "PLAINS" as const),
+        initialOwners: [
+          ...Array.from({ length: 10 }, () => "alpha"),
+          ...Array.from({ length: 10 }, () => "beta"),
+        ],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-city",
+            ownerId: "alpha",
+            type: "CITY",
+            cellId: 0,
+            level: 2,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const funded = Object.freeze({
+      ...initial,
+      factions: Object.freeze(
+        initial.factions.map((faction) =>
+          faction.id === "alpha"
+            ? Object.freeze({ ...faction, ffy: 1_000_000 })
+            : faction,
+        ),
+      ),
+    });
+    const purchase = tryPurchaseStructureUpgrade(funded, {
+      structureId: "alpha-city",
+      ownerId: "alpha",
+    });
+
+    expect(purchase.ok).toBe(true);
+    if (!purchase.ok) return;
+    const state = Object.freeze({
+      ...funded,
+      factions: purchase.factions,
+      structures: purchase.structures,
+    });
+    expect(state.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(
+      600_000,
+    );
+    expect(state.structures).toContainEqual(
+      expect.objectContaining({
+        id: "alpha-city",
+        completedLevel: 2,
+        construction: expect.objectContaining({ targetLevel: 3 }),
+      }),
+    );
+
+    // The accepted upgrade converts 400k liquid FFY into committed L3 capital.
+    // Replacement capital therefore uses target L3: 100k + 200k + 400k = 700k.
+    // T=E=1 and P=(600k+700k)/25k=52.
+    // floor(300 + 250 + 450 * sqrt(52)) = 3794.
+    expect(calculateFactionScore(state, "alpha")).toBe(3794);
   });
 });
