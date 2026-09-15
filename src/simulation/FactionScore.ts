@@ -69,24 +69,21 @@ function structureReplacementCapital(
 
   for (const structure of state.structures) {
     if (structure.ownerId !== factionId) continue;
-    if (structure.construction !== undefined) {
+    const replacementLevel =
+      structure.construction?.targetLevel ?? structure.completedLevel;
+    if (replacementLevel === undefined) {
       throw new Error(
-        "Faction score committed structure construction valuation is not materialized in this implementation slice",
+        `structure ${structure.id} has no level-bearing replacement state`,
       );
     }
-    if (structure.completedLevel === undefined) {
-      throw new Error(
-        `structure ${structure.id} has no completed replacement state`,
-      );
-    }
-    const key = `${structure.type}:${structure.completedLevel}`;
+    const key = `${structure.type}:${replacementLevel}`;
     let cost = costByState.get(key);
     if (cost === undefined) {
       cost = cumulativeBaselineStructureCost(
         baselineState,
         factionId,
         structure.type,
-        structure.completedLevel,
+        replacementLevel,
       );
       costByState.set(key, cost);
     }
@@ -117,11 +114,11 @@ function assertMilitaryPowerSliceSupported(
 }
 
 /**
- * Authoritative combined faction-score seam. Completed Structure replacement
- * capital is derived through Structure-owned ordinary purchase/upgrade cost
- * truth under an explicitly neutral rule profile, so acquisition history and
- * faction modifiers cannot alter baseline replacement value. Committed
- * construction and military capital remain explicit later RED-first slices.
+ * Authoritative combined faction-score seam. Structure replacement capital is
+ * derived through Structure-owned ordinary purchase/upgrade cost truth under an
+ * explicitly neutral rule profile, so acquisition history and faction modifiers
+ * cannot alter baseline replacement value. Committed construction is valued at
+ * its target level; military capital remains an explicit later RED-first slice.
  */
 export function calculateFactionScore(
   state: FactionScoreState,
