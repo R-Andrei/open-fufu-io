@@ -79,7 +79,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P28 | **Blood Devil** | Destroying Transport Ships steals their carried Population | 9 |
 | P29 | **The Kaiser** | Warships may serve as Missile Silo launch platforms from their current cell | 9 |
 | P30 | **The Conman** | Warships `+50% speed`, piracy FFY `3×`, but Warships cannot use naval gunfire against ships; Trade Ship pursuit/capture remains | 6 |
-| P31 | **Heart-Under-Blade** | Warships inside owned active Port repair fields receive `2×` ordinary Port repair radius and `1.5×` ordinary Port repair rate; they may remain operational while receiving it | 6 |
+| P31 | **Heart-Under-Blade** | Warships in owned active Port repair service receive `2×` broad and fast repair radius plus `1.5×` broad and fast repair rate; they may remain operational while receiving repair | 6 |
 | P32 | **Armored Titan** | Transports may embark only from owned active Ports, but become armored/health-bearing with `500 HP` | 6 |
 | P33 | **Misaka Network** | Every Train-triggered economic event at an owned City also grants `20 × completed City level` Available Population to that City owner, Capacity-capped | 6 |
 | P34 | **Spoils of the Empire** | Factories acquired through conquest operate at `50% increased effectiveness` while owned | 6 |
@@ -320,14 +320,16 @@ This catalogue owns those trait triggers, signs, and reference amounts. `FFY_ECO
 
 ### P31 — enhanced Warship Port repair
 
-For Warships only:
+For Warships only, P31 specializes both tiers of an otherwise eligible owned active Port repair profile:
 
 ```text
-P31 repair radius = ordinary eligible Port repair radius × 2.0
-P31 repair rate   = ordinary eligible Port repair rate × 1.5
+P31 broad repair radius = ordinary effective Port broad repair radius × 2.0
+P31 fast-service radius = ordinary Port fast-service radius × 2.0
+P31 broad repair rate   = ordinary effective Port broad repair rate × 1.5
+P31 fast repair rate    = ordinary effective Port fast repair rate × 1.5
 ```
 
-The Warship may remain operational while receiving P31 repair. P31 does not extend itself to other health-bearing naval units; those use their ordinary eligible Port repair unless another trait modifies them. Port repair baselines and overlap semantics are owned by `TERRAIN_AND_STRUCTURES.md`.
+The ordinary fast-service radius is therefore doubled by P31 for the qualifying Warship; P31 does not change the Port's fast-service capacity. The Warship may remain operational while receiving P31 repair, including where ordinary shared fast-service behavior would otherwise park an actively serviced unit. P31 does not extend itself to other health-bearing naval units; those use their ordinary eligible Port repair unless another trait modifies them. Port repair baselines, ordinary Echo mapping, routing/queueing, overlap, and provider lifecycle are owned by `TERRAIN_AND_STRUCTURES.md` and `ECHO_CATALOGUE.md`; composition staging/axis identity is owned by `RULE_COMPOSITION.md`.
 
 ### P32 — armored Port-launched Transport
 
