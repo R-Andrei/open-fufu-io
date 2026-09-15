@@ -248,6 +248,7 @@ function targetingTraversalPolicy(
   state: MatchState,
   ownerId: string,
   chassisType: TankChassisType,
+  currentCellId: number,
   operatingAnchorCellId: number,
   enforceOperatingLeash: boolean,
 ): NavigationTraversalPolicy {
@@ -255,6 +256,14 @@ function targetingTraversalPolicy(
   const halfWeightByCell = new Map<number, bigint | undefined>();
   const halfWeightForCell = (cellId: number): bigint | undefined => {
     if (halfWeightByCell.has(cellId)) return halfWeightByCell.get(cellId);
+    if (
+      cellId !== currentCellId &&
+      (state.structures.some((structure) => structure.cellId === cellId) ||
+        state.mobileUnits.some((unit) => unit.cellId === cellId))
+    ) {
+      halfWeightByCell.set(cellId, undefined);
+      return undefined;
+    }
     if (
       enforceOperatingLeash &&
       !tankOperatingLeashContains(
@@ -526,6 +535,7 @@ export function selectTankAutonomousUnitTarget(
       state,
       request.ownerId,
       request.chassisType,
+      request.currentCellId,
       request.operatingAnchorCellId,
       enforceOperatingLeash,
     ),
@@ -691,6 +701,7 @@ export function planTankPursuitRoute(
     state,
     request.ownerId,
     request.chassisType,
+    request.currentCellId,
     request.operatingAnchorCellId,
     enforceOperatingLeash,
   );

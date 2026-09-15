@@ -155,7 +155,6 @@ describe("authoritative Factory Train runtime state", () => {
         ownerId: "alpha",
         activePrimaryTrainId: routed.id,
         turnaroundRemainingActiveTicks: 0,
-        p07PrimaryDispatchPhase: 0,
       },
     ]);
     expect(serialized.trainServices).toEqual([
@@ -188,7 +187,7 @@ describe("authoritative Factory Train runtime state", () => {
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "factory-train-runtime-dispatch",
-        width: 12,
+        width: 13,
         height: 1,
         factions: [
           { id: "alpha", rules },
@@ -199,6 +198,9 @@ describe("authoritative Factory Train runtime state", () => {
     const loopCells = Object.freeze(
       Array.from({ length: 11 }, (_, index) => index + 1),
     );
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 11 }),
+    ]);
     const prepared = createProspectiveMatchState(base, {
       structures: [
         {
@@ -214,7 +216,7 @@ describe("authoritative Factory Train runtime state", () => {
           id: "city-a",
           ownerId: "alpha",
           type: "CITY",
-          cellId: 10,
+          cellId: 12,
           completedLevel: 1,
           active: true,
           acquisitionPath: "GRANT",
@@ -227,6 +229,7 @@ describe("authoritative Factory Train runtime state", () => {
           servicedStructureIds: Object.freeze(["city-a"]),
           cells: loopCells,
           sharedExistingEdgeCount: 0,
+          stationInterfaces,
         }),
       ],
     });
@@ -255,10 +258,9 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "alpha",
       activePrimaryTrainId: train.id,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(advanced.factoryRailLoops[0]?.retainedSnapshots).toEqual([
-      { snapshotId: train.id, cells: loopCells },
+      { snapshotId: train.id, cells: loopCells, stationInterfaces },
     ]);
     expect(advanced.trainServices[0]).toMatchObject({
       trainId: train.id,
@@ -280,7 +282,7 @@ describe("authoritative Factory Train runtime state", () => {
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "factory-train-runtime-return",
-        width: 12,
+        width: 13,
         height: 1,
         factions: [
           { id: "alpha", rules },
@@ -291,6 +293,9 @@ describe("authoritative Factory Train runtime state", () => {
     const loopCells = Object.freeze(
       Array.from({ length: 11 }, (_, index) => index + 1),
     );
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 11 }),
+    ]);
     const created = createMobileUnit(
       base.map,
       base.factions.map((faction) => faction.id),
@@ -323,6 +328,7 @@ describe("authoritative Factory Train runtime state", () => {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces,
       }),
       nearReturn.id,
     );
@@ -345,9 +351,9 @@ describe("authoritative Factory Train runtime state", () => {
           id: "city-a",
           ownerId: "alpha",
           type: "CITY",
-          cellId: 10,
+          cellId: 12,
           completedLevel: 1,
-          active: true,
+          active: false,
           acquisitionPath: "GRANT",
         },
       ],
@@ -383,7 +389,6 @@ describe("authoritative Factory Train runtime state", () => {
         ownerId: "alpha",
         activePrimaryTrainId: null,
         turnaroundRemainingActiveTicks: 50,
-        p07PrimaryDispatchPhase: 0,
       },
     ]);
   });
@@ -393,7 +398,7 @@ describe("authoritative Factory Train runtime state", () => {
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "factory-train-runtime-turnaround",
-        width: 12,
+        width: 13,
         height: 1,
         factions: [
           { id: "alpha", rules },
@@ -404,18 +409,22 @@ describe("authoritative Factory Train runtime state", () => {
     const loopCells = Object.freeze(
       Array.from({ length: 11 }, (_, index) => index + 1),
     );
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 11 }),
+    ]);
     const loop = createFactoryRailLoopLifecycleState("factory-a", {
       factoryId: "factory-a",
       targetStructureIds: Object.freeze(["city-a"]),
       servicedStructureIds: Object.freeze(["city-a"]),
       cells: loopCells,
       sharedExistingEdgeCount: 0,
+      stationInterfaces,
     });
     const city = {
       id: "city-a",
       ownerId: "alpha",
       type: "CITY" as const,
-      cellId: 10,
+      cellId: 12,
       completedLevel: 1,
       active: true,
       acquisitionPath: "GRANT" as const,
@@ -440,7 +449,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 2,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -461,7 +469,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 1,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -485,7 +492,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 1,
-          p07PrimaryDispatchPhase: 0,
         },
       ],
     });
@@ -502,12 +508,12 @@ describe("authoritative Factory Train runtime state", () => {
     );
   });
 
-  it("replaces inherited turnaround and P07 phase with a fresh new-owner epoch on Factory transfer", () => {
+  it("replaces inherited turnaround with a fresh new-owner epoch on Factory transfer", () => {
     const rules = emptyRules();
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "factory-train-runtime-transfer-reset",
-        width: 12,
+        width: 13,
         height: 1,
         factions: [
           { id: "alpha", rules },
@@ -518,6 +524,9 @@ describe("authoritative Factory Train runtime state", () => {
     const loopCells = Object.freeze(
       Array.from({ length: 11 }, (_, index) => index + 1),
     );
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 11 }),
+    ]);
     const prepared = createProspectiveMatchState(base, {
       structures: [
         {
@@ -533,7 +542,7 @@ describe("authoritative Factory Train runtime state", () => {
           id: "city-a",
           ownerId: "beta",
           type: "CITY",
-          cellId: 10,
+          cellId: 12,
           completedLevel: 1,
           active: true,
           acquisitionPath: "CAPTURE_TRANSFER",
@@ -546,6 +555,7 @@ describe("authoritative Factory Train runtime state", () => {
           servicedStructureIds: Object.freeze(["city-a"]),
           cells: loopCells,
           sharedExistingEdgeCount: 0,
+          stationInterfaces,
         }),
       ],
       factoryTrainEpochs: [
@@ -554,7 +564,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: null,
           turnaroundRemainingActiveTicks: 17,
-          p07PrimaryDispatchPhase: 3,
         },
       ],
     });
@@ -570,7 +579,6 @@ describe("authoritative Factory Train runtime state", () => {
       factoryId: "factory-a",
       ownerId: "beta",
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(newPrimaryId).not.toBeNull();
     expect(transferred.mobileUnits).toHaveLength(1);
@@ -593,7 +601,7 @@ describe("authoritative Factory Train runtime state", () => {
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "factory-train-runtime-transfer-inflight",
-        width: 12,
+        width: 13,
         height: 1,
         factions: [
           { id: "alpha", rules },
@@ -604,6 +612,9 @@ describe("authoritative Factory Train runtime state", () => {
     const loopCells = Object.freeze(
       Array.from({ length: 11 }, (_, index) => index + 1),
     );
+    const stationInterfaces = Object.freeze([
+      Object.freeze({ structureId: "city-a", cellId: 11 }),
+    ]);
     const created = createMobileUnit(
       base.map,
       base.factions.map((faction) => faction.id),
@@ -631,6 +642,7 @@ describe("authoritative Factory Train runtime state", () => {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces,
       }),
       oldOwnerTrain.id,
     );
@@ -649,7 +661,7 @@ describe("authoritative Factory Train runtime state", () => {
           id: "city-a",
           ownerId: "beta",
           type: "CITY",
-          cellId: 10,
+          cellId: 12,
           completedLevel: 1,
           active: false,
           acquisitionPath: "CAPTURE_TRANSFER",
@@ -664,7 +676,6 @@ describe("authoritative Factory Train runtime state", () => {
           ownerId: "alpha",
           activePrimaryTrainId: oldOwnerTrain.id,
           turnaroundRemainingActiveTicks: 0,
-          p07PrimaryDispatchPhase: 3,
         },
       ],
       trainServices: [
@@ -699,7 +710,6 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "beta",
       activePrimaryTrainId: newPrimaryId,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(newPrimaryId).not.toBeNull();
     expect(alphaTrain).toMatchObject({
@@ -725,7 +735,6 @@ describe("authoritative Factory Train runtime state", () => {
       ownerId: "beta",
       activePrimaryTrainId: newPrimaryId,
       turnaroundRemainingActiveTicks: 0,
-      p07PrimaryDispatchPhase: 0,
     });
     expect(afterOldReturn.factoryRailLoops[0]?.retainedSnapshots).toEqual([
       expect.objectContaining({ snapshotId: newPrimaryId }),

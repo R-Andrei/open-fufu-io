@@ -398,16 +398,27 @@ export function materializePersistentStructureState(
 export function materializePersistentStructures(
   structures: readonly PersistentStructureState[],
 ): readonly PersistentStructureState[] {
-  return Object.freeze(
-    [...structures]
-      .sort(
-        (left, right) =>
-          compareIds(left.id, right.id) ||
-          left.cellId - right.cellId ||
-          compareIds(left.ownerId, right.ownerId),
-      )
-      .map(materializePersistentStructureState),
-  );
+  const materialized = [...structures]
+    .sort(
+      (left, right) =>
+        compareIds(left.id, right.id) ||
+        left.cellId - right.cellId ||
+        compareIds(left.ownerId, right.ownerId),
+    )
+    .map(materializePersistentStructureState);
+  const seenIds = new Set<string>();
+  const seenCells = new Set<number>();
+  for (const structure of materialized) {
+    if (seenIds.has(structure.id)) {
+      throw new Error(`duplicate persistent structure identity: ${structure.id}`);
+    }
+    seenIds.add(structure.id);
+    if (seenCells.has(structure.cellId)) {
+      throw new Error(`duplicate physical occupancy at cell ${structure.cellId}`);
+    }
+    seenCells.add(structure.cellId);
+  }
+  return Object.freeze(materialized);
 }
 
 function failure(code: StructureAdmissionFailureCode): StructureAdmissionResult {
@@ -708,7 +719,8 @@ export function evaluateStructureAcquisitionAdmission(
     return failure("CELL_NOT_OWNED");
   }
   if (
-    state.structures.some((structure) => structure.cellId === request.cellId)
+    state.structures.some((structure) => structure.cellId === request.cellId) ||
+    state.mobileUnits.some((unit) => unit.cellId === request.cellId)
   ) {
     return failure("CELL_OCCUPIED");
   }

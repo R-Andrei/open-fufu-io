@@ -28,6 +28,8 @@ export const TRAIN_MOVEMENT_WORK_PER_TICK = 5 as const;
 export const TRAIN_STATION_DWELL_TICKS = 15 as const;
 export const TRAIN_TURNAROUND_ACTIVE_TICKS = 50 as const;
 
+const P07_TURNAROUND_WORK_RATE_NUMERATOR = 5;
+const P07_TURNAROUND_WORK_RATE_DENOMINATOR = 4;
 const FACTORY_TRAIN_EVENT_BASE_FFY = Object.freeze({
   1: 10_000,
   2: 11_250,
@@ -44,25 +46,27 @@ const FACTORY_RULE_SCOPE = Object.freeze({
 });
 const TRAIN_CITY_POPULATION_PER_LEVEL = 20;
 const TRAIN_CITY_POPULATION_GRANT_DOMAIN = "TRAIN_CITY_POPULATION_GRANT";
-
-export type P07PrimaryDispatchPhase = 0 | 1 | 2 | 3;
+const NO_BLOCKED_TRAIN_CELLS: ReadonlySet<CellId> = new Set<CellId>();
 
 export interface FactoryTrainServiceEpochState {
   readonly factoryId: string;
   readonly ownerId: string;
   readonly activePrimaryTrainId: string | null;
   readonly turnaroundRemainingActiveTicks: number;
-  readonly p07PrimaryDispatchPhase: P07PrimaryDispatchPhase;
 }
 
 export interface FactoryTrainPrimaryDispatchResult {
   readonly epoch: FactoryTrainServiceEpochState;
-  readonly bonusTrainRequired: boolean;
 }
 
 export interface FactoryTrainDispatchRoutes {
   readonly primary: MobileUnitRouteInput;
-  readonly bonus: MobileUnitRouteInput | null;
+}
+
+export interface TrainMovementTickPlan {
+  readonly movementWork: number;
+  readonly stationEntryCellId: CellId | null;
+  readonly holdResumeAtTick: number | null;
 }
 
 export interface TrainMovementTickResult {
@@ -97,7 +101,6 @@ function freezeEpoch(
     ownerId: state.ownerId,
     activePrimaryTrainId: state.activePrimaryTrainId,
     turnaroundRemainingActiveTicks: state.turnaroundRemainingActiveTicks,
-    p07PrimaryDispatchPhase: state.p07PrimaryDispatchPhase,
   });
 }
 
@@ -105,6 +108,14 @@ function assertCanonicalTick(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
+}
+
+function factoryTrainTurnaroundActiveTicks(p07Active: boolean): number {
+  if (!p07Active) return TRAIN_TURNAROUND_ACTIVE_TICKS;
+  return Math.ceil(
+    (TRAIN_TURNAROUND_ACTIVE_TICKS * P07_TURNAROUND_WORK_RATE_DENOMINATOR) /
+      P07_TURNAROUND_WORK_RATE_NUMERATOR,
+  );
 }
 
 function materializeExactNonNegative(
@@ -145,7 +156,6 @@ export function createFactoryTrainServiceEpoch(
     ownerId,
     activePrimaryTrainId: null,
     turnaroundRemainingActiveTicks: 0,
-    p07PrimaryDispatchPhase: 0,
   });
 }
 
@@ -192,31 +202,17 @@ export function markFactoryPrimaryTrainDispatched(
 export function dispatchFactoryPrimaryTrain(
   state: FactoryTrainServiceEpochState,
   trainId: string,
-  p07Active: boolean,
+  _p07Active: boolean,
 ): FactoryTrainPrimaryDispatchResult {
-  const dispatched = markFactoryPrimaryTrainDispatched(state, trainId);
-  if (!p07Active) {
-    return Object.freeze({
-      epoch: dispatched,
-      bonusTrainRequired: false,
-    });
-  }
-
-  const bonusTrainRequired = state.p07PrimaryDispatchPhase === 3;
-  const p07PrimaryDispatchPhase = ((state.p07PrimaryDispatchPhase + 1) %
-    4) as P07PrimaryDispatchPhase;
   return Object.freeze({
-    epoch: freezeEpoch({
-      ...dispatched,
-      p07PrimaryDispatchPhase,
-    }),
-    bonusTrainRequired,
+    epoch: markFactoryPrimaryTrainDispatched(state, trainId),
   });
 }
 
 export function finishFactoryPrimaryTrain(
   state: FactoryTrainServiceEpochState,
   trainId: string,
+  p07Active = false,
 ): FactoryTrainServiceEpochState {
   if (state.activePrimaryTrainId !== trainId) {
     throw new Error(
@@ -226,7 +222,7 @@ export function finishFactoryPrimaryTrain(
   return freezeEpoch({
     ...state,
     activePrimaryTrainId: null,
-    turnaroundRemainingActiveTicks: TRAIN_TURNAROUND_ACTIVE_TICKS,
+    turnaroundRemainingActiveTicks: factoryTrainTurnaroundActiveTicks(p07Active),
   });
 }
 
@@ -264,11 +260,9 @@ export function createTrainRouteInput(
 
 export function createFactoryTrainDispatchRoutes(
   cells: readonly CellId[],
-  bonusTrainRequired: boolean,
 ): FactoryTrainDispatchRoutes {
   return Object.freeze({
     primary: createTrainRouteInput(cells),
-    bonus: bonusTrainRequired ? createTrainRouteInput(cells) : null,
   });
 }
 
@@ -417,6 +411,7 @@ export function applyTrainCityPopulationGrant(
 function firstQualifyingStationEntryWithinTick(
   unit: MobileUnitState,
   qualifyingStationCellIds: ReadonlySet<CellId>,
+  blockedCellIds: ReadonlySet<CellId>,
 ): Readonly<{ cellId: CellId; movementWork: number }> | null {
   const route = unit.route;
   if (route === undefined) return null;
@@ -431,6 +426,7 @@ function firstQualifyingStationEntryWithinTick(
     if (movementWork > TRAIN_MOVEMENT_WORK_PER_TICK) return null;
 
     const enteredCellId = route.cells[cellIndex]!;
+    if (blockedCellIds.has(enteredCellId)) return null;
     if (qualifyingStationCellIds.has(enteredCellId)) {
       return Object.freeze({
         cellId: enteredCellId,
@@ -446,20 +442,21 @@ function firstQualifyingStationEntryWithinTick(
   return null;
 }
 
-export function advanceTrainMovementTick(
+export function planTrainMovementTick(
   unit: MobileUnitState,
   currentTick: number,
   resumeAtTick: number | null,
   qualifyingStationCellIds: readonly CellId[],
-): TrainMovementTickResult {
+  blockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_TRAIN_CELLS,
+): TrainMovementTickPlan {
   assertCanonicalTick(currentTick, "Train current tick");
   if (resumeAtTick !== null) {
     assertCanonicalTick(resumeAtTick, "Train resume tick");
     if (currentTick < resumeAtTick) {
       return Object.freeze({
-        unit,
+        movementWork: 0,
         stationEntryCellId: null,
-        resumeAtTick,
+        holdResumeAtTick: resumeAtTick,
       });
     }
   }
@@ -467,23 +464,58 @@ export function advanceTrainMovementTick(
   const stationEntry = firstQualifyingStationEntryWithinTick(
     unit,
     new Set(qualifyingStationCellIds),
+    blockedCellIds,
   );
   if (stationEntry !== null) {
     if (currentTick > Number.MAX_SAFE_INTEGER - TRAIN_STATION_DWELL_TICKS) {
       throw new Error("Train dwell resume tick exceeds the safe-integer range");
     }
-    const advanced = advanceMobileUnit(unit, stationEntry.movementWork);
     return Object.freeze({
-      unit: advanced.unit,
+      movementWork: stationEntry.movementWork,
       stationEntryCellId: stationEntry.cellId,
-      resumeAtTick: currentTick + TRAIN_STATION_DWELL_TICKS,
+      holdResumeAtTick: null,
     });
   }
 
   return Object.freeze({
-    unit: advanceMobileUnit(unit, TRAIN_MOVEMENT_WORK_PER_TICK).unit,
+    movementWork: TRAIN_MOVEMENT_WORK_PER_TICK,
     stationEntryCellId: null,
-    resumeAtTick: null,
+    holdResumeAtTick: null,
+  });
+}
+
+export function advanceTrainMovementTick(
+  unit: MobileUnitState,
+  currentTick: number,
+  resumeAtTick: number | null,
+  qualifyingStationCellIds: readonly CellId[],
+  blockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_TRAIN_CELLS,
+): TrainMovementTickResult {
+  const plan = planTrainMovementTick(
+    unit,
+    currentTick,
+    resumeAtTick,
+    qualifyingStationCellIds,
+    blockedCellIds,
+  );
+  if (plan.movementWork === 0) {
+    return Object.freeze({
+      unit,
+      stationEntryCellId: null,
+      resumeAtTick: plan.holdResumeAtTick,
+    });
+  }
+
+  const advanced = advanceMobileUnit(unit, plan.movementWork, blockedCellIds).unit;
+  const stationEntered =
+    plan.stationEntryCellId !== null &&
+    advanced.cellId === plan.stationEntryCellId;
+  return Object.freeze({
+    unit: advanced,
+    stationEntryCellId: stationEntered ? plan.stationEntryCellId : null,
+    resumeAtTick: stationEntered
+      ? currentTick + TRAIN_STATION_DWELL_TICKS
+      : null,
   });
 }
 

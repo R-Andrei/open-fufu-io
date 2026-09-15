@@ -368,10 +368,10 @@ describe("Factory Train interception economic consequence", () => {
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed: "train-interception-runtime-convergence",
-        width: 12,
+        width: 11,
         height: 1,
-        terrain: Array.from({ length: 12 }, () => "PLAINS" as const),
-        initialOwners: Array.from({ length: 12 }, () => "alpha"),
+        terrain: Array.from({ length: 11 }, () => "PLAINS" as const),
+        initialOwners: Array.from({ length: 11 }, () => "alpha"),
         factions: [
           { id: "alpha", rules },
           { id: "beta", rules },
@@ -379,9 +379,7 @@ describe("Factory Train interception economic consequence", () => {
       }),
     );
     const ownerIds = base.factions.map((faction) => faction.id);
-    const loopCells = Object.freeze(
-      Array.from({ length: 11 }, (_, index) => index),
-    );
+    const loopCells = Object.freeze([1, 2, 3, 4, 3, 2, 1]);
 
     const createdTrain = createMobileUnit(
       base.map,
@@ -413,7 +411,7 @@ describe("Factory Train interception economic consequence", () => {
         ownerId: "beta",
         type: "TANK",
         movementClass: "TANK",
-        cellId: train.cellId,
+        cellId: 10,
       },
     );
     const loop = retainFactoryRailLoopSnapshot(
@@ -423,6 +421,9 @@ describe("Factory Train interception economic consequence", () => {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 4 }),
+        ]),
       }),
       train.id,
     );
@@ -446,7 +447,7 @@ describe("Factory Train interception economic consequence", () => {
           id: "city-a",
           ownerId: "alpha",
           type: "CITY",
-          cellId: 10,
+          cellId: 5,
           completedLevel: 1,
           active: true,
           acquisitionPath: "GRANT",
@@ -513,7 +514,7 @@ describe("Factory Train interception economic consequence", () => {
       }),
     );
     const ownerIds = base.factions.map((faction) => faction.id);
-    const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+    const loopCells = Object.freeze([1, 2, 3, 2, 1]);
     const createdTrain = createMobileUnit(
       base.map,
       ownerIds,
@@ -525,7 +526,7 @@ describe("Factory Train interception economic consequence", () => {
         ownerId: "alpha",
         type: "TRAIN",
         movementClass: "RAIL",
-        cellId: 0,
+        cellId: 1,
       },
     );
     const train = assignMobileUnitRoute(
@@ -540,6 +541,9 @@ describe("Factory Train interception economic consequence", () => {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 3 }),
+        ]),
       }),
       train.id,
     );
@@ -562,7 +566,7 @@ describe("Factory Train interception economic consequence", () => {
           id: "city-a",
           ownerId: "alpha",
           type: "CITY",
-          cellId: 2,
+          cellId: 4,
           completedLevel: 1,
           active: true,
           acquisitionPath: "GRANT",
@@ -591,7 +595,7 @@ describe("Factory Train interception economic consequence", () => {
 
     const advanced = new TickEngine().advance(prepared, []);
 
-    expect(advanced.mobileUnits.find((unit) => unit.id === train.id)?.cellId).toBe(2);
+    expect(advanced.mobileUnits.find((unit) => unit.id === train.id)?.cellId).toBe(3);
     expect(
       advanced.trainServices.find((service) => service.trainId === train.id)
         ?.resumeAtTick,
@@ -619,7 +623,7 @@ describe("Factory Train interception economic consequence", () => {
       }),
     );
     const ownerIds = base.factions.map((faction) => faction.id);
-    const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+    const loopCells = Object.freeze([1, 2, 3, 2, 1]);
     const createdTrain = createMobileUnit(
       base.map,
       ownerIds,
@@ -631,7 +635,7 @@ describe("Factory Train interception economic consequence", () => {
         ownerId: "alpha",
         type: "TRAIN",
         movementClass: "RAIL",
-        cellId: 0,
+        cellId: 1,
       },
     );
     const train = assignMobileUnitRoute(
@@ -650,7 +654,7 @@ describe("Factory Train interception economic consequence", () => {
         ownerId: "beta",
         type: "TANK",
         movementClass: "TANK",
-        cellId: 2,
+        cellId: 5,
       },
     );
     const loop = retainFactoryRailLoopSnapshot(
@@ -660,6 +664,9 @@ describe("Factory Train interception economic consequence", () => {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 3 }),
+        ]),
       }),
       train.id,
     );
@@ -682,7 +689,7 @@ describe("Factory Train interception economic consequence", () => {
           id: "city-a",
           ownerId: "alpha",
           type: "CITY",
-          cellId: 2,
+          cellId: 4,
           completedLevel: 1,
           active: true,
           acquisitionPath: "GRANT",

@@ -70,14 +70,11 @@ function n11Rules() {
   return originRules(["N11"]);
 }
 
-function createP07RuntimeFixture(
-  seed: string,
-  phase?: 0 | 1 | 2 | 3,
-) {
+function createP07RuntimeFixture(seed: string) {
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
-      width: 12,
+      width: 13,
       height: 1,
       factions: [
         { id: "alpha", rules: p07Rules() },
@@ -103,7 +100,7 @@ function createP07RuntimeFixture(
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 10,
+        cellId: 12,
         completedLevel: 1,
         active: false,
         acquisitionPath: "GRANT",
@@ -116,21 +113,11 @@ function createP07RuntimeFixture(
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 11 }),
+        ]),
       }),
     ],
-    ...(phase === undefined
-      ? {}
-      : {
-          factoryTrainEpochs: [
-            {
-              factoryId: "factory-a",
-              ownerId: "alpha",
-              activePrimaryTrainId: null,
-              turnaroundRemainingActiveTicks: 0,
-              p07PrimaryDispatchPhase: phase,
-            },
-          ],
-        }),
   });
   return { prepared, loopCells };
 }
@@ -150,7 +137,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   const tankState = withInterception
     ? createMobileUnit(
         base.map,
@@ -163,7 +150,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
           ownerId: "beta",
           type: "TANK",
           movementClass: "TANK",
-          cellId: 2,
+          cellId: 5,
         },
       )
     : null;
@@ -182,7 +169,7 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -195,6 +182,9 @@ function createP33RuntimeFixture(seed: string, withInterception: boolean) {
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 3 }),
+        ]),
       }),
     ],
     ...(tankState === null
@@ -223,7 +213,7 @@ function createP34RuntimeFixture(
   const base = createInitialMatchState(
     createMicroSimulationSpec({
       seed,
-      width: 12,
+      width: 13,
       height: 1,
       factions: [
         { id: "alpha", rules: p34Rules() },
@@ -249,7 +239,7 @@ function createP34RuntimeFixture(
         id: "city-a",
         ownerId: "alpha",
         type: "CITY",
-        cellId: 10,
+        cellId: 12,
         completedLevel: 1,
         active: false,
         acquisitionPath: "GRANT",
@@ -262,6 +252,9 @@ function createP34RuntimeFixture(
         servicedStructureIds: Object.freeze(["city-a"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-a", cellId: 11 }),
+        ]),
       }),
     ],
   });
@@ -290,7 +283,7 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4, 5, 6]);
+  const loopCells = Object.freeze([1, 2, 3, 4, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -319,6 +312,9 @@ function createExternalWartimeRuntimeFixture(seed: string, withP08: boolean) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 4 }),
+        ]),
       }),
     ],
   });
@@ -331,7 +327,7 @@ function createP14DesertRuntimeFixture(seed: string) {
       seed,
       width,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "DESERT", "PLAINS", "PLAINS"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "DESERT"],
       initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
       factions: [
         { id: "alpha", rules: p14Rules() },
@@ -339,7 +335,7 @@ function createP14DesertRuntimeFixture(seed: string) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -355,7 +351,7 @@ function createP14DesertRuntimeFixture(seed: string) {
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -368,6 +364,9 @@ function createP14DesertRuntimeFixture(seed: string) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 3 }),
+        ]),
       }),
     ],
   });
@@ -380,7 +379,7 @@ function createN04MountainRuntimeFixture(seed: string) {
       seed,
       width,
       height: 1,
-      terrain: ["PLAINS", "PLAINS", "MOUNTAIN", "PLAINS", "PLAINS"],
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "MOUNTAIN"],
       initialOwners: ["alpha", "alpha", "beta", "beta", "beta"],
       factions: [
         { id: "alpha", rules: n04Rules() },
@@ -388,7 +387,7 @@ function createN04MountainRuntimeFixture(seed: string) {
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 3, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -404,7 +403,7 @@ function createN04MountainRuntimeFixture(seed: string) {
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 4,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -417,6 +416,9 @@ function createN04MountainRuntimeFixture(seed: string) {
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 3 }),
+        ]),
       }),
     ],
   });
@@ -441,7 +443,7 @@ function createFieldConditionRuntimeFixture(
       ],
     }),
   );
-  const loopCells = Object.freeze([0, 1, 2, 3, 4]);
+  const loopCells = Object.freeze([1, 2, 1]);
   return createProspectiveMatchState(base, {
     structures: [
       {
@@ -457,7 +459,7 @@ function createFieldConditionRuntimeFixture(
         id: "city-beta",
         ownerId: "beta",
         type: "CITY",
-        cellId: 2,
+        cellId: 3,
         completedLevel: 1,
         active: true,
         acquisitionPath: "GRANT",
@@ -479,13 +481,16 @@ function createFieldConditionRuntimeFixture(
         servicedStructureIds: Object.freeze(["city-beta"]),
         cells: loopCells,
         sharedExistingEdgeCount: 0,
+        stationInterfaces: Object.freeze([
+          Object.freeze({ structureId: "city-beta", cellId: 2 }),
+        ]),
       }),
     ],
   });
 }
 
 describe("P07 Factory Train runtime dispatch", () => {
-  it("advances a fresh P07 primary dispatch from phase 0 to phase 1 without a bonus", () => {
+  it("dispatches P07 immediately with exactly one primary and no persisted phase state", () => {
     const { prepared, loopCells } = createP07RuntimeFixture(
       "factory-train-runtime-p07-first",
     );
@@ -496,9 +501,9 @@ describe("P07 Factory Train runtime dispatch", () => {
     expect(epoch).toMatchObject({
       factoryId: "factory-a",
       ownerId: "alpha",
-      p07PrimaryDispatchPhase: 1,
       turnaroundRemainingActiveTicks: 0,
     });
+    expect(epoch).not.toHaveProperty("p07PrimaryDispatchPhase");
     expect(epoch.activePrimaryTrainId).not.toBeNull();
     expect(advanced.mobileUnits).toHaveLength(1);
     expect(advanced.trainServices).toHaveLength(1);
@@ -520,73 +525,44 @@ describe("P07 Factory Train runtime dispatch", () => {
     ]);
   });
 
-  it("dispatches the P07 phase-3 bonus simultaneously on the same loop without occupying the primary slot", () => {
-    const { prepared, loopCells } = createP07RuntimeFixture(
-      "factory-train-runtime-p07-fourth",
-      3,
+  it("returns the next P07 primary after exactly 40 active turnaround ticks with no bonus Train", () => {
+    const { prepared } = createP07RuntimeFixture(
+      "factory-train-runtime-p07-cadence",
     );
+    const engine = new TickEngine();
+    let current = engine.advance(prepared, []);
 
-    const advanced = new TickEngine().advance(prepared, []);
-    const epoch = advanced.factoryTrainEpochs[0]!;
-    const primaryService = advanced.trainServices.find(
-      (service) => service.isPrimary,
-    );
-    const bonusService = advanced.trainServices.find(
-      (service) => !service.isPrimary,
-    );
+    let completionGuard = 0;
+    while (
+      current.factoryTrainEpochs[0]?.activePrimaryTrainId !== null &&
+      completionGuard < 20
+    ) {
+      current = engine.advance(current, []);
+      completionGuard += 1;
+    }
+    expect(completionGuard).toBeLessThan(20);
+    expect(current.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 40,
+    });
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(0);
+    expect(current.trainServices).toHaveLength(0);
 
-    expect(epoch).toMatchObject({
-      factoryId: "factory-a",
-      ownerId: "alpha",
-      p07PrimaryDispatchPhase: 0,
-      turnaroundRemainingActiveTicks: 0,
+    for (let elapsed = 1; elapsed <= 39; elapsed += 1) {
+      current = engine.advance(current, []);
+    }
+    expect(current.factoryTrainEpochs[0]).toMatchObject({
+      activePrimaryTrainId: null,
+      turnaroundRemainingActiveTicks: 1,
     });
-    expect(epoch.activePrimaryTrainId).not.toBeNull();
-    expect(advanced.mobileUnits).toHaveLength(2);
-    expect(advanced.trainServices).toHaveLength(2);
-    expect(primaryService).toMatchObject({
-      trainId: epoch.activePrimaryTrainId,
-      factoryId: "factory-a",
-      isPrimary: true,
-      dispatchSnapshot: {
-        factoryId: "factory-a",
-        dispatchOwnerId: "alpha",
-        factoryLevel: 1,
-      },
-    });
-    expect(bonusService).toMatchObject({
-      factoryId: "factory-a",
-      isPrimary: false,
-      dispatchSnapshot: primaryService?.dispatchSnapshot,
-    });
-    expect(bonusService?.trainId).not.toBe(primaryService?.trainId);
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(0);
 
-    const primaryTrain = advanced.mobileUnits.find(
-      (unit) => unit.id === primaryService?.trainId,
-    );
-    const bonusTrain = advanced.mobileUnits.find(
-      (unit) => unit.id === bonusService?.trainId,
-    );
-    expect(primaryTrain).toBeDefined();
-    expect(bonusTrain).toBeDefined();
-    expect(primaryTrain?.ownerId).toBe("alpha");
-    expect(bonusTrain?.ownerId).toBe("alpha");
-    expect(primaryTrain?.route?.cells).toEqual(loopCells);
-    expect(bonusTrain?.route?.cells).toEqual(loopCells);
-    expect(primaryTrain?.route).toMatchObject({
-      nextCellIndex: bonusTrain?.route?.nextCellIndex,
-      edgeProgress: bonusTrain?.route?.edgeProgress,
-    });
-
-    const snapshots = advanced.factoryRailLoops[0]?.retainedSnapshots ?? [];
-    expect(snapshots).toHaveLength(2);
-    expect(snapshots.map((snapshot) => snapshot.snapshotId).sort()).toEqual(
-      [primaryService?.trainId, bonusService?.trainId].sort(),
-    );
-    expect(snapshots.every((snapshot) =>
-      snapshot.cells.length === loopCells.length &&
-      snapshot.cells.every((cellId, index) => cellId === loopCells[index]),
-    )).toBe(true);
+    current = engine.advance(current, []);
+    expect(current.factoryTrainEpochs[0]?.turnaroundRemainingActiveTicks).toBe(0);
+    expect(current.factoryTrainEpochs[0]?.activePrimaryTrainId).not.toBeNull();
+    expect(current.mobileUnits.filter((unit) => unit.type === "TRAIN")).toHaveLength(1);
+    expect(current.trainServices).toHaveLength(1);
+    expect(current.trainServices[0]?.isPrimary).toBe(true);
   });
 });
 
@@ -659,7 +635,7 @@ describe("Factory Train runtime event-location settlement", () => {
 
     const advanced = new TickEngine().advance(prepared, []);
 
-    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(3);
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 13_300);
@@ -677,7 +653,7 @@ describe("Factory Train runtime event-location settlement", () => {
 
     const advanced = new TickEngine().advance(prepared, []);
 
-    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(2);
+    expect(advanced.mobileUnits.find((unit) => unit.type === "TRAIN")?.cellId).toBe(3);
     expect(
       advanced.factions.find((faction) => faction.id === "alpha")?.ffy,
     ).toBe(alphaBefore + passivePerTick + 5_000);

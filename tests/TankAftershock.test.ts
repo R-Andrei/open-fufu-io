@@ -53,6 +53,7 @@ function fixture(options: {
 function addAttacker(
   state: MatchState,
   type: "TANK" | "HEAVY_ARTILLERY",
+  cellId = 0,
 ): Readonly<{ state: MatchState; unit: MobileUnitState }> {
   const created = createMobileUnit(
     state.map,
@@ -65,7 +66,7 @@ function addAttacker(
       ownerId: "alpha",
       type,
       movementClass: type,
-      cellId: 0,
+      cellId,
     },
   );
   return Object.freeze({
@@ -232,7 +233,7 @@ describe("P44 Tank Population aftershock", () => {
     let state = fixture({ width: 5, height: 5, alphaTraits: ["P44"] });
     const first = addAttacker(state, "TANK");
     state = first.state;
-    const second = addAttacker(state, "TANK");
+    const second = addAttacker(state, "TANK", 1);
     state = second.state;
     const shots = [shot(first.unit, 12), shot(second.unit, 13)];
 

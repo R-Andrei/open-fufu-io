@@ -28,6 +28,7 @@ const MOVEMENT_CLASSES = new Set<MovementClass>([
 const UNIT_ID_PREFIX = "unit:";
 const UNIT_ID_WIDTH = String(Number.MAX_SAFE_INTEGER).length;
 const EMPTY_UNITS = Object.freeze([]) as readonly MobileUnitState[];
+const NO_BLOCKED_CELLS: ReadonlySet<CellId> = new Set<CellId>();
 
 export interface MobileUnitRouteInput {
   readonly cells: readonly CellId[];
@@ -271,12 +272,17 @@ export function materializeMobileUnitCollection(
 
   const knownOwners = new Set(ownerIds);
   const seenIds = new Set<UnitId>();
+  const seenCells = new Set<CellId>();
   const units = state.mobileUnits.map((unit) => {
     const materialized = materializeUnit(map, knownOwners, unit);
     if (seenIds.has(materialized.id)) {
       throw new Error(`duplicate mobile-unit identity: ${materialized.id}`);
     }
     seenIds.add(materialized.id);
+    if (seenCells.has(materialized.cellId)) {
+      throw new Error(`duplicate physical occupancy at cell ${materialized.cellId}`);
+    }
+    seenCells.add(materialized.cellId);
     const ordinal = parseMobileUnitOrdinal(materialized.id);
     if (ordinal >= state.nextMobileUnitOrdinal) {
       throw new Error("next mobile-unit ordinal must exceed every allocated unit identity");
@@ -307,6 +313,9 @@ export function createMobileUnit(
   assertKnownUnitType(input.type);
   assertKnownMovementClass(input.movementClass);
   assertCellId(map, input.cellId);
+  if (current.mobileUnits.some((unit) => unit.cellId === input.cellId)) {
+    throw new Error(`physical cell is occupied: ${input.cellId}`);
+  }
 
   const ordinal = current.nextMobileUnitOrdinal;
   if (ordinal >= Number.MAX_SAFE_INTEGER) {
@@ -467,6 +476,7 @@ function assertAdvanceableRoute(unit: MobileUnitState): MobileUnitRouteState | u
 export function advanceMobileUnit(
   unit: MobileUnitState,
   movementWork: number,
+  blockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_CELLS,
 ): MobileUnitAdvanceResult {
   assertCanonicalNonNegativeSafeInteger(movementWork, "movement work");
   const route = assertAdvanceableRoute(unit);
@@ -481,8 +491,15 @@ export function advanceMobileUnit(
   let currentCellId = unit.cellId;
   let nextCellIndex = route.nextCellIndex;
   let edgeProgress = route.edgeProgress;
+  let blocked = false;
 
   while (remainingWork > 0 && nextCellIndex < route.cells.length) {
+    const nextCellId = route.cells[nextCellIndex]!;
+    if (blockedCellIds.has(nextCellId)) {
+      blocked = true;
+      break;
+    }
+
     const edgeWeight = route.edgeWeights[nextCellIndex - 1]!;
     const requiredWork = edgeWeight - edgeProgress;
     if (remainingWork < requiredWork) {
@@ -492,7 +509,7 @@ export function advanceMobileUnit(
     }
 
     remainingWork -= requiredWork;
-    currentCellId = route.cells[nextCellIndex]!;
+    currentCellId = nextCellId;
     nextCellIndex += 1;
     edgeProgress = 0;
   }
@@ -531,17 +548,111 @@ export function advanceMobileUnit(
         edgeProgress,
       }),
     }),
-    unusedWork: 0,
+    unusedWork: blocked ? remainingWork : 0,
   });
+}
+
+function mobileUnitEntryClaims(
+  unit: MobileUnitState,
+  movementWork: number,
+  entryBlockedCellIds: ReadonlySet<CellId>,
+): readonly CellId[] {
+  const route = assertAdvanceableRoute(unit);
+  if (route === undefined || movementWork === 0) return Object.freeze([]);
+
+  let remainingWork = movementWork;
+  let nextCellIndex = route.nextCellIndex;
+  let edgeProgress = route.edgeProgress;
+  const claims: CellId[] = [];
+
+  while (remainingWork > 0 && nextCellIndex < route.cells.length) {
+    const nextCellId = route.cells[nextCellIndex]!;
+    if (entryBlockedCellIds.has(nextCellId)) break;
+
+    const edgeWeight = route.edgeWeights[nextCellIndex - 1]!;
+    const requiredWork = edgeWeight - edgeProgress;
+    if (remainingWork < requiredWork) break;
+
+    remainingWork -= requiredWork;
+    claims.push(nextCellId);
+    nextCellIndex += 1;
+    edgeProgress = 0;
+  }
+
+  return Object.freeze(claims);
+}
+
+function sameCellSet(
+  left: ReadonlySet<CellId>,
+  right: ReadonlySet<CellId>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const cellId of left) {
+    if (!right.has(cellId)) return false;
+  }
+  return true;
+}
+
+function contestedCellsWithStops(
+  claimsByUnitId: ReadonlyMap<UnitId, readonly CellId[]>,
+  stopCells: ReadonlySet<CellId>,
+): Set<CellId> {
+  const claimantsByCell = new Map<CellId, Set<UnitId>>();
+  for (const [unitId, claims] of claimsByUnitId) {
+    for (const cellId of claims) {
+      let claimants = claimantsByCell.get(cellId);
+      if (claimants === undefined) {
+        claimants = new Set<UnitId>();
+        claimantsByCell.set(cellId, claimants);
+      }
+      claimants.add(unitId);
+      if (stopCells.has(cellId)) break;
+    }
+  }
+
+  const contested = new Set<CellId>();
+  for (const [cellId, claimants] of claimantsByCell) {
+    if (claimants.size > 1) contested.add(cellId);
+  }
+  return contested;
+}
+
+function contestedCellsAfterUpstreamStops(
+  claimsByUnitId: ReadonlyMap<UnitId, readonly CellId[]>,
+): ReadonlySet<CellId> {
+  let contested = contestedCellsWithStops(claimsByUnitId, new Set<CellId>());
+  const history: Set<CellId>[] = [];
+
+  for (;;) {
+    const nextContested = contestedCellsWithStops(claimsByUnitId, contested);
+    if (sameCellSet(nextContested, contested)) return nextContested;
+
+    const cycleStart = history.findIndex((previous) =>
+      sameCellSet(previous, nextContested),
+    );
+    if (cycleStart >= 0) {
+      const conservative = new Set<CellId>(nextContested);
+      for (let index = cycleStart; index < history.length; index += 1) {
+        for (const cellId of history[index]!) conservative.add(cellId);
+      }
+      for (const cellId of contested) conservative.add(cellId);
+      return conservative;
+    }
+
+    history.push(new Set(contested));
+    contested = nextContested;
+  }
 }
 
 export function advanceMobileUnits(
   units: readonly MobileUnitState[],
   movementWorkByUnitId: Readonly<Record<UnitId, number>>,
+  additionalBlockedCellIds: ReadonlySet<CellId> = NO_BLOCKED_CELLS,
 ): readonly MobileUnitState[] {
   const ordered = [...units].sort((left, right) => compareIds(left.id, right.id));
   const seenIds = new Set<UnitId>();
-  const advanced = ordered.map((unit) => {
+  const workById = new Map<UnitId, number>();
+  for (const unit of ordered) {
     if (seenIds.has(unit.id)) {
       throw new Error(`duplicate mobile-unit identity: ${unit.id}`);
     }
@@ -549,9 +660,43 @@ export function advanceMobileUnits(
     const work = Object.prototype.hasOwnProperty.call(movementWorkByUnitId, unit.id)
       ? movementWorkByUnitId[unit.id]!
       : 0;
-    return advanceMobileUnit(unit, work).unit;
-  });
-  return Object.freeze(advanced);
+    assertCanonicalNonNegativeSafeInteger(work, "movement work");
+    workById.set(unit.id, work);
+  }
+
+  const tickStartOccupiedCells = new Set<CellId>(
+    ordered.map((unit) => unit.cellId),
+  );
+  const entryBlockedCellIds = new Set<CellId>([
+    ...tickStartOccupiedCells,
+    ...additionalBlockedCellIds,
+  ]);
+  const claimsByUnitId = new Map<UnitId, readonly CellId[]>();
+  for (const unit of ordered) {
+    claimsByUnitId.set(
+      unit.id,
+      mobileUnitEntryClaims(
+        unit,
+        workById.get(unit.id) ?? 0,
+        entryBlockedCellIds,
+      ),
+    );
+  }
+  const contestedCells = contestedCellsAfterUpstreamStops(claimsByUnitId);
+  const blockedCellIds = new Set<CellId>([
+    ...entryBlockedCellIds,
+    ...contestedCells,
+  ]);
+
+  return Object.freeze(
+    ordered.map((unit) =>
+      advanceMobileUnit(
+        unit,
+        workById.get(unit.id) ?? 0,
+        blockedCellIds,
+      ).unit,
+    ),
+  );
 }
 
 export function createMobileUnitSpatialIndex(

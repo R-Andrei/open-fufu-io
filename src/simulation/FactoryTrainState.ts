@@ -1,5 +1,8 @@
 import { reducedRational } from "../core/rules/RuleComposition";
-import type { FactoryRailLoopLifecycleState } from "./FactoryRailLifecycle";
+import type {
+  FactoryRailLoopLifecycleState,
+  FactoryRailStationInterfaceState,
+} from "./FactoryRailLifecycle";
 import type { MobileUnitState } from "./MobileUnits";
 import type { FactoryRailLoopPlan } from "./RailNetwork";
 import type { SimulationMap } from "./SimulationMap";
@@ -29,6 +32,11 @@ export interface FactoryTrainStateUpdate {
   readonly trainServices?: readonly TrainServiceRuntimeState[];
 }
 
+type FactoryRailLoopPlanWithInterfaces = FactoryRailLoopPlan &
+  Readonly<{
+    stationInterfaces?: readonly FactoryRailStationInterfaceState[];
+  }>;
+
 function compareIds(left: string, right: string): number {
   if (left < right) return -1;
   if (left > right) return 1;
@@ -45,6 +53,47 @@ function assertNonNegativeSafeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
   }
+}
+
+function loopStationInterfaces(
+  loop: FactoryRailLoopPlan,
+): readonly FactoryRailStationInterfaceState[] | undefined {
+  return (loop as FactoryRailLoopPlanWithInterfaces).stationInterfaces;
+}
+
+function freezeStationInterfaces(
+  entries: readonly FactoryRailStationInterfaceState[] | undefined,
+  routeCells: readonly number[],
+  map: SimulationMap,
+  label: string,
+): readonly FactoryRailStationInterfaceState[] | undefined {
+  if (entries === undefined) return undefined;
+  if (!Array.isArray(entries)) {
+    throw new Error(`${label} station interfaces must be an array`);
+  }
+  const routeCellSet = new Set(routeCells);
+  return Object.freeze(
+    entries.map((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error(`${label} station interface must be an object`);
+      }
+      assertNonEmptyId(entry.structureId, `${label} station structure ID`);
+      if (!map.isValidCellId(entry.cellId)) {
+        throw new Error(
+          `${label} station interface cell is outside the map: ${String(entry.cellId)}`,
+        );
+      }
+      if (!routeCellSet.has(entry.cellId)) {
+        throw new Error(
+          `${label} station interface cell is not on the retained route: ${String(entry.cellId)}`,
+        );
+      }
+      return Object.freeze({
+        structureId: entry.structureId,
+        cellId: entry.cellId,
+      });
+    }),
+  );
 }
 
 function freezeFactoryLoopPlan(
@@ -81,13 +130,20 @@ function freezeFactoryLoopPlan(
     loop.sharedExistingEdgeCount,
     "Factory rail shared edge count",
   );
+  const stationInterfaces = freezeStationInterfaces(
+    loopStationInterfaces(loop),
+    loop.cells,
+    map,
+    "Factory rail loop",
+  );
   return Object.freeze({
     factoryId,
     targetStructureIds: Object.freeze([...loop.targetStructureIds]),
     servicedStructureIds: Object.freeze([...loop.servicedStructureIds]),
     cells: Object.freeze([...loop.cells]),
     sharedExistingEdgeCount: loop.sharedExistingEdgeCount,
-  });
+    ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
+  }) as FactoryRailLoopPlanWithInterfaces;
 }
 
 function freezeFactoryRailLoops(
@@ -135,9 +191,17 @@ function freezeFactoryRailLoops(
                   );
                 }
               }
+              const cells = Object.freeze([...snapshot.cells]);
+              const stationInterfaces = freezeStationInterfaces(
+                snapshot.stationInterfaces,
+                cells,
+                map,
+                "Factory rail snapshot",
+              );
               return Object.freeze({
                 snapshotId: snapshot.snapshotId,
-                cells: Object.freeze([...snapshot.cells]),
+                cells,
+                ...(stationInterfaces === undefined ? {} : { stationInterfaces }),
               });
             }),
         );
@@ -175,19 +239,11 @@ function freezeFactoryTrainEpochs(
           entry.turnaroundRemainingActiveTicks,
           "Factory Train turnaround",
         );
-        if (
-          !Number.isInteger(entry.p07PrimaryDispatchPhase) ||
-          entry.p07PrimaryDispatchPhase < 0 ||
-          entry.p07PrimaryDispatchPhase > 3
-        ) {
-          throw new Error("Factory Train P07 phase must be 0 through 3");
-        }
         return Object.freeze({
           factoryId: entry.factoryId,
           ownerId: entry.ownerId,
           activePrimaryTrainId: entry.activePrimaryTrainId,
           turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-          p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
         });
       }),
   );
@@ -324,12 +380,21 @@ export function materializeFactoryTrainState(
 
 function serializeFactoryLoopPlan(loop: FactoryRailLoopPlan | null): unknown {
   if (loop === null) return null;
+  const stationInterfaces = loopStationInterfaces(loop);
   return {
     factoryId: loop.factoryId,
     targetStructureIds: [...loop.targetStructureIds],
     servicedStructureIds: [...loop.servicedStructureIds],
     cells: [...loop.cells],
     sharedExistingEdgeCount: loop.sharedExistingEdgeCount,
+    ...(stationInterfaces === undefined
+      ? {}
+      : {
+          stationInterfaces: stationInterfaces.map((entry) => ({
+            structureId: entry.structureId,
+            cellId: entry.cellId,
+          })),
+        }),
   };
 }
 
@@ -342,6 +407,14 @@ export function serializeFactoryTrainState(state: FactoryTrainState): FactoryTra
       retainedSnapshots: entry.retainedSnapshots.map((snapshot) => ({
         snapshotId: snapshot.snapshotId,
         cells: [...snapshot.cells],
+        ...(snapshot.stationInterfaces === undefined
+          ? {}
+          : {
+              stationInterfaces: snapshot.stationInterfaces.map((stationInterface) => ({
+                structureId: stationInterface.structureId,
+                cellId: stationInterface.cellId,
+              })),
+            }),
       })),
     })) as unknown as FactoryTrainState["factoryRailLoops"],
     factoryTrainEpochs: state.factoryTrainEpochs.map((entry) => ({
@@ -349,7 +422,6 @@ export function serializeFactoryTrainState(state: FactoryTrainState): FactoryTra
       ownerId: entry.ownerId,
       activePrimaryTrainId: entry.activePrimaryTrainId,
       turnaroundRemainingActiveTicks: entry.turnaroundRemainingActiveTicks,
-      p07PrimaryDispatchPhase: entry.p07PrimaryDispatchPhase,
     })),
     trainServices: state.trainServices.map((entry) => ({
       trainId: entry.trainId,

@@ -55,7 +55,7 @@ A named Official or Custom Origin is a configuration of one certified catalogue 
 | P04 | **Level 0** | Response-side counter-response effectiveness fixed at `1.0`, ignoring normal response-side imbalance bonus/penalty | 3 |
 | P05 | **Big Shot** | Capturing enemy structures generates military/conquest FFY events | 8 |
 | P06 | **See You, Space Cowboy** | `+25% Trade Ship speed` | 5 |
-| P07 | **Galaxy Express 999** | `+25% trains spawned`: every fourth normal primary Train dispatch from each Factory simultaneously launches one additional bonus Train | 4 |
+| P07 | **Galaxy Express 999** | `+25% Factory Train turnaround work rate` | 4 |
 | P08 | **Tea Time** | Wartime trade multiplier becomes `1.0` instead of `0.5` | 4 |
 | P09 | **Wall Maria** | `+10% Fort coverage area, +9% Fort defensive pressure, -8% Fort cost` | 5 |
 | P10 | **Scorpion's Tail** | `+100% warhead projectile speed` | 4 |
@@ -360,18 +360,18 @@ Factory armored-unit repair rate       ×1.50
 
 The repair-radius scalar applies to the Factory's broad armored-unit repair field only. The repair-rate scalar applies to both the broad and fast armored-unit repair rates. Both P34 repair scalars execute after ordinary Factory repair Echo specialization through the canonical contextual-scalar stage. P34 does not change the fixed 10-cell fast-service radius or the fixed one-chassis fast-service slot.
 
-No other Factory axis is changed by P34. In particular, P34 does **not** change primary Train count/service slots, Train speed, routing, station dwell, the 5-second primary-service turnaround, P07's every-fourth-dispatch cadence, concurrent Tank-build capacity, Tank purchase cost, Factory level, Factory construction/upgrade duration, or Factory construction/upgrade cost.
+No other Factory axis is changed by P34. In particular, P34 does **not** change primary Train count/service slots, Train speed, routing, station dwell, the ordinary 5-second primary-service turnaround or any Origin-specific scheduler work-rate transformation such as P07, concurrent Tank-build capacity, Tank purchase cost, Factory level, Factory construction/upgrade duration, or Factory construction/upgrade cost.
 
 `+50% Tank-chassis construction speed` is a work-rate multiplier, not a 50% duration subtraction. The effective duration is therefore ordinary resulting-chassis duration divided by `1.5`, with authoritative tick scheduling using the canonical deterministic completion rounding. With the current 10-tick/second timing, the baseline 5-second/50-tick Tank completes in `ceil(50 / 1.5) = 34` ticks; P43 Heavy Artillery's 10-second/100-tick build completes in `ceil(100 / 1.5) = 67` ticks. P34 does not alter P43's authored purchase-cost or chassis transformation.
 
-P34 modifies the Factory-originating Train **base event value** before ordinary earning-side FFY yield modifiers. A Train dispatched while the Factory qualifies for P34 snapshots that `1.50×` Factory event-value profile for its lifetime, so later Factory ownership/level changes do not retroactively change that Train's station-event base value or pending interception cargo. P07 bonus Trains use the same dispatch-time Factory economic profile as their paired primary Train; P34 does not create additional P07 bonus Trains.
+P34 modifies the Factory-originating Train **base event value** before ordinary earning-side FFY yield modifiers. A Train dispatched while the Factory qualifies for P34 snapshots that `1.50×` Factory event-value profile for its lifetime, so later Factory ownership/level changes do not retroactively change that Train's station-event base value or pending interception cargo. P34 does not change how many primary Train slots exist and does not alter P07's turnaround work-rate transformation.
 
 The conquest qualification belongs to the **current ownership epoch**, not to the physical Factory forever. On every successful acquisition the structure records the current owner's acquisition path. A later transfer creates a new current-owner `CAPTURE_TRANSFER` provenance; P34 is active only when the current owner has P34 and that current ownership was acquired through `CAPTURE_TRANSFER`. Losing ownership removes the previous owner's P34 transformation rather than permanently enchanting the Factory.
 
 Interaction consequences are exact:
 
 - **P05 + P34:** one successful Factory transfer may independently produce one P05 conquest event and establish P34 Factory provenance; P34 does not multiply the P05 event.
-- **P07 + P34:** P07's dispatch sequence is unchanged; every actual primary or P07 bonus Train dispatched under the P34 profile uses the `1.50×` Factory Train-event base value.
+- **P07 + P34:** P07 changes primary Train turnaround work rate; every primary Train dispatched under the P34 profile uses the `1.50×` Factory Train-event base value. The two transformations act on separate axes.
 - **P33 + P34:** P34 changes the Train's FFY base value only. It does not increase P33's `20 × City level` Population grant and does not create extra Train events.
 - **P43 + P34:** the Heavy-Artillery chassis is produced at `1.50×` construction speed and receives the same P34-scaled two-tier Factory repair profile as a Tank-derived chassis; P43's other authored chassis values remain unchanged.
 - **N09 + P34:** N09 blocks Factory construction but not legal capture transfer, so captured Factories may qualify for P34.
@@ -539,22 +539,23 @@ where `A` and `B` are decimal bonus magnitudes.
 
 P50 + P51 is legal and applies the same cross-type composition in both directions. Baseline Fort/Command magnitudes and coverage are not redefined here.
 
-### P07 — deterministic +25% Train throughput
+### P07 — +25% Factory Train turnaround work rate
 
-Each Factory maintains one owner-scoped P07 phase for the current Factory Train-service ownership epoch:
+P07 multiplies the active scheduler work rate for each owned Factory's primary Train-service turnaround by exactly `1.25` (`5/4`). It does **not** add another Train-service slot and never creates a bonus Train.
+
+The ordinary baseline turnaround is the `50` active scheduler ticks owned by `FFY_ECONOMY.md`. P07 therefore resolves the exact duration as:
 
 ```text
-phase 0 -> primary dispatch -> 1
-phase 1 -> primary dispatch -> 2
-phase 2 -> primary dispatch -> 3
-phase 3 -> primary dispatch + one bonus Train -> 0
+effectiveP07TurnaroundTicks
+= ceil(50 / 1.25)
+= 40
 ```
 
-Only normal primary Train dispatches advance the phase. A P07 bonus Train never advances it. The bonus Train does not occupy or delay the primary slot, snapshots and follows the same Factory physical service loop as the simultaneously dispatched primary Train, and otherwise behaves as an ordinary Train for station events, dwell, interception, destruction, and P33. The two Trains retain independent physical identities and lifecycles.
+A freshly operational Factory or freshly created ownership epoch remains immediately dispatch-ready under the ordinary service rule; P07 does not create or remove an initial wait. After that epoch's active primary Train returns or is destroyed, the next primary becomes dispatch-eligible after exactly `40` **active** scheduler ticks while P07 applies. Temporary Factory inactivity pauses the remaining work exactly as under the ordinary scheduler; inactive ticks do not consume the P07-adjusted turnaround. Factory upgrade preserves the current epoch and its remaining turnaround.
 
-The P07 phase is persistent authoritative Factory-scheduler state and is serialized/replayed directly; it must not be reconstructed from aggregate Train counts or event history. Temporary inactivity pauses/preserves the phase. Factory upgrade preserves it. Ordinary Train destruction does not reset it. Physical Factory destruction deletes it.
+P07 creates no phase counter, fourth-dispatch cadence, fractional carry, second primary, or independently scheduled bonus Train. The ordinary single-primary limit remains one, and replay/save state needs only the ordinary Train-service epoch/remaining-turnaround state required by `FFY_ECONOMY.md`.
 
-A successful Factory ownership transfer closes the old owner's Train-service epoch and creates a fresh scheduler epoch for the new owner. The new epoch starts at P07 phase `0` if the new owner has P07; no latent phase is inherited from the prior owner or advanced on behalf of a non-P07 owner. An old-owner Train already in flight remains that old owner's Train and retains its dispatch-time loop/economic snapshot, but it no longer occupies or blocks the new owner's primary service slot. Its later return or destruction cannot mutate the new ownership epoch's turnaround or P07 phase.
+A successful Factory ownership transfer closes the old owner's service epoch and creates the ordinary fresh epoch for the new owner. The new epoch is immediately dispatch-ready when it has a valid loop; it inherits no old-owner remaining turnaround. An old-owner Train already in flight remains that old owner's Train and retains its dispatch-time loop/economic snapshot, but its later return or destruction cannot mutate the new ownership epoch.
 
 All ordinary Train routing/service/event semantics and dispatch-time Factory economic snapshots remain owned by `FFY_ECONOMY.md`.
 
