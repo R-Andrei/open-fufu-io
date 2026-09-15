@@ -1831,6 +1831,11 @@ interface CaptureFact {
   readonly p47: boolean;
 }
 
+export interface LandOperationPressureResolvedFact {
+  readonly operationId: string;
+  readonly attackedFactionId: string;
+}
+
 export interface LandTickResult<F extends LandFactionStateLike> {
   readonly factions: readonly F[];
   readonly ownership: readonly (string | null)[];
@@ -1838,6 +1843,7 @@ export interface LandTickResult<F extends LandFactionStateLike> {
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
   readonly captureProgress: readonly CaptureProgressState[];
+  readonly operationPressureResolved: readonly LandOperationPressureResolvedFact[];
   readonly counterResponseResiduals: readonly CounterResponseResidualState[];
 }
 
@@ -1858,11 +1864,24 @@ export function resolveLandTick<F extends LandFactionStateLike>(
   }
   const activeKeys = new Set<string>();
   const factsByTarget = new Map<number, ClaimantTickFact[]>();
+  const pressureResolvedByKey = new Map<string, LandOperationPressureResolvedFact>();
   for (const lane of lanes) {
     const key = `${lane.targetCellId}\u0000${lane.ownerId}`;
     activeKeys.add(key);
     const previous = progress.get(key)?.progressMicros ?? 0;
     const fact = claimantTickFact(state, lane, defended, previous);
+    if (fact.lane.kind === "ATTACK" && fact.effectiveAttackingPressure > 0) {
+      const attackedFactionId = fact.lane.targetFactionId;
+      if (attackedFactionId !== undefined) {
+        for (const operationId of fact.lane.operationIds) {
+          const pressureKey = `${operationId}\u0000${attackedFactionId}`;
+          pressureResolvedByKey.set(
+            pressureKey,
+            Object.freeze({ operationId, attackedFactionId }),
+          );
+        }
+      }
+    }
     progress.set(key, {
       cellId: lane.targetCellId,
       claimantFactionId: lane.ownerId,
@@ -2044,6 +2063,19 @@ export function resolveLandTick<F extends LandFactionStateLike>(
           (left.claimantFactionId < right.claimantFactionId ? -1 : left.claimantFactionId > right.claimantFactionId ? 1 : 0),
         )
         .map((entry) => Object.freeze({ ...entry })),
+    ),
+    operationPressureResolved: Object.freeze(
+      [...pressureResolvedByKey.values()].sort((left, right) =>
+        left.operationId < right.operationId
+          ? -1
+          : left.operationId > right.operationId
+            ? 1
+            : left.attackedFactionId < right.attackedFactionId
+              ? -1
+              : left.attackedFactionId > right.attackedFactionId
+                ? 1
+                : 0,
+      ),
     ),
     counterResponseResiduals: counter.residuals,
   });

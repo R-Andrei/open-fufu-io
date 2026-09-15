@@ -18,13 +18,25 @@ import {
   createPersistentDirectedHostilitySourceEndedEvent,
   type CellOwnershipChangedEvent,
   type PersistentDirectedHostilitySourceEndedEvent,
+  type SimulationEvent,
 } from "./SimulationEvents";
 
 export * from "./LandOperationsCore";
 
+export interface LandOperationPressureResolvedPayload {
+  readonly operationId: string;
+  readonly attackedFactionId: string;
+}
+
+export type LandOperationPressureResolvedEvent = SimulationEvent<
+  "LAND_OPERATION_PRESSURE_RESOLVED",
+  LandOperationPressureResolvedPayload
+>;
+
 export type LandSimulationEvent =
   | CellOwnershipChangedEvent
-  | PersistentDirectedHostilitySourceEndedEvent;
+  | PersistentDirectedHostilitySourceEndedEvent
+  | LandOperationPressureResolvedEvent;
 
 export type LandTickResult<F extends LandFactionStateLike> =
   CoreLandTickResult<F> & {
@@ -62,6 +74,10 @@ function assertAcceptedInputSequence(sequence: number): void {
 
 function cellOwnershipEventId(tick: number, cellId: number): string {
   return `land:cell-ownership:${tick}:${cellId}`;
+}
+
+function operationPressureResolvedEventId(tick: number, ordinal: number): string {
+  return `land:operation-pressure-resolved:${tick}:${ordinal}`;
 }
 
 function hostilitySideKey(side: HostilitySideIdentity): string {
@@ -224,6 +240,19 @@ export function resolveLandTick<F extends LandFactionStateLike>(
   }
 
   const events: LandSimulationEvent[] = [];
+  result.operationPressureResolved.forEach((fact, ordinal) => {
+    events.push(
+      Object.freeze({
+        id: operationPressureResolvedEventId(transitionTick, ordinal),
+        tick: transitionTick,
+        kind: "LAND_OPERATION_PRESSURE_RESOLVED" as const,
+        payload: Object.freeze({
+          operationId: fact.operationId,
+          attackedFactionId: fact.attackedFactionId,
+        }),
+      }),
+    );
+  });
   for (let cellId = 0; cellId < result.ownership.length; cellId += 1) {
     const previousOwnerId = state.ownership[cellId] ?? null;
     const nextOwnerId = result.ownership[cellId] ?? null;
