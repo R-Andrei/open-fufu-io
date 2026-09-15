@@ -6,9 +6,14 @@ import type {
   CellId,
   CellSelector,
   SegmentId,
+  StructureFindFilter,
+  StructureLocator,
   TerrainType,
+  UnitFindFilter,
+  UnitLocator,
 } from "../../core/controller/ControllerApi";
 import type {
+  ControllerPublicFactionSource,
   ControllerPublicSpatialSource,
   ControllerQuerySession,
 } from "../../simulation/ControllerQueryProjection";
@@ -63,7 +68,19 @@ type ControllerWorkerQueryRequest =
       args: readonly [CellId, CellId];
     }>
   | Readonly<{ operation: "SEGMENTS_GET"; args: readonly [SegmentId] }>
-  | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>;
+  | Readonly<{ operation: "SEGMENTS_LIST"; args: readonly [] }>
+  | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
+  | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
+  | Readonly<{
+      operation: "STRUCTURES_FIND";
+      args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_COUNT";
+      args: readonly [StructureFindFilter?];
+    }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
   cacheKey: number;
@@ -80,9 +97,31 @@ type WorkerOwnershipSnapshot = Readonly<{
   ownerCodes: Uint32Array;
 }>;
 
+type EncodedOwnershipSnapshot = Readonly<{
+  snapshot: WorkerOwnershipSnapshot;
+  ownerCodeByFactionId: ReadonlyMap<string, number>;
+  cellCountByFactionId: ReadonlyMap<string, number>;
+}>;
+
 type CachedOwnershipSnapshot = Readonly<{
   cacheKey: number;
   snapshot: WorkerOwnershipSnapshot;
+  ownerCodeByFactionId: ReadonlyMap<string, number>;
+  cellCountByFactionId: ReadonlyMap<string, number>;
+}>;
+
+type WorkerPublicFactionEntry = Readonly<{
+  ref: string;
+  status: ControllerPublicFactionSource["entries"][number]["status"];
+  relation: ControllerPublicFactionSource["entries"][number]["relation"];
+  territoryCells: number;
+  ownerCode?: number;
+  teamId?: string;
+}>;
+
+type WorkerPublicFactionSnapshot = Readonly<{
+  requesterOwnerCode?: number;
+  entries: readonly WorkerPublicFactionEntry[];
 }>;
 
 type WorkerPublicSpatialUpdate = Readonly<{
@@ -96,6 +135,7 @@ type WorkerRequestEnvelope = Readonly<{
   requestId: number;
   request: ControllerWorkerRequest;
   publicSpatial?: WorkerPublicSpatialUpdate;
+  publicFactions?: WorkerPublicFactionSnapshot;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -177,6 +217,26 @@ function isSelectorArgument(value: unknown): value is CellSelector {
   return isPlainRecord(value) && typeof value.kind === "string";
 }
 
+function isEntityFilterArgument(value: unknown): value is UnitFindFilter | StructureFindFilter {
+  return isPlainRecord(value);
+}
+
+function isUnitLocatorArgument(value: unknown): value is UnitLocator {
+  return (
+    isPlainRecord(value) &&
+    ((typeof value.ref === "string" && !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" && !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
+}
+
+function isStructureLocatorArgument(value: unknown): value is StructureLocator {
+  return isUnitLocatorArgument(value) as boolean;
+}
+
+function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {
+  return args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]));
+}
+
 function isControllerWorkerQueryRequest(
   value: unknown,
 ): value is ControllerWorkerQueryRequest {
@@ -205,6 +265,15 @@ function isControllerWorkerQueryRequest(
       );
     case "SEGMENTS_LIST":
       return args.length === 0;
+    case "UNITS_GET":
+      return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_FIND":
+    case "UNITS_COUNT":
+    case "STRUCTURES_FIND":
+    case "STRUCTURES_COUNT":
+      return isOptionalEntityFilterArgs(args);
+    case "STRUCTURES_GET":
+      return args.length === 1 && isStructureLocatorArgument(args[0]);
     default:
       return false;
   }
@@ -253,6 +322,18 @@ async function resolveControllerWorkerQuery(
       return session.segments.get(query.args[0]);
     case "SEGMENTS_LIST":
       return session.segments.list();
+    case "UNITS_GET":
+      return session.units.get(query.args[0]);
+    case "UNITS_FIND":
+      return session.units.find(query.args[0]);
+    case "UNITS_COUNT":
+      return session.units.count(query.args[0]);
+    case "STRUCTURES_GET":
+      return session.structures.get(query.args[0]);
+    case "STRUCTURES_FIND":
+      return session.structures.find(query.args[0]);
+    case "STRUCTURES_COUNT":
+      return session.structures.count(query.args[0]);
   }
 }
 
@@ -292,9 +373,10 @@ function encodeStaticSpatial(
 
 function encodeOwnership(
   source: ControllerPublicSpatialSource,
-): WorkerOwnershipSnapshot {
+): EncodedOwnershipSnapshot {
   const factionIds: string[] = [];
   const codeByFactionId = new Map<string, number>();
+  const cellCountByFactionId = new Map<string, number>();
   const ownerCodes = new Uint32Array(source.ownership.length);
 
   for (let cellId = 0; cellId < source.ownership.length; cellId += 1) {
@@ -307,11 +389,16 @@ function encodeOwnership(
       codeByFactionId.set(ownerId, code);
     }
     ownerCodes[cellId] = code;
+    cellCountByFactionId.set(ownerId, (cellCountByFactionId.get(ownerId) ?? 0) + 1);
   }
 
   return Object.freeze({
-    factionIds: Object.freeze(factionIds),
-    ownerCodes,
+    snapshot: Object.freeze({
+      factionIds: Object.freeze(factionIds),
+      ownerCodes,
+    }),
+    ownerCodeByFactionId: codeByFactionId,
+    cellCountByFactionId,
   });
 }
 
@@ -450,14 +537,42 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     const ownershipKey = source.ownership as object;
     let cached = this.ownershipCache.get(ownershipKey);
     if (cached === undefined) {
+      const encoded = encodeOwnership(source);
       cached = Object.freeze({
         cacheKey: this.nextOwnershipCacheKey,
-        snapshot: encodeOwnership(source),
+        ...encoded,
       });
       this.nextOwnershipCacheKey += 1;
       this.ownershipCache.set(ownershipKey, cached);
     }
     return cached;
+  }
+
+  private publicFactionSnapshot(
+    source: ControllerPublicFactionSource,
+    spatial: ControllerPublicSpatialSource,
+  ): WorkerPublicFactionSnapshot {
+    const ownership = this.ownershipFor(spatial);
+    const requesterOwnerCode = ownership.ownerCodeByFactionId.get(
+      source.requesterFactionId,
+    );
+    return Object.freeze({
+      ...(requesterOwnerCode === undefined ? {} : { requesterOwnerCode }),
+      entries: Object.freeze(
+        source.entries.map((entry) => {
+          const ownerCode = ownership.ownerCodeByFactionId.get(entry.authoritativeId);
+          return Object.freeze({
+            ref: entry.ref,
+            status: entry.status,
+            relation: entry.relation,
+            territoryCells:
+              ownership.cellCountByFactionId.get(entry.authoritativeId) ?? 0,
+            ...(ownerCode === undefined ? {} : { ownerCode }),
+            ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
+          });
+        }),
+      ),
+    });
   }
 
   private publicSpatialUpdate(
@@ -518,11 +633,19 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
       });
 
       let publicSpatial: WorkerPublicSpatialUpdate | undefined;
+      let publicFactions: WorkerPublicFactionSnapshot | undefined;
       try {
         publicSpatial = this.publicSpatialUpdate(
           slot,
           queued.querySession?.publicSpatial,
         );
+        publicFactions =
+          queued.querySession?.publicFactions === undefined
+            ? undefined
+            : this.publicFactionSnapshot(
+                queued.querySession.publicFactions,
+                queued.querySession.publicSpatial,
+              );
       } catch {
         this.markWorkerFailed(slot);
         continue;
@@ -532,6 +655,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         requestId,
         request: queued.request,
         ...(publicSpatial === undefined ? {} : { publicSpatial }),
+        ...(publicFactions === undefined ? {} : { publicFactions }),
       });
 
       try {
@@ -568,12 +692,19 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     let response = message.response;
     if (response.ok && pending.querySession !== undefined) {
       const usage = pending.querySession.usage();
+      const combinedUsage = {
+        queries: response.usage.queries,
+        materializedCells: usage.materializedCells,
+      };
+      Object.defineProperty(combinedUsage, "materializedEntityViews", {
+        value: usage.materializedEntityViews,
+        enumerable: false,
+        configurable: false,
+        writable: false,
+      });
       response = Object.freeze({
         ...response,
-        usage: Object.freeze({
-          queries: usage.queries,
-          materializedCells: usage.materializedCells,
-        }),
+        usage: Object.freeze(combinedUsage),
       });
     }
     pending.resolve(response);

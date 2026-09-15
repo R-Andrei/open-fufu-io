@@ -1,6 +1,6 @@
 import { pow2 as deterministicPow2 } from "../DetMath";
 
-export const RULE_COMPOSITION_VERSION = "3" as const;
+export const RULE_COMPOSITION_VERSION = "4" as const;
 export const BASIS_POINTS_SCALE = 10_000;
 
 export const TERRAIN_SCOPE_IDS = [
@@ -797,7 +797,6 @@ export function validateRuleAxisRegistry(
         message: `Registry key ${axisId} does not match definition id ${definition.id}`,
       });
     }
-
     if (definition.kind === "STRUCTURAL") {
       const profiles = definition.allowedProfileIds;
       if (profiles === undefined || profiles.length === 0) {

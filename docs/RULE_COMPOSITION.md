@@ -21,7 +21,7 @@ The focused owner defines **what a rule means**. This document defines **how ind
 
 This inventory is intentionally game-wide. Origins and Echoes are consumers/producers of the same rule system as rulesets, terrain, structures, unit profiles, and situational effects; they do not define the vocabulary of the game by themselves.
 
-The executable realization lives under `src/core/rules/`. Current V1 game content is bound by rule-composition schema/algebra `RULE_COMPOSITION_VERSION = "3"`. Version 3 canonicalizes the structure-field identifier `SAM_LAUNCHER`; version 2 introduced mandatory structure-field affiliation. Neither compatibility delta changes the V1 axis inventory or ordinary numeric algebra. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
+The executable realization lives under `src/core/rules/`. Current V1 game content is bound by rule-composition schema/algebra `RULE_COMPOSITION_VERSION = "4"`. Version 4 adds a distinct typed `STRUCTURE_FAST_REPAIR_RADIUS` surface so an explicit contextual rule can modify fast-service repair radius without changing the ordinary broad-repair-radius Echo axis; version 3 canonicalized the structure-field identifier `SAM_LAUNCHER`; version 2 introduced mandatory structure-field affiliation. Version 4 changes normalized profile identity/serialization but does not change ordinary numeric reducer algebra. The code-readable registry, manifests, normalizer, compiler, materializer, and validators implement this contract; drift between them and this document is a schema/documentation defect, not a second source of composition semantics.
 
 ---
 
@@ -331,6 +331,12 @@ SAM_LAUNCHER
 
 The version-2 field ID `SAM` is invalid under version 3 rather than being retained as an alias or silently normalized. This changes typed/serialized field identity and the controller field-selector vocabulary, but it does not change the underlying structure, field geometry, stage order, or ordinary numeric algebra.
 
+### 7.3 Rule-composition schema version 4 compatibility delta
+
+`RULE_COMPOSITION_VERSION = "4"` adds the typed `STRUCTURE_FAST_REPAIR_RADIUS` axis. The ordinary `STRUCTURE_REPAIR_RADIUS` axis remains the broad repair-radius surface for two-tier repair profiles and remains the target of ordinary Factory/Port repair-radius Echoes. The new fast-radius axis is intentionally **not Echo-supported**; it exists so an explicit contextual rule such as P31 can specialize fast-service radius independently.
+
+Because the new axis can appear in a normalized profile and therefore changes canonical profile identity/serialized bytes, version 4 is a compatibility change. It does not change reducer ordering or ordinary percentage/product algebra.
+
 ---
 
 # 8. Base-game V1 inventory
@@ -411,9 +417,10 @@ This section inventories current target mechanics **before** Origin/Echo mapping
 | Fort defensive / Command offensive magnitude | AXIS | `structure.field.pressureMagnitude[type,direction]`. |
 | Same-type overlapping field handling | DOMAIN REDUCER | Strongest applicable same-type effect magnitude; boolean inside-field qualification uses the focused owner's union semantics. |
 | Fort+Command cross-type pressure handling | DOMAIN REDUCER | Complement formula when both distinct field types affect same direction. |
-| Port repair radius / Factory broad repair radius | AXIS | `structure.repair.radius[type,service]`; Port consumes its passive naval radius; Factory consumes this axis only for the broad armored-unit field. Contextual scalars such as P31/P34 execute after ordinary Echo specialization where authored. |
-| Port repair rate / Factory armored-unit repair rate | AXIS | `structure.repair.rate[type,service]`; Port consumes its passive naval rate; Factory uses the one effective rate scale for both broad and fast armored-unit rates. |
-| Factory fast-service radius / slot capacity | PARAMETER / baseline | Fixed 10-cell fast-service radius and one-chassis fast-service slot; P34 and ordinary Factory repair Echoes do not modify these parameters. |
+| Port/Factory broad repair radius | AXIS | `STRUCTURE_REPAIR_RADIUS` / `structure.repair.radius[type,broad]`; ordinary Factory/Port repair-radius Echoes target this broad field. Contextual scalars such as P31/P34 execute after ordinary Echo specialization where authored. |
+| Explicit fast-service repair radius | AXIS | `STRUCTURE_FAST_REPAIR_RADIUS`; separate non-Echo contextual surface for rules that explicitly modify fast-service radius. P31 currently uses it for Warships. |
+| Port/Factory repair rate | AXIS | `STRUCTURE_REPAIR_RATE` / `structure.repair.rate[type]`; one effective rate scale feeds both broad and fast rates for the two-tier profiles. |
+| Ordinary Factory/Port fast-service radius and capacity | PARAMETER / baseline | Fixed focused-owner fast-service parameters unless an explicit rule targets a separate axis; ordinary repair-radius Echoes do not modify them. |
 | Silo/SAM Launcher charge capacity | AXIS | `structure.charge.capacity[type]`; P40 final one-charge profile. |
 | Silo/SAM Launcher recharge time | AXIS | `structure.charge.rechargeTime[type]`; Echo and P40. |
 | SAM Launcher interception range | AXIS | `structure.interception.range[SAM_LAUNCHER]`; P40 + Echo; N11 consumes this same effective field after projection. |
@@ -580,7 +587,7 @@ The table below maps every current positive Origin trait to the game-wide invent
 | P28 | CUSTOM destruction lifecycle | qualifying Transport destruction transfers carried Population; attribution/recipient/order remains amphibious-lifecycle behavior. |
 | P29 | STRUCTURAL PROFILE | Warship becomes strategic launcher; effective Silo level `max(1, rank)`; mobile launcher charge/readiness lifecycle remains strategic-weapons-owned. |
 | P30 | MIXED | Warship movement `+50%`; piracy event `3×`; hard prohibit Warship naval gunfire against ships while preserving Trade capture. |
-| P31 | POST-ECHO CONDITIONAL SCALARS + CUSTOM | Warship-specific Port repair radius `2×` and rate `1.5×` run in `CONTEXTUAL_SCALAR` after ordinary Port/Echo specialization; operational-while-repairing remains an explicit non-scalar boundary. |
+| P31 | POST-ECHO CONDITIONAL SCALARS + CUSTOM | Warship-specific Port broad-repair radius `2×`, fast-service radius `2×`, and repair rate `1.5×` run in `CONTEXTUAL_SCALAR` after ordinary Port/Echo specialization; the rate scale feeds both broad and fast rates. Operational-while-repairing remains an explicit non-scalar boundary. |
 | P32 | STRUCTURAL PROFILE | Transport embark source -> owned active Port; Transport becomes health-bearing `500 HP`; otherwise ordinary Transport profile. |
 | P33 | CUSTOM event side effect | qualifying Train event at owned City also grants `20 × City level` Available Population, Capacity-capped. |
 | P34 | MIXED CAPTURED-FACTORY PROFILE | Under `CAPTURE_TRANSFER`, Factory Train-event base value `×1.50`; Tank/Heavy-Artillery Factory construction work rate `×1.50`; Factory armored-unit repair rate `×1.50`; Factory broad armored-unit repair radius `×1.50`. Both repair scalars run in `CONTEXTUAL_SCALAR` after ordinary Echo specialization. Train dispatch-time profile snapshot persistence remains the explicit Factory/FFY lifecycle boundary. |
@@ -659,10 +666,10 @@ Echo modifiers are ordinary signed percentage specializations unless their Echo 
 | City Growth contribution | City | 1 | `structure.effect.cityGrowth` |
 | Fort coverage area | Fort | 1 | `structure.field.coverageArea[FORT]` |
 | Fort defensive pressure | Fort | 1 | `structure.field.pressureMagnitude[FORT,DEFENSE]` |
-| Armored-unit repair radius | Factory | 1 | `structure.repair.radius[FACTORY,ARMORED]` — broad Factory field only |
-| Armored-unit repair rate | Factory | 1 | `structure.repair.rate[FACTORY,ARMORED]` — scales both broad and fast rates |
-| Passive repair radius | Port | 1 | `structure.repair.radius[PORT,NAVAL]` |
-| Passive repair rate | Port | 1 | `structure.repair.rate[PORT,NAVAL]` |
+| Armored-unit repair radius | Factory | 1 | `STRUCTURE_REPAIR_RADIUS` / `structure.repair.radius[FACTORY,broad]` — broad Factory field only |
+| Armored-unit repair rate | Factory | 1 | `STRUCTURE_REPAIR_RATE` / `structure.repair.rate[FACTORY]` — scales both broad and fast rates |
+| Broad naval repair radius | Port | 1 | `STRUCTURE_REPAIR_RADIUS` / `structure.repair.radius[PORT,broad]` — broad Port field only |
+| Naval repair rate | Port | 1 | `STRUCTURE_REPAIR_RATE` / `structure.repair.rate[PORT]` — scales both broad and fast rates |
 | Observation radius | Observation Post | 1 | `structure.observation.radius` — also blackout radius under P49 |
 | Coverage area | Command Post | 1 | `structure.field.coverageArea[COMMAND_POST]` |
 | Offensive-pressure magnitude | Command Post | 1 | `structure.field.pressureMagnitude[COMMAND_POST,OFFENSE]` |
@@ -687,7 +694,8 @@ The 12,927 derived Echo identities remain generated from these concrete keys and
 - Observation-radius Echoes specialize the radius used by P49 blackout rather than restoring observation.
 - Fort-pressure Echoes specialize the effective Fort magnitude; P50 mirrors that effective magnitude.
 - Command-pressure Echoes specialize the effective Command magnitude; P51 mirrors that effective magnitude.
-- P31's Warship-only Port repair scalar runs after ordinary Port repair Echo specialization.
+- Ordinary Port repair-radius Echoes specialize broad Port repair radius only; Port repair-rate Echoes specialize both broad and fast rates. They do not target `STRUCTURE_FAST_REPAIR_RADIUS`.
+- P31's Warship-only broad-radius and repair-rate scalars run after ordinary Port Echo specialization; its separate fast-radius scalar targets `STRUCTURE_FAST_REPAIR_RADIUS` directly.
 - P34's Factory broad-repair-radius and armored-unit repair-rate scalars run in `CONTEXTUAL_SCALAR` after ordinary Factory repair Echo specialization. The broad-radius scalar changes broad geometry only; the repair-rate scalar scales both broad and fast rates. The fixed 10-cell fast-service radius and one-chassis fast-service slot are not modified by either axis.
 - A stat may become inert because a hard Origin rule removes the relevant capability. Inert is legal; it is not a hidden compatibility veto.
 - A hard zero/prohibition remains terminal across ordinary Echo specialization. Examples include N08 Fort defensive pressure and N12 Warship build permission.
@@ -864,7 +872,8 @@ The following use explicit structural/Origin/Echo/contextual ordering unless a f
 - P49 Observation -> blackout, then Observation-radius Echo;
 - P40 effective SAM Launcher range/recharge profile, then SAM Launcher range/recharge Echoes;
 - P25 Hydrogen cost/blast-area Origin profile, then matching weapon Echo specialization;
-- P31 consumes the already-effective Port repair field in `CONTEXTUAL_SCALAR`, after ordinary Port/Echo specialization;
+- ordinary Port repair-radius Echoes specialize broad Port radius only and repair-rate Echoes specialize both broad and fast rates;
+- P31 applies its Warship-only contextual broad-radius/rate specialization after the ordinary Port/Echo profile and independently applies its fast-radius scalar on `STRUCTURE_FAST_REPAIR_RADIUS`;
 - P34 Factory broad-repair-radius and armored-unit repair-rate contributions likewise run in `CONTEXTUAL_SCALAR` after ordinary Factory/Echo specialization. The radius axis feeds broad geometry only, while the rate axis feeds both broad and fast service rates.
 
 ## 13.4 Hard-zero purchase/upgrade cost versus percentage cost modifiers
@@ -882,7 +891,7 @@ The composition registry must not invent or duplicate focused subsystem realizat
 Stable boundaries relevant to the current V1 profile include:
 
 - Population/growth mechanics own P02's replacement-curve realization; this layer owns only the structural profile identity and composition position.
-- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, Factory two-tier repair-service realization, and persistent Silo/SAM Launcher structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
+- `TERRAIN_AND_STRUCTURES.md` owns structure admission/capture, exact field geometry/affiliation/union semantics, generic structure grant realization, Factory/Port two-tier repair-service realization, and persistent Silo/SAM Launcher structure level, charge-capacity, recharge, and readiness lifecycle; this layer owns effective modifier axes, exact multiplicative scale materialization, and hard-cap/permission composition.
 - `NAVAL_AND_STRATEGIC_WEAPONS.md` owns projectile/warhead realization, strategic-launch transactionality, mobile Warship launcher state, focused SAM Launcher weapon/interception behavior, and amphibious lifecycle details; this layer owns their exposed effective-rule surfaces and explicit custom boundaries.
 - `FFY_ECONOMY.md` owns Factory/Train scheduler lifecycle, voyage snapshots, event values/locations, and payout realization; this layer owns the numeric composition surfaces and custom-domain declarations that those mechanics consume.
 - `STRATEGIC_SPAWN.md` owns Strategic/Random/Fixed origin resolution, P39 slot/footprint realization, singular Spawn start-effect ordering, and P54 star geometry; this layer owns the structural Spawn profile IDs and their composition.
@@ -976,9 +985,9 @@ Property tests additionally permute raw static/dynamic/custom input streams and 
 
 # 17. Implementation and conformance boundary
 
-The V1 composition foundation under schema version 3 defines and requires:
+The V1 composition foundation under schema version 4 defines and requires:
 
-1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory;
+1. the V1 axis family/scope/type vocabulary derived from the game-wide inventory, including the distinct explicit fast-repair-radius surface;
 2. code-readable axis/slot/operator/unit/reducer types and registry;
 3. explicit Origin manifests and the complete 93-key Echo -> axis mapping;
 4. conjunction-capable exact-shape conditions, explicit structure-field affiliation, and canonical acquisition-path provenance;

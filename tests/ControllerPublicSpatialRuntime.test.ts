@@ -230,6 +230,176 @@ describe("controller local public spatial runtime", () => {
     }
   });
 
+  it("bridges ref-valued faction, unit, and structure reads through copied production IPC", async () => {
+    const factionRef = "ofr1:controller-worker-read:f:000000000001";
+    const unitRef = "ofr1:controller-worker-read:u:000000000001";
+    const structureRef = "ofr1:controller-worker-read:s:000000000001";
+    const unitView = Object.freeze({
+      ref: unitRef,
+      ownerId: "beta",
+      type: "TANK" as const,
+      cellId: 4,
+      active: true,
+      repositionable: true,
+    });
+    const structureView = Object.freeze({
+      ref: structureRef,
+      ownerId: "beta",
+      type: "FORT" as const,
+      completedLevel: 1 as const,
+      cellId: 5,
+      active: true,
+    });
+    const publicSpatialState = localSpatialState();
+    const queryCalls: unknown[] = [];
+    let usage = {
+      queries: 0,
+      materializedCells: 0,
+      materializedEntityViews: 0,
+    };
+    const recordQuery = (materializedEntityViews = 0): void => {
+      usage = {
+        ...usage,
+        queries: usage.queries + 1,
+        materializedEntityViews:
+          usage.materializedEntityViews + materializedEntityViews,
+      };
+    };
+    const querySession = {
+      publicSpatial: Object.freeze({
+        map: publicSpatialState.map,
+        ownership: publicSpatialState.ownership,
+      }),
+      publicFactions: Object.freeze({
+        requesterFactionId: "alpha",
+        entries: Object.freeze([
+          Object.freeze({
+            authoritativeId: "beta",
+            ref: factionRef,
+            status: "ACTIVE" as const,
+            relation: "ENEMY" as const,
+          }),
+        ]),
+      }),
+      units: {
+        async find(filter?: unknown) {
+          queryCalls.push({ namespace: "units", operation: "find", filter });
+          recordQuery(1);
+          return { items: [unitView], truncated: false };
+        },
+      },
+      structures: {
+        async get(locator: unknown) {
+          queryCalls.push({ namespace: "structures", operation: "get", locator });
+          recordQuery(1);
+          return structureView;
+        },
+      },
+      usage() {
+        return usage;
+      },
+    } as unknown as ControllerQuerySession;
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const response = await pool.invoke(
+        workerRequest(`
+          export async function decide(context) {
+            const surfaceTypes = {
+              factionsFind: typeof context.factions?.find,
+              unitsFind: typeof context.units?.find,
+              structuresGet: typeof context.structures?.get,
+            };
+            if (Object.values(surfaceTypes).some((value) => value !== "function")) {
+              return { commands: [], log: JSON.stringify({ surfaceTypes }) };
+            }
+
+            const factions = context.factions.find({ relation: "ENEMY" });
+            const units = await context.units.find({
+              faction: factions[0].ref,
+              limit: 1,
+            });
+            const structure = await context.structures.get({
+              ref: ${JSON.stringify(structureRef)},
+            });
+            let factionMutationBlocked = false;
+            let unitMutationBlocked = false;
+            let structureMutationBlocked = false;
+            try {
+              factions[0].relation = "ALLY";
+            } catch {
+              factionMutationBlocked = true;
+            }
+            try {
+              units.items[0].cellId = 99;
+            } catch {
+              unitMutationBlocked = true;
+            }
+            try {
+              structure.cellId = 99;
+            } catch {
+              structureMutationBlocked = true;
+            }
+            return {
+              commands: [],
+              log: JSON.stringify({
+                surfaceTypes,
+                factionRef: factions[0].ref,
+                unitRef: units.items[0].ref,
+                structureRef: structure.ref,
+                factionMutationBlocked,
+                unitMutationBlocked,
+                structureMutationBlocked,
+              }),
+            };
+          }
+        `),
+        querySession,
+      );
+
+      expect(response.ok).toBe(true);
+      if (!response.ok) throw new Error("expected successful entity-read worker probe");
+      expect(JSON.parse(response.output?.log ?? "{}")).toEqual({
+        surfaceTypes: {
+          factionsFind: "function",
+          unitsFind: "function",
+          structuresGet: "function",
+        },
+        factionRef,
+        unitRef,
+        structureRef,
+        factionMutationBlocked: true,
+        unitMutationBlocked: true,
+        structureMutationBlocked: true,
+      });
+      expect(response.usage).toEqual({
+        queries: 3,
+        materializedCells: 0,
+      });
+      expect(
+        (
+          response.usage as typeof response.usage & {
+            readonly materializedEntityViews: number;
+          }
+        ).materializedEntityViews,
+      ).toBe(2);
+      expect(queryCalls).toEqual([
+        {
+          namespace: "units",
+          operation: "find",
+          filter: { faction: factionRef, limit: 1 },
+        },
+        {
+          namespace: "structures",
+          operation: "get",
+          locator: { ref: structureRef },
+        },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("preserves the immutable ownership revision across a tick with no ownership change", () => {
     const state = localSpatialState();
     const advanced = new TickEngine().advance(state, []);

@@ -733,6 +733,13 @@ define("P31", "MIXED", {
     ),
     contextualScalar(
       "P31",
+      "STRUCTURE_FAST_REPAIR_RADIUS",
+      scope.structure("PORT"),
+      20_000,
+      { kind: "TARGET_UNIT_IS", unit: "WARSHIP" },
+    ),
+    contextualScalar(
+      "P31",
       "STRUCTURE_REPAIR_RATE",
       scope.structure("PORT"),
       15_000,
@@ -740,7 +747,7 @@ define("P31", "MIXED", {
     ),
   ],
   customDomains: ["WARSHIP_OPERATIONAL_DURING_PORT_REPAIR"],
-  note: "Warship-specific Port scalars are encoded above; operational-during-repair behavior remains ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
+  note: "Warship-specific Port broad/fast radius and shared rate scalars are encoded above; operational-during-repair behavior remains ORIGIN_TRAIT_CATALOGUE/NAVAL_AND_STRATEGIC_WEAPONS-owned.",
 });
 define("P32", "DECLARATIVE", {
   contributions: [

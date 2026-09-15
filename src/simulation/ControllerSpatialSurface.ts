@@ -12,6 +12,9 @@ export interface ControllerSpatialSurface {
   readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
+  readonly factions: ControllerQuerySession["factions"];
+  readonly units: ControllerQuerySession["units"];
+  readonly structures: ControllerQuerySession["structures"];
 }
 
 /**
@@ -81,5 +84,18 @@ export function createControllerSpatialSurface(
     },
   });
 
-  return Object.freeze({ map, cells, segments });
+  const surface = {
+    map,
+    cells,
+    segments,
+    units: session.units,
+    structures: session.structures,
+  } as unknown as ControllerSpatialSurface;
+  Object.defineProperty(surface, "factions", {
+    value: session.factions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return Object.freeze(surface);
 }
