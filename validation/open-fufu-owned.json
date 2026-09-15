@@ -23,6 +23,7 @@
     "tests/ControllerWorkerHost.test.ts",
     "tests/EchoRuleRegistry.test.ts",
     "tests/Economy.test.ts",
+    "tests/FactionScore.test.ts",
     "tests/FactoryTrainP07Runtime.test.ts",
     "tests/FactoryTrainRuntime.test.ts",
     "tests/FactoryTrainStationInterfaceRuntime.test.ts",
