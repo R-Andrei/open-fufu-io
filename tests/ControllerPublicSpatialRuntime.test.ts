@@ -365,8 +365,14 @@ describe("controller local public spatial runtime", () => {
       expect(response.usage).toEqual({
         queries: 3,
         materializedCells: 0,
-        materializedEntityViews: 2,
       });
+      expect(
+        (
+          response.usage as typeof response.usage & {
+            readonly materializedEntityViews: number;
+          }
+        ).materializedEntityViews,
+      ).toBe(2);
       expect(queryCalls).toEqual([
         {
           namespace: "factions",
