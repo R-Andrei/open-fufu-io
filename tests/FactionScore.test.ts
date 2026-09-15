@@ -418,4 +418,35 @@ describe("authoritative faction strength score", () => {
     // 250k liquid FFY into that deployed physical asset must preserve power.
     expect(calculateFactionScore(deployed, "alpha")).toBe(fundedScore);
   });
+
+  it("reuses one territory aggregation across score reads of an unchanged ownership snapshot", () => {
+    const state = scoreState([
+      ...Array.from({ length: 10 }, () => "alpha"),
+      ...Array.from({ length: 10 }, () => "beta"),
+    ]);
+    let terrainReads = 0;
+    const instrumentedMap: typeof state.map = Object.freeze({
+      ...state.map,
+      source: state.map.source,
+      cellCount: state.map.cellCount,
+      rail: state.map.rail,
+      isValidCellId: state.map.isValidCellId,
+      cellIdAt: state.map.cellIdAt,
+      positionOf: state.map.positionOf,
+      terrainAt: (cellId: number) => {
+        terrainReads += 1;
+        return state.map.terrainAt(cellId);
+      },
+      cardinalNeighbors: state.map.cardinalNeighbors,
+    });
+    const instrumentedState = Object.freeze({ ...state, map: instrumentedMap });
+
+    expect(calculateFactionScore(instrumentedState, "alpha")).toBe(1000);
+    const readsAfterFirstScore = terrainReads;
+
+    expect(calculateFactionScore(instrumentedState, "beta")).toBe(1000);
+    expect(calculateFactionScore(instrumentedState, "alpha")).toBe(1000);
+
+    expect(terrainReads).toBe(readsAfterFirstScore);
+  });
 });
