@@ -582,50 +582,65 @@ function mobileUnitEntryClaims(
   return Object.freeze(claims);
 }
 
+function sameCellSet(
+  left: ReadonlySet<CellId>,
+  right: ReadonlySet<CellId>,
+): boolean {
+  if (left.size !== right.size) return false;
+  for (const cellId of left) {
+    if (!right.has(cellId)) return false;
+  }
+  return true;
+}
+
+function contestedCellsWithStops(
+  claimsByUnitId: ReadonlyMap<UnitId, readonly CellId[]>,
+  stopCells: ReadonlySet<CellId>,
+): Set<CellId> {
+  const claimantsByCell = new Map<CellId, Set<UnitId>>();
+  for (const [unitId, claims] of claimsByUnitId) {
+    for (const cellId of claims) {
+      let claimants = claimantsByCell.get(cellId);
+      if (claimants === undefined) {
+        claimants = new Set<UnitId>();
+        claimantsByCell.set(cellId, claimants);
+      }
+      claimants.add(unitId);
+      if (stopCells.has(cellId)) break;
+    }
+  }
+
+  const contested = new Set<CellId>();
+  for (const [cellId, claimants] of claimantsByCell) {
+    if (claimants.size > 1) contested.add(cellId);
+  }
+  return contested;
+}
+
 function contestedCellsAfterUpstreamStops(
   claimsByUnitId: ReadonlyMap<UnitId, readonly CellId[]>,
 ): ReadonlySet<CellId> {
-  let reachableClaims = new Map<UnitId, readonly CellId[]>(claimsByUnitId);
-  let contested = new Set<CellId>();
+  let contested = contestedCellsWithStops(claimsByUnitId, new Set<CellId>());
+  const history: Set<CellId>[] = [];
 
   for (;;) {
-    const claimantsByCell = new Map<CellId, Set<UnitId>>();
-    for (const [unitId, claims] of reachableClaims) {
-      for (const cellId of claims) {
-        let claimants = claimantsByCell.get(cellId);
-        if (claimants === undefined) {
-          claimants = new Set<UnitId>();
-          claimantsByCell.set(cellId, claimants);
-        }
-        claimants.add(unitId);
+    const nextContested = contestedCellsWithStops(claimsByUnitId, contested);
+    if (sameCellSet(nextContested, contested)) return nextContested;
+
+    const cycleStart = history.findIndex((previous) =>
+      sameCellSet(previous, nextContested),
+    );
+    if (cycleStart >= 0) {
+      const conservative = new Set<CellId>(nextContested);
+      for (let index = cycleStart; index < history.length; index += 1) {
+        for (const cellId of history[index]!) conservative.add(cellId);
       }
+      for (const cellId of contested) conservative.add(cellId);
+      return conservative;
     }
 
-    const nextContested = new Set<CellId>();
-    for (const [cellId, claimants] of claimantsByCell) {
-      if (claimants.size > 1) nextContested.add(cellId);
-    }
-
-    let truncated = false;
-    const nextReachable = new Map<UnitId, readonly CellId[]>();
-    for (const [unitId, claims] of reachableClaims) {
-      const firstContestedIndex = claims.findIndex((cellId) =>
-        nextContested.has(cellId),
-      );
-      if (firstContestedIndex < 0 || firstContestedIndex === claims.length - 1) {
-        nextReachable.set(unitId, claims);
-        continue;
-      }
-      truncated = true;
-      nextReachable.set(
-        unitId,
-        Object.freeze(claims.slice(0, firstContestedIndex + 1)),
-      );
-    }
-
+    history.push(new Set(contested));
     contested = nextContested;
-    if (!truncated) return contested;
-    reachableClaims = nextReachable;
   }
 }
 
