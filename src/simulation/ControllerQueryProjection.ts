@@ -6,17 +6,29 @@ import type {
   ControllerStructureFieldId,
   ControllerStructureView,
   DecisionFailure,
+  FactionFindFilter,
+  FactionReadView,
   MechanicsApi,
+  MobileUnitType,
+  PublicFactionRelation,
   QueryPage,
   SegmentId,
   SegmentView,
   StructureBuildQuote,
   StructureFieldAffiliation,
   StructureFieldId,
+  StructureFindFilter,
   StructureLevel,
+  StructureLocator,
+  StructureRef,
   StructureType,
   StructureUpgradeQuote,
+  StructureView,
   TerrainType,
+  UnitFindFilter,
+  UnitLocator,
+  UnitRef,
+  UnitView,
 } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
@@ -31,11 +43,14 @@ import {
   type StructureRadialFieldProfile,
 } from "../core/rules/StructureFieldGeometry";
 import {
+  isDirectRevealActive,
   isOwnedForestConcealmentCell,
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
 import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
+import type { MobileUnitState } from "./MobileUnits";
+import type { ControllerReferenceSession } from "./ControllerReferenceSession";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -48,14 +63,19 @@ import {
   type StructurePurchaseFailureCode,
 } from "./Structures";
 
+const DEFAULT_MATERIALIZED_ENTITY_VIEWS_PER_DECISION = 512;
+const MAX_ENTITY_FIND_RESULTS = 128;
+
 export interface ControllerQueryBudgetLimits {
   readonly queriesPerDecision: number;
   readonly materializedCellsPerDecision: number;
+  readonly materializedEntityViewsPerDecision?: number;
 }
 
 export interface ControllerQueryUsage {
   readonly queries: number;
   readonly materializedCells: number;
+  readonly materializedEntityViews: number;
 }
 
 export type ControllerConstructionMechanics = Readonly<
@@ -71,6 +91,21 @@ export interface ControllerPublicSpatialSource {
 export interface ControllerQuerySession {
   readonly publicSpatial: ControllerPublicSpatialSource;
   readonly mechanics: ControllerConstructionMechanics;
+  readonly factions: Readonly<{
+    get(ref: string): FactionReadView | undefined;
+    find(filter?: FactionFindFilter): readonly FactionReadView[];
+    proximity(ref: string): number | undefined;
+  }>;
+  readonly units: Readonly<{
+    get(locator: UnitLocator): Promise<UnitView | undefined>;
+    find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
+    count(filter?: UnitFindFilter): Promise<number>;
+  }>;
+  readonly structures: Readonly<{
+    get(locator: StructureLocator): Promise<StructureView | undefined>;
+    find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
+    count(filter?: StructureFindFilter): Promise<number>;
+  }>;
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -335,6 +370,17 @@ function factionById(state: MatchState, factionId: string): MatchFactionState | 
   return state.factions.find((faction) => faction.id === factionId);
 }
 
+function factionRelation(
+  state: MatchState,
+  requesterFactionId: string,
+  otherFactionId: string,
+): PublicFactionRelation | undefined {
+  const requester = factionById(state, requesterFactionId);
+  const other = factionById(state, otherFactionId);
+  if (requester === undefined || other === undefined) return undefined;
+  return factionRelationBetween(factionIdentity(requester), factionIdentity(other));
+}
+
 function factionHasP45ForestConcealment(
   state: MatchState,
   factionId: string,
@@ -521,6 +567,21 @@ function p45ConcealsCellFromRequester(
   );
 }
 
+function directRevealActive(
+  state: MatchState,
+  context: StructureVisibilityContext,
+  sourceKind: "UNIT" | "STRUCTURE",
+  sourceId: string,
+): boolean {
+  return state.directReveals.some(
+    (record) =>
+      record.viewerFactionId === context.requesterFactionId &&
+      record.sourceKind === sourceKind &&
+      record.sourceId === sourceId &&
+      isDirectRevealActive(state.tick, record.expiryExclusiveTick),
+  );
+}
+
 function structureIsLawfullyVisible(
   state: MatchState,
   context: StructureVisibilityContext,
@@ -545,7 +606,34 @@ function structureIsLawfullyVisible(
   return resolveTacticalVisibility({
     selfOwned: structure.ownerId === context.requesterFactionId,
     explicitPublic,
-    directRevealActive: false,
+    directRevealActive: directRevealActive(
+      state,
+      context,
+      "STRUCTURE",
+      structure.id,
+    ),
+    concealed,
+    remotelyObserved,
+  }).visible;
+}
+
+function unitIsLawfullyVisible(
+  state: MatchState,
+  context: StructureVisibilityContext,
+  unit: MobileUnitState,
+): boolean {
+  const concealed =
+    p45ConcealsCellFromRequester(state, context, unit.cellId) ||
+    anyFieldSourceContainsCell(state, context.enemyBlackoutFields, unit.cellId);
+  const remotelyObserved = anyFieldSourceContainsCell(
+    state,
+    context.remoteObservationFields,
+    unit.cellId,
+  );
+  return resolveTacticalVisibility({
+    selfOwned: unit.ownerId === context.requesterFactionId,
+    explicitPublic: false,
+    directRevealActive: directRevealActive(state, context, "UNIT", unit.id),
     concealed,
     remotelyObserved,
   }).visible;
@@ -586,6 +674,34 @@ function materializeControllerStructureView(
     active: structure.active,
     ...(construction === undefined ? {} : { construction }),
     ...(chargeState === undefined ? {} : { chargeState }),
+  });
+}
+
+function materializeStructureView(
+  state: MatchState,
+  structure: PersistentStructureState,
+  ref: StructureRef,
+): StructureView {
+  return Object.freeze({
+    ref,
+    ...materializeControllerStructureView(state, structure),
+  });
+}
+
+function materializeUnitView(unit: MobileUnitState, ref: UnitRef): UnitView {
+  return Object.freeze({
+    ref,
+    ownerId: unit.ownerId,
+    type: unit.type,
+    cellId: unit.cellId,
+    active: true,
+    repositionable:
+      unit.type === "TANK" ||
+      unit.type === "HEAVY_ARTILLERY" ||
+      unit.type === "WARSHIP",
+    ...(unit.strategicDestinationCellId === undefined
+      ? {}
+      : { movementDestinationCellId: unit.strategicDestinationCellId }),
   });
 }
 
@@ -1084,10 +1200,67 @@ function orderedComponents(
   return Object.freeze(components);
 }
 
+function entityFindLimit(limit: number | undefined): number {
+  if (limit === undefined) return MAX_ENTITY_FIND_RESULTS;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ENTITY_FIND_RESULTS) {
+    throw new Error("controller entity find limit must be a safe integer from 1 to 128");
+  }
+  return limit;
+}
+
+function matchesTypes<T extends string>(
+  candidate: T,
+  requested: T | readonly T[] | undefined,
+): boolean {
+  if (requested === undefined) return true;
+  return Array.isArray(requested)
+    ? (requested as readonly T[]).includes(candidate)
+    : candidate === requested;
+}
+
+function matchesLocation(
+  state: MatchState,
+  cellId: CellId,
+  location: Readonly<{ readonly cellId: CellId; readonly radius?: number }> | undefined,
+): boolean {
+  if (location === undefined) return true;
+  if (!state.map.isValidCellId(location.cellId)) return false;
+  if (location.radius === undefined) return cellId === location.cellId;
+  const center = state.map.positionOf(location.cellId);
+  const candidate = state.map.positionOf(cellId);
+  return Math.hypot(candidate.x - center.x, candidate.y - center.y) <= location.radius;
+}
+
+function factionProximityById(
+  state: MatchState,
+  requesterFactionId: string,
+  targetFactionId: string,
+): number | undefined {
+  const requesterCells: CellId[] = [];
+  const targetCells: CellId[] = [];
+  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+    const ownerId = state.ownership[cellId] ?? null;
+    if (ownerId === requesterFactionId) requesterCells.push(cellId);
+    if (ownerId === targetFactionId) targetCells.push(cellId);
+  }
+  if (requesterCells.length === 0 || targetCells.length === 0) return undefined;
+
+  let minimum = Number.POSITIVE_INFINITY;
+  for (const requesterCell of requesterCells) {
+    const left = state.map.positionOf(requesterCell);
+    for (const targetCell of targetCells) {
+      const right = state.map.positionOf(targetCell);
+      minimum = Math.min(minimum, Math.hypot(left.x - right.x, left.y - right.y));
+    }
+  }
+  return minimum;
+}
+
 export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
   limits: ControllerQueryBudgetLimits,
+  references?: ControllerReferenceSession,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
@@ -1101,6 +1274,10 @@ export function createControllerQuerySession(
 
   let queries = 0;
   let materializedCells = 0;
+  let materializedEntityViews = 0;
+  const entityViewLimit =
+    limits.materializedEntityViewsPerDecision ??
+    DEFAULT_MATERIALIZED_ENTITY_VIEWS_PER_DECISION;
 
   const beginQuery = (): void => {
     if (queries >= limits.queriesPerDecision) {
@@ -1116,6 +1293,9 @@ export function createControllerQuerySession(
     limit === undefined
       ? remainingMaterialization()
       : Math.min(limit, remainingMaterialization());
+
+  const remainingEntityMaterialization = (): number =>
+    Math.max(0, entityViewLimit - materializedEntityViews);
 
   const materializePage = (
     ids: readonly CellId[],
@@ -1135,6 +1315,263 @@ export function createControllerQuerySession(
       items,
       truncated: ids.length > items.length,
     });
+  };
+
+  const relationMatches = (
+    ownerId: string,
+    requested: "ALLY" | "ENEMY" | undefined,
+  ): boolean => {
+    if (requested === undefined) return true;
+    return factionRelation(state, requesterFactionId, ownerId) === requested;
+  };
+
+  const factionMatches = (
+    ownerId: string,
+    requestedRef: string | undefined,
+  ): boolean => {
+    if (requestedRef === undefined) return true;
+    if (references === undefined) return false;
+    return references.resolveFaction(requestedRef) === ownerId;
+  };
+
+  const unitMatchesFilter = (
+    unit: MobileUnitState,
+    filter: UnitFindFilter | undefined,
+  ): boolean =>
+    factionMatches(unit.ownerId, filter?.faction) &&
+    relationMatches(unit.ownerId, filter?.relation) &&
+    matchesTypes<MobileUnitType>(unit.type, filter?.types) &&
+    matchesLocation(state, unit.cellId, filter?.location);
+
+  const structureMatchesFilter = (
+    structure: PersistentStructureState,
+    filter: StructureFindFilter | undefined,
+  ): boolean =>
+    factionMatches(structure.ownerId, filter?.faction) &&
+    relationMatches(structure.ownerId, filter?.relation) &&
+    matchesTypes<StructureType>(structure.type, filter?.types) &&
+    matchesLocation(state, structure.cellId, filter?.location);
+
+  const visibleUnits = (filter?: UnitFindFilter): readonly MobileUnitState[] =>
+    Object.freeze(
+      state.mobileUnits
+        .filter(
+          (unit) =>
+            unitIsLawfullyVisible(state, visibility, unit) &&
+            unitMatchesFilter(unit, filter),
+        )
+        .sort((left, right) => left.cellId - right.cellId),
+    );
+
+  const visibleStructures = (
+    filter?: StructureFindFilter,
+  ): readonly PersistentStructureState[] =>
+    Object.freeze(
+      state.structures
+        .filter(
+          (structure) =>
+            structureIsLawfullyVisible(state, visibility, structure) &&
+            structureMatchesFilter(structure, filter),
+        )
+        .sort((left, right) => left.cellId - right.cellId),
+    );
+
+  const getUnit = async (locator: UnitLocator): Promise<UnitView | undefined> => {
+    beginQuery();
+    if (references === undefined || locator === null || typeof locator !== "object") {
+      return undefined;
+    }
+    const authoritativeId =
+      "ref" in locator
+        ? references.resolve(requesterFactionId, "UNIT", locator.ref)
+        : undefined;
+    const unit =
+      authoritativeId !== undefined
+        ? state.mobileUnits.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in locator && state.map.isValidCellId(locator.cellId)
+          ? state.mobileUnits.find((candidate) => candidate.cellId === locator.cellId)
+          : undefined;
+    if (unit === undefined || !unitIsLawfullyVisible(state, visibility, unit)) {
+      return undefined;
+    }
+    if (remainingEntityMaterialization() === 0) {
+      throw new Error("controller entity materialization budget exhausted");
+    }
+    const ref = references.issue(requesterFactionId, "UNIT", unit.id) as
+      | UnitRef
+      | undefined;
+    if (ref === undefined) return undefined;
+    materializedEntityViews += 1;
+    return materializeUnitView(unit, ref);
+  };
+
+  const findUnits = async (
+    filter?: UnitFindFilter,
+  ): Promise<QueryPage<UnitView>> => {
+    beginQuery();
+    const limit = entityFindLimit(filter?.limit);
+    if (references === undefined) {
+      return Object.freeze({ items: Object.freeze([]), truncated: false });
+    }
+    const candidates = visibleUnits(filter);
+    const count = Math.min(limit, remainingEntityMaterialization());
+    const selected = candidates.slice(0, count);
+    const items = Object.freeze(
+      selected.flatMap((unit) => {
+        const ref = references.issue(requesterFactionId, "UNIT", unit.id) as
+          | UnitRef
+          | undefined;
+        return ref === undefined ? [] : [materializeUnitView(unit, ref)];
+      }),
+    );
+    materializedEntityViews += items.length;
+    return Object.freeze({
+      items,
+      truncated: candidates.length > items.length,
+    });
+  };
+
+  const countUnits = async (filter?: UnitFindFilter): Promise<number> => {
+    beginQuery();
+    entityFindLimit(filter?.limit);
+    return visibleUnits(filter).length;
+  };
+
+  const getStructure = async (
+    locator: StructureLocator,
+  ): Promise<StructureView | undefined> => {
+    beginQuery();
+    if (references === undefined || locator === null || typeof locator !== "object") {
+      return undefined;
+    }
+    const authoritativeId =
+      "ref" in locator
+        ? references.resolve(requesterFactionId, "STRUCTURE", locator.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in locator && state.map.isValidCellId(locator.cellId)
+          ? state.structures.find((candidate) => candidate.cellId === locator.cellId)
+          : undefined;
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return undefined;
+    }
+    if (remainingEntityMaterialization() === 0) {
+      throw new Error("controller entity materialization budget exhausted");
+    }
+    const ref = references.issue(
+      requesterFactionId,
+      "STRUCTURE",
+      structure.id,
+    ) as StructureRef | undefined;
+    if (ref === undefined) return undefined;
+    materializedEntityViews += 1;
+    return materializeStructureView(state, structure, ref);
+  };
+
+  const findStructures = async (
+    filter?: StructureFindFilter,
+  ): Promise<QueryPage<StructureView>> => {
+    beginQuery();
+    const limit = entityFindLimit(filter?.limit);
+    if (references === undefined) {
+      return Object.freeze({ items: Object.freeze([]), truncated: false });
+    }
+    const candidates = visibleStructures(filter);
+    const count = Math.min(limit, remainingEntityMaterialization());
+    const selected = candidates.slice(0, count);
+    const items = Object.freeze(
+      selected.flatMap((structure) => {
+        const ref = references.issue(
+          requesterFactionId,
+          "STRUCTURE",
+          structure.id,
+        ) as StructureRef | undefined;
+        return ref === undefined
+          ? []
+          : [materializeStructureView(state, structure, ref)];
+      }),
+    );
+    materializedEntityViews += items.length;
+    return Object.freeze({
+      items,
+      truncated: candidates.length > items.length,
+    });
+  };
+
+  const countStructures = async (
+    filter?: StructureFindFilter,
+  ): Promise<number> => {
+    beginQuery();
+    entityFindLimit(filter?.limit);
+    return visibleStructures(filter).length;
+  };
+
+  const materializeFaction = (
+    faction: MatchFactionState,
+  ): FactionReadView | undefined => {
+    if (references === undefined) return undefined;
+    const ref = references.issueFaction(faction.id);
+    const relation = factionRelation(state, requesterFactionId, faction.id);
+    if (ref === undefined || relation === undefined) return undefined;
+    return Object.freeze({
+      ref,
+      status: faction.status,
+      relation,
+      territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
+      ...(faction.fixedTeamId === undefined ? {} : { teamId: faction.fixedTeamId }),
+    });
+  };
+
+  const findFactions = (filter?: FactionFindFilter): readonly FactionReadView[] => {
+    beginQuery();
+    const views = state.factions.flatMap((faction) => {
+      const view = materializeFaction(faction);
+      if (view === undefined) return [];
+      if (filter?.relation !== undefined && view.relation !== filter.relation) return [];
+      if (filter?.status !== undefined && view.status !== filter.status) return [];
+      return [view];
+    });
+    views.sort((left, right) => {
+      if (filter?.orderBy === "PROXIMITY" && references !== undefined) {
+        const leftId = references.resolveFaction(left.ref);
+        const rightId = references.resolveFaction(right.ref);
+        const leftDistance =
+          leftId === undefined
+            ? Number.POSITIVE_INFINITY
+            : (factionProximityById(state, requesterFactionId, leftId) ??
+              Number.POSITIVE_INFINITY);
+        const rightDistance =
+          rightId === undefined
+            ? Number.POSITIVE_INFINITY
+            : (factionProximityById(state, requesterFactionId, rightId) ??
+              Number.POSITIVE_INFINITY);
+        if (leftDistance !== rightDistance) return leftDistance - rightDistance;
+      }
+      return left.ref < right.ref ? -1 : left.ref > right.ref ? 1 : 0;
+    });
+    return Object.freeze(views);
+  };
+
+  const getFaction = (ref: string): FactionReadView | undefined => {
+    beginQuery();
+    if (references === undefined) return undefined;
+    const id = references.resolveFaction(ref);
+    if (id === undefined) return undefined;
+    const faction = factionById(state, id);
+    return faction === undefined ? undefined : materializeFaction(faction);
+  };
+
+  const factionProximity = (ref: string): number | undefined => {
+    beginQuery();
+    if (references === undefined) return undefined;
+    const targetFactionId = references.resolveFaction(ref);
+    if (targetFactionId === undefined) return undefined;
+    return factionProximityById(state, requesterFactionId, targetFactionId);
   };
 
   const get = async (id: CellId): Promise<CellView | undefined> => {
@@ -1250,6 +1687,21 @@ export function createControllerQuerySession(
       ownership: state.ownership,
     }),
     mechanics,
+    factions: Object.freeze({
+      get: getFaction,
+      find: findFactions,
+      proximity: factionProximity,
+    }),
+    units: Object.freeze({
+      get: getUnit,
+      find: findUnits,
+      count: countUnits,
+    }),
+    structures: Object.freeze({
+      get: getStructure,
+      find: findStructures,
+      count: countStructures,
+    }),
     cells: Object.freeze({
       get,
       query,
@@ -1264,6 +1716,7 @@ export function createControllerQuerySession(
       list: listSegments,
       cells: segmentCells,
     }),
-    usage: () => Object.freeze({ queries, materializedCells }),
+    usage: () =>
+      Object.freeze({ queries, materializedCells, materializedEntityViews }),
   });
 }

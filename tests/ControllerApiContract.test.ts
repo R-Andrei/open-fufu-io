@@ -242,8 +242,8 @@ void fixtureWarChanged;
 
 // @ts-expect-error Patrol is deliberately not a controller command.
 const fixturePatrol: ControllerCommand = { kind: "PATROL", key: "patrol-1" };
-// @ts-expect-error Unit orders are deliberately not persistent directives.
 const fixtureUnitOrder: PersistentDirective = {
+  // @ts-expect-error Unit orders are deliberately not persistent directives.
   kind: "UNIT_ORDER",
   key: "u",
   unitId: "x",
@@ -415,17 +415,13 @@ const samSpec = context.mechanics.structureTypeSpec(
   1,
   context.me.id,
 );
-const activeSam = context.structures
-  .list(context.me.id)
-  .find((structure) => structure.type === "SAM_LAUNCHER" && structure.active);
-const antiShipCoveredCells =
-  activeSam && samSpec.antiShipAttack
-    ? context.cells.count({
-        kind: "STRUCTURE_FIELD_INSTANCE",
-        structureId: activeSam.id,
-        field: samSpec.antiShipAttack.eligibilityField,
-      })
-    : 0;
+const antiShipCoveredCells = samSpec.antiShipAttack
+  ? context.cells.count({
+      kind: "STRUCTURE_FIELD_INSTANCE",
+      structureId: "sam-p27",
+      field: samSpec.antiShipAttack.eligibilityField,
+    })
+  : Promise.resolve(0);
 const landing = context.mechanics.transportLanding(5, context.me.id);
 const destruction = context.mechanics.transportDestructionSpec(context.me.id);
 

@@ -35,6 +35,27 @@ export type FactionId = string;
 export type OperationId = string;
 export type UnitId = string;
 export type StructureId = string;
+
+declare const factionRefBrand: unique symbol;
+declare const unitRefBrand: unique symbol;
+declare const structureRefBrand: unique symbol;
+
+/** Stable opaque match-global public faction identity. */
+export type FactionRef = string & { readonly [factionRefBrand]: "FactionRef" };
+/** Stable opaque viewer-scoped public mobile-unit incarnation identity. */
+export type UnitRef = string & { readonly [unitRefBrand]: "UnitRef" };
+/** Stable opaque viewer-scoped public persistent-structure incarnation identity. */
+export type StructureRef = string & {
+  readonly [structureRefBrand]: "StructureRef";
+};
+
+export type UnitLocator =
+  | Readonly<{ readonly ref: UnitRef }>
+  | Readonly<{ readonly cellId: CellId }>;
+export type StructureLocator =
+  | Readonly<{ readonly ref: StructureRef }>
+  | Readonly<{ readonly cellId: CellId }>;
+
 export type DirectiveKey = string;
 export type CommandKey = string;
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
@@ -51,6 +72,7 @@ export type JsonValue =
 export type ControllerMemory = { [key: string]: JsonValue };
 
 export type FactionStatus = "ACTIVE" | "CAPITULATED" | "DEFEATED";
+export type PublicFactionRelation = "SELF" | "ALLY" | "ENEMY";
 export type TerrainType =
   | "PLAINS"
   | "HIGHLAND"
@@ -189,6 +211,15 @@ export interface SelfFactionView extends FactionView {
   readonly ffy: number;
 }
 
+/** Coarse globally public roster facts available without tactical visibility. */
+export interface FactionReadView {
+  readonly ref: FactionRef;
+  readonly status: FactionStatus;
+  readonly relation: PublicFactionRelation;
+  readonly territoryCells: number;
+  readonly teamId?: string;
+}
+
 export interface CellView {
   readonly id: CellId;
   readonly position: MapPoint;
@@ -285,7 +316,7 @@ export interface ControllerStructureView {
 }
 
 export interface StructureView {
-  readonly id: StructureId;
+  readonly ref: StructureRef;
   readonly ownerId: FactionId;
   readonly type: StructureType;
   /** Last fully completed level; absent while a never-completed fresh build is in progress. */
@@ -302,7 +333,7 @@ export interface StructureView {
 }
 
 export interface UnitView {
-  readonly id: UnitId;
+  readonly ref: UnitRef;
   readonly ownerId: FactionId;
   readonly type: MobileUnitType;
   readonly cellId: CellId;
@@ -317,6 +348,33 @@ export interface UnitView {
   readonly carriedPopulation?: number;
   /** Present when an explicit rule makes this unit a charge-bearing launcher. */
   readonly strategicWeaponChargeState?: ChargeStateView;
+}
+
+export interface EntityFindLocation {
+  readonly cellId: CellId;
+  readonly radius?: number;
+}
+
+export interface UnitFindFilter {
+  readonly faction?: FactionRef;
+  readonly relation?: "ALLY" | "ENEMY";
+  readonly types?: MobileUnitType | readonly MobileUnitType[];
+  readonly location?: EntityFindLocation;
+  readonly limit?: number;
+}
+
+export interface StructureFindFilter {
+  readonly faction?: FactionRef;
+  readonly relation?: "ALLY" | "ENEMY";
+  readonly types?: StructureType | readonly StructureType[];
+  readonly location?: EntityFindLocation;
+  readonly limit?: number;
+}
+
+export interface FactionFindFilter {
+  readonly relation?: "ALLY" | "ENEMY";
+  readonly status?: FactionStatus;
+  readonly orderBy?: "PROXIMITY";
 }
 
 export type CellSelector =
@@ -417,9 +475,10 @@ export interface ContactsApi {
 }
 
 export interface FactionsApi {
-  get(id: FactionId): FactionView | undefined;
-  list(): readonly FactionView[];
-  /** Symmetric team-normalized current war state; see OPEN_FUFU_DESIGN.md. */
+  get(ref: FactionRef): FactionReadView | undefined;
+  find(filter?: FactionFindFilter): readonly FactionReadView[];
+  proximity(ref: FactionRef): number | undefined;
+  /** Symmetric team-normalized current war state; legacy actor-ID migration is later #178 scope. */
   atWar(a: FactionId, b: FactionId): boolean;
 }
 
@@ -432,17 +491,17 @@ export interface OperationsApi {
 }
 
 export interface StructuresApi {
-  /** Hidden/unknown structures are indistinguishable and return undefined. */
-  get(id: StructureId): StructureView | undefined;
-  /** Contains only structures lawfully visible to this requester. */
-  list(ownerId?: FactionId): readonly StructureView[];
+  /** Hidden/unknown/stale/concealed structures collapse to undefined. */
+  get(locator: StructureLocator): Promise<StructureView | undefined>;
+  find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
+  count(filter?: StructureFindFilter): Promise<number>;
 }
 
 export interface UnitsApi {
-  /** Hidden/unknown units are indistinguishable and return undefined. */
-  get(id: UnitId): UnitView | undefined;
-  /** Contains only units lawfully visible to this requester. */
-  list(ownerId?: FactionId): readonly UnitView[];
+  /** Hidden/unknown/stale/concealed units collapse to undefined. */
+  get(locator: UnitLocator): Promise<UnitView | undefined>;
+  find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
+  count(filter?: UnitFindFilter): Promise<number>;
 }
 
 export interface NavigationApi {
@@ -886,6 +945,7 @@ export interface ControllerLimitsView {
   readonly serializedDecisionBytes: number;
   readonly queriesPerDecision: number;
   readonly materializedCellsPerDecision: number;
+  readonly materializedEntityViewsPerDecision: number;
   readonly directiveUpdatesPerDecision: number;
   readonly commandsPerDecision: number;
   readonly policyRulesPerDecision: number;
