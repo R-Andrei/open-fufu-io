@@ -746,6 +746,7 @@ void controller;
         if (safePublicRefs.has(name)) return false;
         if (forbiddenAliases.has(name)) return true;
         const declaration = declarations.get(name);
+        if (declaration === undefined) return false;
         return ts.isTypeAliasDeclaration(declaration)
           ? isRawStringIdentityType(declaration.type)
           : false;
