@@ -144,6 +144,55 @@ describe("controller spatial API migration", () => {
     );
   });
 
+  it("projects Segment owner-share keys through FactionRef rather than raw faction IDs", async () => {
+    const match = baselineFixture();
+    const session = createControllerQuerySession(
+      match.snapshot(),
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      match.controllerReferenceSession(),
+    );
+    const alphaRef = match.controllerReferenceSession().issueFaction("alpha");
+    const betaRef = match.controllerReferenceSession().issueFaction("beta");
+    if (alphaRef === undefined || betaRef === undefined) {
+      throw new Error("expected faction refs for Segment ownership proof");
+    }
+
+    const rawSegment = Object.freeze({
+      id: 0,
+      cellCount: 2,
+      populationBearingCellCount: 2,
+      ownerShares: Object.freeze({ alpha: 0.5, beta: 0.5 }),
+      adjacentSegmentIds: Object.freeze([]),
+      terrainCounts: Object.freeze({ PLAINS: 2 }),
+    });
+    const segmentSession = Object.create(session) as ReturnType<
+      typeof createControllerQuerySession
+    >;
+    Object.defineProperty(segmentSession, "segments", {
+      value: Object.freeze({
+        get: async (id: number) => (id === 0 ? rawSegment : undefined),
+        list: async () => Object.freeze([rawSegment]),
+        cells: (id: number) => ({ kind: "SEGMENT" as const, segmentId: id }),
+      }),
+      enumerable: true,
+      configurable: false,
+      writable: false,
+    });
+
+    const surface = createControllerSpatialSurface(segmentSession);
+    const single = await surface.segments.get(0);
+    const listed = await surface.segments.list();
+
+    expect(single?.ownerShares).toEqual({
+      [alphaRef]: 0.5,
+      [betaRef]: 0.5,
+    });
+    expect(single?.ownerShares).not.toHaveProperty("alpha");
+    expect(single?.ownerShares).not.toHaveProperty("beta");
+    expect(listed[0]?.ownerShares).toEqual(single?.ownerShares);
+  });
+
   it("backs ordinary MatchRuntime controller rounds with the match reference session", () => {
     const match = baselineFixture();
     const refsByFaction = new Map<string, readonly string[]>();
