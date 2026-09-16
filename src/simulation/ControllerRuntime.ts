@@ -25,10 +25,7 @@ import {
   createControllerSpatialSurface,
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
-import {
-  ECONOMY_TICKS_PER_SECOND,
-  resolvePassiveFfyAwards,
-} from "./Economy";
+import { ECONOMY_TICKS_PER_SECOND, resolvePassiveFfyAwards } from "./Economy";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
@@ -37,11 +34,11 @@ import type { MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
+export type { ControllerQuerySession } from "./ControllerQueryProjection";
 export {
   createControllerSpatialSurface,
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
-export type { ControllerQuerySession } from "./ControllerQueryProjection";
 
 export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
@@ -90,8 +87,7 @@ export interface LawfulControllerObservation {
   readonly lastDecision?: DecisionReceipt;
 }
 
-export interface LawfulInProcessControllerObservation
-  extends LawfulControllerObservation {
+export interface LawfulInProcessControllerObservation extends LawfulControllerObservation {
   readonly map?: ControllerSpatialSurface["map"];
   readonly cells?: ControllerSpatialSurface["cells"];
   readonly segments?: ControllerSpatialSurface["segments"];
@@ -99,8 +95,7 @@ export interface LawfulInProcessControllerObservation
   readonly structures?: ControllerQuerySession["structures"];
 }
 
-export interface HostedLawfulControllerObservation
-  extends LawfulInProcessControllerObservation {
+export interface HostedLawfulControllerObservation extends LawfulInProcessControllerObservation {
   readonly memory: Readonly<ControllerMemory>;
 }
 
@@ -194,7 +189,9 @@ function canonicalizeMemoryValue(
       return value ? "true" : "false";
     case "number":
       if (!Number.isFinite(value)) {
-        throw new InvalidControllerValueError("controller memory number must be finite");
+        throw new InvalidControllerValueError(
+          "controller memory number must be finite",
+        );
       }
       return JSON.stringify(Object.is(value, -0) ? 0 : value);
     case "string":
@@ -202,7 +199,9 @@ function canonicalizeMemoryValue(
     case "object":
       break;
     default:
-      throw new InvalidControllerValueError("controller memory is not JSON-shaped");
+      throw new InvalidControllerValueError(
+        "controller memory is not JSON-shaped",
+      );
   }
 
   if (ancestors.has(value)) {
@@ -283,7 +282,10 @@ export function decodeControllerMemory(
   return deepFreezePlainValue(JSON.parse(serialized) as ControllerMemory);
 }
 
-function cloneLegalValue<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+function cloneLegalValue<T>(
+  value: T,
+  seen = new WeakMap<object, unknown>(),
+): T {
   if (value === null || typeof value !== "object") return value;
 
   const existing = seen.get(value);
@@ -414,9 +416,7 @@ function materializeControllerValue(
   }
 }
 
-function hostSuccess<T>(
-  output?: T,
-): ControllerHostInvocationResult<T> {
+function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
   return output === undefined
     ? Object.freeze({ ok: true as const })
     : Object.freeze({ ok: true as const, output });
@@ -456,10 +456,13 @@ export class InProcessTestControllerHost implements ControllerHost {
     Record<string, InProcessTestControllerRegistration>
   >;
   private readonly memoryByFaction = new Map<string, string>();
+  private readonly allowLegacyCommands: boolean;
 
   constructor(
     controllers: Readonly<Record<string, InProcessTestControllerRegistration>>,
+    options: Readonly<{ readonly allowLegacyCommands?: boolean }> = {},
   ) {
+    this.allowLegacyCommands = options.allowLegacyCommands ?? true;
     this.controllers = Object.freeze(
       Object.fromEntries(
         Object.entries(controllers).map(([factionId, registration]) => [
@@ -482,10 +485,22 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
-    const withStagedActions = (output: ControllerDecision | void): ControllerDecision | void => {
-      const rawCommands = (output as unknown as { readonly commands?: readonly unknown[] } | undefined)?.commands;
-      if (rawCommands !== undefined && rawCommands.length > 0) {
-        throw new InvalidControllerValueError("legacy raw controller commands are not accepted");
+    const withStagedActions = (
+      output: ControllerDecision | void,
+    ): ControllerDecision | void => {
+      const rawCommands = (
+        output as unknown as
+          | { readonly commands?: readonly unknown[] }
+          | undefined
+      )?.commands;
+      if (
+        !this.allowLegacyCommands &&
+        rawCommands !== undefined &&
+        rawCommands.length > 0
+      ) {
+        throw new InvalidControllerValueError(
+          "legacy raw controller commands are not accepted",
+        );
       }
       const staged = querySession?.consumeStagedCommands() ?? [];
       if (staged.length === 0) return output;
@@ -506,11 +521,12 @@ export class InProcessTestControllerHost implements ControllerHost {
     return this.executeInvocation<ControllerDecision>(
       factionId,
       "DECIDE",
-      (memory) => withStagedActions(
-        registration.decide?.(
-          projectHostedContext(inProcessObservation, memory),
+      (memory) =>
+        withStagedActions(
+          registration.decide?.(
+            projectHostedContext(inProcessObservation, memory),
+          ),
         ),
-      ),
     );
   }
 
@@ -522,7 +538,8 @@ export class InProcessTestControllerHost implements ControllerHost {
     return this.executeInvocation<SpawnInfluenceDecision>(
       factionId,
       "CHOOSE_INFLUENCE",
-      (memory) => registration?.chooseInfluence?.(projectHostedContext(context, memory)),
+      (memory) =>
+        registration?.chooseInfluence?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -534,7 +551,10 @@ export class InProcessTestControllerHost implements ControllerHost {
     return this.executeInvocation<SpawnInfluenceDecision>(
       factionId,
       "RECONSIDER_INFLUENCE",
-      (memory) => registration?.reconsiderInfluence?.(projectHostedContext(context, memory)),
+      (memory) =>
+        registration?.reconsiderInfluence?.(
+          projectHostedContext(context, memory),
+        ),
     );
   }
 
@@ -546,7 +566,8 @@ export class InProcessTestControllerHost implements ControllerHost {
     return this.executeInvocation<SpawnOriginDecision>(
       factionId,
       "CHOOSE_ORIGINS",
-      (memory) => registration?.chooseOrigins?.(projectHostedContext(context, memory)),
+      (memory) =>
+        registration?.chooseOrigins?.(projectHostedContext(context, memory)),
     );
   }
 
@@ -744,9 +765,8 @@ export function projectLawfulControllerObservation(
       .sort((left, right) => compareIds(left.id, right.id))
       .map((faction) => freezeFactionObservation(faction.id, faction.status)),
   );
-  const passiveFfyPerSecond = realizedPassiveFfyPerSecondByFaction(state).get(
-    factionId,
-  );
+  const passiveFfyPerSecond =
+    realizedPassiveFfyPerSecondByFaction(state).get(factionId);
   if (passiveFfyPerSecond === undefined) {
     throw new Error(`missing passive FFY projection for faction ${factionId}`);
   }
@@ -800,9 +820,16 @@ function evaluateProposal(
         directiveSet[0]?.key ?? directiveEnd[0],
       );
     }
-    const applied = tryApplyPersistentDirectiveChanges(state, factionId, changes);
+    const applied = tryApplyPersistentDirectiveChanges(
+      state,
+      factionId,
+      changes,
+    );
     if (!applied.ok) {
-      return Object.freeze({ actions: Object.freeze([]), failure: applied.failure });
+      return Object.freeze({
+        actions: Object.freeze([]),
+        failure: applied.failure,
+      });
     }
     actions.push(
       Object.freeze({
@@ -815,7 +842,12 @@ function evaluateProposal(
     );
   }
 
-  const commands = (decision as unknown as { readonly commands?: readonly import("../core/controller/ControllerApi").ControllerCommand[] }).commands ?? [];
+  const commands =
+    (
+      decision as unknown as {
+        readonly commands?: readonly import("../core/controller/ControllerApi").ControllerCommand[];
+      }
+    ).commands ?? [];
   const seenKeys = new Set<string>();
   let hasCapitulation = false;
 
@@ -829,7 +861,9 @@ function evaluateProposal(
       if (hasCapitulation) {
         return invalid("CONFLICTING_PROPOSAL", command.key);
       }
-      const faction = state.factions.find((candidate) => candidate.id === factionId);
+      const faction = state.factions.find(
+        (candidate) => candidate.id === factionId,
+      );
       if (faction === undefined || faction.status !== "ACTIVE") {
         return invalid("INVALID_TARGET", command.key);
       }
@@ -962,10 +996,16 @@ function finalizeControllerRound(
 
   for (const factionId of orderedFactionIds) {
     let failure = invocationFailures.get(factionId);
-    let evaluatedActions: readonly ControllerProposedAction[] = Object.freeze([]);
+    let evaluatedActions: readonly ControllerProposedAction[] = Object.freeze(
+      [],
+    );
 
     if (failure === undefined) {
-      const evaluated = evaluateProposal(state, factionId, proposals.get(factionId));
+      const evaluated = evaluateProposal(
+        state,
+        factionId,
+        proposals.get(factionId),
+      );
       failure = evaluated.failure;
       evaluatedActions = evaluated.actions;
     }

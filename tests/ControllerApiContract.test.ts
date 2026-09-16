@@ -82,8 +82,9 @@ const issue47RelinquishQuote: RelinquishQuote = {
 };
 void issue47RelinquishQuote;
 
-const issue47RelinquishFromMechanics: ReturnType<MechanicsApi["relinquishQuote"]> =
-  issue47RelinquishQuote;
+const issue47RelinquishFromMechanics: ReturnType<
+  MechanicsApi["relinquishQuote"]
+> = issue47RelinquishQuote;
 void issue47RelinquishFromMechanics;
 
 // The historical ControllerApi type fixture used to live under tests/types, which
@@ -157,7 +158,8 @@ const fixtureFreeFirstPurchaseQuote: StructureBuildQuote = {
 void fixtureFreeFirstPurchaseQuote;
 
 const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
-const fixtureUpgradingCityRef = "fixture:upgrading-city" as StructureView["ref"];
+const fixtureUpgradingCityRef =
+  "fixture:upgrading-city" as StructureView["ref"];
 
 const fixtureFreshDirectLevel5City: StructureView = {
   ref: fixtureFreshCityRef,
@@ -277,9 +279,9 @@ function compilerOptions(): ts.CompilerOptions {
   const configPath = path.resolve("tsconfig.json");
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
 
-  expect(
-    configFile.error ? formatDiagnostics([configFile.error]) : "",
-  ).toBe("");
+  expect(configFile.error ? formatDiagnostics([configFile.error]) : "").toBe(
+    "",
+  );
 
   const parsed = ts.parseJsonConfigFileContent(
     configFile.config,
@@ -500,7 +502,7 @@ import type {
   CellSelector,
   CellView,
   ControllerMemory,
-  FactionId,
+  FactionRef,
   MapPoint,
   OpenFufuController,
   QueryPage,
@@ -522,7 +524,7 @@ const position: Readonly<MapPoint> | undefined = context.map.positionOf(0);
 const terrain: TerrainType | undefined = context.map.terrainAt(0);
 const segmentId: SegmentId | undefined = context.map.segmentIdOf(0);
 const neighbors: readonly CellId[] | undefined = context.map.cardinalNeighbors(0);
-const owner: FactionId | null | undefined = context.cells.owner(0);
+const owner: FactionRef | null | undefined = context.cells.owner(0);
 const segmentCellIds: readonly CellId[] | undefined = context.segments.cellIds(0);
 const getResult: Promise<CellView | undefined> = context.cells.get(0);
 const queryResult: Promise<QueryPage<CellView>> = context.cells.query({ kind: "CELLS", ids: [0] });
@@ -550,7 +552,7 @@ const controller: OpenFufuController<FixtureMemory> = {
     };
   },
   async reconsiderInfluence(context) {
-    const owner: FactionId | null | undefined =
+    const owner: FactionRef | null | undefined =
       context.cells.owner(context.currentInfluenceCenters[0] ?? -1);
     await context.cells.get(context.currentInfluenceCenters[0] ?? -1);
     void owner;

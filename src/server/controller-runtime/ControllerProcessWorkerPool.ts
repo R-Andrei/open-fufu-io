@@ -1,6 +1,4 @@
-import {
-  fork,
-  type ChildProcess } from "node:child_process";
+import { fork, type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -156,9 +154,7 @@ type WorkerQueryEnvelope = Readonly<{
 type WorkerQueryResultEnvelope = Readonly<{
   requestId: number;
   queryId: number;
-  result:
-    | Readonly<{ ok: true; value?: unknown }>
-    | Readonly<{ ok: false }>;
+  result: Readonly<{ ok: true; value?: unknown }> | Readonly<{ ok: false }>;
 }>;
 
 type WorkerResponseEnvelope = Readonly<{
@@ -226,15 +222,19 @@ function isSelectorArgument(value: unknown): value is CellSelector {
   return isPlainRecord(value) && typeof value.kind === "string";
 }
 
-function isEntityFilterArgument(value: unknown): value is UnitFindFilter | StructureFindFilter {
+function isEntityFilterArgument(
+  value: unknown,
+): value is UnitFindFilter | StructureFindFilter {
   return isPlainRecord(value);
 }
 
 function isUnitLocatorArgument(value: unknown): value is UnitLocator {
   return (
     isPlainRecord(value) &&
-    ((typeof value.ref === "string" && !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
-      (typeof value.cellId === "number" && !Object.prototype.hasOwnProperty.call(value, "ref")))
+    ((typeof value.ref === "string" &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
   );
 }
 
@@ -243,7 +243,9 @@ function isStructureLocatorArgument(value: unknown): value is StructureLocator {
 }
 
 function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {
-  return args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]));
+  return (
+    args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]))
+  );
 }
 
 function isControllerWorkerQueryRequest(
@@ -298,7 +300,9 @@ function isWorkerQueryEnvelope(value: unknown): value is WorkerQueryEnvelope {
   );
 }
 
-function isWorkerResponseEnvelope(value: unknown): value is WorkerResponseEnvelope {
+function isWorkerResponseEnvelope(
+  value: unknown,
+): value is WorkerResponseEnvelope {
   if (!isPlainRecord(value)) return false;
   if (!Number.isInteger(value.requestId)) return false;
   if (!isPlainRecord(value.response)) return false;
@@ -357,7 +361,9 @@ function encodeStaticSpatial(
   const segments = map.segments;
   const segmentCount = segments?.segmentCount ?? 0;
   if (segmentCount >= NO_SEGMENT_ID) {
-    throw new Error("controller public Segment count exceeds Uint16 cache capacity");
+    throw new Error(
+      "controller public Segment count exceeds Uint16 cache capacity",
+    );
   }
 
   for (let cellId = 0; cellId < map.cellCount; cellId += 1) {
@@ -366,7 +372,8 @@ function encodeStaticSpatial(
       terrain === "TEST"
         ? NO_PUBLIC_TERRAIN
         : (PUBLIC_TERRAIN_CODE.get(terrain) ?? NO_PUBLIC_TERRAIN);
-    if (segments !== undefined) segmentIds[cellId] = segments.segmentIdOf(cellId);
+    if (segments !== undefined)
+      segmentIds[cellId] = segments.segmentIdOf(cellId);
   }
 
   return Object.freeze({
@@ -398,7 +405,10 @@ function encodeOwnership(
       codeByFactionId.set(ownerId, code);
     }
     ownerCodes[cellId] = code;
-    cellCountByFactionId.set(ownerId, (cellCountByFactionId.get(ownerId) ?? 0) + 1);
+    cellCountByFactionId.set(
+      ownerId,
+      (cellCountByFactionId.get(ownerId) ?? 0) + 1,
+    );
   }
 
   return Object.freeze({
@@ -424,9 +434,15 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private readonly maxWorkerAgeMs: number;
   private readonly maxWorkerRssBytes: number;
   private readonly nowMs: () => number;
-  private readonly staticSpatialCache = new WeakMap<object, WorkerStaticSpatialSnapshot>();
+  private readonly staticSpatialCache = new WeakMap<
+    object,
+    WorkerStaticSpatialSnapshot
+  >();
   private readonly staticSpatialKeys = new WeakMap<object, number>();
-  private readonly ownershipCache = new WeakMap<object, CachedOwnershipSnapshot>();
+  private readonly ownershipCache = new WeakMap<
+    object,
+    CachedOwnershipSnapshot
+  >();
   private nextStaticSpatialKey = 1;
   private nextOwnershipCacheKey = 1;
   private nextRequestId = 1;
@@ -435,7 +451,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   constructor(options: ControllerProcessWorkerPoolOptions = {}) {
     const size = options.size ?? DEFAULT_WORKER_POOL_SIZE;
     if (!Number.isInteger(size) || size <= 0) {
-      throw new RangeError("controller worker pool size must be a positive integer");
+      throw new RangeError(
+        "controller worker pool size must be a positive integer",
+      );
     }
 
     this.maxWorkerAgeMs = requirePositiveFinite(
@@ -569,16 +587,18 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
       ...(requesterOwnerCode === undefined ? {} : { requesterOwnerCode }),
       entries: Object.freeze(
         source.entries.map((entry) => {
-          const ownerCode = ownership.ownerCodeByFactionId.get(entry.authoritativeId);
+          const ownerCode = ownership.ownerCodeByFactionId.get(
+            entry.authoritativeId,
+          );
           return Object.freeze({
             ref: entry.ref,
-            displayName: entry.displayName,
+            displayName: entry.displayName ?? entry.authoritativeId,
             status: entry.status,
             relation: entry.relation,
             territoryCells:
               ownership.cellCountByFactionId.get(entry.authoritativeId) ?? 0,
-            isMinorFaction: entry.isMinorFaction,
-            score: entry.score,
+            isMinorFaction: entry.isMinorFaction ?? false,
+            score: entry.score ?? 0,
             ...(ownerCode === undefined ? {} : { ownerCode }),
             ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
           });
@@ -626,7 +646,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
       this.nextRequestId += 1;
 
       const watchdogMs =
-        queued.request.moduleEvaluationTimeoutMs + queued.request.timeoutMs + 1_000;
+        queued.request.moduleEvaluationTimeoutMs +
+        queued.request.timeoutMs +
+        1_000;
       const watchdog = setTimeout(() => {
         this.markWorkerFailed(slot);
       }, watchdogMs);
@@ -752,7 +774,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
     const session = pending.querySession;
     if (session === undefined) {
-      this.queueQueryResult(slot, message.requestId, message.queryId, { ok: false });
+      this.queueQueryResult(slot, message.requestId, message.queryId, {
+        ok: false,
+      });
       return;
     }
 
@@ -787,7 +811,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
     }
 
     pending.queryResults.buffered.set(queryId, Object.freeze(result));
-    while (pending.queryResults.buffered.has(pending.queryResults.nextQueryId)) {
+    while (
+      pending.queryResults.buffered.has(pending.queryResults.nextQueryId)
+    ) {
       const nextQueryId = pending.queryResults.nextQueryId;
       const nextResult = pending.queryResults.buffered.get(nextQueryId);
       if (nextResult === undefined) return;

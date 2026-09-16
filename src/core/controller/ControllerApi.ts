@@ -51,7 +51,9 @@ export type StructureRef = string & {
   readonly [structureRefBrand]: "StructureRef";
 };
 /** Stable opaque viewer-scoped public operation identity. */
-export type OperationRef = string & { readonly [operationRefBrand]: "OperationRef" };
+export type OperationRef = string & {
+  readonly [operationRefBrand]: "OperationRef";
+};
 /** Opaque receipt for one action staged through the controller facade. */
 export type ActionRef = string & { readonly [actionRefBrand]: "ActionRef" };
 
@@ -64,6 +66,14 @@ export type StructureLocator =
 
 export type DirectiveKey = string;
 type CommandKey = string;
+
+declare global {
+  type FactionId = string;
+  type OperationId = string;
+  type UnitId = string;
+  type StructureId = string;
+  type CommandKey = string;
+}
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
 export type StructureAcquisitionPath =
   | "PURCHASE_BUILD"
@@ -513,20 +523,46 @@ export interface UnitsApi {
   get(locator: UnitLocator): Promise<UnitView | undefined>;
   find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
   count(filter?: UnitFindFilter): Promise<number>;
-  build(type: PurchasableUnitType, producer: StructureLocator, destination: CellId): ActionRef;
+  build(
+    type: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): ActionRef;
   move(unit: UnitLocator, destination: CellId): ActionRef;
-  checkBuild(type: PurchasableUnitType, producer: StructureLocator, destination: CellId): UnitBuildQuote;
+  checkBuild(
+    type: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): UnitBuildQuote;
 }
 
 export interface TransportsApi {
-  embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
+  embark(
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): ActionRef;
   recall(unit: UnitLocator): ActionRef;
-  checkEmbark(sourceCellId: CellId, targetCellId: CellId, population: number): TransportEmbarkQuote;
+  checkEmbark(
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): TransportEmbarkQuote;
 }
 
 export interface WeaponsApi {
-  launch(launcher: StructureLocator | UnitLocator, weapon: StrategicWeaponType, targetCellId: CellId, targetFaction?: FactionRef): ActionRef;
-  checkLaunch(launcher: StructureLocator | UnitLocator, weapon: StrategicWeaponType, targetCellId: CellId, targetFaction?: FactionRef): WeaponLaunchQuote;
+  launch(
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): ActionRef;
+  checkLaunch(
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): WeaponLaunchQuote;
 }
 
 export interface TerritoryApi {
@@ -914,10 +950,7 @@ export interface MechanicsApi {
    */
   structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
 
-  unitTypeSpec(
-    type: MobileUnitType,
-    factionId?: FactionId,
-  ): UnitMechanicsSpec;
+  unitTypeSpec(type: MobileUnitType, factionId?: FactionId): UnitMechanicsSpec;
   /** Hidden and unknown unit IDs are indistinguishable and return undefined. */
   unitSpec(unitId: UnitId): UnitMechanicsSpec | undefined;
   transportSpec(factionId?: FactionId): TransportMechanicsSpec;
@@ -944,9 +977,7 @@ export interface MechanicsApi {
     structureType: StructureType,
     cellId: CellId,
   ): StructureBuildQuote;
-  structureUpgradeQuote(
-    cellId: CellId,
-  ): StructureUpgradeQuote;
+  structureUpgradeQuote(cellId: CellId): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
     producerId: StructureId,
@@ -1187,7 +1218,7 @@ export interface DefensePriorityDirective {
 export interface CounterResponseDirective {
   readonly kind: "COUNTER_RESPONSE";
   readonly key: DirectiveKey;
-  readonly incomingOperation: OperationRef;
+  readonly incomingOperation?: OperationRef;
   /** Trusted-runtime compatibility field; player code should use incomingOperation. */
   readonly incomingOperationId?: OperationId;
   readonly population: number;

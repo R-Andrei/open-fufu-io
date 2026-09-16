@@ -3,6 +3,11 @@ import * as ts from "typescript";
 
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
+import {
+  ProductionControllerHost,
+  type ControllerRuntimeArtifact,
+} from "../src/server/controller-runtime/ProductionControllerHost";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
 import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
@@ -13,11 +18,6 @@ import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import type { MatchState } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { TickEngine } from "../src/simulation/TickEngine";
-import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
-import {
-  ProductionControllerHost,
-  type ControllerRuntimeArtifact,
-} from "../src/server/controller-runtime/ProductionControllerHost";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -39,9 +39,21 @@ function pressureScenario() {
     }),
     { controllerReferenceNamespace: "operation-ref-runtime" },
   );
-  match.acceptAction({ type: "GRANT_POPULATION", factionId: "alpha", amount: 2 });
-  match.acceptAction({ type: "GRANT_POPULATION", factionId: "beta", amount: 20 });
-  match.acceptAction({ type: "GRANT_POPULATION", factionId: "gamma", amount: 20 });
+  match.acceptAction({
+    type: "GRANT_POPULATION",
+    factionId: "alpha",
+    amount: 2,
+  });
+  match.acceptAction({
+    type: "GRANT_POPULATION",
+    factionId: "beta",
+    amount: 20,
+  });
+  match.acceptAction({
+    type: "GRANT_POPULATION",
+    factionId: "gamma",
+    amount: 20,
+  });
   match.tick();
 
   const receipts = match.runControllerRound(
@@ -74,9 +86,9 @@ function pressureScenario() {
       },
     }),
   );
-  expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
-    true,
-  );
+  expect(
+    receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted,
+  ).toBe(true);
 
   const before = match.snapshot();
   const pendingInputs = match
@@ -84,9 +96,18 @@ function pressureScenario() {
     .filter((input) => input.tick === before.tick + 1);
   const engine = new TickEngine();
   const materialized = engine.applyAcceptedInputs(before, pendingInputs);
-  const operationIds = materialized.operations.map((operation) => operation.id).sort();
+  const operationIds = materialized.operations
+    .map((operation) => operation.id)
+    .sort();
   expect(operationIds).toHaveLength(2);
-  return Object.freeze({ match, before, pendingInputs, engine, materialized, operationIds });
+  return Object.freeze({
+    match,
+    before,
+    pendingInputs,
+    engine,
+    materialized,
+    operationIds,
+  });
 }
 
 type OperationReadSurface = Readonly<{
@@ -95,8 +116,11 @@ type OperationReadSurface = Readonly<{
   incoming(): readonly Readonly<Record<string, unknown>>[];
 }>;
 
-function operationsOf(session: ReturnType<typeof createControllerQuerySession>): OperationReadSurface {
-  return (session as unknown as { readonly operations: OperationReadSurface }).operations;
+function operationsOf(
+  session: ReturnType<typeof createControllerQuerySession>,
+): OperationReadSurface {
+  return (session as unknown as { readonly operations: OperationReadSurface })
+    .operations;
 }
 
 async function waitForWorkerReplacement(
@@ -139,9 +163,12 @@ function controllerApiCompilerOptions(): ts.CompilerOptions {
 
 function typecheckIssue178Fixture(source: string): string {
   const options = controllerApiCompilerOptions();
-  const virtualPath = path.resolve("tests/contracts/issue178-umbrella.virtual.ts");
+  const virtualPath = path.resolve(
+    "tests/contracts/issue178-umbrella.virtual.ts",
+  );
   const baseHost = ts.createCompilerHost(options);
-  const isVirtual = (fileName: string) => path.resolve(fileName) === virtualPath;
+  const isVirtual = (fileName: string) =>
+    path.resolve(fileName) === virtualPath;
   const host: ts.CompilerHost = {
     ...baseHost,
     fileExists(fileName) {
@@ -197,7 +224,10 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     expect(scenario.materialized.directReveals).toEqual([]);
     expect(scenario.materialized.ownership).toEqual(["alpha", "beta", "gamma"]);
 
-    const advanced = scenario.engine.advance(scenario.before, scenario.pendingInputs);
+    const advanced = scenario.engine.advance(
+      scenario.before,
+      scenario.pendingInputs,
+    );
     expect(advanced.tick).toBe(scenario.before.tick + 1);
     expect(advanced.ownership).toEqual(["alpha", "beta", "gamma"]);
     expect(
@@ -215,15 +245,21 @@ describe("OperationRef manifestation and lawful read vertical", () => {
         expiryExclusiveTick: advanced.tick + 150,
       })),
     );
-    expect(advanced.directReveals.some((entry) => entry.viewerFactionId === "gamma")).toBe(
-      false,
-    );
+    expect(
+      advanced.directReveals.some((entry) => entry.viewerFactionId === "gamma"),
+    ).toBe(false);
   });
 
   it("projects self and manifested foreign operations through stable viewer-scoped refs without raw OperationIds", async () => {
     const scenario = pressureScenario();
-    const advanced = scenario.engine.advance(scenario.before, scenario.pendingInputs);
-    const references = new ControllerReferenceSession("operation-ref-read", advanced);
+    const advanced = scenario.engine.advance(
+      scenario.before,
+      scenario.pendingInputs,
+    );
+    const references = new ControllerReferenceSession(
+      "operation-ref-read",
+      advanced,
+    );
 
     const alpha = createControllerQuerySession(
       advanced,
@@ -251,7 +287,9 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     expect(alphaOwn).toHaveLength(2);
     expect(betaIncoming).toHaveLength(2);
     expect(gammaIncoming).toEqual([]);
-    expect(alphaOwn.map((view) => view.ref)).toEqual([...alphaOwn.map((view) => view.ref)].sort());
+    expect(alphaOwn.map((view) => view.ref)).toEqual(
+      [...alphaOwn.map((view) => view.ref)].sort(),
+    );
     expect(betaIncoming.map((view) => view.ref)).toEqual(
       [...betaIncoming.map((view) => view.ref)].sort(),
     );
@@ -277,7 +315,8 @@ describe("OperationRef manifestation and lawful read vertical", () => {
       CONTROLLER_QUERY_LIMITS,
       otherMatchReferences,
     );
-    const foreignMatchRef = operationsOf(otherMatchBeta).incoming()[0]!.ref as string;
+    const foreignMatchRef = operationsOf(otherMatchBeta).incoming()[0]!
+      .ref as string;
     expect(operationsOf(beta).get(foreignMatchRef)).toBeUndefined();
 
     const refreshed = Object.freeze({
@@ -285,7 +324,10 @@ describe("OperationRef manifestation and lawful read vertical", () => {
       tick: advanced.tick + 1,
       directReveals: Object.freeze(
         advanced.directReveals.map((entry) =>
-          Object.freeze({ ...entry, expiryExclusiveTick: entry.expiryExclusiveTick + 25 }),
+          Object.freeze({
+            ...entry,
+            expiryExclusiveTick: entry.expiryExclusiveTick + 25,
+          }),
         ),
       ),
     }) as MatchState;
@@ -301,7 +343,10 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     const expiryTick = Math.max(
       ...refreshed.directReveals.map((entry) => entry.expiryExclusiveTick),
     );
-    const expired = Object.freeze({ ...refreshed, tick: expiryTick }) as MatchState;
+    const expired = Object.freeze({
+      ...refreshed,
+      tick: expiryTick,
+    }) as MatchState;
     references.reconcile(expired);
     const expiredBeta = createControllerQuerySession(
       expired,
@@ -312,7 +357,10 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     expect(operationsOf(expiredBeta).incoming()).toEqual([]);
     expect(operationsOf(expiredBeta).get(betaRef)).toBeUndefined();
 
-    const ended = Object.freeze({ ...expired, operations: Object.freeze([]) }) as MatchState;
+    const ended = Object.freeze({
+      ...expired,
+      operations: Object.freeze([]),
+    }) as MatchState;
     references.reconcile(ended);
     const endedBeta = createControllerQuerySession(
       ended,
@@ -326,8 +374,14 @@ describe("OperationRef manifestation and lawful read vertical", () => {
 
   it("shares the existing 128 trusted-read ceiling without consuming the Unit/Structure materialization budget", async () => {
     const scenario = pressureScenario();
-    const advanced = scenario.engine.advance(scenario.before, scenario.pendingInputs);
-    const references = new ControllerReferenceSession("operation-ref-budget", advanced);
+    const advanced = scenario.engine.advance(
+      scenario.before,
+      scenario.pendingInputs,
+    );
+    const references = new ControllerReferenceSession(
+      "operation-ref-budget",
+      advanced,
+    );
     const session = createControllerQuerySession(
       advanced,
       "beta",
@@ -349,8 +403,14 @@ describe("OperationRef manifestation and lawful read vertical", () => {
 
   it("keeps OperationRefs usable through ControllerMemory across real production worker replacement", async () => {
     const scenario = pressureScenario();
-    const advanced = scenario.engine.advance(scenario.before, scenario.pendingInputs);
-    const references = new ControllerReferenceSession("operation-ref-worker", advanced);
+    const advanced = scenario.engine.advance(
+      scenario.before,
+      scenario.pendingInputs,
+    );
+    const references = new ControllerReferenceSession(
+      "operation-ref-worker",
+      advanced,
+    );
     const querySession = () =>
       createControllerQuerySession(
         advanced,
@@ -398,7 +458,8 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     try {
       const first = await host.invoke("beta", observation, querySession());
       expect(first.ok).toBe(true);
-      if (!first.ok) throw new Error("expected first OperationRef worker invocation");
+      if (!first.ok)
+        throw new Error("expected first OperationRef worker invocation");
       const stored = JSON.parse(first.output?.log ?? "{}");
       expect(stored.phase).toBe("stored");
       expect(stored.refs).toHaveLength(2);
@@ -413,7 +474,8 @@ describe("OperationRef manifestation and lawful read vertical", () => {
 
       const second = await host.invoke("beta", observation, querySession());
       expect(second.ok).toBe(true);
-      if (!second.ok) throw new Error("expected replacement-worker OperationRef invocation");
+      if (!second.ok)
+        throw new Error("expected replacement-worker OperationRef invocation");
       const resolved = JSON.parse(second.output?.log ?? "{}");
       expect(resolved).toEqual({
         phase: "resolved",
@@ -577,37 +639,46 @@ void hostileRevealType;
     );
     expect(facadeReceipts).not.toBeInstanceOf(Promise);
     const facadeReceipt = (
-      facadeReceipts as readonly { factionId: string; receipt: { accepted: boolean } }[]
+      facadeReceipts as readonly {
+        factionId: string;
+        receipt: { accepted: boolean };
+      }[]
     ).find((entry) => entry.factionId === "alpha")?.receipt;
     expect(typeof actionRef).toBe("string");
     expect(facadeReceipt?.accepted).toBe(true);
     expect(
-      match.acceptedInputs().some(
-        (input) => input.action.type === "PURCHASE_STRUCTURE_BUILD",
-      ),
+      match
+        .acceptedInputs()
+        .some((input) => input.action.type === "PURCHASE_STRUCTURE_BUILD"),
     ).toBe(true);
 
     const legacy = actionFacadeRuntime("issue178-command-array-rejected-red");
     const before = legacy.stateFingerprint();
     const legacyReceipts = legacy.runControllerRound(
-      new InProcessTestControllerHost({
-        alpha() {
-          return {
-            commands: [
-              {
-                kind: "BUILD_STRUCTURE" as const,
-                key: "legacy-command",
-                structure: "FORT" as const,
-                cellId: 0,
-              },
-            ],
-          } as unknown as never;
+      new InProcessTestControllerHost(
+        {
+          alpha() {
+            return {
+              commands: [
+                {
+                  kind: "BUILD_STRUCTURE" as const,
+                  key: "legacy-command",
+                  structure: "FORT" as const,
+                  cellId: 0,
+                },
+              ],
+            } as unknown as never;
+          },
         },
-      }),
+        { allowLegacyCommands: false },
+      ),
     );
     expect(legacyReceipts).not.toBeInstanceOf(Promise);
     const legacyReceipt = (
-      legacyReceipts as readonly { factionId: string; receipt: { accepted: boolean } }[]
+      legacyReceipts as readonly {
+        factionId: string;
+        receipt: { accepted: boolean };
+      }[]
     ).find((entry) => entry.factionId === "alpha")?.receipt;
     expect(legacyReceipt?.accepted).toBe(false);
     expect(legacy.stateFingerprint()).toBe(before);
@@ -617,7 +688,10 @@ void hostileRevealType;
   it("charges every check* call to the same 128 trusted-read ceiling", () => {
     const match = actionFacadeRuntime("issue178-check-budget-red");
     const state = match.snapshot();
-    const references = new ControllerReferenceSession("issue178-check-budget", state);
+    const references = new ControllerReferenceSession(
+      "issue178-check-budget",
+      state,
+    );
     const session = createControllerQuerySession(
       state,
       "alpha",
