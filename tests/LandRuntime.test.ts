@@ -87,14 +87,23 @@ describe("land operations through authoritative MatchRuntime", () => {
     match.acceptAction({ type: "GRANT_POPULATION", factionId: "beta", amount: 1 });
     match.tick();
 
+    const references = match.controllerReferenceSession();
+    const alphaRef = references.issueFaction("alpha");
+    const betaRef = references.issueFaction("beta");
+    if (alphaRef === undefined || betaRef === undefined) {
+      throw new Error("expected faction refs for land runtime observation");
+    }
+
     let initialObservationUsed = false;
     const receipts = match.runControllerRound(
       new InProcessTestControllerHost({
         alpha(observation) {
           expect(observation.map?.terrainAt(0)).toBe("PLAINS");
           expect(observation.map?.terrainAt(1)).toBe("PLAINS");
-          expect(observation.cells?.owner(0)).toBe("alpha");
-          expect(observation.cells?.owner(1)).toBe("beta");
+          expect(observation.cells?.owner(0)).toBe(alphaRef);
+          expect(observation.cells?.owner(1)).toBe(betaRef);
+          expect(observation.cells?.owner(0)).not.toBe("alpha");
+          expect(observation.cells?.owner(1)).not.toBe("beta");
           expect(observation.me.population).toMatchObject({
             total: 2,
             available: 2,
@@ -159,7 +168,8 @@ describe("land operations through authoritative MatchRuntime", () => {
       new InProcessTestControllerHost({
         alpha(observation) {
           expect(observation.map?.terrainAt(1)).toBe("PLAINS");
-          expect(observation.cells?.owner(1)).toBe("alpha");
+          expect(observation.cells?.owner(1)).toBe(alphaRef);
+          expect(observation.cells?.owner(1)).not.toBe("alpha");
           expect(observation.me.population).toMatchObject({
             total: 1,
             available: 0,

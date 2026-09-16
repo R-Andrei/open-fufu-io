@@ -532,6 +532,7 @@ describe("controller spatial API migration", () => {
       state,
       "alpha",
       CONTROLLER_QUERY_LIMITS,
+      match.controllerReferenceSession(),
     );
     const host = new OfficialAiControllerHost([
       {
