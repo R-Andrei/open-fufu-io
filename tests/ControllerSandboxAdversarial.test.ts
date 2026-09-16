@@ -58,7 +58,7 @@ function authoritativeQuerySession() {
 
 function outOfOrderCompletionQuerySession() {
   const base = authoritativeQuerySession();
-  return Object.freeze({
+  const session = {
     ...base,
     cells: Object.freeze({
       ...base.cells,
@@ -70,7 +70,20 @@ function outOfOrderCompletionQuerySession() {
         return value;
       },
     }),
+  } as typeof base;
+  Object.defineProperty(session, "publicFactions", {
+    value: base.publicFactions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
   });
+  Object.defineProperty(session, "publicOperations", {
+    value: base.publicOperations,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  return Object.freeze(session);
 }
 
 function artifact(moduleSource: string): ControllerRuntimeArtifact {
