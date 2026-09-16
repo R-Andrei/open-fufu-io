@@ -364,6 +364,7 @@ function progressStructure(
     ownerId: current.ownerId,
     type: current.type,
     cellId: current.cellId,
+    ...(current.outputCellId === undefined ? {} : { outputCellId: current.outputCellId }),
     completedLevel: targetLevel,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),
