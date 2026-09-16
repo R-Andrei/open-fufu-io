@@ -1,6 +1,7 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
   evaluateControllerRound,
 } from "../src/simulation/ControllerRuntime";
@@ -402,6 +403,10 @@ describe("controller local public spatial runtime", () => {
 
   it("uses FactionRef values for production-isolate ownership reads", async () => {
     const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-ownership-ref-red",
+      state,
+    );
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
@@ -438,6 +443,7 @@ describe("controller local public spatial runtime", () => {
           new Map(),
           new Map(),
           new Set(),
+          references,
         ),
       );
 
