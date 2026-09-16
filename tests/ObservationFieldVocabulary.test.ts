@@ -7,7 +7,10 @@ import { controllerOutputHasExpectedStructure } from "../src/core/controller/Con
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { STRUCTURE_FIELD_IDS } from "../src/core/rules/RuleComposition";
-import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
+import {
+  InProcessTestControllerHost,
+  type ControllerHost,
+} from "../src/simulation/ControllerRuntime";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
@@ -132,19 +135,15 @@ describe("CounterResponse public identity validation", () => {
     match.tick();
 
     let incomingOperationRef: string | undefined;
-    const counterReceipts = match.runControllerRound(
-      new InProcessTestControllerHost({
-        beta(context) {
-          const incoming = (
-            context as unknown as {
-              readonly operations: {
-                incoming(): readonly Readonly<{ ref: string }>[];
-              };
-            }
-          ).operations.incoming();
-          expect(incoming).toHaveLength(1);
-          incomingOperationRef = incoming[0]!.ref;
-          return {
+    const counterHost: ControllerHost = {
+      invoke(factionId, _observation, querySession) {
+        if (factionId !== "beta") return Object.freeze({ ok: true as const });
+        const incoming = querySession?.operations.incoming() ?? [];
+        expect(incoming).toHaveLength(1);
+        incomingOperationRef = incoming[0]!.ref;
+        return Object.freeze({
+          ok: true as const,
+          output: {
             directives: {
               set: [
                 {
@@ -155,10 +154,20 @@ describe("CounterResponse public identity validation", () => {
                 },
               ],
             },
-          } as unknown as never;
-        },
-      }),
-    );
+          } as unknown as never,
+        });
+      },
+      chooseInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      reconsiderInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      chooseOrigins() {
+        return Object.freeze({ ok: true as const });
+      },
+    };
+    const counterReceipts = match.runControllerRound(counterHost);
     expect(counterReceipts).not.toBeInstanceOf(Promise);
     expect(incomingOperationRef).toEqual(expect.any(String));
     expect(
