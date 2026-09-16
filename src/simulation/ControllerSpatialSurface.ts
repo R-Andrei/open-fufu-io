@@ -8,6 +8,7 @@ import type {
   QueryPage,
   SegmentId,
   SegmentsApi,
+  SegmentView,
   StructureView,
   UnitView,
 } from "../core/controller/ControllerApi";
@@ -91,6 +92,18 @@ export function createControllerSpatialSurface(
     return Object.freeze({ ...view, ownerId: ownerRef });
   };
 
+  const projectSegmentView = (view: SegmentView): SegmentView => {
+    const ownerShares: Record<string, number> = {};
+    for (const [ownerId, share] of Object.entries(view.ownerShares)) {
+      const ownerRef = ownerRefById.get(ownerId);
+      if (ownerRef !== undefined) ownerShares[ownerRef] = share;
+    }
+    return Object.freeze({
+      ...view,
+      ownerShares: Object.freeze(ownerShares),
+    });
+  };
+
   const projectCellPage = (page: QueryPage<CellView>): QueryPage<CellView> =>
     Object.freeze({
       items: Object.freeze(page.items.map(projectCellView)),
@@ -160,8 +173,12 @@ export function createControllerSpatialSurface(
   });
 
   const segments: SegmentsApi = Object.freeze({
-    get: (id: SegmentId) => session.segments.get(id),
-    list: () => session.segments.list(),
+    get: async (id: SegmentId) => {
+      const view = await session.segments.get(id);
+      return view === undefined ? undefined : projectSegmentView(view);
+    },
+    list: async () =>
+      Object.freeze((await session.segments.list()).map(projectSegmentView)),
     cells: (id: SegmentId) => session.segments.cells(id),
     cellIds: (id: SegmentId) => {
       const sourceSegments = sourceMap.segments;
