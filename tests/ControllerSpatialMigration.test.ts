@@ -109,6 +109,7 @@ describe("controller spatial API migration", () => {
     const alphaRef = match.controllerReferenceSession().issueFaction("alpha");
     if (alphaRef === undefined) throw new Error("expected Alpha FactionRef");
     let spatialSurfaceSeen = false;
+    let observedOwner: string | null | undefined;
 
     const receipts = match.runControllerRound(
       new InProcessTestControllerHost({
@@ -124,8 +125,7 @@ describe("controller spatial API migration", () => {
             expect(Array.isArray(context.cells)).toBe(false);
             expect(context.map.cellCount).toBe(2);
             expect(context.map.terrainAt(0)).toBe("PLAINS");
-            expect(context.cells.owner(0)).toBe(alphaRef);
-            expect(context.cells.owner(0)).not.toBe("alpha");
+            observedOwner = context.cells.owner(0);
             expect(context.cells.owner(1)).toBeNull();
             expect(context.cells.owner(2)).toBeUndefined();
             expect(context.segments.cellIds(0)).toBeUndefined();
@@ -137,6 +137,8 @@ describe("controller spatial API migration", () => {
     );
 
     expect(spatialSurfaceSeen).toBe(true);
+    expect(observedOwner).toBe(alphaRef);
+    expect(observedOwner).not.toBe("alpha");
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
       true,
     );
