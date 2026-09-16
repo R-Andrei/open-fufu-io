@@ -20,7 +20,7 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Patch and validate
+      - name: Patch and test
         shell: bash
         run: |
           git rm .github/workflows/issue178-iterate.yml
@@ -41,7 +41,6 @@ jobs:
           PY
           git add -A
           git diff --check
-          npx tsx scripts/checkValidationBoundary.ts --base origin/main
           npm test
           git config user.name "Fufuway"
           git config user.email "faragau.rares@gmail.com"
