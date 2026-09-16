@@ -10,6 +10,8 @@ import type {
   FactionReadView,
   MechanicsApi,
   MobileUnitType,
+  OperationKind,
+  OperationStatus,
   PublicFactionRelation,
   QueryPage,
   SegmentId,
@@ -47,7 +49,7 @@ import {
   isOwnedForestConcealmentCell,
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
-import { landTerrainBaseSpec } from "./LandOperations";
+import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
@@ -76,6 +78,25 @@ export interface ControllerQueryUsage {
   readonly materializedEntityViews: number;
 }
 
+export interface ControllerOperationReadView {
+  readonly ref: string;
+  readonly directiveKey?: string;
+  readonly kind: OperationKind;
+  readonly ownerId: FactionReadView["ref"];
+  readonly targetFactionId?: FactionReadView["ref"];
+  readonly committedPopulation: number;
+  readonly status: OperationStatus;
+  readonly source?: CellSelector;
+  readonly target?: CellSelector;
+}
+
+export interface ControllerPublicOperationSource {
+  readonly entries: readonly Readonly<{
+    readonly direction: "OWN" | "INCOMING";
+    readonly view: ControllerOperationReadView;
+  }>[];
+}
+
 export type ControllerConstructionMechanics = Readonly<
   Pick<MechanicsApi, "structureBuildQuote" | "structureUpgradeQuote">
 >;
@@ -102,11 +123,18 @@ export interface ControllerQuerySession {
   readonly publicSpatial: ControllerPublicSpatialSource;
   /** Internal transport source; kept non-enumerable by the concrete session. */
   readonly publicFactions?: ControllerPublicFactionSource;
+  /** Safe opaque operation snapshot used by isolated workers; non-enumerable. */
+  readonly publicOperations?: ControllerPublicOperationSource;
   readonly mechanics: ControllerConstructionMechanics;
   readonly factions: Readonly<{
     get(ref: string): FactionReadView | undefined;
     find(filter?: FactionFindFilter): readonly FactionReadView[];
     proximity(ref: string): number | undefined;
+  }>;
+  readonly operations: Readonly<{
+    get(ref: string): ControllerOperationReadView | undefined;
+    own(): readonly ControllerOperationReadView[];
+    incoming(): readonly ControllerOperationReadView[];
   }>;
   readonly units: Readonly<{
     get(locator: UnitLocator): Promise<UnitView | undefined>;
@@ -201,12 +229,12 @@ interface ControllerQueryMobileUnitState {
 interface ControllerQueryReferenceSession {
   issue(
     viewerFactionId: string,
-    domain: "UNIT" | "STRUCTURE",
+    domain: "UNIT" | "STRUCTURE" | "OPERATION",
     authoritativeId: string,
   ): string | undefined;
   resolve(
     viewerFactionId: string,
-    domain: "UNIT" | "STRUCTURE",
+    domain: "UNIT" | "STRUCTURE" | "OPERATION",
     ref: string,
   ): string | undefined;
   issueFaction(factionId: string): FactionReadView["ref"] | undefined;
@@ -541,7 +569,7 @@ function anyFieldSourceContainsCell(
   sources: readonly StructureFieldSource[],
   cellId: CellId,
 ): boolean {
-  return sources.some((source) => fieldSourceContainsCell(state, source, cellId));
+  return sources.some((source) => fieldSourceContainsCell(state, source, id));
 }
 
 function createStructureVisibilityContext(
@@ -605,7 +633,7 @@ function p45ConcealsCellFromRequester(
 function directRevealActive(
   state: MatchState,
   context: StructureVisibilityContext,
-  sourceKind: "UNIT" | "STRUCTURE",
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
   sourceId: string,
 ): boolean {
   return state.directReveals.some(
@@ -1294,6 +1322,24 @@ function factionProximityById(
   return minimum;
 }
 
+function incomingOperationTargetsRequester(
+  state: MatchState,
+  requesterFactionId: string,
+  operation: LandOperationState,
+): boolean {
+  if (operation.ownerId === requesterFactionId) return false;
+  if (operation.kind === "ATTACK") {
+    return operation.targetFactionId === requesterFactionId;
+  }
+  if (operation.kind === "COUNTER_RESPONSE") {
+    const incoming = state.operations.find(
+      (candidate) => candidate.id === operation.incomingOperationId,
+    );
+    return incoming?.ownerId === requesterFactionId;
+  }
+  return false;
+}
+
 export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
@@ -1638,6 +1684,83 @@ export function createControllerQuerySession(
     return factionProximityById(state, requesterFactionId, targetFactionId);
   };
 
+  const materializeOperation = (
+    operation: LandOperationState,
+  ): ControllerOperationReadView | undefined => {
+    if (references === undefined) return undefined;
+    const ref = references.issue(requesterFactionId, "OPERATION", operation.id);
+    const ownerRef = references.issueFaction(operation.ownerId);
+    if (ref === undefined || ownerRef === undefined) return undefined;
+    const targetFactionId =
+      operation.kind === "ATTACK"
+        ? references.issueFaction(operation.targetFactionId)
+        : undefined;
+    if (operation.kind === "ATTACK" && targetFactionId === undefined) {
+      return undefined;
+    }
+    const selfOwned = operation.ownerId === requesterFactionId;
+    return Object.freeze({
+      ref,
+      ...(selfOwned ? { directiveKey: operation.controllerKey } : {}),
+      kind: operation.kind,
+      ownerId: ownerRef,
+      ...(targetFactionId === undefined ? {} : { targetFactionId }),
+      committedPopulation: operation.committedPopulation,
+      status: "ACTIVE" as const,
+      ...(operation.kind === "COUNTER_RESPONSE"
+        ? {}
+        : { source: operation.source, target: operation.target }),
+    });
+  };
+
+  const publicOperationEntries = Object.freeze(
+    [...state.operations]
+      .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+      .flatMap((operation) => {
+        const selfOwned = operation.ownerId === requesterFactionId;
+        const incoming =
+          !selfOwned &&
+          incomingOperationTargetsRequester(state, requesterFactionId, operation) &&
+          directRevealActive(state, visibility, "OPERATION", operation.id);
+        if (!selfOwned && !incoming) return [];
+        const view = materializeOperation(operation);
+        return view === undefined
+          ? []
+          : [Object.freeze({ direction: selfOwned ? "OWN" as const : "INCOMING" as const, view })];
+      }),
+  );
+  const publicOperations: ControllerPublicOperationSource = Object.freeze({
+    entries: publicOperationEntries,
+  });
+
+  const getOperation = (ref: string): ControllerOperationReadView | undefined => {
+    beginQuery();
+    if (references === undefined) return undefined;
+    const authoritativeId = references.resolve(requesterFactionId, "OPERATION", ref);
+    if (authoritativeId === undefined) return undefined;
+    return publicOperationEntries.find(
+      (entry) => entry.view.ref === ref,
+    )?.view;
+  };
+
+  const ownOperations = (): readonly ControllerOperationReadView[] => {
+    beginQuery();
+    return Object.freeze(
+      publicOperationEntries
+        .filter((entry) => entry.direction === "OWN")
+        .map((entry) => entry.view),
+    );
+  };
+
+  const incomingOperations = (): readonly ControllerOperationReadView[] => {
+    beginQuery();
+    return Object.freeze(
+      publicOperationEntries
+        .filter((entry) => entry.direction === "INCOMING")
+        .map((entry) => entry.view),
+    );
+  };
+
   const get = async (id: CellId): Promise<CellView | undefined> => {
     beginQuery();
     if (!state.map.isValidCellId(id)) return undefined;
@@ -1767,6 +1890,11 @@ export function createControllerQuerySession(
       find: findFactions,
       proximity: factionProximity,
     }),
+    operations: Object.freeze({
+      get: getOperation,
+      own: ownOperations,
+      incoming: incomingOperations,
+    }),
     units: Object.freeze({
       get: getUnit,
       find: findUnits,
@@ -1795,6 +1923,12 @@ export function createControllerQuerySession(
   } as ControllerQuerySession;
   Object.defineProperty(session, "publicFactions", {
     value: publicFactions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  Object.defineProperty(session, "publicOperations", {
+    value: publicOperations,
     enumerable: false,
     configurable: false,
     writable: false,

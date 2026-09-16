@@ -19,6 +19,7 @@ import {
   resolveTacticalVisibility,
   type DirectRevealRecord,
 } from "../core/visibility/TacticalVisibility";
+import type { LandOperationPressureResolvedEvent } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type {
   PhysicalUnitSimulationEvent,
@@ -387,6 +388,35 @@ export function projectTankTargetObservation(
   );
 
   return Object.freeze({ observedUnitIds, observedCellIds });
+}
+
+/**
+ * Applies resolved land-operation pressure as one hostile manifestation of the
+ * authoritative operation source. Only the directly attacked faction receives
+ * the source-specific reveal; unrelated viewers remain unchanged.
+ */
+export function resolveDirectRevealsFromLandOperationEvents(
+  state: Readonly<Pick<MatchState, "directReveals">>,
+  events: readonly LandOperationPressureResolvedEvent[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  let directReveals = pruneExpiredDirectReveals(state.directReveals, currentTick);
+  for (const event of events) {
+    directReveals = refreshDirectRevealRecords(
+      directReveals,
+      {
+        resolved: true,
+        hostile: true,
+        identifiableSource: true,
+        attackedFactionIds: [event.payload.attackedFactionId],
+      },
+      "OPERATION",
+      event.payload.operationId,
+      event.tick,
+      V1_SIMULATION_TICKS_PER_SECOND,
+    );
+  }
+  return directReveals;
 }
 
 function resolveDirectRevealsFromTankCombatEventSet(
