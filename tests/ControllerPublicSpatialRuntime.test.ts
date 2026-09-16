@@ -123,12 +123,21 @@ describe("controller local public spatial runtime", () => {
 
   it("serves map, public ownership, and canonical Segment cells synchronously inside the isolate", async () => {
     const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-local-read",
+      state,
+    );
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
         alpha: artifact(`
           export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
             const checks = [
+              self !== undefined,
+              enemy !== undefined,
               context.map.width === 3,
               context.map.height === 2,
               context.map.cellCount === 6,
@@ -145,8 +154,8 @@ describe("controller local public spatial runtime", () => {
               JSON.stringify(context.map.cardinalNeighbors(1)) === "[0,2,4]",
               context.map.cardinalNeighbors(6) === undefined,
               context.cells.owner(0) === null,
-              context.cells.owner(1) === "alpha",
-              context.cells.owner(2) === "beta",
+              context.cells.owner(1) === self?.ref,
+              context.cells.owner(2) === enemy?.ref,
               context.cells.owner(6) === undefined,
               JSON.stringify(context.segments.cellIds(0)) === "[0,1,2,3,4,5]",
               context.segments.cellIds(1) === undefined,
@@ -172,6 +181,7 @@ describe("controller local public spatial runtime", () => {
           new Map(),
           new Map(),
           new Set(),
+          references,
         ),
       );
 
@@ -467,6 +477,25 @@ describe("controller local public spatial runtime", () => {
     const width = 2_400;
     const height = 2_000;
     const cellCount = width * height;
+    const alphaRef = "ofr1:controller-worker-cache:f:000000000001";
+    const betaRef = "ofr1:controller-worker-cache:f:000000000002";
+    const publicFactions = Object.freeze({
+      requesterFactionId: "alpha",
+      entries: Object.freeze([
+        Object.freeze({
+          authoritativeId: "alpha",
+          ref: alphaRef,
+          status: "ACTIVE" as const,
+          relation: "SELF" as const,
+        }),
+        Object.freeze({
+          authoritativeId: "beta",
+          ref: betaRef,
+          status: "ACTIVE" as const,
+          relation: "ENEMY" as const,
+        }),
+      ]),
+    });
     let terrainReads = 0;
     let allowTerrainReads = true;
     const map = Object.freeze({
@@ -509,6 +538,7 @@ describe("controller local public spatial runtime", () => {
     });
     const firstSession = Object.freeze({
       publicSpatial: Object.freeze({ map, ownership: firstOwnership }),
+      publicFactions,
       usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
     }) as unknown as ControllerQuerySession;
 
@@ -534,7 +564,7 @@ describe("controller local public spatial runtime", () => {
         ok: true,
         output: {
           commands: [],
-          log: "4800000:PLAINS:alpha:alpha:alpha",
+          log: `4800000:PLAINS:${alphaRef}:${alphaRef}:${alphaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },
       });
@@ -556,6 +586,7 @@ describe("controller local public spatial runtime", () => {
             replacementOwnershipReads += 1;
           }),
         }),
+        publicFactions,
         usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
       }) as unknown as ControllerQuerySession;
       const replaced = await pool.invoke(request, replacementSession);
@@ -563,7 +594,7 @@ describe("controller local public spatial runtime", () => {
         ok: true,
         output: {
           commands: [],
-          log: "4800000:PLAINS:beta:beta:beta",
+          log: `4800000:PLAINS:${betaRef}:${betaRef}:${betaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },
       });
