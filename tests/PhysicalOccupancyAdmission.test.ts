@@ -1,13 +1,19 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
-import { createInitialMatchState, createProspectiveMatchState } from "../src/simulation/MatchState";
+import {
+  canonicalMatchStateSerialization,
+  createInitialMatchState,
+  createProspectiveMatchState,
+} from "../src/simulation/MatchState";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { resolvePersistentStructureLifecycleTick } from "../src/simulation/Structures";
 import {
   evaluateStructureAcquisitionAdmission,
   materializePersistentStructures,
+  tryMaterializeStructureGrant,
 } from "../src/simulation/StructuresCore";
+import { advanceTankProductionPhase } from "../src/simulation/Tanks";
 
 function baseState(seed: string, width = 6) {
   const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -63,28 +69,110 @@ describe("physical occupancy admission", () => {
     })).toEqual({ ok: false, failure: { code: "CELL_OCCUPIED" } });
   });
 
-  it("rejects Factory acquisition when no legal Tank output cell can be designated", () => {
+  it.each(["GRANT", "PURCHASE_BUILD"] as const)(
+    "rejects Factory %s acquisition when no legal Tank output cell can be designated",
+    (acquisitionPath) => {
+      const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+      const state = createInitialMatchState(createMicroSimulationSpec({
+        seed: `producer-output-no-fallback-${acquisitionPath}`,
+        width: 3,
+        height: 1,
+        terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
+        initialOwners: [null, "alpha", null],
+        factions: [{ id: "alpha", rules }],
+      }));
+
+      expect(evaluateStructureAcquisitionAdmission(state, {
+        structureId: "factory-no-output",
+        ownerId: "alpha",
+        type: "FACTORY",
+        cellId: 1,
+        level: 1,
+        acquisitionPath,
+      })).toEqual({
+        ok: false,
+        failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
+      });
+    },
+  );
+
+  it.each(["GRANT", "PURCHASE_BUILD"] as const)(
+    "rejects Port %s acquisition when no Deep-Water dock can be designated",
+    (acquisitionPath) => {
+      const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+      const state = createInitialMatchState(createMicroSimulationSpec({
+        seed: `producer-port-no-dock-${acquisitionPath}`,
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "alpha", "alpha"],
+        factions: [{ id: "alpha", rules }],
+      }));
+
+      expect(evaluateStructureAcquisitionAdmission(state, {
+        structureId: "port-no-dock",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 1,
+        level: 1,
+        acquisitionPath,
+      })).toEqual({
+        ok: false,
+        failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
+      });
+    },
+  );
+
+  it("selects the lowest stable cell id when producer output candidates tie", () => {
     const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
     const state = createInitialMatchState(createMicroSimulationSpec({
-      seed: "producer-output-no-fallback-red",
+      seed: "producer-output-deterministic-tie",
       width: 3,
-      height: 1,
-      terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
-      initialOwners: [null, "alpha", null],
+      height: 3,
+      terrain: Array.from({ length: 9 }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: 9 }, () => "alpha"),
       factions: [{ id: "alpha", rules }],
     }));
-
-    expect(evaluateStructureAcquisitionAdmission(state, {
-      structureId: "factory-no-output",
+    const granted = tryMaterializeStructureGrant(state, {
+      structureId: "factory-tie",
       ownerId: "alpha",
       type: "FACTORY",
-      cellId: 1,
+      cellId: 4,
       level: 1,
-      acquisitionPath: "GRANT",
-    })).toEqual({
-      ok: false,
-      failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
     });
+
+    expect(granted.ok).toBe(true);
+    if (!granted.ok) throw new Error("expected Factory grant admission");
+    expect(granted.structure.outputCellId).toBe(1);
+  });
+
+  it("serializes the persisted designated producer output cell", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(createMicroSimulationSpec({
+      seed: "producer-output-serialization-red",
+      width: 3,
+      height: 3,
+      terrain: Array.from({ length: 9 }, () => "PLAINS" as const),
+      initialOwners: Array.from({ length: 9 }, () => "alpha"),
+      factions: [{ id: "alpha", rules }],
+    }));
+    const granted = tryMaterializeStructureGrant(base, {
+      structureId: "factory-serialized",
+      ownerId: "alpha",
+      type: "FACTORY",
+      cellId: 4,
+      level: 1,
+    });
+    expect(granted.ok).toBe(true);
+    if (!granted.ok) throw new Error("expected Factory grant admission");
+    const state = createProspectiveMatchState(base, {
+      structures: granted.structures,
+    });
+    const serialized = JSON.parse(canonicalMatchStateSerialization(state)) as {
+      readonly structures: readonly { readonly outputCellId?: number }[];
+    };
+
+    expect(serialized.structures[0]?.outputCellId).toBe(1);
   });
 
   it("preserves designated producer output through construction completion", () => {
@@ -111,5 +199,92 @@ describe("physical occupancy admission", () => {
       active: true,
       outputCellId: 0,
     }));
+  });
+
+  it("preserves designated producer output through upgrade completion", () => {
+    const base = baseState("producer-output-upgrade-lifecycle", 3);
+    const upgrading = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-upgrade",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 1,
+          outputCellId: 0,
+          completedLevel: 1,
+          active: true,
+          construction: { targetLevel: 2, remainingTicks: 1 },
+          acquisitionPath: "GRANT",
+        },
+      ],
+    });
+
+    const completed = resolvePersistentStructureLifecycleTick(upgrading, [], 1);
+    expect(completed[0]).toEqual(expect.objectContaining({
+      id: "factory-upgrade",
+      completedLevel: 2,
+      active: true,
+      outputCellId: 0,
+    }));
+  });
+
+  it("holds Tank completion on the exact designated slot without rerouting", () => {
+    const base = baseState("producer-output-exact-slot", 4);
+    const blocker = createMobileUnit(
+      base.map,
+      base.factions.map((faction) => faction.id),
+      base,
+      {
+        ownerId: "alpha",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: 2,
+      },
+    );
+    const blocked = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-exact-slot",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 1,
+          outputCellId: 2,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+      mobileUnits: blocker.mobileUnits,
+      nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      tankProductionJobs: [
+        {
+          factoryId: "factory-exact-slot",
+          ownerId: "alpha",
+          chassisType: "TANK",
+          strategicDestinationCellId: 0,
+          state: "READY_TO_DEPLOY",
+        },
+      ],
+    });
+
+    const waiting = advanceTankProductionPhase(blocked);
+    expect(waiting.mobileUnits).toHaveLength(1);
+    expect(waiting.mobileUnits[0]?.cellId).toBe(2);
+    expect(waiting.tankProductionJobs).toEqual([
+      expect.objectContaining({
+        factoryId: "factory-exact-slot",
+        state: "READY_TO_DEPLOY",
+      }),
+    ]);
+
+    const cleared = createProspectiveMatchState(waiting, { mobileUnits: [] });
+    const deployed = advanceTankProductionPhase(cleared);
+    expect(deployed.tankProductionJobs).toHaveLength(0);
+    expect(deployed.mobileUnits).toHaveLength(1);
+    expect(deployed.mobileUnits[0]).toMatchObject({
+      ownerId: "alpha",
+      type: "TANK",
+      cellId: 2,
+    });
   });
 });
