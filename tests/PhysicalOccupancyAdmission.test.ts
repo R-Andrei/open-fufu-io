@@ -3,6 +3,7 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { createInitialMatchState, createProspectiveMatchState } from "../src/simulation/MatchState";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { resolvePersistentStructureLifecycleTick } from "../src/simulation/Structures";
 import {
   evaluateStructureAcquisitionAdmission,
   materializePersistentStructures,
@@ -60,5 +61,55 @@ describe("physical occupancy admission", () => {
       structureId: "factory-a", ownerId: "alpha", type: "FACTORY", cellId: 2,
       level: 1, acquisitionPath: "GRANT",
     })).toEqual({ ok: false, failure: { code: "CELL_OCCUPIED" } });
+  });
+
+  it("rejects Factory acquisition when no legal Tank output cell can be designated", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const state = createInitialMatchState(createMicroSimulationSpec({
+      seed: "producer-output-no-fallback-red",
+      width: 3,
+      height: 1,
+      terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
+      initialOwners: [null, "alpha", null],
+      factions: [{ id: "alpha", rules }],
+    }));
+
+    expect(evaluateStructureAcquisitionAdmission(state, {
+      structureId: "factory-no-output",
+      ownerId: "alpha",
+      type: "FACTORY",
+      cellId: 1,
+      level: 1,
+      acquisitionPath: "GRANT",
+    })).toEqual({
+      ok: false,
+      failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
+    });
+  });
+
+  it("preserves designated producer output through construction completion", () => {
+    const base = baseState("producer-output-lifecycle-red", 3);
+    const constructing = createProspectiveMatchState(base, {
+      structures: [
+        {
+          id: "factory-lifecycle",
+          ownerId: "alpha",
+          type: "FACTORY",
+          cellId: 1,
+          outputCellId: 0,
+          active: false,
+          construction: { targetLevel: 1, remainingTicks: 1 },
+          acquisitionPath: "PURCHASE_BUILD",
+        },
+      ],
+    });
+
+    const completed = resolvePersistentStructureLifecycleTick(constructing, [], 1);
+    expect(completed[0]).toEqual(expect.objectContaining({
+      id: "factory-lifecycle",
+      completedLevel: 1,
+      active: true,
+      outputCellId: 0,
+    }));
   });
 });
