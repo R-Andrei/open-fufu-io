@@ -1,0 +1,49 @@
+name: Issue 178 validation iteration
+
+on:
+  push:
+    branches: [issue-178-operation-read-A91F6C]
+
+permissions:
+  contents: write
+
+jobs:
+  iterate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Patch and validate
+        shell: bash
+        run: |
+          git rm .github/workflows/issue178-iterate.yml
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('src/core/controller/ControllerApi.ts')
+          s = p.read_text()
+          anchor = 'type CommandKey = string;\n'
+          block = '''type CommandKey = string;\n\ndeclare global {\n  type FactionId = string;\n  type OperationId = string;\n  type UnitId = string;\n  type StructureId = string;\n  type CommandKey = string;\n}\n'''
+          if 'declare global {\n  type FactionId = string;' not in s:
+              if anchor not in s:
+                  raise SystemExit('ControllerApi internal alias anchor missing')
+              s = s.replace(anchor, block, 1)
+              p.write_text(s)
+          internal = Path('src/core/controller/InternalControllerIds.d.ts')
+          if internal.exists():
+              internal.unlink()
+          PY
+          git add -A
+          git diff --check
+          npx tsx scripts/checkValidationBoundary.ts --base origin/main
+          npm test
+          git config user.name "Fufuway"
+          git config user.email "faragau.rares@gmail.com"
+          git commit -m "OF-ISSUE178-20260915-A91F6C fast-track validation fixes"
+          git push origin HEAD:issue-178-operation-read-A91F6C
