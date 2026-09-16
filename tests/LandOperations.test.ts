@@ -2,12 +2,19 @@ import path from "node:path";
 import * as ts from "typescript";
 import type { CellSelector } from "../src/core/controller/ControllerApi";
 import { isTerrainScopeId } from "../src/core/rules/RuleComposition";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
 import {
   calculateCounterResponseTick,
   canonicalCellSelectorKey,
   isLandSideCoastTerrain,
   landTerrainBaseSpec,
+  resolveLandTick,
 } from "../src/simulation/LandOperations";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function formatDiagnostics(diagnostics: readonly ts.Diagnostic[]): string {
   return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
@@ -30,6 +37,10 @@ function compilerOptions(): ts.CompilerOptions {
   );
   expect(formatDiagnostics(parsed.errors)).toBe("");
   return parsed.options;
+}
+
+function emptyRules() {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
 describe("land-operation focused contracts", () => {
@@ -122,5 +133,94 @@ describe("land-operation focused contracts", () => {
       attackEffectiveness: 1,
       responseEffectiveness: 1,
     });
+  });
+
+  it("reports every positive-pressure attack operation as manifested before any capture", () => {
+    const match = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "operation-pressure-manifestation-red",
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: "operation-pressure-manifestation-red" },
+    );
+    match.acceptAction({ type: "GRANT_POPULATION", factionId: "alpha", amount: 2 });
+    match.acceptAction({ type: "GRANT_POPULATION", factionId: "beta", amount: 20 });
+    match.tick();
+
+    const receipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha() {
+          return {
+            directives: {
+              set: [
+                {
+                  kind: "LAND_OPERATION",
+                  key: "pressure-a",
+                  operation: "ATTACK",
+                  population: 1,
+                  targetFactionId: "beta",
+                  source: { kind: "CELLS", ids: [0] },
+                  target: { kind: "CELLS", ids: [1] },
+                },
+                {
+                  kind: "LAND_OPERATION",
+                  key: "pressure-b",
+                  operation: "ATTACK",
+                  population: 1,
+                  targetFactionId: "beta",
+                  source: { kind: "CELLS", ids: [0] },
+                  target: { kind: "CELLS", ids: [1] },
+                },
+              ],
+            },
+          };
+        },
+      }),
+    );
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted).toBe(
+      true,
+    );
+
+    const before = match.snapshot();
+    const pendingInputs = match
+      .acceptedInputs()
+      .filter((input) => input.tick === before.tick + 1);
+    const materialized = new TickEngine().applyAcceptedInputs(before, pendingInputs);
+    const operationIds = materialized.operations
+      .filter((operation) => operation.kind === "ATTACK")
+      .map((operation) => operation.id)
+      .sort();
+    expect(operationIds).toHaveLength(2);
+    expect(materialized.ownership).toEqual(["alpha", "beta"]);
+
+    const resolved = resolveLandTick(materialized, materialized.tick + 1);
+    expect(resolved.ownership).toEqual(["alpha", "beta"]);
+
+    const manifestationEvents = (resolved.events as ReadonlyArray<{
+      readonly kind: string;
+      readonly payload: Readonly<{
+        operationId?: string;
+        attackedFactionId?: string;
+      }>;
+    }>).filter((event) => event.kind === "LAND_OPERATION_PRESSURE_RESOLVED");
+
+    expect(
+      manifestationEvents.map((event) => ({
+        operationId: event.payload.operationId,
+        attackedFactionId: event.payload.attackedFactionId,
+      })),
+    ).toEqual(
+      operationIds.map((operationId) => ({
+        operationId,
+        attackedFactionId: "beta",
+      })),
+    );
   });
 });

@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import {
+  randomUUID } from "node:crypto";
 import { writeSync } from "node:fs";
 
 import ivm from "isolated-vm";
@@ -70,9 +71,12 @@ type WorkerOwnershipSnapshot = Readonly<{
 
 type WorkerPublicFactionEntry = Readonly<{
   ref: string;
+  displayName: string;
   status: FactionReadView["status"];
   relation: FactionReadView["relation"];
   territoryCells: number;
+  isMinorFaction: boolean;
+  score: number;
   ownerCode?: number;
   teamId?: string;
 }>;
@@ -80,6 +84,10 @@ type WorkerPublicFactionEntry = Readonly<{
 type WorkerPublicFactionSnapshot = Readonly<{
   requesterOwnerCode?: number;
   entries: readonly WorkerPublicFactionEntry[];
+}>;
+
+type WorkerPublicOperationSnapshot = Readonly<{
+  entries: readonly Readonly<{ direction: "OWN" | "INCOMING"; view: Readonly<Record<string, unknown>> }>[];
 }>;
 
 type WorkerPublicSpatialUpdate = Readonly<{
@@ -94,6 +102,7 @@ type WorkerRequestEnvelope = Readonly<{
   request: ControllerWorkerRequest;
   publicSpatial?: WorkerPublicSpatialUpdate;
   publicFactions?: WorkerPublicFactionSnapshot;
+  publicOperations?: WorkerPublicOperationSnapshot;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -415,9 +424,14 @@ const invokeEntrypointSource = `
     consumeQuery();
     return localRead(operation, args);
   };
+  const localOperation = (operation, args) => {
+    consumeQuery();
+    return localRead(operation, args);
+  };
 
   const hasLocalSpatial = $3 === true;
   const hasEntityReads = $4 === true;
+  const hasOperationReads = $6 === true;
   const input = deepFreeze({
     ...globalThis.__openFufuInput,
     ...(hasLocalSpatial
@@ -460,6 +474,15 @@ const invokeEntrypointSource = `
         ? { cellIds: (id) => localSpatial("SEGMENT_CELL_IDS", [id]) }
         : {})
     },
+    ...(hasOperationReads
+      ? {
+          operations: {
+            get: (ref) => localOperation("OPERATIONS_GET", [ref]),
+            own: () => localOperation("OPERATIONS_OWN", []),
+            incoming: () => localOperation("OPERATIONS_INCOMING", [])
+          }
+        }
+      : {}),
     ...(hasEntityReads
       ? {
           factions: {
@@ -839,9 +862,12 @@ function validatePublicFactionSnapshot(
     }
     const allowed = new Set([
       "ref",
+      "displayName",
       "status",
       "relation",
       "territoryCells",
+      "isMinorFaction",
+      "score",
       "ownerCode",
       "teamId",
     ]);
@@ -852,12 +878,15 @@ function validatePublicFactionSnapshot(
       typeof entry.ref !== "string" ||
       entry.ref.length === 0 ||
       refs.has(entry.ref) ||
+      typeof entry.displayName !== "string" ||
       typeof entry.status !== "string" ||
       (entry.relation !== "SELF" &&
         entry.relation !== "ALLY" &&
         entry.relation !== "ENEMY") ||
       !Number.isSafeInteger(entry.territoryCells) ||
       entry.territoryCells < 0 ||
+      typeof entry.isMinorFaction !== "boolean" ||
+      typeof entry.score !== "number" || !Number.isFinite(entry.score) ||
       (entry.ownerCode !== undefined &&
         (!Number.isSafeInteger(entry.ownerCode) || entry.ownerCode <= 0)) ||
       (entry.teamId !== undefined && typeof entry.teamId !== "string")
@@ -867,9 +896,12 @@ function validatePublicFactionSnapshot(
     refs.add(entry.ref);
     return Object.freeze({
       ref: entry.ref,
+      displayName: entry.displayName as string,
       status: entry.status as FactionReadView["status"],
       relation: entry.relation,
       territoryCells: entry.territoryCells as number,
+      isMinorFaction: entry.isMinorFaction as boolean,
+      score: entry.score as number,
       ...(entry.ownerCode === undefined
         ? {}
         : { ownerCode: entry.ownerCode as number }),
@@ -883,6 +915,38 @@ function validatePublicFactionSnapshot(
       : { requesterOwnerCode: value.requesterOwnerCode }),
     entries: Object.freeze(entries),
   });
+}
+
+function validatePublicOperationSnapshot(value: WorkerPublicOperationSnapshot | undefined): WorkerPublicOperationSnapshot | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainRecord(value) || !Array.isArray(value.entries)) {
+    throw new Error("controller public operation snapshot is invalid");
+  }
+  return Object.freeze({
+    entries: Object.freeze(value.entries.map((entry) => {
+      if (!isPlainRecord(entry) || (entry.direction !== "OWN" && entry.direction !== "INCOMING") || !isPlainRecord(entry.view) || typeof entry.view.ref !== "string") {
+        throw new Error("controller public operation entry is invalid");
+      }
+      return Object.freeze({ direction: entry.direction, view: Object.freeze({ ...entry.view }) });
+    })),
+  });
+}
+
+function resolvePublicOperationRead(operations: WorkerPublicOperationSnapshot, value: unknown): unknown {
+  if (!isPlainRecord(value) || !Array.isArray(value.args)) throw new Error("invalid controller local operation request");
+  const args = value.args;
+  switch (value.operation) {
+    case "OPERATIONS_GET":
+      if (args.length !== 1 || typeof args[0] !== "string") break;
+      return operations.entries.find((entry) => entry.view.ref === args[0])?.view;
+    case "OPERATIONS_OWN":
+      if (args.length !== 0) break;
+      return operations.entries.filter((entry) => entry.direction === "OWN").map((entry) => entry.view);
+    case "OPERATIONS_INCOMING":
+      if (args.length !== 0) break;
+      return operations.entries.filter((entry) => entry.direction === "INCOMING").map((entry) => entry.view);
+  }
+  throw new Error("invalid controller local operation request");
 }
 
 function activePublicSpatial(cacheKey: number | undefined): WorkerPublicSpatialCache {
@@ -1000,9 +1064,12 @@ function resolvePublicSpatial(
 function materializeFactionView(entry: WorkerPublicFactionEntry): FactionReadView {
   return Object.freeze({
     ref: entry.ref as FactionReadView["ref"],
+    displayName: entry.displayName,
     status: entry.status,
     relation: entry.relation,
     territoryCells: entry.territoryCells,
+    isMinorFaction: entry.isMinorFaction,
+    score: entry.score,
     ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
   });
 }
@@ -1093,9 +1160,14 @@ function resolvePublicFactionRead(
 function resolveLocalRead(
   cacheKey: number | undefined,
   factions: WorkerPublicFactionSnapshot | undefined,
+  operations: WorkerPublicOperationSnapshot | undefined,
   value: unknown,
 ): unknown {
   if (isPlainRecord(value) && typeof value.operation === "string") {
+    if (value.operation.startsWith("OPERATIONS_")) {
+      if (operations === undefined) throw new Error("controller public operation snapshot is unavailable");
+      return resolvePublicOperationRead(operations, value);
+    }
     if (value.operation.startsWith("FACTIONS_")) {
       if (factions === undefined) {
         throw new Error("controller public faction snapshot is unavailable");
@@ -1184,6 +1256,7 @@ async function executeRequest(
   request: ControllerWorkerRequest,
   spatialCacheKey: number | undefined,
   publicFactions: WorkerPublicFactionSnapshot | undefined,
+  publicOperations: WorkerPublicOperationSnapshot | undefined,
 ): Promise<ControllerWorkerResponse> {
   let isolate: ivm.Isolate | undefined;
   let queryReference: ivm.Reference | undefined;
@@ -1299,7 +1372,7 @@ async function executeRequest(
       return requestHostQuery(requestId, sequence as number, query);
     });
     localReference = new ivm.Reference((query: unknown) =>
-      resolveLocalRead(spatialCacheKey, publicFactions, query),
+      resolveLocalRead(spatialCacheKey, publicFactions, publicOperations, query),
     );
 
     let invocationResult: unknown;
@@ -1313,6 +1386,7 @@ async function executeRequest(
           spatialCacheKey !== undefined,
           publicFactions !== undefined,
           PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
+          publicOperations !== undefined,
         ],
         {
           timeout: request.timeoutMs,
@@ -1396,11 +1470,13 @@ async function handleInvocation(message: WorkerRequestEnvelope): Promise<void> {
   try {
     spatialCacheKey = installPublicSpatialUpdate(message.publicSpatial);
     const publicFactions = validatePublicFactionSnapshot(message.publicFactions);
+    const publicOperations = validatePublicOperationSnapshot(message.publicOperations);
     response = await executeRequest(
       message.requestId,
       message.request,
       spatialCacheKey,
       publicFactions,
+      publicOperations,
     );
   } catch {
     response = workerFault("RUNTIME_ERROR");

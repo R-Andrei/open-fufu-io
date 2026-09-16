@@ -1,8 +1,11 @@
-import { factionRelationBetween } from "../core/FactionRelations";
+import {
+  factionRelationBetween } from "../core/FactionRelations";
 import type {
   CellId,
   CellSelector,
+  ActionRef,
   CellView,
+  ControllerCommand,
   ControllerStructureFieldId,
   ControllerStructureView,
   DecisionFailure,
@@ -10,6 +13,8 @@ import type {
   FactionReadView,
   MechanicsApi,
   MobileUnitType,
+  OperationKind,
+  OperationStatus,
   PublicFactionRelation,
   QueryPage,
   SegmentId,
@@ -47,7 +52,7 @@ import {
   isOwnedForestConcealmentCell,
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
-import { landTerrainBaseSpec } from "./LandOperations";
+import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
@@ -76,6 +81,25 @@ export interface ControllerQueryUsage {
   readonly materializedEntityViews: number;
 }
 
+export interface ControllerOperationReadView {
+  readonly ref: string;
+  readonly directiveKey?: string;
+  readonly kind: OperationKind;
+  readonly ownerId: FactionReadView["ref"];
+  readonly targetFactionId?: FactionReadView["ref"];
+  readonly committedPopulation: number;
+  readonly status: OperationStatus;
+  readonly source?: CellSelector;
+  readonly target?: CellSelector;
+}
+
+export interface ControllerPublicOperationSource {
+  readonly entries: readonly Readonly<{
+    readonly direction: "OWN" | "INCOMING";
+    readonly view: ControllerOperationReadView;
+  }>[];
+}
+
 export type ControllerConstructionMechanics = Readonly<
   Pick<MechanicsApi, "structureBuildQuote" | "structureUpgradeQuote">
 >;
@@ -92,8 +116,11 @@ export interface ControllerPublicFactionSource {
   readonly entries: readonly Readonly<{
     readonly authoritativeId: string;
     readonly ref: FactionReadView["ref"];
+    readonly displayName: string;
     readonly status: FactionReadView["status"];
     readonly relation: FactionReadView["relation"];
+    readonly isMinorFaction: boolean;
+    readonly score: number;
     readonly teamId?: string;
   }>[];
 }
@@ -102,11 +129,18 @@ export interface ControllerQuerySession {
   readonly publicSpatial: ControllerPublicSpatialSource;
   /** Internal transport source; kept non-enumerable by the concrete session. */
   readonly publicFactions?: ControllerPublicFactionSource;
+  /** Safe opaque operation snapshot used by isolated workers; non-enumerable. */
+  readonly publicOperations?: ControllerPublicOperationSource;
   readonly mechanics: ControllerConstructionMechanics;
   readonly factions: Readonly<{
     get(ref: string): FactionReadView | undefined;
     find(filter?: FactionFindFilter): readonly FactionReadView[];
     proximity(ref: string): number | undefined;
+  }>;
+  readonly operations: Readonly<{
+    get(ref: string): ControllerOperationReadView | undefined;
+    own(): readonly ControllerOperationReadView[];
+    incoming(): readonly ControllerOperationReadView[];
   }>;
   readonly units: Readonly<{
     get(locator: UnitLocator): Promise<UnitView | undefined>;
@@ -117,7 +151,10 @@ export interface ControllerQuerySession {
     get(locator: StructureLocator): Promise<StructureView | undefined>;
     find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
     count(filter?: StructureFindFilter): Promise<number>;
+    build(type: StructureType, cellId: CellId): ActionRef;
+    checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
   }>;
+  consumeStagedCommands(): readonly ControllerCommand[];
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -201,12 +238,12 @@ interface ControllerQueryMobileUnitState {
 interface ControllerQueryReferenceSession {
   issue(
     viewerFactionId: string,
-    domain: "UNIT" | "STRUCTURE",
+    domain: "UNIT" | "STRUCTURE" | "OPERATION",
     authoritativeId: string,
   ): string | undefined;
   resolve(
     viewerFactionId: string,
-    domain: "UNIT" | "STRUCTURE",
+    domain: "UNIT" | "STRUCTURE" | "OPERATION",
     ref: string,
   ): string | undefined;
   issueFaction(factionId: string): FactionReadView["ref"] | undefined;
@@ -605,7 +642,7 @@ function p45ConcealsCellFromRequester(
 function directRevealActive(
   state: MatchState,
   context: StructureVisibilityContext,
-  sourceKind: "UNIT" | "STRUCTURE",
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
   sourceId: string,
 ): boolean {
   return state.directReveals.some(
@@ -1294,6 +1331,24 @@ function factionProximityById(
   return minimum;
 }
 
+function incomingOperationTargetsRequester(
+  state: MatchState,
+  requesterFactionId: string,
+  operation: LandOperationState,
+): boolean {
+  if (operation.ownerId === requesterFactionId) return false;
+  if (operation.kind === "ATTACK") {
+    return operation.targetFactionId === requesterFactionId;
+  }
+  if (operation.kind === "COUNTER_RESPONSE") {
+    const incoming = state.operations.find(
+      (candidate) => candidate.id === operation.incomingOperationId,
+    );
+    return incoming?.ownerId === requesterFactionId;
+  }
+  return false;
+}
+
 export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
@@ -1551,6 +1606,26 @@ export function createControllerQuerySession(
     return visibleStructures(filter).length;
   };
 
+  let nextActionOrdinal = 1;
+  const stagedCommands: ControllerCommand[] = [];
+  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef => {
+    const ordinal = nextActionOrdinal;
+    nextActionOrdinal += 1;
+    stagedCommands.push(Object.freeze({
+      kind: "BUILD_STRUCTURE" as const,
+      key: `action:${requesterFactionId}:${ordinal}`,
+      structure: type,
+      cellId,
+    }));
+    return `action_${requesterFactionId}_${ordinal}` as ActionRef;
+  };
+  const checkStructureBuild = (type: StructureType, cellId: CellId): StructureBuildQuote => {
+    beginQuery();
+    return mechanics.structureBuildQuote(type, cellId);
+  };
+  const consumeStagedCommands = (): readonly ControllerCommand[] =>
+    Object.freeze([...stagedCommands]);
+
   const publicFactionEntries = Object.freeze(
     state.factions.flatMap((faction) => {
       if (references === undefined) return [];
@@ -1561,8 +1636,11 @@ export function createControllerQuerySession(
         Object.freeze({
           authoritativeId: faction.id,
           ref,
+          displayName: faction.id,
           status: faction.status,
           relation,
+          isMinorFaction: false,
+          score: 0,
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
@@ -1584,9 +1662,12 @@ export function createControllerQuerySession(
     if (source === undefined) return undefined;
     return Object.freeze({
       ref: source.ref,
+      displayName: source.displayName,
       status: source.status,
       relation: source.relation,
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
+      isMinorFaction: source.isMinorFaction,
+      score: source.score,
       ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };
@@ -1636,6 +1717,83 @@ export function createControllerQuerySession(
     const targetFactionId = references.resolveFaction(ref);
     if (targetFactionId === undefined) return undefined;
     return factionProximityById(state, requesterFactionId, targetFactionId);
+  };
+
+  const materializeOperation = (
+    operation: LandOperationState,
+  ): ControllerOperationReadView | undefined => {
+    if (references === undefined) return undefined;
+    const ref = references.issue(requesterFactionId, "OPERATION", operation.id);
+    const ownerRef = references.issueFaction(operation.ownerId);
+    if (ref === undefined || ownerRef === undefined) return undefined;
+    const targetFactionId =
+      operation.kind === "ATTACK"
+        ? references.issueFaction(operation.targetFactionId)
+        : undefined;
+    if (operation.kind === "ATTACK" && targetFactionId === undefined) {
+      return undefined;
+    }
+    const selfOwned = operation.ownerId === requesterFactionId;
+    return Object.freeze({
+      ref,
+      ...(selfOwned ? { directiveKey: operation.controllerKey } : {}),
+      kind: operation.kind,
+      ownerId: ownerRef,
+      ...(targetFactionId === undefined ? {} : { targetFactionId }),
+      committedPopulation: operation.committedPopulation,
+      status: "ACTIVE" as const,
+      ...(operation.kind === "COUNTER_RESPONSE"
+        ? {}
+        : { source: operation.source, target: operation.target }),
+    });
+  };
+
+  const publicOperationEntries = Object.freeze(
+    [...state.operations]
+      .sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0))
+      .flatMap((operation) => {
+        const selfOwned = operation.ownerId === requesterFactionId;
+        const incoming =
+          !selfOwned &&
+          incomingOperationTargetsRequester(state, requesterFactionId, operation) &&
+          directRevealActive(state, visibility, "OPERATION", operation.id);
+        if (!selfOwned && !incoming) return [];
+        const view = materializeOperation(operation);
+        return view === undefined
+          ? []
+          : [Object.freeze({ direction: selfOwned ? "OWN" as const : "INCOMING" as const, view })];
+      }),
+  );
+  const publicOperations: ControllerPublicOperationSource = Object.freeze({
+    entries: publicOperationEntries,
+  });
+
+  const getOperation = (ref: string): ControllerOperationReadView | undefined => {
+    beginQuery();
+    if (references === undefined) return undefined;
+    const authoritativeId = references.resolve(requesterFactionId, "OPERATION", ref);
+    if (authoritativeId === undefined) return undefined;
+    return publicOperationEntries.find(
+      (entry) => entry.view.ref === ref,
+    )?.view;
+  };
+
+  const ownOperations = (): readonly ControllerOperationReadView[] => {
+    beginQuery();
+    return Object.freeze(
+      publicOperationEntries
+        .filter((entry) => entry.direction === "OWN")
+        .map((entry) => entry.view),
+    );
+  };
+
+  const incomingOperations = (): readonly ControllerOperationReadView[] => {
+    beginQuery();
+    return Object.freeze(
+      publicOperationEntries
+        .filter((entry) => entry.direction === "INCOMING")
+        .map((entry) => entry.view),
+    );
   };
 
   const get = async (id: CellId): Promise<CellView | undefined> => {
@@ -1767,6 +1925,11 @@ export function createControllerQuerySession(
       find: findFactions,
       proximity: factionProximity,
     }),
+    operations: Object.freeze({
+      get: getOperation,
+      own: ownOperations,
+      incoming: incomingOperations,
+    }),
     units: Object.freeze({
       get: getUnit,
       find: findUnits,
@@ -1776,7 +1939,10 @@ export function createControllerQuerySession(
       get: getStructure,
       find: findStructures,
       count: countStructures,
+      build: stageStructureBuild,
+      checkBuild: checkStructureBuild,
     }),
+    consumeStagedCommands,
     cells: Object.freeze({
       get,
       query,
@@ -1795,6 +1961,12 @@ export function createControllerQuerySession(
   } as ControllerQuerySession;
   Object.defineProperty(session, "publicFactions", {
     value: publicFactions,
+    enumerable: false,
+    configurable: false,
+    writable: false,
+  });
+  Object.defineProperty(session, "publicOperations", {
+    value: publicOperations,
     enumerable: false,
     configurable: false,
     writable: false,

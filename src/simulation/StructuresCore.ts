@@ -110,6 +110,7 @@ export interface PersistentStructureState {
   readonly ownerId: string;
   readonly type: StructureType;
   readonly cellId: number;
+  readonly outputCellId?: number;
   readonly completedLevel?: StructureLevel;
   readonly active: boolean;
   readonly construction?: StructureConstructionState;
@@ -250,6 +251,9 @@ function assertPersistentStructureState(structure: PersistentStructureState): vo
   if (!Number.isSafeInteger(structure.cellId) || structure.cellId < 0) {
     throw new Error("structure cellId must be a non-negative safe integer");
   }
+  if (structure.outputCellId !== undefined && (!Number.isSafeInteger(structure.outputCellId) || structure.outputCellId < 0)) {
+    throw new Error("structure outputCellId must be a non-negative safe integer");
+  }
   if (
     structure.completedLevel !== undefined &&
     !isStructureLevel(structure.completedLevel)
@@ -381,6 +385,7 @@ export function materializePersistentStructureState(
     ownerId: structure.ownerId,
     type: structure.type,
     cellId: structure.cellId,
+    ...(structure.outputCellId === undefined ? {} : { outputCellId: structure.outputCellId }),
     ...(structure.completedLevel === undefined
       ? {}
       : { completedLevel: structure.completedLevel }),
@@ -737,6 +742,22 @@ export function evaluateStructureAcquisitionAdmission(
   return Object.freeze({ ok: true });
 }
 
+function designatedProducerOutputCell(
+  state: MatchState,
+  type: StructureType,
+  cellId: number,
+): number | undefined {
+  if (type !== "FACTORY" && type !== "PORT") return undefined;
+  const neighbors = [...state.map.cardinalNeighbors(cellId)].sort((a, b) => a - b);
+  if (type === "PORT") {
+    return neighbors.find((candidate) => state.map.terrainAt(candidate) === "DEEP_WATER") ?? neighbors[0];
+  }
+  return neighbors.find((candidate) => {
+    const terrain = state.map.terrainAt(candidate);
+    return terrain !== "DEEP_WATER" && terrain !== "SHALLOW_WATER" && terrain !== "IMPASSABLE";
+  }) ?? neighbors[0];
+}
+
 function initialGrantedChargeSlots(
   grant: StructureGrantRequest,
 ): readonly StructureChargeSlotState[] | undefined {
@@ -765,6 +786,7 @@ export function tryMaterializeStructureGrant(
     ownerId: grant.ownerId,
     type: grant.type,
     cellId: grant.cellId,
+    ...(designatedProducerOutputCell(state, grant.type, grant.cellId) === undefined ? {} : { outputCellId: designatedProducerOutputCell(state, grant.type, grant.cellId) }),
     completedLevel: grant.level,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),
@@ -798,6 +820,7 @@ export function tryMaterializeStructureBuild(
     ownerId: build.ownerId,
     type: build.type,
     cellId: build.cellId,
+    ...(designatedProducerOutputCell(state, build.type, build.cellId) === undefined ? {} : { outputCellId: designatedProducerOutputCell(state, build.type, build.cellId) }),
     active: false,
     construction: {
       targetLevel: build.level,
@@ -1249,6 +1272,7 @@ function progressStructure(
     ownerId: current.ownerId,
     type: current.type,
     cellId: current.cellId,
+    ...(current.outputCellId === undefined ? {} : { outputCellId: current.outputCellId }),
     completedLevel: targetLevel,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),

@@ -1,6 +1,9 @@
-import { originRuleProfileInput, type OriginTraitId } from "../src/core/rules/OriginRuleManifest";
-import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import {
+  originRuleProfileInput,
+  type OriginTraitId,
+} from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import {
   createInitialMatchState,
@@ -55,7 +58,12 @@ function productionFixture(
       width: 4,
       height: 1,
       terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: options.initialOwners ?? ["alpha", "alpha", "alpha", "beta"],
+      initialOwners: options.initialOwners ?? [
+        "alpha",
+        "alpha",
+        "alpha",
+        "beta",
+      ],
       initialStructureGrants: [
         {
           structureId: "alpha-factory",
@@ -114,7 +122,10 @@ function movementFixture(
       terrain: ["PLAINS"],
       initialOwners: ["alpha"],
       factions: [
-        { id: "alpha", rules: rulesWithTraitsAndAdditional(traits, additional) },
+        {
+          id: "alpha",
+          rules: rulesWithTraitsAndAdditional(traits, additional),
+        },
       ],
     }),
   );
@@ -173,7 +184,10 @@ function exactNavigationFixture(
       terrain,
       initialOwners: terrain.map(() => "alpha"),
       factions: [
-        { id: "alpha", rules: rulesWithTraitsAndAdditional(traits, additional) },
+        {
+          id: "alpha",
+          rules: rulesWithTraitsAndAdditional(traits, additional),
+        },
       ],
     }),
   );
@@ -185,7 +199,8 @@ function expectExactTankSpeed(
   denominator: bigint,
 ) {
   expect(timing).toBeDefined();
-  if (timing === undefined) throw new Error("expected traversable Tank terrain");
+  if (timing === undefined)
+    throw new Error("expected traversable Tank terrain");
   expect(Number.isSafeInteger(timing.movementWorkPerTick)).toBe(true);
   expect(timing.movementWorkPerTick).toBeGreaterThan(0);
   expect(Number.isSafeInteger(timing.edgeWeight)).toBe(true);
@@ -195,7 +210,10 @@ function expectExactTankSpeed(
   );
 }
 
-function runProductionPhases(state: ReturnType<typeof productionFixture>, count: number) {
+function runProductionPhases(
+  state: ReturnType<typeof productionFixture>,
+  count: number,
+) {
   let current = state;
   for (let tick = 0; tick < count; tick += 1) {
     current = advanceTankProductionPhase(current);
@@ -242,16 +260,14 @@ describe("baseline Tank lifecycle", () => {
     },
   );
 
-  it.each([
-    "MOUNTAIN",
-    "SHALLOW_WATER",
-    "DEEP_WATER",
-    "IMPASSABLE",
-  ] as const)("blocks Tank traversal on %s", (terrain) => {
-    expect(
-      tankTerrainMovementTiming(movementFixture(), "alpha", "TANK", terrain),
-    ).toBeUndefined();
-  });
+  it.each(["MOUNTAIN", "SHALLOW_WATER", "DEEP_WATER", "IMPASSABLE"] as const)(
+    "blocks Tank traversal on %s",
+    (terrain) => {
+      expect(
+        tankTerrainMovementTiming(movementFixture(), "alpha", "TANK", terrain),
+      ).toBeUndefined();
+    },
+  );
 
   it("applies P43 movement before a later Tank movement-speed Echo", () => {
     expectExactTankSpeed(
@@ -307,7 +323,9 @@ describe("baseline Tank lifecycle", () => {
     expect(tankOperatingLeashContains(map, anchor, 100)).toBe(true);
     expect(tankOperatingLeashContains(map, anchor, 101)).toBe(false);
     expect(tankOperatingLeashContains(map, anchor, 80 * width + 60)).toBe(true);
-    expect(tankOperatingLeashContains(map, anchor, 81 * width + 60)).toBe(false);
+    expect(tankOperatingLeashContains(map, anchor, 81 * width + 60)).toBe(
+      false,
+    );
   });
 
   it("uses exact symmetric half-edge work for mixed Tank terrain", () => {
@@ -333,10 +351,13 @@ describe("baseline Tank lifecycle", () => {
     const sameTerrain = exactNavigationFixture(["PLAINS", "PLAINS"], 2, 1);
     const plains = tankNavigationRoute(sameTerrain, "alpha", "TANK", 0, 1);
     expect(plains.status).toBe("FOUND");
-    if (plains.status !== "FOUND") throw new Error("expected Plains Tank route");
+    if (plains.status !== "FOUND")
+      throw new Error("expected Plains Tank route");
     expect(plains.route.edgeWeights).toEqual([936]);
     expect(plains.route.movementWorkPerTick).toBe(468);
-    expect(plains.route.edgeWeights[0]).toBe(plains.route.movementWorkPerTick * 2);
+    expect(plains.route.edgeWeights[0]).toBe(
+      plains.route.movementWorkPerTick * 2,
+    );
   });
 
   it("composes P43 and a Tank movement Echo into exact route work", () => {
@@ -350,7 +371,8 @@ describe("baseline Tank lifecycle", () => {
     const route = tankNavigationRoute(state, "alpha", "HEAVY_ARTILLERY", 0, 1);
 
     expect(route.status).toBe("FOUND");
-    if (route.status !== "FOUND") throw new Error("expected Heavy Artillery route");
+    if (route.status !== "FOUND")
+      throw new Error("expected Heavy Artillery route");
     expect(route.route.edgeWeights).toEqual([46_800]);
     expect(route.route.movementWorkPerTick).toBe(12_168);
     expect(BigInt(route.route.edgeWeights[0]!) * 13n).toBe(
@@ -361,8 +383,16 @@ describe("baseline Tank lifecycle", () => {
   it("chooses lower exact traversal time over fewer mixed-terrain hops", () => {
     const state = exactNavigationFixture(
       [
-        "PLAINS", "MARSH", "MARSH", "MARSH", "PLAINS",
-        "PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS",
+        "PLAINS",
+        "MARSH",
+        "MARSH",
+        "MARSH",
+        "PLAINS",
+        "PLAINS",
+        "PLAINS",
+        "PLAINS",
+        "PLAINS",
+        "PLAINS",
       ],
       5,
       2,
@@ -370,7 +400,8 @@ describe("baseline Tank lifecycle", () => {
     const route = tankNavigationRoute(state, "alpha", "TANK", 0, 4);
 
     expect(route.status).toBe("FOUND");
-    if (route.status !== "FOUND") throw new Error("expected mixed-terrain Tank route");
+    if (route.status !== "FOUND")
+      throw new Error("expected mixed-terrain Tank route");
     expect(route.route.cells).toEqual([0, 5, 6, 7, 8, 9, 4]);
     expect(route.route.edgeWeights).toEqual([936, 936, 936, 936, 936, 936]);
     expect(route.route.totalWeight).toBe(5_616);
@@ -513,7 +544,7 @@ describe("baseline Tank lifecycle", () => {
         ownerId: "alpha",
         chassisType: "TANK",
         strategicDestinationCellId: 2,
-        state: "WAITING_DEPLOYMENT",
+        state: "READY_TO_DEPLOY",
       },
     ]);
 

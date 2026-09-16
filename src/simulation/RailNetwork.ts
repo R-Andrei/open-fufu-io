@@ -1,4 +1,6 @@
-import type { CellId } from "../core/controller/ControllerApi";
+import type {
+  CellId,
+} from "../core/controller/ControllerApi";
 
 export const RAIL_CONNECTION_TOP = 0x01 as const;
 export const RAIL_CONNECTION_RIGHT = 0x02 as const;

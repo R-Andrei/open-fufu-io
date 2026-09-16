@@ -11,7 +11,6 @@ import {
   type FactoryTrainState,
   type FactoryTrainStateUpdate,
 } from "./FactoryTrainState";
-export type { TrainServiceRuntimeState } from "./FactoryTrainState";
 import {
   canonicalHostilitySideKey,
   materializeHostilityGraceState,
@@ -51,10 +50,8 @@ import {
   tryMaterializeStructureGrant,
   type PersistentStructureState,
 } from "./Structures";
-import type {
-  TankOperationalState,
-  TankProductionJobState,
-} from "./Tanks";
+import type { TankOperationalState, TankProductionJobState } from "./Tanks";
+export type { TrainServiceRuntimeState } from "./FactoryTrainState";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
   "CITY",
@@ -125,8 +122,12 @@ function createSyntheticMap(map: SyntheticMapSpec): SimulationMap {
     width: map.width,
     height: map.height,
     terrain: map.terrain as readonly SimulationTerrain[],
-    ...(map.initialOwners === undefined ? {} : { initialOwners: map.initialOwners }),
-    ...(map.initialFallout === undefined ? {} : { initialFallout: map.initialFallout }),
+    ...(map.initialOwners === undefined
+      ? {}
+      : { initialOwners: map.initialOwners }),
+    ...(map.initialFallout === undefined
+      ? {}
+      : { initialFallout: map.initialFallout }),
   });
 }
 
@@ -136,7 +137,9 @@ function freezeSuccessfulStructurePurchaseTypes(
   const seen = new Set<StructureType>();
   for (const type of types) {
     if (!STRUCTURE_TYPES.has(type)) {
-      throw new Error(`unknown successful structure purchase type: ${String(type)}`);
+      throw new Error(
+        `unknown successful structure purchase type: ${String(type)}`,
+      );
     }
     if (seen.has(type)) {
       throw new Error(`duplicate successful structure purchase type: ${type}`);
@@ -161,11 +164,11 @@ function freezeFactions(
         rules: faction.rules,
         population: createPopulationState(faction.population),
         ffy: materializeFfyBalance(faction.ffy),
-        lifetimeGrossPositiveFfyEarned:
-          faction.lifetimeGrossPositiveFfyEarned,
-        successfulStructurePurchaseTypes: freezeSuccessfulStructurePurchaseTypes(
-          faction.successfulStructurePurchaseTypes ?? [],
-        ),
+        lifetimeGrossPositiveFfyEarned: faction.lifetimeGrossPositiveFfyEarned,
+        successfulStructurePurchaseTypes:
+          freezeSuccessfulStructurePurchaseTypes(
+            faction.successfulStructurePurchaseTypes ?? [],
+          ),
         testMarker: faction.testMarker,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -263,7 +266,9 @@ function freezeDirectReveals(
       typeof entry.viewerFactionId !== "string" ||
       entry.viewerFactionId.length === 0
     ) {
-      throw new Error("direct reveal viewerFactionId must be a non-empty string");
+      throw new Error(
+        "direct reveal viewerFactionId must be a non-empty string",
+      );
     }
     if (
       entry.sourceKind !== "UNIT" &&
@@ -328,7 +333,9 @@ function freezeTankProductionJobs(
       throw new Error("Tank production chassis type is invalid");
     }
     if (!map.isValidCellId(job.strategicDestinationCellId)) {
-      throw new Error("Tank production strategic destination must be a valid map cell");
+      throw new Error(
+        "Tank production strategic destination must be a valid map cell",
+      );
     }
     if (job.state === "BUILDING") {
       if (
@@ -349,7 +356,7 @@ function freezeTankProductionJobs(
         remainingTicks: job.remainingTicks,
       });
     }
-    if (job.state !== "WAITING_DEPLOYMENT") {
+    if (job.state !== "READY_TO_DEPLOY") {
       throw new Error("Tank production job state is invalid");
     }
     return Object.freeze({
@@ -357,7 +364,7 @@ function freezeTankProductionJobs(
       ownerId: job.ownerId,
       chassisType: job.chassisType,
       strategicDestinationCellId: job.strategicDestinationCellId,
-      state: "WAITING_DEPLOYMENT" as const,
+      state: "READY_TO_DEPLOY" as const,
     });
   });
   jobs.sort(
@@ -414,7 +421,9 @@ function freezeTankRetainedTarget(
   }
   if (target.targetClass === "POPULATION") {
     if (!map.isValidCellId(target.cellId)) {
-      throw new Error("Tank retained Population target must be a valid map cell");
+      throw new Error(
+        "Tank retained Population target must be a valid map cell",
+      );
     }
     return Object.freeze({
       targetClass: "POPULATION" as const,
@@ -470,14 +479,21 @@ function freezeTankOperationalStates(
     if (!map.isValidCellId(entry.operatingAnchorCellId)) {
       throw new Error("Tank operating anchor must be a valid map cell");
     }
-    assertNonNegativeSafeInteger(entry.eligibleFromTick, "Tank eligibleFromTick");
-    assertNonNegativeSafeInteger(entry.attackReadyAtTick, "Tank attackReadyAtTick");
+    assertNonNegativeSafeInteger(
+      entry.eligibleFromTick,
+      "Tank eligibleFromTick",
+    );
+    assertNonNegativeSafeInteger(
+      entry.attackReadyAtTick,
+      "Tank attackReadyAtTick",
+    );
     const roamingOrdinal = entry.roamingOrdinal ?? 0;
     assertNonNegativeSafeInteger(roamingOrdinal, "Tank roamingOrdinal");
     const retainedTarget = freezeTankRetainedTarget(entry.retainedTarget, map);
     if (
       entry.repairFactoryId !== undefined &&
-      (typeof entry.repairFactoryId !== "string" || entry.repairFactoryId.length === 0)
+      (typeof entry.repairFactoryId !== "string" ||
+        entry.repairFactoryId.length === 0)
     ) {
       throw new Error("Tank repairFactoryId must be a non-empty string");
     }
@@ -517,7 +533,9 @@ function assertExclusivePhysicalOccupancy(
   const occupiedCells = new Set<number>();
   for (const structure of structures) {
     if (occupiedCells.has(structure.cellId)) {
-      throw new Error(`duplicate physical occupancy at cell ${structure.cellId}`);
+      throw new Error(
+        `duplicate physical occupancy at cell ${structure.cellId}`,
+      );
     }
     occupiedCells.add(structure.cellId);
   }
@@ -588,7 +606,9 @@ function createState(
       update.directReveals ?? previous.directReveals ?? [],
     ),
     operations: Object.freeze(
-      (update.operations ?? previous.operations).map(materializeLandOperationState),
+      (update.operations ?? previous.operations).map(
+        materializeLandOperationState,
+      ),
     ),
     defensePriorities: Object.freeze(
       (update.defensePriorities ?? previous.defensePriorities).map(
@@ -607,14 +627,18 @@ function createState(
   });
 }
 
-type InitialMatchStateSpec = Readonly<Pick<MatchSpec, "seed" | "map" | "factions">>;
+type InitialMatchStateSpec = Readonly<
+  Pick<MatchSpec, "seed" | "map" | "factions">
+>;
 
 function assertResolvedArtifactMapMatches(
   spec: InitialMatchStateSpec,
   map: SimulationMap,
 ): void {
   if (!isArtifactMapSpec(spec.map)) {
-    throw new Error("artifact map identity validation requires an artifact-backed binding");
+    throw new Error(
+      "artifact map identity validation requires an artifact-backed binding",
+    );
   }
   if (
     map.source !== "ARTIFACT" ||
@@ -622,7 +646,9 @@ function assertResolvedArtifactMapMatches(
     map.mapVersion !== spec.map.mapVersion ||
     map.mapHash !== spec.map.mapHash
   ) {
-    throw new Error("resolved artifact map identity does not match MatchSpec binding");
+    throw new Error(
+      "resolved artifact map identity does not match MatchSpec binding",
+    );
   }
 }
 
@@ -686,7 +712,9 @@ export function createPreSpawnMatchState(
   resolvedArtifactMap: SimulationMap,
 ): MatchState {
   if (!isArtifactMapSpec(spec.map)) {
-    throw new Error("pre-Spawn MatchState creation requires an artifact-backed map");
+    throw new Error(
+      "pre-Spawn MatchState creation requires an artifact-backed map",
+    );
   }
   assertResolvedArtifactMapMatches(spec, resolvedArtifactMap);
   return createEmptyInitialMatchState(spec, resolvedArtifactMap);
@@ -698,10 +726,14 @@ export function createInitialMatchState(
 ): MatchState {
   const artifact = isArtifactMapSpec(spec.map);
   if (artifact && resolvedArtifactMap === undefined) {
-    throw new Error("artifact-backed MatchState creation requires a validated resolved map");
+    throw new Error(
+      "artifact-backed MatchState creation requires a validated resolved map",
+    );
   }
   if (!artifact && resolvedArtifactMap !== undefined) {
-    throw new Error("synthetic MatchState creation must not receive an artifact map override");
+    throw new Error(
+      "synthetic MatchState creation must not receive an artifact map override",
+    );
   }
 
   const map = artifact ? resolvedArtifactMap! : createSyntheticMap(spec.map);
@@ -719,7 +751,9 @@ export function createInitialMatchState(
   for (const grant of spec.initialStructureGrants ?? []) {
     const result = tryMaterializeStructureGrant(state, grant);
     if (!result.ok) continue;
-    state = createProspectiveMatchState(state, { structures: result.structures });
+    state = createProspectiveMatchState(state, {
+      structures: result.structures,
+    });
   }
   return state;
 }
@@ -902,10 +936,11 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
   }));
 
   const operations = [...state.operations]
-    .sort((left, right) =>
-      compareIds(left.ownerId, right.ownerId) ||
-      compareIds(left.kind, right.kind) ||
-      compareIds(left.controllerKey, right.controllerKey),
+    .sort(
+      (left, right) =>
+        compareIds(left.ownerId, right.ownerId) ||
+        compareIds(left.kind, right.kind) ||
+        compareIds(left.controllerKey, right.controllerKey),
     )
     .map((operation) =>
       operation.kind === "COUNTER_RESPONSE"

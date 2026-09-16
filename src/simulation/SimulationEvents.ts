@@ -1,12 +1,10 @@
-import type { HostilitySideIdentity } from "../core/FactionRelations";
+import type {
+  HostilitySideIdentity } from "../core/FactionRelations";
 import type {
   CellId,
-  FactionId,
   MobileUnitType,
-  StructureId,
   StructureLevel,
   StructureType,
-  UnitId,
 } from "../core/controller/ControllerApi";
 
 const MOBILE_UNIT_TYPES = new Set<MobileUnitType>([

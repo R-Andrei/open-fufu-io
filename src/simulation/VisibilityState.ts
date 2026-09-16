@@ -28,11 +28,7 @@ import type { PersistentStructureState } from "./Structures";
 
 const V1_SIMULATION_TICKS_PER_SECOND = 10 as const;
 const OBSERVATION_POST_BASELINE_RADII = Object.freeze([
-  40,
-  55,
-  70,
-  85,
-  100,
+  40, 55, 70, 85, 100,
 ] as const);
 
 interface ObservationFieldSource {
@@ -43,6 +39,14 @@ interface ObservationFieldSource {
 export interface TankTargetObservation {
   readonly observedUnitIds: readonly string[];
   readonly observedCellIds: readonly CellId[];
+}
+
+interface LandOperationPressureResolvedEventLike {
+  readonly tick: number;
+  readonly payload: Readonly<{
+    readonly operationId: string;
+    readonly attackedFactionId: string;
+  }>;
 }
 
 type TankCombatVisibilityEvent =
@@ -178,7 +182,9 @@ function observationPostField(
   }
   const owner = factionById(state, structure.ownerId);
   if (owner === undefined) {
-    throw new Error(`structure ${structure.id} has unknown owner ${structure.ownerId}`);
+    throw new Error(
+      `structure ${structure.id} has unknown owner ${structure.ownerId}`,
+    );
   }
   const scale = materializeCompiledScalarScaleFactor(
     owner.rules,
@@ -187,9 +193,12 @@ function observationPostField(
     { kind: "STRUCTURE", structure: "OBSERVATION_POST" },
     dynamicState(owner.id),
   );
-  const baselineRadius = OBSERVATION_POST_BASELINE_RADII[structure.completedLevel - 1];
+  const baselineRadius =
+    OBSERVATION_POST_BASELINE_RADII[structure.completedLevel - 1];
   if (baselineRadius === undefined) {
-    throw new Error(`Observation Post ${structure.id} has unsupported completed level`);
+    throw new Error(
+      `Observation Post ${structure.id} has unsupported completed level`,
+    );
   }
   return Object.freeze({
     centerCellId: structure.cellId,
@@ -203,15 +212,18 @@ function observationPostField(
 
 function ceilDiv(numerator: bigint, denominator: bigint): bigint {
   if (numerator < 0n || denominator <= 0n) {
-    throw new Error("observation radius ceilDiv requires non-negative/positive inputs");
+    throw new Error(
+      "observation radius ceilDiv requires non-negative/positive inputs",
+    );
   }
   return (numerator + denominator - 1n) / denominator;
 }
 
 function floorSqrt(value: bigint): bigint {
-  if (value < 0n) throw new Error("observation radius square root cannot be negative");
+  if (value < 0n)
+    throw new Error("observation radius square root cannot be negative");
   if (value < 2n) return value;
-  let current = 1n << (BigInt(value.toString(2).length) + 1n >> 1n);
+  let current = 1n << ((BigInt(value.toString(2).length) + 1n) >> 1n);
   while (true) {
     const next = (current + value / current) >> 1n;
     if (next >= current) return current;
@@ -308,7 +320,8 @@ export function projectTankTargetObservation(
   viewerFactionId: string,
 ): TankTargetObservation {
   const viewer = factionById(state, viewerFactionId);
-  if (viewer === undefined) throw new Error(`unknown faction: ${viewerFactionId}`);
+  if (viewer === undefined)
+    throw new Error(`unknown faction: ${viewerFactionId}`);
   const dynamicState = createDynamicStateResolver(state);
   const ordinarySources: ObservationFieldSource[] = [];
   const blackoutSources: ObservationFieldSource[] = [];
@@ -323,7 +336,10 @@ export function projectTankTargetObservation(
     const operational = state.tankOperationalStates.find(
       (entry) => entry.unitId === unit.id,
     );
-    if (operational === undefined || operational.eligibleFromTick > state.tick) {
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick
+    ) {
       continue;
     }
     ordinarySources.push(tankObservationField(state, unit, dynamicState));
@@ -342,8 +358,10 @@ export function projectTankTargetObservation(
     const owner = factionById(state, structure.ownerId);
     if (
       owner !== undefined &&
-      factionRelationBetween(factionIdentity(viewer), factionIdentity(owner)) ===
-        "ENEMY"
+      factionRelationBetween(
+        factionIdentity(viewer),
+        factionIdentity(owner),
+      ) === "ENEMY"
     ) {
       blackoutSources.push(source);
     }
@@ -351,8 +369,10 @@ export function projectTankTargetObservation(
 
   const ordinaryCells = new Set<CellId>();
   const blackoutCells = new Set<CellId>();
-  for (const source of ordinarySources) addFieldCells(state, source, ordinaryCells);
-  for (const source of blackoutSources) addFieldCells(state, source, blackoutCells);
+  for (const source of ordinarySources)
+    addFieldCells(state, source, ordinaryCells);
+  for (const source of blackoutSources)
+    addFieldCells(state, source, blackoutCells);
 
   const observedCellIds = Object.freeze(
     [...ordinaryCells]
@@ -387,6 +407,38 @@ export function projectTankTargetObservation(
   );
 
   return Object.freeze({ observedUnitIds, observedCellIds });
+}
+
+/**
+ * Applies resolved land-operation pressure as one hostile manifestation of the
+ * authoritative operation source. Only the directly attacked faction receives
+ * the source-specific reveal; unrelated viewers remain unchanged.
+ */
+export function resolveDirectRevealsFromLandOperationEvents(
+  state: Readonly<Pick<MatchState, "directReveals">>,
+  events: readonly LandOperationPressureResolvedEventLike[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  let directReveals = pruneExpiredDirectReveals(
+    state.directReveals,
+    currentTick,
+  );
+  for (const event of events) {
+    directReveals = refreshDirectRevealRecords(
+      directReveals,
+      {
+        resolved: true,
+        hostile: true,
+        identifiableSource: true,
+        attackedFactionIds: [event.payload.attackedFactionId],
+      },
+      "OPERATION",
+      event.payload.operationId,
+      event.tick,
+      V1_SIMULATION_TICKS_PER_SECOND,
+    );
+  }
+  return directReveals;
 }
 
 function resolveDirectRevealsFromTankCombatEventSet(
@@ -430,8 +482,7 @@ function resolveDirectRevealsFromTankCombatEventSet(
   return Object.freeze(
     directReveals.filter(
       (record) =>
-        record.sourceKind !== "UNIT" ||
-        !destroyedUnitIds.has(record.sourceId),
+        record.sourceKind !== "UNIT" || !destroyedUnitIds.has(record.sourceId),
     ),
   );
 }
@@ -446,11 +497,7 @@ export function resolveDirectRevealsFromPhysicalEvents(
   events: readonly PhysicalUnitSimulationEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
-  return resolveDirectRevealsFromTankCombatEventSet(
-    state,
-    events,
-    currentTick,
-  );
+  return resolveDirectRevealsFromTankCombatEventSet(state, events, currentTick);
 }
 
 /**

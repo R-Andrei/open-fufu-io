@@ -17,6 +17,7 @@ import {
 import {
   resolveLandTick,
   tryApplyPersistentDirectiveChangesWithEvents,
+  type LandOperationPressureResolvedEvent,
 } from "./LandOperations";
 import {
   createAdvancedMatchState,
@@ -77,6 +78,7 @@ import {
 import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
 import {
   projectTankTargetObservation,
+  resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
 
@@ -1158,6 +1160,15 @@ export class TickEngine {
     });
     const nextTick = earningSnapshot.tick + 1;
     const land = resolveLandTick(earningSnapshot, nextTick);
+    const landPressureEvents = land.events.filter(
+      (event): event is LandOperationPressureResolvedEvent =>
+        event.kind === "LAND_OPERATION_PRESSURE_RESOLVED",
+    );
+    const directReveals = resolveDirectRevealsFromLandOperationEvents(
+      earningSnapshot,
+      landPressureEvents,
+      nextTick,
+    );
     const postLandState = createProspectiveMatchState(earningSnapshot, {
       factions: land.factions,
       ownership: land.ownership,
@@ -1166,6 +1177,7 @@ export class TickEngine {
       defensePriorities: land.defensePriorities,
       captureProgress: land.captureProgress,
       counterResponseResiduals: land.counterResponseResiduals,
+      directReveals,
     });
     const ownershipEvents = land.events.filter(
       (event): event is CellOwnershipChangedEvent =>
@@ -1195,6 +1207,7 @@ export class TickEngine {
       captureProgress: land.captureProgress,
       counterResponseResiduals: land.counterResponseResiduals,
       hostilityGrace,
+      directReveals,
     });
     const factoryTrainUpdate = prepareFactoryTrainRuntimePhase(
       advanced,
