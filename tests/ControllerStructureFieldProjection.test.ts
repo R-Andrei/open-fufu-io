@@ -93,7 +93,7 @@ describe("controller structure-field projection", () => {
     );
     const structureView = source.slice(structureStart, structureEnd);
     expect(structureStart).toBeGreaterThanOrEqual(0);
-    expect(structureView).toContain("readonly ownerId: FactionId;");
+    expect(structureView).toContain("readonly ownerId: FactionRef;");
     expect(structureView).toContain("readonly type: StructureType;");
     expect(structureView).toContain("readonly cellId: CellId;");
     expect(structureView).toContain("readonly completedLevel?: StructureLevel;");

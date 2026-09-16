@@ -160,10 +160,11 @@ void fixtureFreeFirstPurchaseQuote;
 const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
 const fixtureUpgradingCityRef =
   "fixture:upgrading-city" as StructureView["ref"];
+const fixtureOwnerRef = "fixture:faction-a" as StructureView["ownerId"];
 
 const fixtureFreshDirectLevel5City: StructureView = {
   ref: fixtureFreshCityRef,
-  ownerId: "faction-a",
+  ownerId: fixtureOwnerRef,
   type: "CITY",
   cellId: 43,
   active: false,
@@ -176,7 +177,7 @@ void fixtureFreshDirectLevel5City;
 
 const fixtureUpgradingCity: StructureView = {
   ref: fixtureUpgradingCityRef,
-  ownerId: "faction-a",
+  ownerId: fixtureOwnerRef,
   type: "CITY",
   completedLevel: 2,
   cellId: 44,
