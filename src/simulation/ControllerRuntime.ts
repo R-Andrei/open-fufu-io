@@ -416,6 +416,43 @@ function materializeControllerValue(
   }
 }
 
+function trustedInProcessOutputHasExpectedStructure(
+  outputKind: ControllerOutputKind,
+  output: Record<string, unknown>,
+): boolean {
+  if (controllerOutputHasExpectedStructure(outputKind, output)) return true;
+  if (outputKind !== "DECIDE" || !isPlainRecord(output.directives)) return false;
+  const set = output.directives.set;
+  if (!Array.isArray(set)) return false;
+
+  let normalizedLegacyCounterResponse = false;
+  const normalizedSet = set.map((directive) => {
+    if (
+      !isPlainRecord(directive) ||
+      directive.kind !== "COUNTER_RESPONSE" ||
+      directive.incomingOperation !== undefined ||
+      typeof directive.incomingOperationId !== "string"
+    ) {
+      return directive;
+    }
+    normalizedLegacyCounterResponse = true;
+    const { incomingOperationId, ...rest } = directive;
+    return Object.freeze({
+      ...rest,
+      incomingOperation: incomingOperationId,
+    });
+  });
+  if (!normalizedLegacyCounterResponse) return false;
+
+  return controllerOutputHasExpectedStructure(outputKind, {
+    ...output,
+    directives: {
+      ...output.directives,
+      set: normalizedSet,
+    },
+  });
+}
+
 function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
   return output === undefined
     ? Object.freeze({ ok: true as const })
@@ -606,7 +643,12 @@ export class InProcessTestControllerHost implements ControllerHost {
         output,
         new Set<object>(),
       ) as T;
-      if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
+      if (
+        !trustedInProcessOutputHasExpectedStructure(
+          outputKind,
+          materialized as Record<string, unknown>,
+        )
+      ) {
         return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
       }
 
