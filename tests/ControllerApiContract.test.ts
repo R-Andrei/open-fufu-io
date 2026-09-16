@@ -651,4 +651,161 @@ void controller;
     expect(formatDiagnostics(diagnostics)).toBe("");
     expect(program.getSourceFile(virtualFixturePath)).toBeDefined();
   });
+
+  it("excludes authoritative identity aliases from the entire exported controller type graph", () => {
+    const apiPath = path.resolve("src/core/controller/ControllerApi.ts");
+    const sourceText = ts.sys.readFile(apiPath);
+    expect(sourceText).toBeDefined();
+    if (sourceText === undefined) throw new Error("ControllerApi.ts is unreadable");
+
+    const source = ts.createSourceFile(
+      apiPath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const declarations = new Map<string, ts.Declaration>();
+    const exportedRoots = new Set<string>();
+    const forbiddenAliases = new Set([
+      "FactionId",
+      "UnitId",
+      "StructureId",
+      "OperationId",
+    ]);
+    const safePublicRefs = new Set([
+      "FactionRef",
+      "UnitRef",
+      "StructureRef",
+      "OperationRef",
+    ]);
+    const rawIdentityFieldNames = new Set([
+      "factionId",
+      "factionAId",
+      "factionBId",
+      "ownerId",
+      "byFactionId",
+      "fromFactionId",
+      "targetFactionId",
+      "referenceFactionId",
+      "unitId",
+      "structureId",
+      "operationId",
+      "producerId",
+      "launcherId",
+      "incomingOperationId",
+    ]);
+
+    const namedDeclaration = (declaration: ts.Declaration): string | undefined => {
+      const name = (declaration as ts.NamedDeclaration).name;
+      return name !== undefined && ts.isIdentifier(name) ? name.text : undefined;
+    };
+    const isExported = (node: ts.Node): boolean =>
+      ts.canHaveModifiers(node) &&
+      (ts.getModifiers(node)?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ) ?? false);
+
+    for (const statement of source.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          const name = namedDeclaration(declaration);
+          if (name === undefined) continue;
+          declarations.set(name, declaration);
+          if (isExported(statement)) exportedRoots.add(name);
+        }
+        continue;
+      }
+      if (
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement) ||
+        ts.isFunctionDeclaration(statement)
+      ) {
+        const name = namedDeclaration(statement);
+        if (name === undefined) continue;
+        declarations.set(name, statement);
+        if (isExported(statement)) exportedRoots.add(name);
+      }
+    }
+
+    const violations = new Set<string>();
+    const visited = new Set<string>();
+    const isRawStringIdentityType = (type: ts.TypeNode | undefined): boolean => {
+      if (type === undefined) return false;
+      if (type.kind === ts.SyntaxKind.StringKeyword) return true;
+      if (ts.isParenthesizedTypeNode(type)) {
+        return isRawStringIdentityType(type.type);
+      }
+      if (ts.isUnionTypeNode(type)) {
+        return type.types.some((member) => isRawStringIdentityType(member));
+      }
+      if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+        const name = type.typeName.text;
+        if (safePublicRefs.has(name)) return false;
+        if (forbiddenAliases.has(name)) return true;
+        const declaration = declarations.get(name);
+        return ts.isTypeAliasDeclaration(declaration)
+          ? isRawStringIdentityType(declaration.type)
+          : false;
+      }
+      return false;
+    };
+
+    const visitDeclaration = (name: string, route: readonly string[]): void => {
+      if (visited.has(name)) return;
+      visited.add(name);
+      const declaration = declarations.get(name);
+      if (declaration === undefined) return;
+      const nextRoute = [...route, name];
+
+      const walk = (node: ts.Node): void => {
+        if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+          const referenced = node.typeName.text;
+          if (forbiddenAliases.has(referenced)) {
+            violations.add(`${nextRoute.join(" -> ")} -> ${referenced}`);
+          } else if (declarations.has(referenced)) {
+            visitDeclaration(referenced, nextRoute);
+          }
+        } else if (
+          ts.isExpressionWithTypeArguments(node) &&
+          ts.isIdentifier(node.expression)
+        ) {
+          const referenced = node.expression.text;
+          if (forbiddenAliases.has(referenced)) {
+            violations.add(`${nextRoute.join(" -> ")} -> ${referenced}`);
+          } else if (declarations.has(referenced)) {
+            visitDeclaration(referenced, nextRoute);
+          }
+        }
+
+        if (ts.isPropertySignature(node) || ts.isParameter(node)) {
+          const memberName =
+            node.name !== undefined && ts.isIdentifier(node.name)
+              ? node.name.text
+              : node.name !== undefined && ts.isStringLiteral(node.name)
+                ? node.name.text
+                : undefined;
+          if (
+            memberName !== undefined &&
+            rawIdentityFieldNames.has(memberName) &&
+            isRawStringIdentityType(node.type)
+          ) {
+            violations.add(
+              `${nextRoute.join(" -> ")} -> ${memberName}: ${node.type?.getText(source) ?? "<missing>"}`,
+            );
+          }
+        }
+
+        ts.forEachChild(node, walk);
+      };
+
+      walk(declaration);
+    };
+
+    for (const root of exportedRoots) visitDeclaration(root, []);
+
+    expect([...violations].sort()).toEqual([]);
+  });
 });
