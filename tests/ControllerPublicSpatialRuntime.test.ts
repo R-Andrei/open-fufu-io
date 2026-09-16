@@ -400,6 +400,55 @@ describe("controller local public spatial runtime", () => {
     }
   });
 
+  it("uses FactionRef values for production-isolate ownership reads", async () => {
+    const state = localSpatialState();
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
+            const valid =
+              self !== undefined &&
+              enemy !== undefined &&
+              self.ref !== "alpha" &&
+              enemy.ref !== "beta" &&
+              context.cells.owner(1) === self.ref &&
+              context.cells.owner(2) === enemy.ref;
+            return valid
+              ? {
+                  commands: [
+                    { kind: "CAPITULATE", key: "faction-ref-ownership-ok" },
+                  ],
+                }
+              : { commands: [] };
+          }
+        `),
+        beta: artifact("export function decide() { return { commands: [] }; }"),
+      });
+
+      const evaluated = await Promise.resolve(
+        evaluateControllerRound(
+          state,
+          host,
+          6,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Set(),
+        ),
+      );
+
+      expect(evaluated.actions).toEqual([
+        { type: "CAPITULATE_FACTION", factionId: "alpha" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("preserves the immutable ownership revision across a tick with no ownership change", () => {
     const state = localSpatialState();
     const advanced = new TickEngine().advance(state, []);
