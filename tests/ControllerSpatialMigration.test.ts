@@ -106,6 +106,8 @@ describe("controller spatial API migration", () => {
 
   it("gives in-process controllers the current local map/cells/segments surface", () => {
     const match = baselineFixture();
+    const alphaRef = match.controllerReferenceSession().issueFaction("alpha");
+    if (alphaRef === undefined) throw new Error("expected Alpha FactionRef");
     let spatialSurfaceSeen = false;
 
     const receipts = match.runControllerRound(
@@ -122,7 +124,8 @@ describe("controller spatial API migration", () => {
             expect(Array.isArray(context.cells)).toBe(false);
             expect(context.map.cellCount).toBe(2);
             expect(context.map.terrainAt(0)).toBe("PLAINS");
-            expect(context.cells.owner(0)).toBe("alpha");
+            expect(context.cells.owner(0)).toBe(alphaRef);
+            expect(context.cells.owner(0)).not.toBe("alpha");
             expect(context.cells.owner(1)).toBeNull();
             expect(context.cells.owner(2)).toBeUndefined();
             expect(context.segments.cellIds(0)).toBeUndefined();
