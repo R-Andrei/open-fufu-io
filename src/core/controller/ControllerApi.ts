@@ -246,7 +246,7 @@ export interface CellView {
   readonly hasFallout: boolean;
   readonly conquerable: boolean;
   readonly populationBearing: boolean;
-  readonly ownerId?: FactionId;
+  readonly ownerId?: FactionRef;
   readonly segmentId?: SegmentId;
   readonly isCoast: boolean;
   readonly isShoreline: boolean;
@@ -258,7 +258,7 @@ export interface SegmentView {
   readonly id: SegmentId;
   readonly cellCount: number;
   readonly populationBearingCellCount: number;
-  readonly ownerShares: Readonly<Record<FactionId, number>>;
+  readonly ownerShares: Readonly<Record<FactionRef, number>>;
   readonly adjacentSegmentIds: readonly SegmentId[];
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
 }
@@ -323,7 +323,7 @@ export interface StructureConstructionView {
  * CellId is the public address; internal stable StructureId remains engine-owned.
  */
 export interface ControllerStructureView {
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: StructureType;
   readonly cellId: CellId;
   readonly completedLevel?: StructureLevel;
@@ -334,7 +334,7 @@ export interface ControllerStructureView {
 
 export interface StructureView {
   readonly ref: StructureRef;
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: StructureType;
   /** Last fully completed level; absent while a never-completed fresh build is in progress. */
   readonly completedLevel?: StructureLevel;
@@ -351,7 +351,7 @@ export interface StructureView {
 
 export interface UnitView {
   readonly ref: UnitRef;
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: MobileUnitType;
   readonly cellId: CellId;
   readonly active: boolean;
