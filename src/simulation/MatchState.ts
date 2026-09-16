@@ -815,6 +815,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       ownerId: structure.ownerId,
       type: structure.type,
       cellId: structure.cellId,
+      ...(structure.outputCellId === undefined
+        ? {}
+        : { outputCellId: structure.outputCellId }),
       ...(structure.completedLevel === undefined
         ? {}
         : { completedLevel: structure.completedLevel }),
