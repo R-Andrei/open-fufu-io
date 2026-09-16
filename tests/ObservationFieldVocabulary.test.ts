@@ -4,7 +4,16 @@ import type {
   ObservationStructureEffect,
 } from "../src/core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../src/core/controller/ControllerOutputValidation";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { STRUCTURE_FIELD_IDS } from "../src/core/rules/RuleComposition";
+import { InProcessTestControllerHost } from "../src/simulation/ControllerRuntime";
+import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+
+function emptyRules() {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
 
 describe("Observation structure-field query vocabulary", () => {
   it("surfaces Observation to controller queries without widening rule-condition fields", () => {
@@ -62,5 +71,119 @@ describe("CounterResponse public identity validation", () => {
         },
       }),
     ).toBe(false);
+  });
+
+  it("resolves an acquired OperationRef to trusted internal identity before applying a counter-response", () => {
+    const match = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "counter-response-ref-resolution",
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: "counter-response-ref-resolution" },
+    );
+    match.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 10,
+    });
+    match.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "beta",
+      amount: 10,
+    });
+    match.tick();
+
+    const attackReceipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha() {
+          return {
+            directives: {
+              set: [
+                {
+                  kind: "LAND_OPERATION" as const,
+                  key: "incoming-attack",
+                  operation: "ATTACK" as const,
+                  population: 1,
+                  targetFactionId: "beta",
+                  source: { kind: "CELLS" as const, ids: [0] },
+                  target: { kind: "CELLS" as const, ids: [1] },
+                },
+              ],
+            },
+          };
+        },
+      }),
+    );
+    expect(attackReceipts).not.toBeInstanceOf(Promise);
+    expect(
+      (attackReceipts as readonly {
+        factionId: string;
+        receipt: { accepted: boolean };
+      }[]).find((entry) => entry.factionId === "alpha")?.receipt.accepted,
+    ).toBe(true);
+
+    match.tick();
+
+    let incomingOperationRef: string | undefined;
+    const counterReceipts = match.runControllerRound(
+      new InProcessTestControllerHost({
+        beta(context) {
+          const incoming = (
+            context as unknown as {
+              readonly operations: {
+                incoming(): readonly Readonly<{ ref: string }>[];
+              };
+            }
+          ).operations.incoming();
+          expect(incoming).toHaveLength(1);
+          incomingOperationRef = incoming[0]!.ref;
+          return {
+            directives: {
+              set: [
+                {
+                  kind: "COUNTER_RESPONSE" as const,
+                  key: "counter-by-ref",
+                  incomingOperation: incomingOperationRef,
+                  population: 1,
+                },
+              ],
+            },
+          } as unknown as never;
+        },
+      }),
+    );
+    expect(counterReceipts).not.toBeInstanceOf(Promise);
+    expect(incomingOperationRef).toEqual(expect.any(String));
+    expect(
+      (counterReceipts as readonly {
+        factionId: string;
+        receipt: { accepted: boolean };
+      }[]).find((entry) => entry.factionId === "beta")?.receipt.accepted,
+    ).toBe(true);
+
+    const trustedDirective = match
+      .acceptedInputs()
+      .flatMap((input) =>
+        input.action.type === "APPLY_PERSISTENT_DIRECTIVES"
+          ? (input.action.changes.set ?? [])
+          : [],
+      )
+      .find((directive) => directive.key === "counter-by-ref") as
+      | Readonly<Record<string, unknown>>
+      | undefined;
+    expect(trustedDirective).toMatchObject({
+      kind: "COUNTER_RESPONSE",
+      incomingOperationId: expect.any(String),
+      population: 1,
+    });
+    expect(trustedDirective).not.toHaveProperty("incomingOperation");
+    expect(trustedDirective?.incomingOperationId).not.toBe(incomingOperationRef);
   });
 });
