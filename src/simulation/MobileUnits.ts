@@ -1,9 +1,7 @@
 import type {
   CellId,
-  FactionId,
   MobileUnitType,
   MovementClass,
-  UnitId,
 } from "../core/controller/ControllerApi";
 import type { SimulationMap } from "./SimulationMap";
 

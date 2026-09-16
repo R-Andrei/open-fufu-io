@@ -1,8 +1,11 @@
-import { factionRelationBetween } from "../core/FactionRelations";
+import {
+  factionRelationBetween } from "../core/FactionRelations";
 import type {
   CellId,
   CellSelector,
+  ActionRef,
   CellView,
+  ControllerCommand,
   ControllerStructureFieldId,
   ControllerStructureView,
   DecisionFailure,
@@ -113,8 +116,11 @@ export interface ControllerPublicFactionSource {
   readonly entries: readonly Readonly<{
     readonly authoritativeId: string;
     readonly ref: FactionReadView["ref"];
+    readonly displayName: string;
     readonly status: FactionReadView["status"];
     readonly relation: FactionReadView["relation"];
+    readonly isMinorFaction: boolean;
+    readonly score: number;
     readonly teamId?: string;
   }>[];
 }
@@ -145,7 +151,10 @@ export interface ControllerQuerySession {
     get(locator: StructureLocator): Promise<StructureView | undefined>;
     find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
     count(filter?: StructureFindFilter): Promise<number>;
+    build(type: StructureType, cellId: CellId): ActionRef;
+    checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
   }>;
+  consumeStagedCommands(): readonly ControllerCommand[];
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -569,7 +578,7 @@ function anyFieldSourceContainsCell(
   sources: readonly StructureFieldSource[],
   cellId: CellId,
 ): boolean {
-  return sources.some((source) => fieldSourceContainsCell(state, source, id));
+  return sources.some((source) => fieldSourceContainsCell(state, source, cellId));
 }
 
 function createStructureVisibilityContext(
@@ -1597,6 +1606,26 @@ export function createControllerQuerySession(
     return visibleStructures(filter).length;
   };
 
+  let nextActionOrdinal = 1;
+  const stagedCommands: ControllerCommand[] = [];
+  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef => {
+    const ordinal = nextActionOrdinal;
+    nextActionOrdinal += 1;
+    stagedCommands.push(Object.freeze({
+      kind: "BUILD_STRUCTURE" as const,
+      key: `action:${requesterFactionId}:${ordinal}`,
+      structure: type,
+      cellId,
+    }));
+    return `action_${requesterFactionId}_${ordinal}` as ActionRef;
+  };
+  const checkStructureBuild = (type: StructureType, cellId: CellId): StructureBuildQuote => {
+    beginQuery();
+    return mechanics.structureBuildQuote(type, cellId);
+  };
+  const consumeStagedCommands = (): readonly ControllerCommand[] =>
+    Object.freeze([...stagedCommands]);
+
   const publicFactionEntries = Object.freeze(
     state.factions.flatMap((faction) => {
       if (references === undefined) return [];
@@ -1607,8 +1636,11 @@ export function createControllerQuerySession(
         Object.freeze({
           authoritativeId: faction.id,
           ref,
+          displayName: faction.id,
           status: faction.status,
           relation,
+          isMinorFaction: false,
+          score: 0,
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
@@ -1630,9 +1662,12 @@ export function createControllerQuerySession(
     if (source === undefined) return undefined;
     return Object.freeze({
       ref: source.ref,
+      displayName: source.displayName,
       status: source.status,
       relation: source.relation,
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
+      isMinorFaction: source.isMinorFaction,
+      score: source.score,
       ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };
@@ -1904,7 +1939,10 @@ export function createControllerQuerySession(
       get: getStructure,
       find: findStructures,
       count: countStructures,
+      build: stageStructureBuild,
+      checkBuild: checkStructureBuild,
     }),
+    consumeStagedCommands,
     cells: Object.freeze({
       get,
       query,

@@ -1,5 +1,7 @@
-import { factionRelationBetween } from "../core/FactionRelations";
-import type { CellId } from "../core/controller/ControllerApi";
+import {
+  factionRelationBetween } from "../core/FactionRelations";
+import type { CellId,
+} from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import { ruleScopeMatches } from "../core/rules/RuleComposition";
 import {

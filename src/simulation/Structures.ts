@@ -1,5 +1,4 @@
 import type {
-  FactionId,
   StructureLevel,
 } from "../core/controller/ControllerApi";
 import type { MatchState } from "./MatchState";

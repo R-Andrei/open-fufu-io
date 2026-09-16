@@ -31,14 +31,16 @@ export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";
 export type Tick = number;
 export type CellId = number;
 export type SegmentId = number;
-export type FactionId = string;
-export type OperationId = string;
-export type UnitId = string;
-export type StructureId = string;
+type FactionId = string;
+type OperationId = string;
+type UnitId = string;
+type StructureId = string;
 
 declare const factionRefBrand: unique symbol;
 declare const unitRefBrand: unique symbol;
 declare const structureRefBrand: unique symbol;
+declare const operationRefBrand: unique symbol;
+declare const actionRefBrand: unique symbol;
 
 /** Stable opaque match-global public faction identity. */
 export type FactionRef = string & { readonly [factionRefBrand]: "FactionRef" };
@@ -48,6 +50,10 @@ export type UnitRef = string & { readonly [unitRefBrand]: "UnitRef" };
 export type StructureRef = string & {
   readonly [structureRefBrand]: "StructureRef";
 };
+/** Stable opaque viewer-scoped public operation identity. */
+export type OperationRef = string & { readonly [operationRefBrand]: "OperationRef" };
+/** Opaque receipt for one action staged through the controller facade. */
+export type ActionRef = string & { readonly [actionRefBrand]: "ActionRef" };
 
 export type UnitLocator =
   | Readonly<{ readonly ref: UnitRef }>
@@ -57,7 +63,7 @@ export type StructureLocator =
   | Readonly<{ readonly cellId: CellId }>;
 
 export type DirectiveKey = string;
-export type CommandKey = string;
+type CommandKey = string;
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
 export type StructureAcquisitionPath =
   | "PURCHASE_BUILD"
@@ -214,9 +220,12 @@ export interface SelfFactionView extends FactionView {
 /** Coarse globally public roster facts available without tactical visibility. */
 export interface FactionReadView {
   readonly ref: FactionRef;
+  readonly displayName: string;
   readonly status: FactionStatus;
   readonly relation: PublicFactionRelation;
   readonly territoryCells: number;
+  readonly isMinorFaction: boolean;
+  readonly score: number;
   readonly teamId?: string;
 }
 
@@ -245,9 +254,8 @@ export interface SegmentView {
 }
 
 export interface TerritorialContactView {
-  readonly id: string;
-  readonly factionA: FactionId;
-  readonly factionB: FactionId;
+  readonly factionA: FactionRef;
+  readonly factionB: FactionRef;
   readonly boundaryCellCount: number;
   readonly componentCount: number;
   readonly segmentIds: readonly SegmentId[];
@@ -261,9 +269,8 @@ export type OperationalContactKind =
   | "AMPHIBIOUS";
 
 export interface OperationalContactView {
-  readonly id: string;
-  readonly factionA: FactionId;
-  readonly factionB: FactionId;
+  readonly factionA: FactionRef;
+  readonly factionB: FactionRef;
   readonly kinds: readonly OperationalContactKind[];
   readonly area: CellSelector;
   readonly segmentIds: readonly SegmentId[];
@@ -273,15 +280,15 @@ export type OperationKind = "ATTACK" | "NEUTRAL_EXPANSION" | "COUNTER_RESPONSE";
 export type OperationStatus = "ACTIVE" | "STALLED" | "ENDING" | "ENDED";
 
 export interface OperationView {
-  readonly id: OperationId;
-  readonly controllerKey?: DirectiveKey;
+  readonly ref: OperationRef;
+  readonly directiveKey?: DirectiveKey;
   readonly kind: OperationKind;
-  readonly ownerId: FactionId;
-  readonly targetFactionId?: FactionId;
+  readonly ownerId: FactionRef;
+  readonly targetFactionId?: FactionRef;
   readonly committedPopulation: number;
   readonly status: OperationStatus;
-  readonly source: CellSelector;
-  readonly target: CellSelector;
+  readonly source?: CellSelector;
+  readonly target?: CellSelector;
 }
 
 export interface ChargeStateView {
@@ -440,7 +447,7 @@ export interface QueryPage<T> {
 
 export interface CellsApi {
   /** Public political ownership; null is neutral and undefined is an invalid CellId. */
-  owner(id: CellId): FactionId | null | undefined;
+  owner(id: CellId): FactionRef | null | undefined;
   get(id: CellId): Promise<CellView | undefined>;
   query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
   count(selector: CellSelector): Promise<number>;
@@ -484,7 +491,7 @@ export interface FactionsApi {
 
 export interface OperationsApi {
   /** Hidden/unknown operations are indistinguishable and return undefined. */
-  get(id: OperationId): OperationView | undefined;
+  get(ref: OperationRef): OperationView | undefined;
   own(): readonly OperationView[];
   /** Contains only incoming operations lawfully visible to this requester. */
   incoming(): readonly OperationView[];
@@ -495,6 +502,10 @@ export interface StructuresApi {
   get(locator: StructureLocator): Promise<StructureView | undefined>;
   find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
   count(filter?: StructureFindFilter): Promise<number>;
+  build(type: StructureType, cellId: CellId): ActionRef;
+  upgrade(locator: StructureLocator): ActionRef;
+  checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
+  checkUpgrade(locator: StructureLocator): StructureUpgradeQuote;
 }
 
 export interface UnitsApi {
@@ -502,6 +513,29 @@ export interface UnitsApi {
   get(locator: UnitLocator): Promise<UnitView | undefined>;
   find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
   count(filter?: UnitFindFilter): Promise<number>;
+  build(type: PurchasableUnitType, producer: StructureLocator, destination: CellId): ActionRef;
+  move(unit: UnitLocator, destination: CellId): ActionRef;
+  checkBuild(type: PurchasableUnitType, producer: StructureLocator, destination: CellId): UnitBuildQuote;
+}
+
+export interface TransportsApi {
+  embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
+  recall(unit: UnitLocator): ActionRef;
+  checkEmbark(sourceCellId: CellId, targetCellId: CellId, population: number): TransportEmbarkQuote;
+}
+
+export interface WeaponsApi {
+  launch(launcher: StructureLocator | UnitLocator, weapon: StrategicWeaponType, targetCellId: CellId, targetFaction?: FactionRef): ActionRef;
+  checkLaunch(launcher: StructureLocator | UnitLocator, weapon: StrategicWeaponType, targetCellId: CellId, targetFaction?: FactionRef): WeaponLaunchQuote;
+}
+
+export interface TerritoryApi {
+  relinquish(cells: CellSelector): ActionRef;
+  checkRelinquish(cells: CellSelector): RelinquishQuote;
+}
+
+export interface TeamApi {
+  signal(channel: string, payload: JsonValue): ActionRef;
 }
 
 export interface NavigationApi {
@@ -1053,6 +1087,10 @@ export type ControllerEvent =
       readonly reason: string;
     }
   | {
+      readonly type: "HOSTILE_SOURCE_REVEALED";
+      readonly source: UnitRef | StructureRef | OperationRef;
+    }
+  | {
       readonly type: "WAR_STATE_CHANGED";
       readonly factionAId: FactionId;
       readonly factionBId: FactionId;
@@ -1149,7 +1187,9 @@ export interface DefensePriorityDirective {
 export interface CounterResponseDirective {
   readonly kind: "COUNTER_RESPONSE";
   readonly key: DirectiveKey;
-  readonly incomingOperationId: OperationId;
+  readonly incomingOperation: OperationRef;
+  /** Trusted-runtime compatibility field; player code should use incomingOperation. */
+  readonly incomingOperationId?: OperationId;
   readonly population: number;
 }
 
@@ -1273,7 +1313,6 @@ export interface ControllerDecision<
 > {
   readonly memory?: M;
   readonly directives?: DirectiveChanges;
-  readonly commands?: readonly ControllerCommand[];
   readonly debug?: readonly DebugItem[];
   readonly log?: string;
 }
@@ -1291,6 +1330,11 @@ export interface ControllerContext<
   readonly operations: OperationsApi;
   readonly structures: StructuresApi;
   readonly units: UnitsApi;
+  readonly transports: TransportsApi;
+  readonly weapons: WeaponsApi;
+  readonly territory: TerritoryApi;
+  readonly team: TeamApi;
+  capitulate(): ActionRef;
   readonly navigation: NavigationApi;
   readonly economy: EconomyView;
   readonly rules: RulesView;

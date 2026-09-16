@@ -96,6 +96,7 @@ export interface LawfulInProcessControllerObservation
   readonly cells?: ControllerSpatialSurface["cells"];
   readonly segments?: ControllerSpatialSurface["segments"];
   readonly mechanics?: ControllerQuerySession["mechanics"];
+  readonly structures?: ControllerQuerySession["structures"];
 }
 
 export interface HostedLawfulControllerObservation
@@ -344,6 +345,7 @@ function projectInProcessObservation(
     ...observation,
     ...createControllerSpatialSurface(querySession),
     mechanics: querySession.mechanics,
+    structures: querySession.structures,
   });
 }
 
@@ -480,21 +482,35 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
+    const withStagedActions = (output: ControllerDecision | void): ControllerDecision | void => {
+      const rawCommands = (output as unknown as { readonly commands?: readonly unknown[] } | undefined)?.commands;
+      if (rawCommands !== undefined && rawCommands.length > 0) {
+        throw new InvalidControllerValueError("legacy raw controller commands are not accepted");
+      }
+      const staged = querySession?.consumeStagedCommands() ?? [];
+      if (staged.length === 0) return output;
+      return Object.freeze({
+        ...(output ?? {}),
+        commands: staged,
+      }) as unknown as ControllerDecision;
+    };
+
     if (typeof registration === "function") {
       return this.executeInvocation<ControllerDecision>(
         factionId,
         "DECIDE",
-        () => registration(inProcessObservation),
+        () => withStagedActions(registration(inProcessObservation)),
       );
     }
 
     return this.executeInvocation<ControllerDecision>(
       factionId,
       "DECIDE",
-      (memory) =>
+      (memory) => withStagedActions(
         registration.decide?.(
           projectHostedContext(inProcessObservation, memory),
         ),
+      ),
     );
   }
 
@@ -799,7 +815,7 @@ function evaluateProposal(
     );
   }
 
-  const commands = decision.commands ?? [];
+  const commands = (decision as unknown as { readonly commands?: readonly import("../core/controller/ControllerApi").ControllerCommand[] }).commands ?? [];
   const seenKeys = new Set<string>();
   let hasCapitulation = false;
 

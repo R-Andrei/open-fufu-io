@@ -1,4 +1,5 @@
-import { factionRelationBetween } from "../core/FactionRelations";
+import {
+  factionRelationBetween } from "../core/FactionRelations";
 import type {
   CellId,
   CellSelector,

@@ -5,7 +5,9 @@
 // spatial ontology by docs/OPEN_FUFU_DESIGN.md; terrain mechanics by
 // docs/TERRAIN_AND_STRUCTURES.md; Segment semantics by docs/SEGMENTS.md.
 
-import type { TerrainType } from "../core/controller/ControllerApi";
+import type {
+  TerrainType,
+} from "../core/controller/ControllerApi";
 import {
   SEGMENT_ADJACENCY_ENCODING,
   SEGMENT_ADJACENCY_OFFSETS_ENCODING,

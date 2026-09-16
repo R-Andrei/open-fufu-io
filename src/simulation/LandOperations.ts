@@ -1,8 +1,9 @@
 import {
   hostilitySideOf,
   type HostilitySideIdentity,
-} from "../core/FactionRelations";
-import type { DirectiveChanges } from "../core/controller/ControllerApi";
+  } from "../core/FactionRelations";
+import type { DirectiveChanges,
+} from "../core/controller/ControllerApi";
 import {
   resolveLandTick as resolveLandTickCore,
   tryApplyPersistentDirectiveChanges as tryApplyPersistentDirectiveChangesCore,

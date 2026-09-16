@@ -1,4 +1,6 @@
-import { fork, type ChildProcess } from "node:child_process";
+import {
+  fork,
+  type ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,6 +16,7 @@ import type {
 } from "../../core/controller/ControllerApi";
 import type {
   ControllerPublicFactionSource,
+  ControllerPublicOperationSource,
   ControllerPublicSpatialSource,
   ControllerQuerySession,
 } from "../../simulation/ControllerQueryProjection";
@@ -112,9 +115,12 @@ type CachedOwnershipSnapshot = Readonly<{
 
 type WorkerPublicFactionEntry = Readonly<{
   ref: string;
+  displayName: string;
   status: ControllerPublicFactionSource["entries"][number]["status"];
   relation: ControllerPublicFactionSource["entries"][number]["relation"];
   territoryCells: number;
+  isMinorFaction: boolean;
+  score: number;
   ownerCode?: number;
   teamId?: string;
 }>;
@@ -123,6 +129,8 @@ type WorkerPublicFactionSnapshot = Readonly<{
   requesterOwnerCode?: number;
   entries: readonly WorkerPublicFactionEntry[];
 }>;
+
+type WorkerPublicOperationSnapshot = ControllerPublicOperationSource;
 
 type WorkerPublicSpatialUpdate = Readonly<{
   cacheKey: number;
@@ -136,6 +144,7 @@ type WorkerRequestEnvelope = Readonly<{
   request: ControllerWorkerRequest;
   publicSpatial?: WorkerPublicSpatialUpdate;
   publicFactions?: WorkerPublicFactionSnapshot;
+  publicOperations?: WorkerPublicOperationSnapshot;
 }>;
 
 type WorkerQueryEnvelope = Readonly<{
@@ -563,10 +572,13 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
           const ownerCode = ownership.ownerCodeByFactionId.get(entry.authoritativeId);
           return Object.freeze({
             ref: entry.ref,
+            displayName: entry.displayName,
             status: entry.status,
             relation: entry.relation,
             territoryCells:
               ownership.cellCountByFactionId.get(entry.authoritativeId) ?? 0,
+            isMinorFaction: entry.isMinorFaction,
+            score: entry.score,
             ...(ownerCode === undefined ? {} : { ownerCode }),
             ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
           });
@@ -634,6 +646,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
 
       let publicSpatial: WorkerPublicSpatialUpdate | undefined;
       let publicFactions: WorkerPublicFactionSnapshot | undefined;
+      let publicOperations: WorkerPublicOperationSnapshot | undefined;
       try {
         publicSpatial = this.publicSpatialUpdate(
           slot,
@@ -646,6 +659,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
                 queued.querySession.publicFactions,
                 queued.querySession.publicSpatial,
               );
+        publicOperations = queued.querySession?.publicOperations;
       } catch {
         this.markWorkerFailed(slot);
         continue;
@@ -656,6 +670,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         request: queued.request,
         ...(publicSpatial === undefined ? {} : { publicSpatial }),
         ...(publicFactions === undefined ? {} : { publicFactions }),
+        ...(publicOperations === undefined ? {} : { publicOperations }),
       });
 
       try {

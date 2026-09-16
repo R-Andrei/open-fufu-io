@@ -1,4 +1,6 @@
-import type { TerrainType } from "../core/controller/ControllerApi";
+import type {
+  TerrainType,
+} from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
   reducePermissionRule,

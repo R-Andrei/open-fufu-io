@@ -1,4 +1,5 @@
-import { OFFICIAL_AI_BASELINE_CHARACTER_PROFILE } from "../../design/official-ai/character-configurations.config";
+import {
+  OFFICIAL_AI_BASELINE_CHARACTER_PROFILE } from "../../design/official-ai/character-configurations.config";
 import type {
   ControllerDecision,
   SpawnInfluenceContext,

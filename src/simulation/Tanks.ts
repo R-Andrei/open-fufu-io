@@ -70,7 +70,7 @@ export type TankProductionJobState =
       readonly ownerId: string;
       readonly chassisType: TankChassisType;
       readonly strategicDestinationCellId: number;
-      readonly state: "WAITING_DEPLOYMENT";
+      readonly state: "READY_TO_DEPLOY";
     };
 
 export interface StartTankProductionRequest {
@@ -1045,15 +1045,13 @@ function tankDeploymentCell(
   factory: PersistentStructureState,
   job: TankProductionJobState,
 ): number | undefined {
-  return [...state.map.cardinalNeighbors(factory.cellId)]
-    .filter(
-      (cellId) =>
-        state.ownership[cellId] === job.ownerId &&
-        tankChassisCanTraverse(state.map.terrainAt(cellId)) &&
-        !state.structures.some((structure) => structure.cellId === cellId) &&
-        !state.mobileUnits.some((unit) => unit.cellId === cellId),
-    )
-    .sort((left, right) => left - right)[0];
+  const cellId = factory.outputCellId;
+  if (cellId === undefined || !state.map.isValidCellId(cellId)) return undefined;
+  if (state.ownership[cellId] !== job.ownerId) return undefined;
+  if (!tankChassisCanTraverse(state.map.terrainAt(cellId))) return undefined;
+  if (state.structures.some((structure) => structure.cellId === cellId)) return undefined;
+  if (state.mobileUnits.some((unit) => unit.cellId === cellId)) return undefined;
+  return cellId;
 }
 
 function waitingDeploymentJob(
@@ -1064,7 +1062,7 @@ function waitingDeploymentJob(
     ownerId: job.ownerId,
     chassisType: job.chassisType,
     strategicDestinationCellId: job.strategicDestinationCellId,
-    state: "WAITING_DEPLOYMENT" as const,
+    state: "READY_TO_DEPLOY" as const,
   });
 }
 
@@ -1138,7 +1136,7 @@ export function advanceTankProductionPhase(state: MatchState): MatchState {
       return true;
     };
 
-    if (job.state === "WAITING_DEPLOYMENT") {
+    if (job.state === "READY_TO_DEPLOY") {
       if (!deploy()) nextJobs.push(job);
       continue;
     }

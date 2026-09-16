@@ -1,8 +1,9 @@
 import {
   hostilitySideOf,
   type HostilitySideIdentity,
-} from "../core/FactionRelations";
-import type { FactionStatus } from "../core/controller/ControllerApi";
+  } from "../core/FactionRelations";
+import type { FactionStatus,
+} from "../core/controller/ControllerApi";
 import type { LandOperationState } from "./LandOperations";
 import type {
   FactionCapitulatedEvent,
