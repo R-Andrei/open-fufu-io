@@ -141,8 +141,11 @@ export function createControllerSpatialSurface(
   });
 
   const cells: CellsApi = Object.freeze({
-    owner: (id: CellId) =>
-      validCellId(id) ? (ownership[id] ?? null) : undefined,
+    owner: (id: CellId) => {
+      if (!validCellId(id)) return undefined;
+      const ownerId = ownership[id] ?? null;
+      return ownerId === null ? null : ownerRefById.get(ownerId);
+    },
     get: async (id: CellId) => {
       const view = await session.cells.get(id);
       return view === undefined ? undefined : projectCellView(view);
