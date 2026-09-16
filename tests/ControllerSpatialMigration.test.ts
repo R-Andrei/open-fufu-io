@@ -49,6 +49,7 @@ function baselineFixture() {
 
 type EntityReadView = Readonly<{
   ref: string;
+  ownerId?: string;
   cellId: number;
   type: string;
 }>;
@@ -63,6 +64,9 @@ type EntityReadSurface = Readonly<{
     }[];
     get(ref: string): { ref: string; relation: string } | undefined;
     proximity(ref: string): number | undefined;
+  };
+  cells: {
+    get(id: number): Promise<Readonly<{ ownerId?: string }> | undefined>;
   };
   units: {
     get(locator: unknown): Promise<EntityReadView | undefined>;
@@ -227,6 +231,10 @@ describe("controller spatial API migration", () => {
     expect(enemy).toMatchObject({ status: "ACTIVE", territoryCells: 1 });
     expect(surface.factions.get(enemy!.ref)?.ref).toBe(enemy!.ref);
     expect(surface.factions.proximity(enemy!.ref)).toBe(1);
+    expect((await surface.cells.get(0))?.ownerId).toBe(self!.ref);
+    expect((await surface.cells.get(1))?.ownerId).toBe(enemy!.ref);
+    expect((await surface.cells.get(0))?.ownerId).not.toBe("alpha");
+    expect((await surface.cells.get(1))?.ownerId).not.toBe("beta");
     expect(await surface.units.find()).toEqual({ items: [], truncated: false });
     expect(await surface.structures.find()).toEqual({ items: [], truncated: false });
   });
@@ -296,11 +304,25 @@ describe("controller spatial API migration", () => {
       references,
     );
     const surface = asEntityReadSurface(session);
+    const enemyFaction = surface.factions
+      .find()
+      .find((faction) => faction.relation === "ENEMY");
+    const selfFaction = surface.factions
+      .find()
+      .find((faction) => faction.relation === "SELF");
+    if (enemyFaction === undefined || selfFaction === undefined) {
+      throw new Error("expected faction refs for entity ownership assertions");
+    }
 
     const enemyUnits = await surface.units.find({ relation: "ENEMY", types: "TANK" });
     expect(enemyUnits).toMatchObject({ truncated: false });
     expect(enemyUnits.items).toHaveLength(1);
-    expect(enemyUnits.items[0]).toMatchObject({ cellId: 4, type: "TANK" });
+    expect(enemyUnits.items[0]).toMatchObject({
+      cellId: 4,
+      type: "TANK",
+      ownerId: enemyFaction.ref,
+    });
+    expect(enemyUnits.items[0]!.ownerId).not.toBe("beta");
     expect(enemyUnits.items[0]!.ref).not.toBe(betaUnit.unit.id);
     expect(await surface.units.get({ cellId: 4 })).toEqual(enemyUnits.items[0]);
     expect(await surface.units.get({ ref: enemyUnits.items[0]!.ref })).toEqual(
@@ -311,6 +333,7 @@ describe("controller spatial API migration", () => {
 
     const firstUnit = await surface.units.find({ limit: 1 });
     expect(firstUnit.items.map((unit) => unit.cellId)).toEqual([1]);
+    expect(firstUnit.items[0]?.ownerId).toBe(selfFaction.ref);
     expect(firstUnit.truncated).toBe(true);
     await expect(surface.units.find({ limit: 0 })).rejects.toThrow();
     await expect(surface.units.find({ limit: 129 })).rejects.toThrow();
@@ -319,7 +342,12 @@ describe("controller spatial API migration", () => {
 
     const enemyStructures = await surface.structures.find({ relation: "ENEMY" });
     expect(enemyStructures.items).toHaveLength(1);
-    expect(enemyStructures.items[0]).toMatchObject({ cellId: 5, type: "FORT" });
+    expect(enemyStructures.items[0]).toMatchObject({
+      cellId: 5,
+      type: "FORT",
+      ownerId: enemyFaction.ref,
+    });
+    expect(enemyStructures.items[0]!.ownerId).not.toBe("beta");
     expect(enemyStructures.items[0]!.ref).not.toBe("beta-fort");
     expect(await surface.structures.get({ cellId: 5 })).toEqual(
       enemyStructures.items[0],
