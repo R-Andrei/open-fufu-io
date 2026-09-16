@@ -14,6 +14,11 @@ import {
   tryMaterializeStructureGrant,
 } from "../src/simulation/StructuresCore";
 import { advanceTankProductionPhase } from "../src/simulation/Tanks";
+import {
+  advanceWarshipProductionPhase,
+  tryStartWarshipProduction,
+  warshipPurchaseCost,
+} from "../src/simulation/Warships";
 
 function baseState(seed: string, width = 6) {
   const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -25,6 +30,73 @@ function baseState(seed: string, width = 6) {
     initialOwners: Array.from({ length: width }, () => "alpha"),
     factions: [{ id: "alpha", rules }, { id: "beta", rules }],
   }));
+}
+
+function structure(id: string, cellId: number) {
+  return {
+    id,
+    ownerId: "alpha",
+    type: "FACTORY" as const,
+    cellId,
+    outputCellId: Math.max(0, cellId - 1),
+    completedLevel: 1 as const,
+    active: true,
+    acquisitionPath: "GRANT" as const,
+  };
+}
+
+function warshipProductionFixture(ffy: number, blocked = false) {
+  const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+  const base = createInitialMatchState(createMicroSimulationSpec({
+    seed: blocked ? "warship-production-blocked-red" : "warship-production-red",
+    width: 3,
+    height: 1,
+    terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
+    initialOwners: [null, "alpha", null],
+    factions: [{ id: "alpha", rules }],
+  }));
+  const withPort = createProspectiveMatchState(base, {
+    factions: base.factions.map((faction) => ({ ...faction, ffy })),
+    structures: [
+      {
+        id: "port-a",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 1,
+        outputCellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+  });
+  if (!blocked) return withPort;
+  const blocker = createMobileUnit(
+    withPort.map,
+    withPort.factions.map((faction) => faction.id),
+    withPort,
+    {
+      ownerId: "alpha",
+      type: "TRADE_SHIP",
+      movementClass: "NAVAL",
+      cellId: 0,
+    },
+  );
+  return createProspectiveMatchState(withPort, {
+    mobileUnits: blocker.mobileUnits,
+    nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+  });
+}
+
+function runWarshipProductionPhases(
+  state: ReturnType<typeof warshipProductionFixture>,
+  count: number,
+) {
+  let current = state;
+  for (let tick = 0; tick < count; tick += 1) {
+    current = advanceWarshipProductionPhase(current);
+  }
+  return current;
 }
 
 describe("physical occupancy admission", () => {
@@ -286,5 +358,90 @@ describe("physical occupancy admission", () => {
       type: "TANK",
       cellId: 2,
     });
+  });
+
+  it("uses the baseline active-Warship purchase-cost curve", () => {
+    expect(warshipPurchaseCost(0)).toBe(250_000);
+    expect(warshipPurchaseCost(1)).toBe(500_000);
+    expect(warshipPurchaseCost(2)).toBe(750_000);
+    expect(warshipPurchaseCost(3)).toBe(1_000_000);
+    expect(warshipPurchaseCost(4)).toBe(1_000_000);
+  });
+
+  it("builds a Warship for 50 ticks and deploys only through the persisted Port dock", () => {
+    const initial = warshipProductionFixture(250_000);
+    const accepted = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Warship production admission");
+    expect(accepted.cost).toBe(250_000);
+    expect(accepted.job).toMatchObject({
+      portId: "port-a",
+      ownerId: "alpha",
+      state: "BUILDING",
+      remainingTicks: 50,
+    });
+
+    const beforeCompletion = runWarshipProductionPhases(accepted.state, 49);
+    expect(beforeCompletion.warshipProductionJobs).toEqual([
+      expect.objectContaining({
+        portId: "port-a",
+        state: "BUILDING",
+        remainingTicks: 1,
+      }),
+    ]);
+    expect(beforeCompletion.mobileUnits).toHaveLength(0);
+
+    const completed = advanceWarshipProductionPhase(beforeCompletion);
+    expect(completed.warshipProductionJobs).toHaveLength(0);
+    expect(completed.mobileUnits).toEqual([
+      expect.objectContaining({
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 0,
+      }),
+    ]);
+  });
+
+  it("holds completed Warship output on the exact occupied dock and never reroutes", () => {
+    const initial = warshipProductionFixture(250_000, true);
+    const accepted = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Warship production admission");
+
+    const waiting = runWarshipProductionPhases(accepted.state, 50);
+    expect(waiting.mobileUnits).toHaveLength(1);
+    expect(waiting.mobileUnits[0]).toMatchObject({
+      type: "TRADE_SHIP",
+      cellId: 0,
+    });
+    expect(waiting.warshipProductionJobs).toEqual([
+      {
+        portId: "port-a",
+        ownerId: "alpha",
+        state: "READY_TO_DEPLOY",
+      },
+    ]);
+    expect(waiting.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
+
+    const cleared = createProspectiveMatchState(waiting, { mobileUnits: [] });
+    const deployed = advanceWarshipProductionPhase(cleared);
+    expect(deployed.warshipProductionJobs).toHaveLength(0);
+    expect(deployed.mobileUnits).toEqual([
+      expect.objectContaining({
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 0,
+      }),
+    ]);
   });
 });
