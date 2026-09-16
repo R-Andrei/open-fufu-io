@@ -153,6 +153,7 @@
     {"path":"src/simulation/TickEngine.ts","validators":["tests/FactoryTrainP07Runtime.test.ts","tests/FactoryTrainRuntime.test.ts","tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/TankLifecycle.test.ts","tests/TankPursuit.test.ts","tests/OperationRefRuntime.test.ts"]},
     {"path":"src/simulation/TrainService.ts","validators":["tests/FactoryTrainRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/TrainInterceptionEconomy.test.ts","tests/TrainService.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/VisibilityState.ts","validators":["tests/TankCombatEvents.test.ts","tests/OperationRefRuntime.test.ts"]},
+    {"path":"src/simulation/Warships.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts"]},
     {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"tests/types/ControllerApiTypes.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"vitest.config.ts","validators":["tests/ValidationBoundaryPolicy.test.ts"]}
