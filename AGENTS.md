@@ -4,19 +4,17 @@ Applies to automated coding/documentation agents in this repository.
 
 ## Always
 
-Before repository work, freshly read this file. Re-read before every commit or merge and whenever rules, claim, scope, or materially relevant repository state changes. Batch related read-only steps.
+Before repository work, freshly read this file. Re-read when rules, claim, scope, or materially relevant repository state changes and before merge. Batch related read-only steps; reuse still-valid evidence.
 
-When working on an approved plan, limit each work session to roughly 25 minutes. At the end of the session, finish the current atomic action, post a work-log checkpoint to the owning GitHub issue, report material findings, and state the exact next action.
+For claimed issue work, the owning GitHub issue MUST be the durable coordination log. Record material findings, blockers, plan/scope changes, validation/certification results, lifecycle transitions, handoff, and completion. Summarize related work; do not event-stream microscopic actions. Detailed evidence may live in commits, PRs, tests, or reviews.
 
-For claimed issue work, the owning GitHub issue MUST be the durable work log. Material progress, findings, decisions, blockers, plan/scope changes, validation results, and current/next status MUST be recorded there throughout the work. Chat, commits, branches, PRs, reviews, or local notes do not satisfy this obligation by themselves. No material work may exist only outside the issue record.
-
-Every repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion and a concrete recommended next action grounded in them and these rules. Investigations/work MUST disclose results. Repository file content is excluded.
+Every repository-work communication (human chat, GitHub comments/reviews, commit messages) MUST state relevant findings/conclusion and a concrete recommended next action. Investigations/work MUST disclose results. Repository file content is excluded.
 
 Never assume an unestablished truth. If user instructions plus current canonical authority do not determine a mechanic, semantic, intended behavior/value/order, theoretical premise, or other material unknown, STOP and ask. Only mechanically unambiguous corrections established by context may be inferred.
 
 Do not create GitHub issues unless explicitly requested by the human or required by an approved repository workflow. If an issue is created accidentally, immediately mark it as accidental and close it as not planned.
 
-Testable behavior-changing implementation/bug-fix work MUST be RED-first: add/strengthen a focused test and prove it fails for the intended reason -> smallest GREEN production correction -> relevant broader owned validation. Production-first/backfilled proof is forbidden unless genuinely non-testable/emergency and explicitly justified.
+Testable behavior-changing implementation/bug-fix work MUST be RED-first. Before production edits, inventory affected callers, fixtures, copies, and boundaries. Prove focused RED coverage for a coherent obligation, implement the smallest coherent GREEN slice, run focused validation, then broader owned validation at coherent checkpoints. Production-first/backfilled proof is forbidden unless genuinely non-testable/emergency and explicitly justified.
 
 `IMPLEMENTATION GREEN != CERTIFIED != COMPLETED`. Substantive issue work MUST follow [`docs/ISSUE_WORK_PROTOCOL.md`](docs/ISSUE_WORK_PROTOCOL.md).
 
@@ -24,11 +22,11 @@ While a claim is active, its exact claim ID MUST appear verbatim in every agent-
 
 ## Mandatory protocol reads
 
-Triggers are cumulative. A triggered protocol MUST be freshly read before its governed action; an earlier task-stage read does not satisfy a later fresh-read gate. If applicability is uncertain, read it rather than assume exemption.
+Triggers are cumulative. Read a triggered protocol before governed work; that read remains valid through a contiguous unchanged work state. Re-read when its governing claim, scope, rules, base coordination, or lifecycle gate materially changes, or when an independent reset is required. If applicability is uncertain, read it.
 
-| Before doing this | Freshly read |
+| Before doing this | Read |
 | --- | --- |
-| Create/update/claim/reassign/transfer/abandon/close issue work; create/mutate/delete issue-attributable branches or remote refs; commit claimed work; create/update/review/merge its PR | [`docs/REPOSITORY_OWNERSHIP_PROTOCOL.md`](docs/REPOSITORY_OWNERSHIP_PROTOCOL.md) |
+| Create/update/claim/reassign/transfer/abandon/close issue work; create/mutate/delete issue-attributable branches or refs; create/update/review/merge its PR | [`docs/REPOSITORY_OWNERSHIP_PROTOCOL.md`](docs/REPOSITORY_OWNERSHIP_PROTOCOL.md) |
 | Create/materially reframe acceptance-bearing issue work; begin substantive implementation; report implementation GREEN; begin/repeat certification; report certified/merge-ready/completed | [`docs/ISSUE_WORK_PROTOCOL.md`](docs/ISSUE_WORK_PROTOCOL.md) plus relevant canonical owners |
 | Add/change/adopt executable code, tests, validation manifests, or workflows | [`docs/VALIDATION_POLICY.md`](docs/VALIDATION_POLICY.md) |
 | Add/change/move/delete canonical docs/config, create documentation/design/configuration files, change authority/ownership, or reconcile canonical overlap | [`docs/DOCUMENTATION_AUTHORITY_POLICY.md`](docs/DOCUMENTATION_AUTHORITY_POLICY.md) plus [`docs/README.md`](docs/README.md) |
@@ -36,9 +34,9 @@ Triggers are cumulative. A triggered protocol MUST be freshly read before its go
 
 ## Action gates
 
-Before writing to an existing remote topic branch, verify that the exact active claim owns it under the ownership protocol.
+Before mutating an existing remote topic branch, verify the exact active claim owns it. Reverify when ownership/branch coordination changes.
 
-Before commit, freshly read this file and every protocol triggered by the changed scope.
+Before commit, verify the change conforms to current rules and every protocol triggered by its scope; unchanged reads need not be repeated.
 
 Before substantive PR review/certification, independently read the issue, changed concerns, applicable canonical owners, and triggered protocols; do not use the author's summary as authority.
 
