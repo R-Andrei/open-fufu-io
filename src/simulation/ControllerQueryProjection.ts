@@ -52,7 +52,6 @@ import {
   isOwnedForestConcealmentCell,
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
-import { calculateFactionScore } from "./FactionScore";
 import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type { SimulationTerrain } from "./SimulationMap";
@@ -1376,6 +1375,7 @@ export function createControllerQuerySession(
   requesterFactionId: string,
   limits: ControllerQueryBudgetLimits,
   references?: ControllerQueryReferenceSession,
+  factionScores?: ReadonlyMap<string, number>,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
@@ -1658,6 +1658,9 @@ export function createControllerQuerySession(
       const ref = references.issueFaction(faction.id);
       const relation = factionRelation(state, requesterFactionId, faction.id);
       if (ref === undefined || relation === undefined) return [];
+      const score = faction.isMinorFaction
+        ? undefined
+        : factionScores?.get(faction.id);
       return [
         Object.freeze({
           authoritativeId: faction.id,
@@ -1667,9 +1670,7 @@ export function createControllerQuerySession(
           relation,
           isMinorFaction: faction.isMinorFaction,
           ...(faction.origin === undefined ? {} : { origin: faction.origin }),
-          ...(faction.isMinorFaction
-            ? {}
-            : { score: calculateFactionScore(state, faction.id) }),
+          ...(score === undefined ? {} : { score }),
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
