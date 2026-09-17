@@ -16,6 +16,11 @@ import {
 } from "../src/simulation/StructuresCore";
 import { advanceTankProductionPhase } from "../src/simulation/Tanks";
 import {
+  completeTradeShipArrival,
+  isTradeShipDeliveryCell,
+  tryLaunchTradeShipAtPortDock,
+} from "../src/simulation/TradeShips";
+import {
   advanceWarshipProductionPhase,
   tryStartWarshipProduction,
   warshipPurchaseCost,
@@ -566,6 +571,142 @@ describe("physical occupancy admission", () => {
         type: "WARSHIP",
         movementClass: "NAVAL",
         cellId: 0,
+      }),
+    ]);
+  });
+
+  it("launches Trade Ships only through the persisted source Port dock", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(createMicroSimulationSpec({
+      seed: "trade-ship-source-dock-red",
+      width: 3,
+      height: 1,
+      terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
+      initialOwners: [null, "alpha", null],
+      factions: [{ id: "alpha", rules }],
+    }));
+    const source = createProspectiveMatchState(base, {
+      structures: [{
+        id: "port-source",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 1,
+        outputCellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      }],
+    });
+    const blocker = createMobileUnit(
+      source.map,
+      source.factions.map((faction) => faction.id),
+      source,
+      {
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 0,
+      },
+    );
+    const blocked = createProspectiveMatchState(source, {
+      mobileUnits: blocker.mobileUnits,
+      nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+    });
+
+    const rejected = tryLaunchTradeShipAtPortDock(blocked, {
+      ownerId: "alpha",
+      sourcePortId: "port-source",
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "DOCK_BLOCKED" },
+    });
+    expect(rejected.state).toBe(blocked);
+    expect(rejected.state.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
+
+    const cleared = createProspectiveMatchState(blocked, { mobileUnits: [] });
+    const launched = tryLaunchTradeShipAtPortDock(cleared, {
+      ownerId: "alpha",
+      sourcePortId: "port-source",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade Ship dock launch");
+    expect(launched.unit).toMatchObject({
+      ownerId: "alpha",
+      type: "TRADE_SHIP",
+      movementClass: "NAVAL",
+      cellId: 0,
+    });
+    expect(launched.state.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
+  });
+
+  it("completes Trade Ship service on lawful radius-5 Deep Water without destination-dock serialization", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const terrain = Array.from({ length: 13 }, () => "DEEP_WATER" as const);
+    terrain[6] = "PLAINS";
+    const base = createInitialMatchState(createMicroSimulationSpec({
+      seed: "trade-ship-radius-five-red",
+      width: 13,
+      height: 1,
+      terrain,
+      initialOwners: Array.from({ length: 13 }, (_, cellId) =>
+        cellId === 6 ? "beta" : null,
+      ),
+      factions: [{ id: "alpha", rules }, { id: "beta", rules }],
+    }));
+    const withPort = createProspectiveMatchState(base, {
+      structures: [{
+        id: "port-destination",
+        ownerId: "beta",
+        type: "PORT",
+        cellId: 6,
+        outputCellId: 5,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      }],
+    });
+    const arriving = createMobileUnit(
+      withPort.map,
+      withPort.factions.map((faction) => faction.id),
+      withPort,
+      {
+        ownerId: "alpha",
+        type: "TRADE_SHIP",
+        movementClass: "NAVAL",
+        cellId: 1,
+      },
+    );
+    const dockBlocker = createMobileUnit(
+      withPort.map,
+      withPort.factions.map((faction) => faction.id),
+      arriving,
+      {
+        ownerId: "alpha",
+        type: "TRADE_SHIP",
+        movementClass: "NAVAL",
+        cellId: 5,
+      },
+    );
+    const occupied = createProspectiveMatchState(withPort, {
+      mobileUnits: dockBlocker.mobileUnits,
+      nextMobileUnitOrdinal: dockBlocker.nextMobileUnitOrdinal,
+    });
+
+    expect(isTradeShipDeliveryCell(occupied, "port-destination", 1)).toBe(true);
+    expect(isTradeShipDeliveryCell(occupied, "port-destination", 0)).toBe(false);
+
+    const completed = completeTradeShipArrival(occupied, {
+      unitId: arriving.unit.id,
+      destinationPortId: "port-destination",
+    });
+    expect(completed.ok).toBe(true);
+    if (!completed.ok) throw new Error("expected Trade Ship radius-5 completion");
+    expect(completed.state.mobileUnits).toEqual([
+      expect.objectContaining({
+        id: dockBlocker.unit.id,
+        type: "TRADE_SHIP",
+        cellId: 5,
       }),
     ]);
   });
