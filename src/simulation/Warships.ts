@@ -116,7 +116,12 @@ export function tryStartWarshipProduction(
 
   const debit = tryDebitFfy(
     owner.ffy,
-    warshipPurchaseCost(activeWarshipCount(state, request.ownerId)),
+    Object.freeze({
+      numerator: BigInt(
+        warshipPurchaseCost(activeWarshipCount(state, request.ownerId)),
+      ),
+      denominator: 1n,
+    }),
   );
   if (!debit.ok) return failure(state, "INSUFFICIENT_FFY");
 
