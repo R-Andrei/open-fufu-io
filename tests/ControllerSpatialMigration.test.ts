@@ -99,6 +99,8 @@ describe("controller spatial API migration", () => {
       match.snapshot(),
       "alpha",
       0,
+      undefined,
+      match.controllerReferenceSession(),
     );
 
     expect(Object.prototype.hasOwnProperty.call(observation, "cells")).toBe(false);
@@ -576,7 +578,13 @@ describe("controller spatial API migration", () => {
   it("lets BASELINE_D0 preserve its existing expansion decision without the eager array", () => {
     const match = baselineFixture();
     const state = match.snapshot();
-    const observation = projectLawfulControllerObservation(state, "alpha", 0);
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      0,
+      undefined,
+      match.controllerReferenceSession(),
+    );
     const querySession = createControllerQuerySession(
       state,
       "alpha",

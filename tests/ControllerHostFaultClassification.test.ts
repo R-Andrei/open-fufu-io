@@ -315,7 +315,13 @@ describe("controller-host internal fault classification", () => {
       ),
     });
 
-    const observation = projectLawfulControllerObservation(state, "alpha", 0);
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      0,
+      undefined,
+      match.controllerReferenceSession(),
+    );
     expect(observation.economy).toEqual({
       ffy: Number.MAX_SAFE_INTEGER,
       passiveFfyPerSecond: 1_000,

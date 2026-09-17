@@ -267,14 +267,18 @@ describe("controller-round transaction adversarial behavior", () => {
 
   it("projects authoritative self FFY/economy while keeping foreign FFY absent", () => {
     const match = structureRuntime("controller-economy-projection-red");
+    const betaRef = match.controllerReferenceSession().issueFaction("beta");
+    if (betaRef === undefined) throw new Error("expected beta FactionRef");
     const observation = projectLawfulControllerObservation(
       match.snapshot(),
       "alpha",
       0,
+      undefined,
+      match.controllerReferenceSession(),
     ) as unknown as {
       readonly me: { readonly ffy: number };
       readonly factions: readonly {
-        readonly id: string;
+        readonly ref: string;
         readonly ffy?: number;
       }[];
       readonly economy: {
@@ -291,7 +295,7 @@ describe("controller-round transaction adversarial behavior", () => {
     expect(Object.isFrozen(observation.economy)).toBe(true);
     expect(
       Object.prototype.hasOwnProperty.call(
-        observation.factions.find((faction) => faction.id === "beta"),
+        observation.factions.find((faction) => faction.ref === betaRef),
         "ffy",
       ),
     ).toBe(false);
