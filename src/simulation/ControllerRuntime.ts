@@ -27,6 +27,7 @@ import {
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
 import { ECONOMY_TICKS_PER_SECOND, resolvePassiveFfyAwards } from "./Economy";
+import { calculateFactionScore } from "./FactionScore";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
@@ -1152,6 +1153,12 @@ export function evaluateControllerRound(
   const orderedFactionIds = [...state.factions]
     .map((faction) => faction.id)
     .sort(compareIds);
+  const factionScores = new Map<string, number>();
+  for (const faction of state.factions) {
+    if (!faction.isMinorFaction) {
+      factionScores.set(faction.id, calculateFactionScore(state, faction.id));
+    }
+  }
   const outcomes: Array<InvocationOutcome | Promise<InvocationOutcome>> = [];
   let hasAsyncInvocation = false;
 
@@ -1173,6 +1180,7 @@ export function evaluateControllerRound(
       factionId,
       CONTROLLER_QUERY_LIMITS,
       controllerReferences,
+      factionScores,
     );
 
     try {
