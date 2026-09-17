@@ -56,6 +56,8 @@ interface TestArtifactMatchSpec {
   >;
   readonly factions: readonly {
     readonly id: string;
+    readonly displayName: string;
+    readonly isMinorFaction: boolean;
     readonly rules: TestRules;
   }[];
   readonly initialization: Readonly<{
@@ -231,8 +233,18 @@ function artifactSpec(
     seed,
     map: { kind: "ARTIFACT", ...binding },
     factions: [
-      { id: "alpha", rules },
-      { id: "beta", rules },
+      {
+        id: "alpha",
+        displayName: "Alpha",
+        isMinorFaction: false,
+        rules,
+      },
+      {
+        id: "beta",
+        displayName: "Beta",
+        isMinorFaction: false,
+        rules,
+      },
     ],
     initialization: {
       kind: "SPAWN",

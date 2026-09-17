@@ -1153,12 +1153,18 @@ export function evaluateControllerRound(
   const orderedFactionIds = [...state.factions]
     .map((faction) => faction.id)
     .sort(compareIds);
-  const factionScores = new Map<string, number>();
-  for (const faction of state.factions) {
-    if (!faction.isMinorFaction) {
-      factionScores.set(faction.id, calculateFactionScore(state, faction.id));
+  const factionScores = new (class extends Map<string, number> {
+    override get(factionId: string): number | undefined {
+      if (this.has(factionId)) return super.get(factionId);
+      const faction = state.factions.find(
+        (candidate) => candidate.id === factionId,
+      );
+      if (faction === undefined || faction.isMinorFaction) return undefined;
+      const score = calculateFactionScore(state, factionId);
+      this.set(factionId, score);
+      return score;
     }
-  }
+  })();
   const outcomes: Array<InvocationOutcome | Promise<InvocationOutcome>> = [];
   let hasAsyncInvocation = false;
 

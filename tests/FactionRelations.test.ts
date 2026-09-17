@@ -109,6 +109,7 @@ describe("authoritative public faction metadata", () => {
       "alpha",
       CONTROLLER_QUERY_LIMITS,
       references,
+      new Map([["alpha", 1000]]),
     ).factions;
     const alpha = factions.get(alphaRef) as unknown as Record<string, unknown>;
     const beta = factions.get(betaRef) as unknown as Record<string, unknown>;

@@ -216,8 +216,18 @@ function rules(traits: readonly OriginTraitId[]) {
 
 function factions(): readonly MatchFactionSpec[] {
   return Object.freeze([
-    Object.freeze({ id: "alpha", rules: rules(ALPHA_TRAITS) }),
-    Object.freeze({ id: "beta", rules: rules(BETA_TRAITS) }),
+    Object.freeze({
+      id: "alpha",
+      displayName: "Alpha",
+      isMinorFaction: false,
+      rules: rules(ALPHA_TRAITS),
+    }),
+    Object.freeze({
+      id: "beta",
+      displayName: "Beta",
+      isMinorFaction: false,
+      rules: rules(BETA_TRAITS),
+    }),
   ]);
 }
 
