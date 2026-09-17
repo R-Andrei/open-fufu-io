@@ -226,6 +226,7 @@ interface StructureVisibilityContext {
   readonly remoteObservationFields: readonly StructureFieldSource[];
   readonly enemyBlackoutFields: readonly StructureFieldSource[];
   readonly resolveFactionRef?: (ref: string) => string | undefined;
+  readonly resolveStructureRef?: (ref: string) => string | undefined;
 }
 
 interface ControllerQueryMobileUnitState {
@@ -620,7 +621,11 @@ function createStructureVisibilityContext(
     enemyBlackoutFields: Object.freeze(enemyBlackoutFields),
     ...(references === undefined
       ? {}
-      : { resolveFactionRef: (ref: string) => references.resolveFaction(ref) }),
+      : {
+          resolveFactionRef: (ref: string) => references.resolveFaction(ref),
+          resolveStructureRef: (ref: string) =>
+            references.resolve(requesterFactionId, "STRUCTURE", ref),
+        }),
   });
 }
 
@@ -1059,12 +1064,16 @@ function visibleStructureFieldSources(
   context: StructureVisibilityContext,
   selector: Extract<CellSelector, { readonly kind: "STRUCTURE_FIELD" }>,
 ): readonly StructureFieldSource[] {
+  const referenceFactionId = context.resolveFactionRef?.(
+    selector.referenceFactionId,
+  );
+  if (referenceFactionId === undefined) return Object.freeze([]);
   const sources: StructureFieldSource[] = [];
   for (const structure of state.structures) {
     if (
       !ownerMatchesFieldAffiliation(
         state,
-        selector.referenceFactionId,
+        referenceFactionId,
         structure.ownerId,
         selector.affiliation,
       ) ||
@@ -1081,9 +1090,11 @@ function visibleStructureFieldSources(
 function visibleStructureFieldInstanceSource(
   state: MatchState,
   context: StructureVisibilityContext,
-  structureId: string,
+  structureRef: string,
   field: StructureFieldId,
 ): StructureFieldSource | undefined {
+  const structureId = context.resolveStructureRef?.(structureRef);
+  if (structureId === undefined) return undefined;
   const structure = state.structures.find((candidate) => candidate.id === structureId);
   if (
     structure === undefined ||

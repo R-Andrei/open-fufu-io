@@ -417,7 +417,7 @@ export type CellSelector =
        */
       readonly kind: "STRUCTURE_FIELD";
       readonly field: ControllerStructureFieldId;
-      readonly referenceFactionId: FactionId;
+      readonly referenceFactionId: FactionRef;
       readonly affiliation: StructureFieldAffiliation;
     }
   | {
@@ -426,7 +426,7 @@ export type CellSelector =
        * Runtime owns field geometry; inactive or field-mismatched structures resolve empty.
        */
       readonly kind: "STRUCTURE_FIELD_INSTANCE";
-      readonly structureId: StructureId;
+      readonly structureId: StructureRef;
       readonly field: StructureFieldId;
     }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
