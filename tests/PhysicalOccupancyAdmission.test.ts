@@ -1,4 +1,5 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import {
   canonicalMatchStateSerialization,
@@ -85,6 +86,45 @@ function warshipProductionFixture(ffy: number, blocked = false) {
   return createProspectiveMatchState(withPort, {
     mobileUnits: blocker.mobileUnits,
     nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+  });
+}
+
+function warshipCapFixture(
+  rules: ReturnType<typeof compileRuleProfile>,
+  ffy = 1_000_000,
+) {
+  const base = createInitialMatchState(createMicroSimulationSpec({
+    seed: "warship-cap-reservation-red",
+    width: 5,
+    height: 1,
+    terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER", "PLAINS", "DEEP_WATER"],
+    initialOwners: [null, "alpha", null, "alpha", null],
+    factions: [{ id: "alpha", rules }],
+  }));
+  return createProspectiveMatchState(base, {
+    factions: base.factions.map((faction) => ({ ...faction, ffy })),
+    structures: [
+      {
+        id: "port-a",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 1,
+        outputCellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+      {
+        id: "port-b",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 3,
+        outputCellId: 4,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
   });
 }
 
@@ -366,6 +406,91 @@ describe("physical occupancy admission", () => {
     expect(warshipPurchaseCost(2)).toBe(750_000);
     expect(warshipPurchaseCost(3)).toBe(1_000_000);
     expect(warshipPurchaseCost(4)).toBe(1_000_000);
+  });
+
+  it("keeps baseline Warship ownership uncapped across distinct Ports", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const initial = warshipCapFixture(rules);
+    const first = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("expected first baseline Warship admission");
+
+    const second = tryStartWarshipProduction(first.state, {
+      ownerId: "alpha",
+      portId: "port-b",
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) throw new Error("expected second baseline Warship admission");
+    expect(second.state.warshipProductionJobs).toHaveLength(2);
+  });
+
+  it("P23 cap=1 counts a committed Warship job and rejects a second Port atomically", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["P23"]),
+    );
+    const initial = warshipCapFixture(rules);
+    const first = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("expected first P23 Warship admission");
+
+    const beforeSecond = first.state;
+    const beforeFfy = beforeSecond.factions[0]?.ffy;
+    const rejected = tryStartWarshipProduction(beforeSecond, {
+      ownerId: "alpha",
+      portId: "port-b",
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "OWNERSHIP_CAP" },
+    });
+    expect(rejected.state).toBe(beforeSecond);
+    expect(rejected.state.factions[0]?.ffy).toEqual(beforeFfy);
+    expect(rejected.state.warshipProductionJobs).toHaveLength(1);
+  });
+
+  it("P23 cap=1 counts an active Warship and rejects production without mutation", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["P23"]),
+    );
+    const initial = warshipCapFixture(rules);
+    const created = createMobileUnit(
+      initial.map,
+      initial.factions.map((faction) => faction.id),
+      initial,
+      {
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 2,
+      },
+    );
+    const withWarship = createProspectiveMatchState(initial, {
+      mobileUnits: created.mobileUnits,
+      nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+    });
+    const beforeFfy = withWarship.factions[0]?.ffy;
+
+    const rejected = tryStartWarshipProduction(withWarship, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "OWNERSHIP_CAP" },
+    });
+    expect(rejected.state).toBe(withWarship);
+    expect(rejected.state.factions[0]?.ffy).toEqual(beforeFfy);
+    expect(rejected.state.warshipProductionJobs).toHaveLength(0);
   });
 
   it("builds a Warship for 50 ticks and deploys only through the persisted Port dock", () => {
