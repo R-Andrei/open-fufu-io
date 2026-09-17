@@ -294,6 +294,115 @@ describe("target-owned deterministic navigation", () => {
       path: { cells: [0, 3], totalWeight: 1 },
     });
   });
+
+  it("selects the globally cheapest source/target candidate pair instead of choosing each endpoint independently", () => {
+    const navigation = createNavigation(syntheticMap(6, 1));
+    const disconnectedPairs: NavigationTraversalPolicy = {
+      traversalWeight(from, to) {
+        if ((from === 1 && to === 2) || (from === 2 && to === 1)) return undefined;
+        if ((from === 3 && to === 4) || (from === 4 && to === 3)) return undefined;
+        return 1;
+      },
+    };
+
+    expect(
+      navigation.pathBetweenCandidates(
+        [
+          { cellId: 0, intentWeight: 1 },
+          { cellId: 4, intentWeight: 4 },
+        ],
+        [
+          { cellId: 1, intentWeight: 8 },
+          { cellId: 5, intentWeight: 4 },
+        ],
+        disconnectedPairs,
+      ),
+    ).toEqual({
+      status: "FOUND",
+      route: {
+        sourceCellId: 4,
+        targetCellId: 5,
+        sourceIntentWeight: 4,
+        targetIntentWeight: 4,
+        path: { cells: [4, 5], totalWeight: 1 },
+        objectiveWeight: 9,
+      },
+    });
+  });
+
+  it("prefers intent fidelity before route weight when candidate objectives tie", () => {
+    const navigation = createNavigation(syntheticMap(5, 1));
+
+    expect(
+      navigation.pathBetweenCandidates(
+        [
+          { cellId: 0, intentWeight: 0 },
+          { cellId: 1, intentWeight: 1 },
+        ],
+        [
+          { cellId: 4, intentWeight: 0 },
+          { cellId: 3, intentWeight: 1 },
+        ],
+        uniformPolicy(),
+      ),
+    ).toEqual({
+      status: "FOUND",
+      route: {
+        sourceCellId: 0,
+        targetCellId: 4,
+        sourceIntentWeight: 0,
+        targetIntentWeight: 0,
+        path: { cells: [0, 1, 2, 3, 4], totalWeight: 4 },
+        objectiveWeight: 4,
+      },
+    });
+  });
+
+  it("breaks fully equal candidate-route ties by source then target CellId", () => {
+    const navigation = createNavigation(syntheticMap(3, 3));
+
+    expect(
+      navigation.pathBetweenCandidates(
+        [
+          { cellId: 3, intentWeight: 1 },
+          { cellId: 1, intentWeight: 1 },
+        ],
+        [
+          { cellId: 7, intentWeight: 1 },
+          { cellId: 5, intentWeight: 1 },
+        ],
+        uniformPolicy(),
+      ),
+    ).toEqual({
+      status: "FOUND",
+      route: {
+        sourceCellId: 1,
+        targetCellId: 5,
+        sourceIntentWeight: 1,
+        targetIntentWeight: 1,
+        path: { cells: [1, 2, 5], totalWeight: 2 },
+        objectiveWeight: 4,
+      },
+    });
+  });
+
+  it("fails candidate routing when no source/target combination is connected", () => {
+    const navigation = createNavigation(syntheticMap(3, 1));
+    const blockedMiddle: NavigationTraversalPolicy = {
+      traversalWeight(from, to) {
+        if ((from === 1 && to === 2) || (from === 2 && to === 1)) return undefined;
+        return 1;
+      },
+    };
+
+    expect(
+      navigation.pathBetweenCandidates(
+        [{ cellId: 0, intentWeight: 0 }],
+        [{ cellId: 2, intentWeight: 0 }],
+        blockedMiddle,
+      ),
+    ).toEqual({ status: "UNREACHABLE" });
+  });
 });
 
 describe("target-owned deterministic rail routing", () => {
