@@ -4,6 +4,7 @@ import type {
   DecisionFailure,
   DecisionReceipt,
   EconomyView,
+  FactionRef,
   FactionStatus,
   PopulationView,
   SpawnInfluenceContext,
@@ -55,9 +56,12 @@ export const CONTROLLER_QUERY_LIMITS = Object.freeze({
 });
 
 type ControllerHostFaultClassification = "INVALID_OUTPUT";
+type ControllerFactionReferenceSource = NonNullable<
+  Parameters<typeof createControllerQuerySession>[3]
+>;
 
 export interface LawfulFactionObservation {
-  readonly id: string;
+  readonly ref: FactionRef;
   readonly status: FactionStatus;
 }
 
@@ -738,10 +742,10 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
 }
 
 function freezeFactionObservation(
-  id: string,
+  ref: FactionRef,
   status: FactionStatus,
 ): LawfulFactionObservation {
-  return Object.freeze({ id, status });
+  return Object.freeze({ ref, status });
 }
 
 function freezePopulationObservation(
@@ -758,13 +762,13 @@ function freezePopulationObservation(
 }
 
 function freezeSelfFactionObservation(
-  id: string,
+  ref: FactionRef,
   status: FactionStatus,
   ffy: number,
   population: PopulationState,
 ): LawfulSelfFactionObservation {
   return Object.freeze({
-    id,
+    ref,
     status,
     ffy,
     population: freezePopulationObservation(population),
@@ -791,11 +795,23 @@ function realizedPassiveFfyPerSecondByFaction(
   return rates;
 }
 
+function requireFactionRef(
+  controllerReferences: ControllerFactionReferenceSource,
+  factionId: string,
+): FactionRef {
+  const ref = controllerReferences.issueFaction(factionId);
+  if (ref === undefined) {
+    throw new Error(`missing controller FactionRef for faction ${factionId}`);
+  }
+  return ref;
+}
+
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
   decisionNumber: number,
-  lastDecision?: DecisionReceipt,
+  lastDecision: DecisionReceipt | undefined,
+  controllerReferences: ControllerFactionReferenceSource,
 ): LawfulControllerObservation {
   const me = state.factions.find((faction) => faction.id === factionId);
   if (me === undefined) {
@@ -805,7 +821,12 @@ export function projectLawfulControllerObservation(
   const factions = Object.freeze(
     [...state.factions]
       .sort((left, right) => compareIds(left.id, right.id))
-      .map((faction) => freezeFactionObservation(faction.id, faction.status)),
+      .map((faction) =>
+        freezeFactionObservation(
+          requireFactionRef(controllerReferences, faction.id),
+          faction.status,
+        ),
+      ),
   );
   const passiveFfyPerSecond =
     realizedPassiveFfyPerSecondByFaction(state).get(factionId);
@@ -820,7 +841,12 @@ export function projectLawfulControllerObservation(
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
-    me: freezeSelfFactionObservation(me.id, me.status, me.ffy, me.population),
+    me: freezeSelfFactionObservation(
+      requireFactionRef(controllerReferences, me.id),
+      me.status,
+      me.ffy,
+      me.population,
+    ),
     factions,
     economy,
     ...(lastDecision === undefined ? {} : { lastDecision }),
@@ -1119,6 +1145,10 @@ export function evaluateControllerRound(
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
   controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
+  if (controllerReferences === undefined) {
+    throw new Error("controller reference session is required for controller round");
+  }
+
   const orderedFactionIds = [...state.factions]
     .map((faction) => faction.id)
     .sort(compareIds);
@@ -1136,6 +1166,7 @@ export function evaluateControllerRound(
       factionId,
       decisionNumber,
       previousReceipts.get(factionId),
+      controllerReferences,
     );
     const querySession = createControllerQuerySession(
       state,
