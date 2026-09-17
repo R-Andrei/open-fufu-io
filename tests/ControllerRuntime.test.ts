@@ -100,6 +100,64 @@ describe("controller runtime production-host foundation", () => {
     ]);
   });
 
+  it("projects base controller faction observations through FactionRef without raw ids", async () => {
+    const runtime = twoFactionRuntime("base-observation-faction-ref-red");
+    const references = runtime.controllerReferenceSession();
+    const alphaRef = references.issueFaction("alpha");
+    const betaRef = references.issueFaction("beta");
+    if (alphaRef === undefined || betaRef === undefined) {
+      throw new Error("expected match-global faction refs");
+    }
+    const expectedRefs = [alphaRef, betaRef].sort();
+    const seen = new Set<string>();
+    const host = {
+      invoke(
+        factionId: string,
+        observation: unknown,
+        querySession?: ReturnType<typeof createControllerQuerySession>,
+      ) {
+        if (querySession === undefined) {
+          throw new Error("controller query session missing");
+        }
+        const projected = observation as {
+          readonly me: Readonly<{ readonly ref?: string; readonly id?: string }>;
+          readonly factions: readonly Readonly<{
+            readonly ref?: string;
+            readonly id?: string;
+          }>[];
+        };
+        const self = querySession.factions
+          .find()
+          .find((faction) => faction.relation === "SELF");
+        if (self === undefined) throw new Error("self faction view missing");
+        expect(projected.me.ref).toBe(self.ref);
+        expect(projected.me).not.toHaveProperty("id");
+        expect(projected.factions.map((faction) => faction.ref).sort()).toEqual(
+          expectedRefs,
+        );
+        expect(projected.factions.every((faction) => !("id" in faction))).toBe(
+          true,
+        );
+        seen.add(factionId);
+        return Object.freeze({ ok: true as const });
+      },
+      chooseInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      reconsiderInfluence() {
+        return Object.freeze({ ok: true as const });
+      },
+      chooseOrigins() {
+        return Object.freeze({ ok: true as const });
+      },
+    } as unknown as ControllerHost;
+
+    const receipts = await runtime.runControllerRound(host);
+
+    expect(seen).toEqual(new Set(["alpha", "beta"]));
+    expect(receipts.every((entry) => entry.receipt.accepted)).toBe(true);
+  });
+
   it("keeps an asynchronous controller round atomic against tick and same-tick re-entry", async () => {
     const runtime = twoFactionRuntime("async-host-atomicity");
     let resolveAlpha: ((result: ControllerHostInvocationResult<ControllerDecision>) => void) | undefined;
@@ -349,7 +407,7 @@ describe("controller runtime production-host foundation", () => {
     const count = await session.cells.count(selector);
     const boundary = await session.cells.boundary({
       kind: "CELLS",
-      ids: [6, 7, 8, 11, 12, 13, 16, 17, 18],
+      ids: [6, 7, 8, 11, 13, 16, 17, 18],
     });
     const components = await session.cells.connectedComponents({
       kind: "CELLS",
