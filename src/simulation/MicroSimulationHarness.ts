@@ -1,6 +1,12 @@
 import type { MatchFactionSpec, MatchSpec } from "./MatchSpec";
 import type { StructureGrantRequest } from "./Structures";
 
+type MicroSimulationFactionSpec = Omit<
+  MatchFactionSpec,
+  "displayName" | "isMinorFaction"
+> &
+  Partial<Pick<MatchFactionSpec, "displayName" | "isMinorFaction">>;
+
 export interface MicroSimulationSpecOptions {
   readonly seed?: string;
   readonly width?: number;
@@ -9,7 +15,7 @@ export interface MicroSimulationSpecOptions {
   readonly initialOwners?: readonly (string | null)[];
   readonly initialFallout?: readonly boolean[];
   readonly initialStructureGrants?: readonly StructureGrantRequest[];
-  readonly factions: readonly MatchFactionSpec[];
+  readonly factions: readonly MicroSimulationFactionSpec[];
 }
 
 export function createMicroSimulationSpec(
@@ -33,7 +39,17 @@ export function createMicroSimulationSpec(
         ? {}
         : { initialFallout: Object.freeze([...options.initialFallout]) }),
     }),
-    factions: Object.freeze([...options.factions]),
+    // Synthetic fixtures deliberately author convenient metadata defaults here.
+    // Production projection never derives public metadata from internal IDs.
+    factions: Object.freeze(
+      options.factions.map((faction) =>
+        Object.freeze({
+          ...faction,
+          displayName: faction.displayName ?? faction.id,
+          isMinorFaction: faction.isMinorFaction ?? false,
+        }),
+      ),
+    ),
     initialization: Object.freeze({ kind: "SYNTHETIC_FIXTURE" as const }),
     ...(options.initialStructureGrants === undefined
       ? {}
