@@ -1,3 +1,5 @@
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
+import { materializeCompiledCapRule } from "../core/rules/RuleMaterialization";
 import { tryDebitFfy } from "./Economy";
 import {
   createProspectiveMatchState,
@@ -34,6 +36,7 @@ export type WarshipProductionFailureCode =
   | "NOT_OWNER"
   | "PORT_INACTIVE"
   | "PORT_LEVEL_REQUIRED"
+  | "OWNERSHIP_CAP"
   | "PORT_CAPACITY"
   | "INSUFFICIENT_FFY";
 
@@ -71,6 +74,52 @@ function activeWarshipCount(state: MatchState, ownerId: string): number {
   return state.mobileUnits.filter(
     (unit) => unit.ownerId === ownerId && unit.type === "WARSHIP",
   ).length;
+}
+
+function committedWarshipCount(state: MatchState, ownerId: string): number {
+  return state.warshipProductionJobs.filter((job) => job.ownerId === ownerId).length;
+}
+
+function territorialContactCount(state: MatchState, ownerId: string): number {
+  const active = new Set(
+    state.factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < state.ownership.length; cellId += 1) {
+    if (state.ownership[cellId] !== ownerId) continue;
+    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
+      const neighborOwner = state.ownership[neighbor] ?? null;
+      if (
+        neighborOwner !== null &&
+        neighborOwner !== ownerId &&
+        active.has(neighborOwner)
+      ) {
+        contacts.add(neighborOwner);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+function effectiveWarshipOwnershipCap(state: MatchState, ownerId: string): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  return materializeCompiledCapRule(
+    Number.MAX_SAFE_INTEGER,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_OWNERSHIP_CAP",
+    { kind: "UNIT", unit: "WARSHIP" },
+    Object.freeze({
+      ownedPersistentStructureCount: state.structures.filter(
+        (structure) => structure.ownerId === ownerId,
+      ).length,
+      territorialContactCount: territorialContactCount(state, ownerId),
+      peakTotalPopulation: owner.population.peakTotal,
+    }),
+  );
 }
 
 export function warshipPurchaseCost(activeWarships: number): number {
@@ -112,6 +161,16 @@ export function tryStartWarshipProduction(
   }
   if (state.warshipProductionJobs.some((job) => job.portId === request.portId)) {
     return failure(state, "PORT_CAPACITY");
+  }
+
+  const occupiedWarshipSlots =
+    activeWarshipCount(state, request.ownerId) +
+    committedWarshipCount(state, request.ownerId);
+  if (
+    occupiedWarshipSlots + 1 >
+    effectiveWarshipOwnershipCap(state, request.ownerId)
+  ) {
+    return failure(state, "OWNERSHIP_CAP");
   }
 
   const debit = tryDebitFfy(
