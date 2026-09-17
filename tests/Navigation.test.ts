@@ -13,6 +13,7 @@ import {
   type FactoryRailStation,
 } from "../src/simulation/RailNetwork";
 import { createSimulationMap } from "../src/simulation/SimulationMap";
+import { resolveTransportEndpointRoute } from "../src/simulation/Transports";
 
 function syntheticMap(width: number, height: number) {
   return createSimulationMap({
@@ -402,6 +403,97 @@ describe("target-owned deterministic navigation", () => {
         blockedMiddle,
       ),
     ).toEqual({ status: "UNREACHABLE" });
+  });
+});
+
+describe("Transport strategic-intent endpoint resolution", () => {
+  it("maps land-side strategic intent through legal coasts onto Shallow/Deep water endpoints", () => {
+    const width = 9;
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width,
+      height: 3,
+      terrain: [
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+        "SHALLOW_WATER", "DEEP_WATER", "SHALLOW_WATER", "DEEP_WATER", "SHALLOW_WATER", "DEEP_WATER", "SHALLOW_WATER", "DEEP_WATER", "SHALLOW_WATER",
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+      ],
+    });
+
+    expect(resolveTransportEndpointRoute(map, {
+      sourceCellId: gridCell(0, 0, width),
+      targetCellId: gridCell(8, 2, width),
+      embarkCoastCellIds: [gridCell(2, 0, width), gridCell(0, 0, width)],
+      landingCoastCellIds: [gridCell(6, 2, width), gridCell(8, 2, width)],
+    })).toEqual({
+      status: "FOUND",
+      route: {
+        sourceCellId: gridCell(0, 0, width),
+        targetCellId: gridCell(8, 2, width),
+        embarkCellId: gridCell(0, 1, width),
+        landingCellId: gridCell(8, 1, width),
+        path: {
+          cells: Array.from({ length: width }, (_, x) => gridCell(x, 1, width)),
+          totalWeight: 8,
+        },
+        objectiveWeight: 10,
+      },
+    });
+  });
+
+  it("has no arbitrary intent-to-coast search radius", () => {
+    const width = 17;
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width,
+      height: 3,
+      terrain: [
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+        ...Array.from({ length: width }, () => "SHALLOW_WATER" as const),
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+      ],
+    });
+
+    expect(resolveTransportEndpointRoute(map, {
+      sourceCellId: gridCell(0, 0, width),
+      targetCellId: gridCell(0, 2, width),
+      embarkCoastCellIds: [gridCell(16, 0, width)],
+      landingCoastCellIds: [gridCell(0, 2, width)],
+    })).toEqual({
+      status: "FOUND",
+      route: {
+        sourceCellId: gridCell(0, 0, width),
+        targetCellId: gridCell(0, 2, width),
+        embarkCellId: gridCell(16, 1, width),
+        landingCellId: gridCell(0, 1, width),
+        path: {
+          cells: Array.from({ length: width }, (_, offset) => gridCell(16 - offset, 1, width)),
+          totalWeight: 16,
+        },
+        objectiveWeight: 34,
+      },
+    });
+  });
+
+  it("fails when lawful water-side endpoints are disconnected by non-Transport terrain", () => {
+    const width = 5;
+    const map = createSimulationMap({
+      source: "SYNTHETIC",
+      width,
+      height: 3,
+      terrain: [
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+        "SHALLOW_WATER", "DEEP_WATER", "PLAINS", "DEEP_WATER", "SHALLOW_WATER",
+        ...Array.from({ length: width }, () => "PLAINS" as const),
+      ],
+    });
+
+    expect(resolveTransportEndpointRoute(map, {
+      sourceCellId: gridCell(0, 0, width),
+      targetCellId: gridCell(4, 2, width),
+      embarkCoastCellIds: [gridCell(0, 0, width)],
+      landingCoastCellIds: [gridCell(4, 2, width)],
+    })).toEqual({ status: "UNREACHABLE" });
   });
 });
 
