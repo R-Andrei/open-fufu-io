@@ -227,7 +227,9 @@ export interface FactionReadView {
   readonly relation: PublicFactionRelation;
   readonly territoryCells: number;
   readonly isMinorFaction: boolean;
-  readonly score: number;
+  readonly origin?: OriginView;
+  /** Authoritative Major-Faction combined strength; absent for Minor Factions. */
+  readonly score?: number;
   readonly teamId?: string;
 }
 
