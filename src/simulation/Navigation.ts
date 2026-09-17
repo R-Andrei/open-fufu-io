@@ -9,6 +9,7 @@ import type { SimulationMap } from "./SimulationMap";
  * The concrete fixed-point unit remains owned by the caller/domain.
  */
 export type TraversalWeight = number;
+export type NavigationIntentWeight = number;
 
 export interface NavigationTraversalPolicy {
   traversalWeight(from: CellId, to: CellId): TraversalWeight | undefined;
@@ -32,6 +33,25 @@ export type NavigationPathResult =
 export type NavigationPathTowardResult =
   | { readonly status: "FOUND"; readonly path: NavigationPath }
   | { readonly status: "BEST_EFFORT"; readonly path: NavigationPath }
+  | { readonly status: "LIMIT_REACHED" };
+
+export interface NavigationCandidate {
+  readonly cellId: CellId;
+  readonly intentWeight: NavigationIntentWeight;
+}
+
+export interface NavigationCandidateRoute {
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly sourceIntentWeight: NavigationIntentWeight;
+  readonly targetIntentWeight: NavigationIntentWeight;
+  readonly path: NavigationPath;
+  readonly objectiveWeight: number;
+}
+
+export type NavigationCandidatePathResult =
+  | { readonly status: "FOUND"; readonly route: NavigationCandidateRoute }
+  | { readonly status: "UNREACHABLE" }
   | { readonly status: "LIMIT_REACHED" };
 
 export interface ReachableCell {
@@ -58,6 +78,13 @@ export interface Navigation {
     policy: NavigationTraversalPolicy,
     options?: NavigationSearchOptions,
   ): NavigationPathTowardResult;
+
+  pathBetweenCandidates(
+    sources: readonly NavigationCandidate[],
+    targets: readonly NavigationCandidate[],
+    policy: NavigationTraversalPolicy,
+    options?: NavigationSearchOptions,
+  ): NavigationCandidatePathResult;
 
   reachable(
     from: CellId,
@@ -156,6 +183,8 @@ class NavigationScratch {
   readonly bestWeight: Float64Array;
   readonly bestStamp: Uint32Array;
   readonly predecessor: Float64Array;
+  readonly bestSourceIntentWeight: Float64Array;
+  readonly bestSourceCellId: Float64Array;
   readonly heap = new DeterministicMinHeap();
 
   private generation = 0;
@@ -164,6 +193,8 @@ class NavigationScratch {
     this.bestWeight = new Float64Array(cellCount);
     this.bestStamp = new Uint32Array(cellCount);
     this.predecessor = new Float64Array(cellCount);
+    this.bestSourceIntentWeight = new Float64Array(cellCount);
+    this.bestSourceCellId = new Float64Array(cellCount);
   }
 
   begin(): number {
@@ -180,6 +211,12 @@ class NavigationScratch {
 function assertTraversalWeight(weight: number): void {
   if (!Number.isSafeInteger(weight) || weight <= 0) {
     throw new Error("traversal weight must be a positive safe integer");
+  }
+}
+
+function assertIntentWeight(weight: number): void {
+  if (!Number.isSafeInteger(weight) || weight < 0) {
+    throw new Error("intent weight must be a non-negative safe integer");
   }
 }
 
@@ -205,6 +242,17 @@ function checkedCumulativeWeight(
   const total = base + increment;
   if (!Number.isSafeInteger(total)) {
     throw new Error("cumulative traversal weight exceeds safe integer range");
+  }
+  return total;
+}
+
+function checkedObjectiveWeight(
+  left: number,
+  right: number,
+): number {
+  const total = left + right;
+  if (!Number.isSafeInteger(total)) {
+    throw new Error("navigation objective weight exceeds safe integer range");
   }
   return total;
 }
@@ -251,6 +299,36 @@ export function createNavigation(map: SimulationMap): Navigation {
     cells.push(from);
     cells.reverse();
     return { cells, totalWeight };
+  };
+
+  const normalizeCandidates = (
+    candidates: readonly NavigationCandidate[],
+    label: string,
+  ): readonly NavigationCandidate[] => {
+    if (!Array.isArray(candidates)) {
+      throw new Error(`${label} candidates must be an array`);
+    }
+    const bestByCell = new Map<CellId, NavigationIntentWeight>();
+    for (let index = 0; index < candidates.length; index += 1) {
+      if (!(index in candidates)) {
+        throw new Error(`${label} candidates must be a dense array`);
+      }
+      const candidate = candidates[index];
+      if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+        throw new Error(`${label} candidate must be an object`);
+      }
+      assertCellId(candidate.cellId);
+      assertIntentWeight(candidate.intentWeight);
+      const current = bestByCell.get(candidate.cellId);
+      if (current === undefined || candidate.intentWeight < current) {
+        bestByCell.set(candidate.cellId, candidate.intentWeight);
+      }
+    }
+    return Object.freeze(
+      [...bestByCell.entries()]
+        .sort(([left], [right]) => left - right)
+        .map(([cellId, intentWeight]) => Object.freeze({ cellId, intentWeight })),
+    );
   };
 
   const path = (
@@ -436,6 +514,146 @@ export function createNavigation(map: SimulationMap): Navigation {
     }
   };
 
+  const pathBetweenCandidates = (
+    sourceCandidates: readonly NavigationCandidate[],
+    targetCandidates: readonly NavigationCandidate[],
+    policy: NavigationTraversalPolicy,
+    options?: NavigationSearchOptions,
+  ): NavigationCandidatePathResult => {
+    const sources = normalizeCandidates(sourceCandidates, "source");
+    const targets = normalizeCandidates(targetCandidates, "target");
+    const settlementLimit = maxSettledCells(options);
+    if (sources.length === 0 || targets.length === 0) {
+      return { status: "UNREACHABLE" };
+    }
+
+    const targetIntentByCell = new Map<CellId, NavigationIntentWeight>(
+      targets.map((candidate) => [candidate.cellId, candidate.intentWeight]),
+    );
+    const scratch = acquireScratch();
+    try {
+      const generation = scratch.begin();
+      for (const source of sources) {
+        scratch.bestStamp[source.cellId] = generation;
+        scratch.bestWeight[source.cellId] = source.intentWeight;
+        scratch.bestSourceIntentWeight[source.cellId] = source.intentWeight;
+        scratch.bestSourceCellId[source.cellId] = source.cellId;
+        scratch.predecessor[source.cellId] = source.cellId;
+        scratch.heap.push(source.cellId, source.intentWeight);
+      }
+
+      let bestRoute: NavigationCandidateRoute | undefined;
+      let bestIntentWeight = Number.POSITIVE_INFINITY;
+      let settledCells = 0;
+
+      while (true) {
+        const current = scratch.heap.pop();
+        if (current === undefined) {
+          return bestRoute === undefined
+            ? { status: "UNREACHABLE" }
+            : { status: "FOUND", route: bestRoute };
+        }
+
+        if (
+          scratch.bestStamp[current.cellId] !== generation ||
+          scratch.bestWeight[current.cellId] !== current.weight
+        ) {
+          continue;
+        }
+
+        if (bestRoute !== undefined && current.weight > bestRoute.objectiveWeight) {
+          return { status: "FOUND", route: bestRoute };
+        }
+        if (settledCells >= settlementLimit) {
+          return { status: "LIMIT_REACHED" };
+        }
+        settledCells += 1;
+
+        const sourceIntentWeight = scratch.bestSourceIntentWeight[current.cellId]!;
+        const sourceCellId = scratch.bestSourceCellId[current.cellId]!;
+        const routeWeight = current.weight - sourceIntentWeight;
+        const targetIntentWeight = targetIntentByCell.get(current.cellId);
+
+        if (targetIntentWeight !== undefined) {
+          const objectiveWeight = checkedObjectiveWeight(
+            current.weight,
+            targetIntentWeight,
+          );
+          const intentWeight = checkedObjectiveWeight(
+            sourceIntentWeight,
+            targetIntentWeight,
+          );
+          const targetCellId = current.cellId;
+          const isBetter =
+            bestRoute === undefined ||
+            objectiveWeight < bestRoute.objectiveWeight ||
+            (objectiveWeight === bestRoute.objectiveWeight &&
+              (intentWeight < bestIntentWeight ||
+                (intentWeight === bestIntentWeight &&
+                  (routeWeight < bestRoute.path.totalWeight ||
+                    (routeWeight === bestRoute.path.totalWeight &&
+                      (sourceCellId < bestRoute.sourceCellId ||
+                        (sourceCellId === bestRoute.sourceCellId &&
+                          targetCellId < bestRoute.targetCellId)))))));
+
+          if (isBetter) {
+            bestIntentWeight = intentWeight;
+            bestRoute = {
+              sourceCellId,
+              targetCellId,
+              sourceIntentWeight,
+              targetIntentWeight,
+              path: reconstructPath(
+                scratch,
+                sourceCellId,
+                targetCellId,
+                routeWeight,
+              ),
+              objectiveWeight,
+            };
+          }
+        }
+
+        for (const neighbor of map.cardinalNeighbors(current.cellId)) {
+          const increment = transitionWeight(policy, current.cellId, neighbor);
+          if (increment === undefined) continue;
+
+          const candidateWeight = checkedCumulativeWeight(current.weight, increment);
+          const known = scratch.bestStamp[neighbor] === generation;
+          const knownWeight = known
+            ? scratch.bestWeight[neighbor]!
+            : Number.POSITIVE_INFINITY;
+          const knownSourceIntentWeight = known
+            ? scratch.bestSourceIntentWeight[neighbor]!
+            : Number.POSITIVE_INFINITY;
+          const knownSourceCellId = known
+            ? scratch.bestSourceCellId[neighbor]!
+            : Number.POSITIVE_INFINITY;
+
+          const isBetter =
+            candidateWeight < knownWeight ||
+            (candidateWeight === knownWeight &&
+              (sourceIntentWeight < knownSourceIntentWeight ||
+                (sourceIntentWeight === knownSourceIntentWeight &&
+                  sourceCellId < knownSourceCellId)));
+          if (!isBetter) continue;
+
+          const needsHeapEntry = candidateWeight < knownWeight;
+          scratch.bestStamp[neighbor] = generation;
+          scratch.bestWeight[neighbor] = candidateWeight;
+          scratch.bestSourceIntentWeight[neighbor] = sourceIntentWeight;
+          scratch.bestSourceCellId[neighbor] = sourceCellId;
+          scratch.predecessor[neighbor] = current.cellId;
+          if (needsHeapEntry) {
+            scratch.heap.push(neighbor, candidateWeight);
+          }
+        }
+      }
+    } finally {
+      releaseScratch(scratch);
+    }
+  };
+
   const reachable = (
     from: CellId,
     maxWeight: TraversalWeight,
@@ -504,5 +722,5 @@ export function createNavigation(map: SimulationMap): Navigation {
     }
   };
 
-  return Object.freeze({ path, pathToward, reachable });
+  return Object.freeze({ path, pathToward, pathBetweenCandidates, reachable });
 }
