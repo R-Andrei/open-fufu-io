@@ -5,6 +5,7 @@ import type {
   CaptureCalculation,
   ControllerCommand,
   ControllerEvent,
+  FactionRef,
   FactionsApi,
   GrowthCalculation,
   HostilityMechanicsSpec,
@@ -17,9 +18,11 @@ import type {
   StructureAcquisitionPath,
   StructureBuildQuote,
   StructureMechanicsSpec,
+  StructureRef,
   StructureView,
   TransportMechanicsSpec,
   UnitAttackSpec,
+  UnitRef,
 } from "../src/core/controller/ControllerApi";
 
 // Compile-time fixtures for #47's newly surfaced controller mechanics. This file
@@ -105,11 +108,16 @@ void fixtureHeavy;
 void fixtureTrain;
 void fixtureTrade;
 
+const fixtureFactoryRef = "factory-1" as StructureRef;
+const fixtureUnitRef = "unit-1" as UnitRef;
+const fixtureFactionARef = "faction-a" as FactionRef;
+const fixtureFactionBRef = "faction-b" as FactionRef;
+
 const fixtureBuildTank: BuildUnitCommand = {
   kind: "BUILD_UNIT",
   key: "build-tank",
   unit: "TANK",
-  producerId: "factory-1",
+  producerId: fixtureFactoryRef,
 };
 void fixtureBuildTank;
 
@@ -203,7 +211,7 @@ void fixtureLandingGrant;
 const fixtureMove: ControllerCommand = {
   kind: "MOVE_UNIT",
   key: "move-1",
-  unitId: "unit-1",
+  unitId: fixtureUnitRef,
   destination: 42,
 };
 void fixtureMove;
@@ -218,7 +226,7 @@ const fixtureEmbark: ControllerCommand = {
 void fixtureEmbark;
 
 const fixtureWarQuery = (factions: FactionsApi): boolean =>
-  factions.atWar("faction-a", "faction-b");
+  factions.atWar(fixtureFactionARef, fixtureFactionBRef);
 void fixtureWarQuery;
 
 const fixtureHostilitySpec: HostilityMechanicsSpec = {
@@ -237,8 +245,8 @@ void fixturePopulationAttack;
 
 const fixtureWarChanged: ControllerEvent = {
   type: "WAR_STATE_CHANGED",
-  factionAId: "faction-a",
-  factionBId: "faction-b",
+  factionAId: fixtureFactionARef,
+  factionBId: fixtureFactionBRef,
   atWar: true,
 };
 void fixtureWarChanged;
@@ -338,6 +346,7 @@ import type {
   OpenFufuController,
   SamAntiShipAttackSpec,
   StructureMechanicsSpec,
+  StructureRef,
   TransportDestructionMechanicsSpec,
   TransportLandingCalculation,
   TransportMechanicsSpec,
@@ -359,9 +368,10 @@ const p27AntiShipAttack: SamAntiShipAttackSpec = {
   requiresAtWar: false,
 };
 
+const p27SamRef = "sam-p27" as StructureRef;
 const p27SamField: CellSelector = {
   kind: "STRUCTURE_FIELD_INSTANCE",
-  structureId: "sam-p27",
+  structureId: p27SamRef,
   field: p27AntiShipAttack.eligibilityField,
 };
 
@@ -421,7 +431,7 @@ const samSpec = context.mechanics.structureTypeSpec(
 const antiShipCoveredCells = samSpec.antiShipAttack
   ? context.cells.count({
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "sam-p27",
+      structureId: p27SamRef,
       field: samSpec.antiShipAttack.eligibilityField,
     })
   : Promise.resolve(0);

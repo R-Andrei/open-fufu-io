@@ -5,6 +5,9 @@ import type {
 } from "../core/controller/ControllerApi";
 import type { SimulationMap } from "./SimulationMap";
 
+type FactionId = string;
+type UnitId = string;
+
 const MOBILE_UNIT_TYPES = new Set<MobileUnitType>([
   "TANK",
   "HEAVY_ARTILLERY",
