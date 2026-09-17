@@ -1658,9 +1658,6 @@ export function createControllerQuerySession(
       const ref = references.issueFaction(faction.id);
       const relation = factionRelation(state, requesterFactionId, faction.id);
       if (ref === undefined || relation === undefined) return [];
-      const score = faction.isMinorFaction
-        ? undefined
-        : factionScores?.get(faction.id);
       return [
         Object.freeze({
           authoritativeId: faction.id,
@@ -1670,7 +1667,11 @@ export function createControllerQuerySession(
           relation,
           isMinorFaction: faction.isMinorFaction,
           ...(faction.origin === undefined ? {} : { origin: faction.origin }),
-          ...(score === undefined ? {} : { score }),
+          get score(): number | undefined {
+            return faction.isMinorFaction
+              ? undefined
+              : factionScores?.get(faction.id);
+          },
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
@@ -1690,6 +1691,7 @@ export function createControllerQuerySession(
       (entry) => entry.authoritativeId === faction.id,
     );
     if (source === undefined) return undefined;
+    const score = source.score;
     return Object.freeze({
       ref: source.ref,
       displayName: source.displayName,
@@ -1698,7 +1700,7 @@ export function createControllerQuerySession(
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
       isMinorFaction: source.isMinorFaction,
       ...(source.origin === undefined ? {} : { origin: source.origin }),
-      ...(source.score === undefined ? {} : { score: source.score }),
+      ...(score === undefined ? {} : { score }),
       ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };
