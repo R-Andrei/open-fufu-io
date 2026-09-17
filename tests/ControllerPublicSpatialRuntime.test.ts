@@ -59,26 +59,45 @@ function localSpatialState(): MatchState {
     factions: Object.freeze([
       Object.freeze({
         id: "alpha",
+        displayName: "Alpha Republic",
+        isMinorFaction: false,
+        origin: Object.freeze({
+          id: "origin-alpha",
+          displayName: "Alpha Origin",
+          version: "1",
+          positiveTraitIds: Object.freeze(["P01"]),
+          negativeTraitIds: Object.freeze(["N01"]),
+        }),
         status: "ACTIVE" as const,
         rules,
         population,
         ffy: 25_000,
         lifetimeGrossPositiveFfyEarned: 0,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
       Object.freeze({
         id: "beta",
+        displayName: "Beta Goons",
+        isMinorFaction: true,
         status: "ACTIVE" as const,
         rules,
         population,
         ffy: 25_000,
         lifetimeGrossPositiveFfyEarned: 0,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
     ]),
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    factoryRailLoops: Object.freeze([]),
+    factoryTrainEpochs: Object.freeze([]),
+    trainServices: Object.freeze([]),
+    tankProductionJobs: Object.freeze([]),
+    tankOperationalStates: Object.freeze([]),
+    directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -196,6 +215,63 @@ describe("controller local public spatial runtime", () => {
     }
   });
 
+  it("preserves authoritative faction metadata through the production isolate without Minor score placeholders", async () => {
+    const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-faction-metadata-worker-red",
+      state,
+    );
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
+            const valid =
+              self?.displayName === "Alpha Republic" &&
+              self?.isMinorFaction === false &&
+              self?.origin?.id === "origin-alpha" &&
+              self?.origin?.displayName === "Alpha Origin" &&
+              typeof self?.score === "number" &&
+              enemy?.displayName === "Beta Goons" &&
+              enemy?.isMinorFaction === true &&
+              !Object.prototype.hasOwnProperty.call(enemy, "score") &&
+              !Object.prototype.hasOwnProperty.call(enemy, "origin");
+            return valid
+              ? {
+                  commands: [
+                    { kind: "CAPITULATE", key: "faction-metadata-worker-ok" },
+                  ],
+                }
+              : { commands: [] };
+          }
+        `),
+        beta: artifact("export function decide() { return { commands: [] }; }"),
+      });
+
+      const evaluated = await Promise.resolve(
+        evaluateControllerRound(
+          state,
+          host,
+          41,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Set(),
+          references,
+        ),
+      );
+
+      expect(evaluated.actions).toEqual([
+        { type: "CAPITULATE_FACTION", factionId: "alpha" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("does not retain removed connectedComponents as a hidden production isolate capability", async () => {
     const state = localSpatialState();
     const references = new ControllerReferenceSession(
@@ -292,8 +368,10 @@ describe("controller local public spatial runtime", () => {
           Object.freeze({
             authoritativeId: "beta",
             ref: factionRef,
+            displayName: "Beta Goons",
             status: "ACTIVE" as const,
             relation: "ENEMY" as const,
+            isMinorFaction: true,
           }),
         ]),
       }),
@@ -490,14 +568,20 @@ describe("controller local public spatial runtime", () => {
         Object.freeze({
           authoritativeId: "alpha",
           ref: alphaRef,
+          displayName: "Alpha Republic",
           status: "ACTIVE" as const,
           relation: "SELF" as const,
+          isMinorFaction: false,
+          score: 1000,
         }),
         Object.freeze({
           authoritativeId: "beta",
           ref: betaRef,
+          displayName: "Beta Republic",
           status: "ACTIVE" as const,
           relation: "ENEMY" as const,
+          isMinorFaction: false,
+          score: 1000,
         }),
       ]),
     });
