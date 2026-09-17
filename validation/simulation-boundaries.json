@@ -41,6 +41,7 @@
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
     "src/simulation/TradeShips.ts": "ECONOMY",
     "src/simulation/TrainService.ts": "ECONOMY",
+    "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
     "src/simulation/Warships.ts": "NAVAL"
   },
@@ -716,6 +717,18 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Train service reads current persistent-Structure station state while resolving station eligibility and current event context."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Transport endpoint resolution consumes the canonical navigation substrate for deterministic strategic-intent endpoint pairing and water routing."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Transport endpoint resolution reads map terrain and geometry to map lawful coast candidates onto Shallow/Deep physical water endpoints."
     },
     {
       "from": "src/simulation/VisibilityState.ts",
