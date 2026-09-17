@@ -1,8 +1,10 @@
+import type { StructureRef } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   canonicalMatchStateSerialization,
@@ -590,25 +592,42 @@ describe("persistent structure construction lifecycle", () => {
         acquisitionPath: "GRANT",
       }),
     ]);
-    const before = createControllerQuerySession(state, "alpha", {
-      queriesPerDecision: 4,
-      materializedCellsPerDecision: 4,
-    });
+    const references = new ControllerReferenceSession(
+      "structure-lifecycle-fort-field",
+      state,
+    );
+    const fortRef = references.issue("alpha", "STRUCTURE", "fort-field");
+    if (fortRef === undefined) throw new Error("expected Fort structure ref");
+    const before = createControllerQuerySession(
+      state,
+      "alpha",
+      {
+        queriesPerDecision: 4,
+        materializedCellsPerDecision: 4,
+      },
+      references,
+    );
     expect(await before.cells.count({
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "fort-field",
+      structureId: fortRef as StructureRef,
       field: "FORT",
     })).toBe(31);
 
     const structures = resolvePersistentStructureLifecycleTick(state, state.ownership, 1);
     const completed = createProspectiveMatchState(state, { structures });
-    const after = createControllerQuerySession(completed, "alpha", {
-      queriesPerDecision: 4,
-      materializedCellsPerDecision: 4,
-    });
+    references.reconcile(completed);
+    const after = createControllerQuerySession(
+      completed,
+      "alpha",
+      {
+        queriesPerDecision: 4,
+        materializedCellsPerDecision: 4,
+      },
+      references,
+    );
     expect(await after.cells.count({
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "fort-field",
+      structureId: fortRef as StructureRef,
       field: "FORT",
     })).toBe(36);
   });
