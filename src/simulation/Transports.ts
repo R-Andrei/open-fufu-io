@@ -2,16 +2,22 @@ import type { CellId } from "../core/controller/ControllerApi";
 import {
   assignMobileUnitRoute,
   createMobileUnit,
+  removeMobileUnit,
   setMobileUnitStrategicDestination,
   type MobileUnitCollectionState,
   type MobileUnitState,
 } from "./MobileUnits";
+import {
+  createProspectiveMatchState,
+  type MatchState,
+} from "./MatchState";
 import {
   createNavigation,
   type NavigationCandidate,
   type NavigationPath,
 } from "./Navigation";
 import type { SimulationMap } from "./SimulationMap";
+import { tryMaterializeStructureGrant } from "./Structures";
 
 export interface TransportEndpointRouteRequest {
   readonly sourceCellId: CellId;
@@ -62,6 +68,27 @@ export type TransportMaterializationResult<T extends TransportMaterializationSta
       readonly failure: Readonly<{ readonly code: "EMBARK_BLOCKED" }>;
     }>;
 
+export interface SuccessfulTransportLandingConsequencesRequest {
+  readonly transportId: string;
+  /** Deterministic Structure identity supplied by the owning landing lifecycle. */
+  readonly fortStructureId: string;
+}
+
+export type SuccessfulTransportLandingConsequencesResult =
+  | Readonly<{
+      readonly status: "LANDED";
+      readonly state: MatchState;
+    }>
+  | Readonly<{
+      readonly status: "FORT_GRANTED";
+      readonly state: MatchState;
+    }>
+  | Readonly<{
+      readonly status: "SKIP_GRANT_KEEP_LANDING";
+      readonly state: MatchState;
+      readonly grantFailure: Readonly<{ readonly code: string }>;
+    }>;
+
 function isTransportWater(map: SimulationMap, cellId: CellId): boolean {
   const terrain = map.terrainAt(cellId);
   return terrain === "SHALLOW_WATER" || terrain === "DEEP_WATER";
@@ -97,6 +124,7 @@ function waterSideCandidates(
   strategicIntentCellId: CellId,
   coastCellIds: readonly CellId[],
   label: string,
+  blockedCellIds: ReadonlySet<CellId>,
 ): readonly NavigationCandidate[] {
   if (!Array.isArray(coastCellIds)) {
     throw new Error(`${label} coast candidates must be an array`);
@@ -111,7 +139,7 @@ function waterSideCandidates(
     assertCellId(map, coastCellId, `${label} coast`);
 
     for (const neighbor of map.cardinalNeighbors(coastCellId)) {
-      if (!isTransportWater(map, neighbor)) continue;
+      if (!isTransportWater(map, neighbor) || blockedCellIds.has(neighbor)) continue;
       candidates.push({
         cellId: neighbor,
         intentWeight: manhattanDistance(map, strategicIntentCellId, neighbor),
@@ -119,6 +147,15 @@ function waterSideCandidates(
     }
   }
   return Object.freeze(candidates);
+}
+
+function physicalOccupancyCellIds(
+  state: Pick<TransportMaterializationState, "structures" | "mobileUnits">,
+): ReadonlySet<CellId> {
+  return new Set<CellId>([
+    ...state.structures.map((structure) => structure.cellId),
+    ...state.mobileUnits.map((unit) => unit.cellId),
+  ]);
 }
 
 function assertResolvedTransportRoute(
@@ -154,9 +191,10 @@ function assertResolvedTransportRoute(
   }
 }
 
-export function resolveTransportEndpointRoute(
+function resolveTransportEndpointRouteWithBlockedCells(
   map: SimulationMap,
   request: TransportEndpointRouteRequest,
+  blockedCellIds: ReadonlySet<CellId>,
 ): TransportEndpointRouteResult {
   assertCellId(map, request.sourceCellId, "Transport source intent");
   assertCellId(map, request.targetCellId, "Transport target intent");
@@ -166,12 +204,14 @@ export function resolveTransportEndpointRoute(
     request.sourceCellId,
     request.embarkCoastCellIds,
     "embark",
+    blockedCellIds,
   );
   const landingCandidates = waterSideCandidates(
     map,
     request.targetCellId,
     request.landingCoastCellIds,
     "landing",
+    blockedCellIds,
   );
 
   const navigation = createNavigation(map);
@@ -180,7 +220,10 @@ export function resolveTransportEndpointRoute(
     landingCandidates,
     {
       traversalWeight(from, to) {
-        return isTransportWater(map, from) && isTransportWater(map, to)
+        return isTransportWater(map, from) &&
+          isTransportWater(map, to) &&
+          !blockedCellIds.has(from) &&
+          !blockedCellIds.has(to)
           ? 1
           : undefined;
       },
@@ -207,6 +250,24 @@ export function resolveTransportEndpointRoute(
   });
 }
 
+export function resolveTransportEndpointRoute(
+  map: SimulationMap,
+  request: TransportEndpointRouteRequest,
+): TransportEndpointRouteResult {
+  return resolveTransportEndpointRouteWithBlockedCells(map, request, new Set<CellId>());
+}
+
+export function resolveTransportEndpointRouteForState(
+  state: TransportMaterializationState,
+  request: TransportEndpointRouteRequest,
+): TransportEndpointRouteResult {
+  return resolveTransportEndpointRouteWithBlockedCells(
+    state.map,
+    request,
+    physicalOccupancyCellIds(state),
+  );
+}
+
 export function tryMaterializeTransportAtResolvedRoute<
   T extends TransportMaterializationState,
 >(
@@ -214,12 +275,7 @@ export function tryMaterializeTransportAtResolvedRoute<
   request: TransportMaterializationRequest,
 ): TransportMaterializationResult<T> {
   assertResolvedTransportRoute(state.map, request.route);
-  if (
-    state.structures.some(
-      (structure) => structure.cellId === request.route.embarkCellId,
-    ) ||
-    state.mobileUnits.some((unit) => unit.cellId === request.route.embarkCellId)
-  ) {
+  if (physicalOccupancyCellIds(state).has(request.route.embarkCellId)) {
     return Object.freeze({
       ok: false as const,
       state,
@@ -263,5 +319,76 @@ export function tryMaterializeTransportAtResolvedRoute<
     ok: true as const,
     state: nextState,
     unit: routed,
+  });
+}
+
+export function applySuccessfulTransportLandingConsequences(
+  state: MatchState,
+  request: SuccessfulTransportLandingConsequencesRequest,
+): SuccessfulTransportLandingConsequencesResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.transportId !== "string" ||
+    request.transportId.length === 0 ||
+    typeof request.fortStructureId !== "string" ||
+    request.fortStructureId.length === 0
+  ) {
+    throw new Error("successful Transport landing consequence request is malformed");
+  }
+
+  const transport = state.mobileUnits.find((unit) => unit.id === request.transportId);
+  if (
+    transport === undefined ||
+    transport.type !== "TRANSPORT_SHIP" ||
+    transport.strategicDestinationCellId === undefined
+  ) {
+    throw new Error("successful Transport landing consequence requires an active Transport");
+  }
+  const landingCellId = transport.strategicDestinationCellId;
+  if ((state.ownership[landingCellId] ?? null) !== transport.ownerId) {
+    throw new Error("successful Transport landing consequence requires established authored-target ownership");
+  }
+
+  const remaining = removeMobileUnit(
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    transport.id,
+  );
+  const landedState = createProspectiveMatchState(state, {
+    mobileUnits: remaining.mobileUnits,
+    nextMobileUnitOrdinal: remaining.nextMobileUnitOrdinal,
+  });
+
+  const owner = landedState.factions.find((faction) => faction.id === transport.ownerId);
+  const grantsLandingFort = owner?.rules.customDomains.some(
+    (entry) => entry.domain === "LANDING_FORT_GRANT",
+  ) ?? false;
+  if (!grantsLandingFort) {
+    return Object.freeze({ status: "LANDED" as const, state: landedState });
+  }
+
+  const grant = tryMaterializeStructureGrant(landedState, {
+    structureId: request.fortStructureId,
+    ownerId: transport.ownerId,
+    type: "FORT",
+    cellId: landingCellId,
+    level: 1,
+  });
+  if (!grant.ok) {
+    return Object.freeze({
+      status: "SKIP_GRANT_KEEP_LANDING" as const,
+      state: landedState,
+      grantFailure: grant.failure,
+    });
+  }
+
+  return Object.freeze({
+    status: "FORT_GRANTED" as const,
+    state: createProspectiveMatchState(landedState, {
+      structures: grant.structures,
+    }),
   });
 }
