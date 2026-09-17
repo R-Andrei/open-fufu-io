@@ -23,6 +23,7 @@ import {
   createTrainRouteInput,
   markFactoryPrimaryTrainDispatched,
 } from "../src/simulation/TrainService";
+import { tryStartWarshipProduction } from "../src/simulation/Warships";
 
 function baseState(seed: string, width: number) {
   const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -253,5 +254,56 @@ describe("physical occupancy transition integration", () => {
       cellId: 3,
       route: { nextCellIndex: 1, edgeProgress: tankPreloadWork },
     });
+  });
+
+  it("advances Warship production through the authoritative TickEngine", () => {
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const base = createInitialMatchState(createMicroSimulationSpec({
+      seed: "warship-tick-engine-scheduling-red",
+      width: 3,
+      height: 1,
+      terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER"],
+      initialOwners: [null, "alpha", null],
+      factions: [{ id: "alpha", rules }, { id: "beta", rules }],
+    }));
+    const withPort = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 250_000 } : faction,
+      ),
+      structures: [
+        {
+          id: "port-a",
+          ownerId: "alpha",
+          type: "PORT",
+          cellId: 1,
+          outputCellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+    });
+    const accepted = tryStartWarshipProduction(withPort, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Warship production admission");
+
+    const engine = new TickEngine();
+    let current = accepted.state;
+    for (let tick = 0; tick < 50; tick += 1) {
+      current = engine.advance(current, []);
+    }
+
+    expect(current.warshipProductionJobs).toHaveLength(0);
+    expect(current.mobileUnits).toEqual([
+      expect.objectContaining({
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 0,
+      }),
+    ]);
   });
 });
