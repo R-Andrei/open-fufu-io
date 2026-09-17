@@ -151,6 +151,7 @@
     {"path":"src/simulation/TankTargeting.ts","validators":["tests/TankPursuit.test.ts","tests/TankTargeting.test.ts"]},
     {"path":"src/simulation/Tanks.ts","validators":["tests/PhysicalOccupancyMovement.test.ts","tests/PhysicalOccupancyTankIntegration.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/TankLifecycle.test.ts","tests/TankOperationalState.test.ts"]},
     {"path":"src/simulation/TickEngine.ts","validators":["tests/FactoryTrainP07Runtime.test.ts","tests/FactoryTrainRuntime.test.ts","tests/LandAuditRegression.test.ts","tests/LandCertification.test.ts","tests/LandRuntime.test.ts","tests/MatchRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/PopulationRuntime.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/StructureConstructionLifecycle.test.ts","tests/TankLifecycle.test.ts","tests/TankPursuit.test.ts","tests/OperationRefRuntime.test.ts"]},
+    {"path":"src/simulation/TradeShips.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts"]},
     {"path":"src/simulation/TrainService.ts","validators":["tests/FactoryTrainRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/TrainInterceptionEconomy.test.ts","tests/TrainService.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/VisibilityState.ts","validators":["tests/TankCombatEvents.test.ts","tests/OperationRefRuntime.test.ts"]},
     {"path":"src/simulation/Warships.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts"]},

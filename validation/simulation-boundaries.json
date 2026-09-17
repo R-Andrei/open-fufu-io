@@ -39,6 +39,7 @@
     "src/simulation/Tanks.ts": "TANK",
     "src/simulation/TerritoryEffects.ts": "LAND",
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
+    "src/simulation/TradeShips.ts": "ECONOMY",
     "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
     "src/simulation/Warships.ts": "NAVAL"
@@ -679,6 +680,18 @@
       "to": "src/simulation/Warships.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine schedules the Naval-owned Warship production phase in deterministic authoritative tick order after Tank production."
+    },
+    {
+      "from": "src/simulation/TradeShips.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Trade Ship launch and arrival read and materialize current authoritative MatchState while applying Economy-owned voyage endpoint semantics."
+    },
+    {
+      "from": "src/simulation/TradeShips.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Trade Ship launch and terminal arrival use MobileUnits-owned canonical physical-unit creation and removal primitives."
     },
     {
       "from": "src/simulation/TrainService.ts",
