@@ -4,7 +4,7 @@
 
 This document is the canonical owner for repository-wide substantive issue-work specification/readiness, implementation-GREEN lifecycle semantics, adversarial certification, requirement-level completion evidence, and issue-work evidence reuse.
 
-It does not own claim/branch/PR mutation or current-main merge procedure (`REPOSITORY_OWNERSHIP_PROTOCOL.md`), the repository-wide RED-first invariant (`../AGENTS.md`), canonical-document/configuration authority (`DOCUMENTATION_AUTHORITY_POLICY.md`), executable validation scope/adoption (`VALIDATION_POLICY.md`), or the Game/Origin/Character-AI coupled audit (`official-ai/README.md`). Subsystem semantics remain with the canonical owners registered in [`README.md`](./README.md).
+It does not own claim/branch/PR mutation or current-main merge procedure (`REPOSITORY_OWNERSHIP_PROTOCOL.md`), the repository-wide RED-first invariant (`../AGENTS.md`), canonical-document/configuration authority (`DOCUMENTATION_AUTHORITY_POLICY.md`), executable validation (`VALIDATION_POLICY.md`), or the Game/Origin/Character-AI coupled audit (`official-ai/README.md`). Subsystem semantics remain with the canonical owners registered in [`README.md`](./README.md).
 
 This protocol adds gates around those independent rules; it does not weaken or replace them.
 
