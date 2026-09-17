@@ -52,6 +52,7 @@ import {
   isOwnedForestConcealmentCell,
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
+import { calculateFactionScore } from "./FactionScore";
 import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import type { SimulationTerrain } from "./SimulationMap";
@@ -120,7 +121,8 @@ export interface ControllerPublicFactionSource {
     readonly status: FactionReadView["status"];
     readonly relation: FactionReadView["relation"];
     readonly isMinorFaction: boolean;
-    readonly score: number;
+    readonly origin?: FactionReadView["origin"];
+    readonly score?: number;
     readonly teamId?: string;
   }>[];
 }
@@ -1660,11 +1662,14 @@ export function createControllerQuerySession(
         Object.freeze({
           authoritativeId: faction.id,
           ref,
-          displayName: faction.id,
+          displayName: faction.displayName,
           status: faction.status,
           relation,
-          isMinorFaction: false,
-          score: 0,
+          isMinorFaction: faction.isMinorFaction,
+          ...(faction.origin === undefined ? {} : { origin: faction.origin }),
+          ...(faction.isMinorFaction
+            ? {}
+            : { score: calculateFactionScore(state, faction.id) }),
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
@@ -1691,7 +1696,8 @@ export function createControllerQuerySession(
       relation: source.relation,
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
       isMinorFaction: source.isMinorFaction,
-      score: source.score,
+      ...(source.origin === undefined ? {} : { origin: source.origin }),
+      ...(source.score === undefined ? {} : { score: source.score }),
       ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };
