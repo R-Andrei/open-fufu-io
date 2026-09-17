@@ -198,6 +198,10 @@ describe("controller local public spatial runtime", () => {
 
   it("does not retain removed connectedComponents as a hidden production isolate capability", async () => {
     const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-removed-components",
+      state,
+    );
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
@@ -223,6 +227,7 @@ describe("controller local public spatial runtime", () => {
           new Map(),
           new Map(),
           new Set(),
+          references,
         ),
       );
 
