@@ -465,16 +465,24 @@ describe("controller runtime production-host foundation", () => {
       }),
       { controllerReferenceNamespace: "controller-selector-red" },
     );
-    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
-      queriesPerDecision: 128,
-      materializedCellsPerDecision: 25_000,
-    });
+    const references = runtime.controllerReferenceSession();
+    const alphaRef = references.issueFaction("alpha");
+    if (alphaRef === undefined) throw new Error("expected Alpha FactionRef");
+    const session = createControllerQuerySession(
+      runtime.snapshot(),
+      "alpha",
+      {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      },
+      references,
+    );
     const ids = async (
       selector: Parameters<typeof session.cells.query>[0],
     ): Promise<number[]> =>
       (await session.cells.query(selector)).items.map((cell) => cell.id);
 
-    expect(await ids({ kind: "OWNER", factionId: "alpha" })).toEqual([0, 4, 8]);
+    expect(await ids({ kind: "OWNER", factionId: alphaRef })).toEqual([0, 4, 8]);
     expect(await ids({ kind: "OWNER" })).toEqual([2, 3, 6, 7]);
     expect(await ids({ kind: "TERRAIN", terrain: "PLAINS" })).toEqual([0, 8]);
     expect(await ids({ kind: "FALLOUT", value: true })).toEqual([3]);
@@ -500,7 +508,7 @@ describe("controller runtime production-host foundation", () => {
       await ids({
         kind: "INTERSECTION",
         selectors: [
-          { kind: "OWNER", factionId: "alpha" },
+          { kind: "OWNER", factionId: alphaRef },
           { kind: "POPULATION_BEARING", value: true },
         ],
       }),
@@ -508,7 +516,7 @@ describe("controller runtime production-host foundation", () => {
     expect(
       await ids({
         kind: "DIFFERENCE",
-        left: { kind: "OWNER", factionId: "alpha" },
+        left: { kind: "OWNER", factionId: alphaRef },
         right: { kind: "TERRAIN", terrain: "PLAINS" },
       }),
     ).toEqual([4]);
