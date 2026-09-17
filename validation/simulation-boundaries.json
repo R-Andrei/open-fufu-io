@@ -40,7 +40,8 @@
     "src/simulation/TerritoryEffects.ts": "LAND",
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
     "src/simulation/TrainService.ts": "ECONOMY",
-    "src/simulation/VisibilityState.ts": "VISIBILITY"
+    "src/simulation/VisibilityState.ts": "VISIBILITY",
+    "src/simulation/Warships.ts": "NAVAL"
   },
   "crossOwnerImports": [
     {
@@ -318,6 +319,12 @@
       "to": "src/simulation/Tanks.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "MatchState aggregates Tank production and operational state into the authoritative state contract."
+    },
+    {
+      "from": "src/simulation/MatchState.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "MatchState aggregates Naval-owned Warship production state into the authoritative state contract."
     },
     {
       "from": "src/simulation/MicroSimulationHarness.ts",
@@ -708,6 +715,30 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Visibility reads current Observation Post structure state and fields for ordinary observation/blackout projection."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship production admission invokes the Economy-owned atomic FFY debit primitive for accepted Port builds."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship production and deployment read current authoritative MatchState for producer ownership, lifecycle, occupancy, and active-count pricing."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship lifecycle creates canonical naval mobile units through MobileUnits-owned collection primitives."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship production and deployment read current Port structure state and its persisted designated dock."
     }
   ]
 }
