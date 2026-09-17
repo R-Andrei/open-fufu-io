@@ -225,6 +225,7 @@ interface StructureVisibilityContext {
   readonly requesterFactionId: string;
   readonly remoteObservationFields: readonly StructureFieldSource[];
   readonly enemyBlackoutFields: readonly StructureFieldSource[];
+  readonly resolveFactionRef?: (ref: string) => string | undefined;
 }
 
 interface ControllerQueryMobileUnitState {
@@ -584,6 +585,7 @@ function anyFieldSourceContainsCell(
 function createStructureVisibilityContext(
   state: MatchState,
   requesterFactionId: string,
+  references?: ControllerQueryReferenceSession,
 ): StructureVisibilityContext {
   const requester = factionById(state, requesterFactionId);
   if (requester === undefined) {
@@ -616,6 +618,9 @@ function createStructureVisibilityContext(
     requesterFactionId,
     remoteObservationFields: Object.freeze(remoteObservationFields),
     enemyBlackoutFields: Object.freeze(enemyBlackoutFields),
+    ...(references === undefined
+      ? {}
+      : { resolveFactionRef: (ref: string) => references.resolveFaction(ref) }),
   });
 }
 
@@ -1102,7 +1107,11 @@ function compileSelectorMatcher(
       return (id) => ids.has(id);
     }
     case "OWNER": {
-      const ownerId = selector.factionId ?? null;
+      if (selector.factionId === undefined) {
+        return (id) => (state.ownership[id] ?? null) === null;
+      }
+      const ownerId = context.resolveFactionRef?.(selector.factionId);
+      if (ownerId === undefined) return () => false;
       return (id) => (state.ownership[id] ?? null) === ownerId;
     }
     case "SEGMENT": {
@@ -1358,7 +1367,11 @@ export function createControllerQuerySession(
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
   }
-  const visibility = createStructureVisibilityContext(state, requesterFactionId);
+  const visibility = createStructureVisibilityContext(
+    state,
+    requesterFactionId,
+    references,
+  );
   const mechanics = createConstructionMechanics(
     state,
     requesterFactionId,
