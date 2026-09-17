@@ -118,7 +118,8 @@ type WorkerPublicFactionEntry = Readonly<{
   relation: ControllerPublicFactionSource["entries"][number]["relation"];
   territoryCells: number;
   isMinorFaction: boolean;
-  score: number;
+  origin?: NonNullable<ControllerPublicFactionSource["entries"][number]["origin"]>;
+  score?: number;
   ownerCode?: number;
   teamId?: string;
 }>;
@@ -619,15 +620,26 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
           const ownerCode = ownership.ownerCodeByFactionId.get(
             entry.authoritativeId,
           );
+          const origin =
+            entry.origin === undefined
+              ? undefined
+              : Object.freeze({
+                  id: entry.origin.id,
+                  displayName: entry.origin.displayName,
+                  version: entry.origin.version,
+                  positiveTraitIds: Object.freeze([...entry.origin.positiveTraitIds]),
+                  negativeTraitIds: Object.freeze([...entry.origin.negativeTraitIds]),
+                });
           return Object.freeze({
             ref: entry.ref,
-            displayName: entry.displayName ?? entry.authoritativeId,
+            displayName: entry.displayName,
             status: entry.status,
             relation: entry.relation,
             territoryCells:
               ownership.cellCountByFactionId.get(entry.authoritativeId) ?? 0,
-            isMinorFaction: entry.isMinorFaction ?? false,
-            score: entry.score ?? 0,
+            isMinorFaction: entry.isMinorFaction,
+            ...(origin === undefined ? {} : { origin }),
+            ...(entry.score === undefined ? {} : { score: entry.score }),
             ...(ownerCode === undefined ? {} : { ownerCode }),
             ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
           });
