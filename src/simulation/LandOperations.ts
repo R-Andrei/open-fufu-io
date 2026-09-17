@@ -4,14 +4,6 @@ import {
   } from "../core/FactionRelations";
 import type { DirectiveChanges,
 } from "../core/controller/ControllerApi";
-
-declare module "../core/controller/ControllerApi" {
-  interface CounterResponseDirective {
-    /** Trusted simulation-only authoritative ID after public OperationRef resolution. */
-    readonly incomingOperationId?: string;
-  }
-}
-
 import {
   resolveLandTick as resolveLandTickCore,
   tryApplyPersistentDirectiveChanges as tryApplyPersistentDirectiveChangesCore,
