@@ -500,7 +500,7 @@ describe("#108 Spawn/Origin normal-start convergence", () => {
           expect(querySession).toBeDefined();
 
           const own = await querySession!.cells.query(
-            { kind: "OWNER", factionId: "alpha" },
+            { kind: "OWNER", factionId: observation.me.ref },
             1,
           );
           const sourceCell = own.items[0]!;
