@@ -81,6 +81,7 @@ import {
   resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
+import { advanceWarshipProductionPhase } from "./Warships";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -1257,7 +1258,8 @@ export class TickEngine {
     );
     const combatResolved = advanceTankUnitCombatPhase(repairSettled);
     const repaired = advanceTankRepairPhase(combatResolved.state);
-    const produced = advanceTankProductionPhase(repaired);
+    const tanksProduced = advanceTankProductionPhase(repaired);
+    const produced = advanceWarshipProductionPhase(tanksProduced);
     const trainEconomicUpdate = settleFactoryTrainEconomicEvents(
       produced,
       combatResolved.servicesAtInterception,

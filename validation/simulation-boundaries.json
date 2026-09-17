@@ -675,6 +675,12 @@
       "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
     },
     {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine schedules the Naval-owned Warship production phase in deterministic authoritative tick order after Tank production."
+    },
+    {
       "from": "src/simulation/TrainService.ts",
       "to": "src/simulation/MobileUnits.ts",
       "classification": "ORCHESTRATION",
