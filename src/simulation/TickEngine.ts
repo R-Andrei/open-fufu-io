@@ -47,6 +47,10 @@ import {
   type UnitDestroyedEvent,
 } from "./SimulationEvents";
 import {
+  tryCommitTransportEmbark,
+  tryStartTransportRecall,
+} from "./Transports";
+import {
   resolvePersistentStructureLifecycleTickWithEvents,
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
@@ -151,6 +155,20 @@ export interface PurchaseStructureUpgradeAction {
   readonly ownerId: string;
 }
 
+export interface EmbarkTransportAction {
+  readonly type: "EMBARK_TRANSPORT";
+  readonly ownerId: string;
+  readonly sourceCellId: number;
+  readonly targetCellId: number;
+  readonly population: number;
+}
+
+export interface ReturnTransportAction {
+  readonly type: "RETURN_TRANSPORT";
+  readonly ownerId: string;
+  readonly transportId: string;
+}
+
 export interface RelinquishTerritoryAction {
   readonly type: "RELINQUISH_TERRITORY";
   readonly ownerId: string;
@@ -176,6 +194,8 @@ export type SimulationAction =
   | ApplyPersistentDirectivesAction
   | PurchaseStructureBuildAction
   | PurchaseStructureUpgradeAction
+  | EmbarkTransportAction
+  | ReturnTransportAction
   | RelinquishTerritoryAction
   | LaunchStrategicWeaponAction;
 
@@ -1186,6 +1206,34 @@ export class TickEngine {
             factions: purchased.factions,
             structures: purchased.structures,
           });
+          break;
+        }
+        case "EMBARK_TRANSPORT": {
+          const embarked = tryCommitTransportEmbark(working, {
+            ownerId: action.ownerId,
+            sourceCellId: action.sourceCellId,
+            targetCellId: action.targetCellId,
+            population: action.population,
+          });
+          if (!embarked.ok) {
+            throw new Error(
+              `accepted Transport embark became invalid: ${embarked.failure.code}`,
+            );
+          }
+          working = embarked.state;
+          break;
+        }
+        case "RETURN_TRANSPORT": {
+          const recalled = tryStartTransportRecall(working, {
+            ownerId: action.ownerId,
+            transportId: action.transportId,
+          });
+          if (!recalled.ok) {
+            throw new Error(
+              `accepted Transport recall became invalid: ${recalled.failure.code}`,
+            );
+          }
+          working = recalled.state;
           break;
         }
         case "RELINQUISH_TERRITORY": {

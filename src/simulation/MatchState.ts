@@ -1,4 +1,5 @@
 import type {
+  CellId,
   FactionStatus,
   OriginView,
   StructureType,
@@ -105,6 +106,18 @@ export interface StrategicProjectileState {
   readonly mirvPayload?: MirvPayloadState;
 }
 
+export interface TransportOperationState {
+  readonly unitId: string;
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly embarkCellId: CellId;
+  readonly landingCellId: CellId;
+  readonly carriedPopulation: number;
+  readonly phase: "OUTBOUND" | "RETURNING";
+  readonly returnWaterCellId?: CellId;
+  readonly returnCoastCellId?: CellId;
+}
+
 export interface MatchFactionState {
   readonly id: string;
   readonly displayName: string;
@@ -131,6 +144,7 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly transportOperations?: readonly TransportOperationState[];
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
@@ -150,6 +164,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly transportOperations?: readonly TransportOperationState[];
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
@@ -339,6 +354,86 @@ function freezeHostilityGrace(
           ),
       ),
   );
+}
+
+function freezeTransportOperations(
+  entries: readonly TransportOperationState[],
+  map: SimulationMap,
+): readonly TransportOperationState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("transportOperations must be an array");
+  }
+  const seen = new Set<string>();
+  const frozen = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Transport operation must be an object");
+    }
+    if (
+      typeof entry.unitId !== "string" ||
+      entry.unitId.length === 0 ||
+      seen.has(entry.unitId)
+    ) {
+      throw new Error("Transport operation unitId must be unique and non-empty");
+    }
+    seen.add(entry.unitId);
+    for (const [label, cellId] of [
+      ["sourceCellId", entry.sourceCellId],
+      ["targetCellId", entry.targetCellId],
+      ["embarkCellId", entry.embarkCellId],
+      ["landingCellId", entry.landingCellId],
+    ] as const) {
+      if (!map.isValidCellId(cellId)) {
+        throw new Error(`Transport operation ${label} must be a valid map cell`);
+      }
+    }
+    if (
+      !Number.isSafeInteger(entry.carriedPopulation) ||
+      entry.carriedPopulation <= 0
+    ) {
+      throw new Error("Transport operation carriedPopulation must be a positive safe integer");
+    }
+    if (entry.phase !== "OUTBOUND" && entry.phase !== "RETURNING") {
+      throw new Error("Transport operation phase is invalid");
+    }
+    if (entry.phase === "OUTBOUND") {
+      if (
+        entry.returnWaterCellId !== undefined ||
+        entry.returnCoastCellId !== undefined
+      ) {
+        throw new Error("OUTBOUND Transport operation cannot carry return endpoint state");
+      }
+      return Object.freeze({
+        unitId: entry.unitId,
+        sourceCellId: entry.sourceCellId,
+        targetCellId: entry.targetCellId,
+        embarkCellId: entry.embarkCellId,
+        landingCellId: entry.landingCellId,
+        carriedPopulation: entry.carriedPopulation,
+        phase: entry.phase,
+      });
+    }
+    if (
+      entry.returnWaterCellId === undefined ||
+      entry.returnCoastCellId === undefined ||
+      !map.isValidCellId(entry.returnWaterCellId) ||
+      !map.isValidCellId(entry.returnCoastCellId)
+    ) {
+      throw new Error("RETURNING Transport operation requires valid return endpoints");
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      sourceCellId: entry.sourceCellId,
+      targetCellId: entry.targetCellId,
+      embarkCellId: entry.embarkCellId,
+      landingCellId: entry.landingCellId,
+      carriedPopulation: entry.carriedPopulation,
+      phase: entry.phase,
+      returnWaterCellId: entry.returnWaterCellId,
+      returnCoastCellId: entry.returnCoastCellId,
+    });
+  });
+  frozen.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(frozen);
 }
 
 function freezeStrategicProjectiles(
@@ -893,6 +988,10 @@ function createState(
     mobileUnits.mobileUnits,
     previous.map,
   );
+  const transportOperations = freezeTransportOperations(
+    update.transportOperations ?? previous.transportOperations ?? [],
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -903,6 +1002,7 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    ...(transportOperations.length === 0 ? {} : { transportOperations }),
     ...factoryTrains,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
@@ -1208,6 +1308,24 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const transportOperations = [...(state.transportOperations ?? [])]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      sourceCellId: entry.sourceCellId,
+      targetCellId: entry.targetCellId,
+      embarkCellId: entry.embarkCellId,
+      landingCellId: entry.landingCellId,
+      carriedPopulation: entry.carriedPopulation,
+      phase: entry.phase,
+      ...(entry.returnWaterCellId === undefined
+        ? {}
+        : { returnWaterCellId: entry.returnWaterCellId }),
+      ...(entry.returnCoastCellId === undefined
+        ? {}
+        : { returnCoastCellId: entry.returnCoastCellId }),
+    }));
+
   const factoryTrains = serializeFactoryTrainState(state);
 
   const tankProductionJobs = [...state.tankProductionJobs]
@@ -1403,6 +1521,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    ...(transportOperations.length === 0 ? {} : { transportOperations }),
     factoryRailLoops: factoryTrains.factoryRailLoops,
     factoryTrainEpochs: factoryTrains.factoryTrainEpochs,
     trainServices: factoryTrains.trainServices,

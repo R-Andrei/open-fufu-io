@@ -974,6 +974,65 @@ function evaluateProposal(
       );
       continue;
     }
+    if (staged.kind === "EMBARK_TRANSPORT") {
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "EMBARK_TRANSPORT" as const,
+            ownerId: factionId,
+            sourceCellId: staged.sourceCellId,
+            targetCellId: staged.targetCellId,
+            population: staged.population,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "RETURN_TRANSPORT") {
+      if (staged.unit === null || typeof staged.unit !== "object") {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      const resolvedUnitId =
+        "ref" in staged.unit
+          ? controllerReferences.resolve(
+              factionId,
+              "UNIT",
+              staged.unit.ref,
+            )
+          : undefined;
+      const transport =
+        resolvedUnitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === resolvedUnitId &&
+                candidate.ownerId === factionId &&
+                candidate.type === "TRANSPORT_SHIP",
+            )
+          : "cellId" in staged.unit &&
+              state.map.isValidCellId(staged.unit.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === staged.unit.cellId &&
+                  candidate.ownerId === factionId &&
+                  candidate.type === "TRANSPORT_SHIP",
+              )
+            : undefined;
+      if (transport === undefined) {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "RETURN_TRANSPORT" as const,
+            ownerId: factionId,
+            transportId: transport.id,
+          }),
+        }),
+      );
+      continue;
+    }
     if (staged.kind === "RELINQUISH") {
       let cellIds: readonly number[];
       try {

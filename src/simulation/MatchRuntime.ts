@@ -7,6 +7,7 @@ import type {
 import {
   mapControllerStructureBuildFailure,
   mapControllerStructureUpgradeFailure,
+  mapControllerTransportEmbarkFailure,
 } from "./ControllerQueryProjection";
 import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
@@ -58,6 +59,11 @@ import {
   tryRelinquishTerritory,
   type TerritoryRelinquishmentFailureCode,
 } from "./TerritoryEffects";
+import {
+  tryCommitTransportEmbark,
+  tryStartTransportRecall,
+  type TransportRecallFailureCode,
+} from "./Transports";
 import {
   tryCommitStrategicLaunch,
   type StrategicLaunchFailureCode,
@@ -490,6 +496,28 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "EMBARK_TRANSPORT": {
+      const embarked = tryCommitTransportEmbark(state, {
+        ownerId: action.ownerId,
+        sourceCellId: action.sourceCellId,
+        targetCellId: action.targetCellId,
+        population: action.population,
+      });
+      if (!embarked.ok) {
+        throw new Error(`invalid Transport embark: ${embarked.failure.code}`);
+      }
+      break;
+    }
+    case "RETURN_TRANSPORT": {
+      const recalled = tryStartTransportRecall(state, {
+        ownerId: action.ownerId,
+        transportId: action.transportId,
+      });
+      if (!recalled.ok) {
+        throw new Error(`invalid Transport recall: ${recalled.failure.code}`);
+      }
+      break;
+    }
     case "RELINQUISH_TERRITORY": {
       const relinquished = tryRelinquishTerritory(state, {
         ownerId: action.ownerId,
@@ -565,6 +593,23 @@ function mapTerritoryRelinquishmentFailure(
       return decisionFailure("CELL_NOT_OWNED", key);
     case "PERSISTENT_STRUCTURE_PRESENT":
       return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
+  }
+}
+
+function mapTransportRecallFailure(
+  code: TransportRecallFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "OWNER_INACTIVE":
+    case "UNKNOWN_TRANSPORT":
+    case "NOT_ACTIVE_OPERATION":
+    case "NO_RETURN_ROUTE":
+      return decisionFailure("INVALID_TARGET", key);
   }
 }
 
@@ -645,6 +690,29 @@ function controllerActionFailure(
             purchased.failure.code,
             proposed.key,
           );
+    }
+    case "EMBARK_TRANSPORT": {
+      const embarked = tryCommitTransportEmbark(state, {
+        ownerId: action.ownerId,
+        sourceCellId: action.sourceCellId,
+        targetCellId: action.targetCellId,
+        population: action.population,
+      });
+      return embarked.ok
+        ? undefined
+        : mapControllerTransportEmbarkFailure(
+            embarked.failure.code,
+            proposed.key,
+          );
+    }
+    case "RETURN_TRANSPORT": {
+      const recalled = tryStartTransportRecall(state, {
+        ownerId: action.ownerId,
+        transportId: action.transportId,
+      });
+      return recalled.ok
+        ? undefined
+        : mapTransportRecallFailure(recalled.failure.code, proposed.key);
     }
     case "RELINQUISH_TERRITORY": {
       const relinquished = tryRelinquishTerritory(state, {

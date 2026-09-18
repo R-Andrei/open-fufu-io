@@ -34,6 +34,7 @@ import type {
   StructureUpgradeQuote,
   StructureView,
   TerrainType,
+  TransportEmbarkQuote,
   UnitBuildQuote,
   UnitFindFilter,
   UnitLocator,
@@ -77,6 +78,10 @@ import {
   quoteStrategicLaunch,
   type StrategicLaunchFailureCode,
 } from "./StrategicWeapons";
+import {
+  quoteTransportEmbark,
+  type TransportEmbarkFailureCode,
+} from "./Transports";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -255,6 +260,11 @@ export interface ControllerQuerySession {
   readonly transports: Readonly<{
     embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
     recall(unit: UnitLocator): ActionRef;
+    checkEmbark(
+      sourceCellId: CellId,
+      targetCellId: CellId,
+      population: number,
+    ): TransportEmbarkQuote;
   }>;
   readonly weapons: Readonly<{
     launch(
@@ -937,6 +947,32 @@ function structureVisibleToRequester(
       structure,
     )
   );
+}
+
+export function mapControllerTransportEmbarkFailure(
+  code: TransportEmbarkFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+    case "INSUFFICIENT_AVAILABLE_POPULATION":
+      return decisionFailure("INSUFFICIENT_AVAILABLE_POPULATION", key);
+    case "OWNERSHIP_CAP":
+      return decisionFailure("OWNERSHIP_CAP", key);
+    case "SOURCE_NOT_OWNED":
+      return decisionFailure("CELL_NOT_OWNED", key);
+    case "EMBARK_BLOCKED":
+      return decisionFailure("CELL_OCCUPIED", key);
+    case "INVALID_SOURCE":
+    case "UNKNOWN_OWNER":
+    case "OWNER_INACTIVE":
+      return decisionFailure("INVALID_SOURCE", key);
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+    case "UNREACHABLE":
+      return decisionFailure("INVALID_TARGET", key);
+  }
 }
 
 export function mapControllerStructureBuildFailure(
@@ -2089,6 +2125,40 @@ export function createControllerQuerySession(
       buildTicks: result.job.remainingTicks,
     });
   };
+  const checkTransportEmbark = (
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): TransportEmbarkQuote => {
+    beginQuery();
+    const result = quoteTransportEmbark(state, {
+      ownerId: requesterFactionId,
+      sourceCellId,
+      targetCellId,
+      population,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: mapControllerTransportEmbarkFailure(
+          result.failure.code,
+        ).code,
+        cost: quoteCost(result.ffyCost, 0, 0),
+        sourceCellId,
+        targetCellId,
+        populationCommitted: population,
+        resultingUnit: "TRANSPORT_SHIP" as const,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(result.ffyCost, result.ffyCost, 0),
+      sourceCellId,
+      targetCellId,
+      populationCommitted: population,
+      resultingUnit: "TRANSPORT_SHIP" as const,
+    });
+  };
   const checkRelinquish = (cells: CellSelector): RelinquishQuote => {
     beginQuery();
     const cellIds = orderedSelectorCellIds(state, visibility, cells);
@@ -2562,6 +2632,7 @@ export function createControllerQuerySession(
     transports: Object.freeze({
       embark: stageTransportEmbark,
       recall: stageTransportRecall,
+      checkEmbark: checkTransportEmbark,
     }),
     weapons: Object.freeze({
       launch: stageWeaponLaunch,
