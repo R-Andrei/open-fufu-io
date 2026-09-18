@@ -858,7 +858,7 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
     expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
       type: "START_TANK_PRODUCTION",
       ownerId: "alpha",
-      factoryId: "structure:grant:alpha-factory",
+      factoryId: "alpha-factory",
       strategicDestinationCellId: 3,
     });
     const after = runtime.tick();
@@ -972,21 +972,20 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
       executed.mobileUnits.find((candidate) => candidate.id === unit.id),
     ).toMatchObject({ strategicDestinationCellId: 2 });
 
-    const invalidExecuted = new TickEngine().applyAcceptedInputs(state, [
-      {
-        tick: state.tick + 1,
-        sequence: 0,
-        action: {
-          type: "SET_UNIT_STRATEGIC_DESTINATION",
-          ownerId: "alpha",
-          unitId: unit.id,
-          destinationCellId: 3,
-        } as never,
-      },
-    ]);
-    expect(
-      invalidExecuted.mobileUnits.find((candidate) => candidate.id === unit.id),
-    ).toEqual(unit);
+    expect(() =>
+      new TickEngine().applyAcceptedInputs(state, [
+        {
+          tick: state.tick + 1,
+          sequence: 0,
+          action: {
+            type: "SET_UNIT_STRATEGIC_DESTINATION",
+            ownerId: "alpha",
+            unitId: unit.id,
+            destinationCellId: 3,
+          } as never,
+        },
+      ]),
+    ).toThrow();
   });
 
   it("replaces a deployed Tank destination end-to-end and preserves production-worker parity for move staging", async () => {
