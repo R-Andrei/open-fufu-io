@@ -103,14 +103,14 @@ const ACTION_ROWS: readonly ActionRow[] = Object.freeze([
   },
   {
     name: "transports.embark",
-    owner: "#208",
+    owner: "#206",
     inProcess: (context) => context.transports.embark(0, 1, 1),
     workerExpression: "context.transports.embark(0, 1, 1)",
     proofs: ACTION_PROOFS,
   },
   {
     name: "transports.recall",
-    owner: "#208",
+    owner: "#206",
     inProcess: (context) => context.transports.recall({ cellId: 0 }),
     workerExpression: "context.transports.recall({ cellId: 0 })",
     proofs: ACTION_PROOFS,
@@ -175,7 +175,7 @@ const CHECK_ROWS: readonly CheckRow[] = Object.freeze([
   },
   {
     name: "transports.checkEmbark",
-    owner: "#208",
+    owner: "#206",
     inProcess: (context) => context.transports.checkEmbark(0, 1, 1),
     workerExpression: "context.transports.checkEmbark(0, 1, 1)",
     proofs: CHECK_PROOFS,
@@ -655,47 +655,77 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
   });
 });
 
-describe("issue #206 transports.checkEmbark authoritative RED", () => {
-  function transportFixture(seed: string) {
-    const rules = emptyRules();
+describe("issue #206 Transport facade authoritative RED", () => {
+  function transportRules(
+    traits: Parameters<typeof originRuleProfileInput>[0] = [],
+  ) {
+    const origin = originRuleProfileInput(traits);
+    return compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: origin.contributions,
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+  }
+
+  function transportState(
+    seed: string,
+    options: {
+      readonly traits?: Parameters<typeof originRuleProfileInput>[0];
+      readonly ffy?: number;
+      readonly population?: number;
+    } = {},
+  ) {
+    const population = options.population ?? 1_000;
     const base = createInitialMatchState(
       createMicroSimulationSpec({
         seed,
-        width: 5,
-        height: 1,
+        width: 3,
+        height: 2,
         terrain: [
           "PLAINS",
           "SHALLOW_WATER",
           "SHALLOW_WATER",
-          "SHALLOW_WATER",
+          "PLAINS",
+          "PLAINS",
           "PLAINS",
         ],
-        initialOwners: ["alpha", null, null, null, "beta"],
+        initialOwners: ["alpha", null, null, "alpha", "alpha", "beta"],
         factions: [
-          { id: "alpha", rules },
-          { id: "beta", rules },
+          { id: "alpha", rules: transportRules(options.traits) },
+          { id: "beta", rules: emptyRules() },
         ],
       }),
     );
-    const state = createProspectiveMatchState(base, {
+    return createProspectiveMatchState(base, {
       factions: base.factions.map((faction) =>
         faction.id === "alpha"
           ? {
               ...faction,
-              ffy: 1_000_000,
+              ffy: options.ffy ?? 1_000_000,
               population: createPopulationState({
-                total: 1_000,
-                available: 1_000,
+                total: population,
+                available: population,
                 committedOffensive: 0,
                 committedCounterResponse: 0,
                 aboardTransports: 0,
-                peakTotal: 1_000,
+                peakTotal: population,
                 neutralSettlementHalfResidual: 0,
               }),
             }
           : faction,
       ),
     });
+  }
+
+  function transportSession(
+    seed: string,
+    options: {
+      readonly traits?: Parameters<typeof originRuleProfileInput>[0];
+      readonly ffy?: number;
+      readonly population?: number;
+    } = {},
+  ) {
+    const state = transportState(seed, options);
     const session = createControllerQuerySession(
       state,
       "alpha",
@@ -705,27 +735,60 @@ describe("issue #206 transports.checkEmbark authoritative RED", () => {
     return { state, session };
   }
 
-  it("matches canonical endpoint resolution for a lawful baseline embark and charges one read", () => {
-    const { state, session } = transportFixture("issue206-transport-check");
-    const canonical = resolveTransportEndpointRouteForState(state, {
-      sourceCellId: 0,
-      targetCellId: 4,
-      embarkCoastCellIds: [0],
-      landingCoastCellIds: [4],
+  function transportRuntime(
+    seed: string,
+    traits: Parameters<typeof originRuleProfileInput>[0] = [],
+  ) {
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 3,
+        height: 2,
+        terrain: [
+          "PLAINS",
+          "SHALLOW_WATER",
+          "SHALLOW_WATER",
+          "PLAINS",
+          "PLAINS",
+          "PLAINS",
+        ],
+        initialOwners: ["alpha", null, null, "alpha", "alpha", "beta"],
+        factions: [
+          { id: "alpha", rules: transportRules(traits) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 1_000,
     });
-    expect(canonical.status).toBe("FOUND");
+    runtime.tick();
+    return runtime;
+  }
+
+  it("derives the lawful coast set from the authored inland political component and charges one read", () => {
+    const { state, session } = transportSession("issue206-transport-component");
+    const canonical = resolveTransportEndpointRouteForState(state, {
+      sourceCellId: 3,
+      targetCellId: 5,
+      embarkCoastCellIds: [0, 4],
+      landingCoastCellIds: [5],
+    });
+    expect(canonical).toMatchObject({
+      status: "FOUND",
+      route: {
+        sourceCellId: 3,
+        targetCellId: 5,
+        embarkCellId: 1,
+        landingCellId: 2,
+      },
+    });
 
     const before = session.usage();
-    const quote = (
-      session.transports as unknown as {
-        checkEmbark(
-          sourceCellId: number,
-          targetCellId: number,
-          population: number,
-        ): Record<string, unknown>;
-      }
-    ).checkEmbark(0, 4, 100);
-
+    const quote = session.transports.checkEmbark(3, 5, 100);
     expect(quote).toMatchObject({
       legal: true,
       cost: {
@@ -733,8 +796,8 @@ describe("issue #206 transports.checkEmbark authoritative RED", () => {
         ffySpent: 0,
         populationSpent: 0,
       },
-      sourceCellId: 0,
-      targetCellId: 4,
+      sourceCellId: 3,
+      targetCellId: 5,
       populationCommitted: 100,
       resultingUnit: "TRANSPORT_SHIP",
     });
@@ -745,44 +808,40 @@ describe("issue #206 transports.checkEmbark authoritative RED", () => {
     ).toBe(0);
   });
 
-  it("rejects unavailable Population and disconnected endpoint geometry without mutation", () => {
-    const { state, session } = transportFixture(
-      "issue206-transport-check-rejections",
-    );
-    const fingerprint = JSON.stringify({
-      factions: state.factions,
-      units: state.mobileUnits,
-    });
-    const insufficient = (
-      session.transports as unknown as {
-        checkEmbark(
-          sourceCellId: number,
-          targetCellId: number,
-          population: number,
-        ): Record<string, unknown>;
-      }
-    ).checkEmbark(0, 4, 1_001);
-    expect(insufficient).toMatchObject({
-      legal: false,
-      failureCode: "INSUFFICIENT_AVAILABLE_POPULATION",
-      cost: { ffySpent: 0, populationSpent: 0 },
-    });
-
-    const disconnectedBase = createInitialMatchState(
+  it("does not borrow a disconnected same-owner coast outside the authored source component", () => {
+    const base = createInitialMatchState(
       createMicroSimulationSpec({
-        seed: "issue206-transport-disconnected",
-        width: 5,
+        seed: "issue206-transport-component-exclusion",
+        width: 8,
         height: 1,
-        terrain: ["PLAINS", "SHALLOW_WATER", "PLAINS", "SHALLOW_WATER", "PLAINS"],
-        initialOwners: ["alpha", null, null, null, "beta"],
+        terrain: [
+          "PLAINS",
+          "PLAINS",
+          "SHALLOW_WATER",
+          "IMPASSABLE",
+          "PLAINS",
+          "SHALLOW_WATER",
+          "SHALLOW_WATER",
+          "PLAINS",
+        ],
+        initialOwners: [
+          "alpha",
+          "alpha",
+          null,
+          null,
+          "alpha",
+          null,
+          null,
+          "beta",
+        ],
         factions: [
           { id: "alpha", rules: emptyRules() },
           { id: "beta", rules: emptyRules() },
         ],
       }),
     );
-    const disconnectedState = createProspectiveMatchState(disconnectedBase, {
-      factions: disconnectedBase.factions.map((faction) =>
+    const state = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
         faction.id === "alpha"
           ? {
               ...faction,
@@ -799,31 +858,274 @@ describe("issue #206 transports.checkEmbark authoritative RED", () => {
           : faction,
       ),
     });
-    const disconnectedSession = createControllerQuerySession(
-      disconnectedState,
+    const session = createControllerQuerySession(
+      state,
       "alpha",
       CONTROLLER_QUERY_LIMITS,
       new ControllerReferenceSession(
-        "issue206-transport-disconnected",
-        disconnectedState,
+        "issue206-transport-component-exclusion",
+        state,
       ),
     );
-    const disconnected = (
-      disconnectedSession.transports as unknown as {
-        checkEmbark(
-          sourceCellId: number,
-          targetCellId: number,
-          population: number,
-        ): Record<string, unknown>;
-      }
-    ).checkEmbark(0, 4, 10);
-    expect(disconnected).toMatchObject({
+
+    expect(
+      resolveTransportEndpointRouteForState(state, {
+        sourceCellId: 0,
+        targetCellId: 7,
+        embarkCoastCellIds: [1],
+        landingCoastCellIds: [7],
+      }).status,
+    ).toBe("UNREACHABLE");
+    expect(
+      resolveTransportEndpointRouteForState(state, {
+        sourceCellId: 0,
+        targetCellId: 7,
+        embarkCoastCellIds: [1, 4],
+        landingCoastCellIds: [7],
+      }).status,
+    ).toBe("FOUND");
+
+    expect(session.transports.checkEmbark(0, 7, 10)).toMatchObject({
       legal: false,
+      cost: { ffySpent: 0, populationSpent: 0 },
+    });
+  });
+
+  it("composes P37 and N15 into the authoritative embark FFY quote", () => {
+    const { session } = transportSession("issue206-transport-cost", {
+      traits: ["P37", "N15"],
+      ffy: 1_000,
+    });
+    expect(session.transports.checkEmbark(3, 5, 100)).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 750,
+        ffySpent: 750,
+        populationSpent: 0,
+      },
+      populationCommitted: 100,
+    });
+  });
+
+  it("rejects unavailable Population and disconnected endpoint geometry without mutation", () => {
+    const { state, session } = transportSession(
+      "issue206-transport-check-rejections",
+    );
+    const fingerprint = JSON.stringify({
+      factions: state.factions,
+      units: state.mobileUnits,
+    });
+    expect(session.transports.checkEmbark(3, 5, 1_001)).toMatchObject({
+      legal: false,
+      failureCode: "INSUFFICIENT_AVAILABLE_POPULATION",
       cost: { ffySpent: 0, populationSpent: 0 },
     });
     expect(
       JSON.stringify({ factions: state.factions, units: state.mobileUnits }),
     ).toBe(fingerprint);
+  });
+
+  it("matches a lawful embark quote through the production isolate", async () => {
+    const { session } = transportSession("issue206-transport-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerCheckArtifact(
+          "context.transports.checkEmbark(3, 5, 100)",
+        ),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        session,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const log = JSON.parse(result.output?.log ?? "{}");
+      expect(log.error).toBeUndefined();
+      expect(log.result).toMatchObject({
+        legal: true,
+        cost: {
+          ffyRequired: 0,
+          ffySpent: 0,
+          populationSpent: 0,
+        },
+        sourceCellId: 3,
+        targetCellId: 5,
+        populationCommitted: 100,
+        resultingUnit: "TRANSPORT_SHIP",
+      });
+      expect(session.usage().queries).toBe(1);
+      expect(session.usage().materializedEntityViews).toBe(0);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("commits lawful embark atomically into Population, physical unit, route, and replay-owned operation state", async () => {
+    const runtime = transportRuntime("issue206-transport-embark-commit");
+    const before = runtime.snapshot();
+    const beforeAccepted = runtime.acceptedInputs().length;
+    const beforeAlpha = before.factions.find((faction) => faction.id === "alpha");
+    expect(beforeAlpha?.population.available).toBe(1_000);
+    expect(beforeAlpha?.population.aboardTransports).toBe(0);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.transports.embark(3, 5, 100);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.acceptedInputs()).toHaveLength(beforeAccepted + 1);
+    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
+      type: "EMBARK_TRANSPORT",
+      ownerId: "alpha",
+      sourceCellId: 3,
+      targetCellId: 5,
+      population: 100,
+    });
+    expect(runtime.snapshot()).toEqual(before);
+
+    const after = runtime.tick();
+    const alpha = after.factions.find((faction) => faction.id === "alpha");
+    expect(alpha?.population.available).toBe(900);
+    expect(alpha?.population.aboardTransports).toBe(100);
+    const transport = after.mobileUnits.find(
+      (unit) => unit.type === "TRANSPORT_SHIP" && unit.ownerId === "alpha",
+    );
+    expect(transport).toMatchObject({
+      cellId: 1,
+      strategicDestinationCellId: 5,
+      route: {
+        destinationCellId: 2,
+        cells: [1, 2],
+      },
+    });
+    expect(
+      (after as unknown as {
+        readonly transportOperations?: readonly Readonly<Record<string, unknown>>[];
+      }).transportOperations,
+    ).toEqual([
+      expect.objectContaining({
+        unitId: transport?.id,
+        sourceCellId: 3,
+        targetCellId: 5,
+        embarkCellId: 1,
+        landingCellId: 2,
+        carriedPopulation: 100,
+        phase: "OUTBOUND",
+      }),
+    ]);
+  });
+
+  it("rejects sibling embark oversubscription atomically without committing the first sibling", async () => {
+    const runtime = transportRuntime("issue206-transport-embark-atomic");
+    const before = runtime.snapshot();
+    const beforeAccepted = runtime.acceptedInputs().length;
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.transports.embark(3, 5, 600);
+        context.transports.embark(3, 5, 600);
+        return {};
+      },
+    });
+
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted,
+    ).toBe(false);
+    expect(runtime.acceptedInputs()).toHaveLength(beforeAccepted);
+    expect(runtime.snapshot()).toEqual(before);
+    expect(runtime.tick().mobileUnits).toEqual(before.mobileUnits);
+  });
+
+  it("commits the same lawful embark through the production worker path", async () => {
+    const runtime = transportRuntime("issue206-transport-worker-commit");
+    const beforeAccepted = runtime.acceptedInputs().length;
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerArtifact("context.transports.embark(3, 5, 100)"),
+      });
+      const receipts = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true });
+      expect(runtime.acceptedInputs()).toHaveLength(beforeAccepted + 1);
+      const after = runtime.tick();
+      expect(
+        after.mobileUnits.some(
+          (unit) =>
+            unit.type === "TRANSPORT_SHIP" &&
+            unit.ownerId === "alpha" &&
+            unit.cellId === 1,
+        ),
+      ).toBe(true);
+      expect(
+        after.factions.find((faction) => faction.id === "alpha")?.population
+          .aboardTransports,
+      ).toBe(100);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("recall fixes the approved minimum-cost return endpoint and tie-break in replay state", async () => {
+    const runtime = transportRuntime("issue206-transport-recall");
+    const embarkHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.transports.embark(3, 5, 100);
+        return {};
+      },
+    });
+    const embarkReceipts = await Promise.resolve(
+      runtime.runControllerRound(embarkHost),
+    );
+    expect(
+      embarkReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    const outbound = runtime.tick();
+    const transport = outbound.mobileUnits.find(
+      (unit) => unit.type === "TRANSPORT_SHIP" && unit.ownerId === "alpha",
+    );
+    expect(transport?.cellId).toBe(1);
+
+    const recallHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.transports.recall({ cellId: 1 });
+        return {};
+      },
+    });
+    const recallReceipts = await Promise.resolve(
+      runtime.runControllerRound(recallHost),
+    );
+    expect(
+      recallReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
+      type: "RETURN_TRANSPORT",
+      ownerId: "alpha",
+      transportId: transport?.id,
+    });
+
+    const returning = runtime.tick();
+    expect(
+      (returning as unknown as {
+        readonly transportOperations?: readonly Readonly<Record<string, unknown>>[];
+      }).transportOperations,
+    ).toEqual([
+      expect.objectContaining({
+        unitId: transport?.id,
+        carriedPopulation: 100,
+        phase: "RETURNING",
+        returnWaterCellId: 1,
+        returnCoastCellId: 0,
+      }),
+    ]);
   });
 });
 
