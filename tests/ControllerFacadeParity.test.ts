@@ -1314,8 +1314,9 @@ describe("issue #206 strategic weapon baseline RED", () => {
     traits: Parameters<typeof originRuleProfileInput>[0] = [],
   ) {
     const fundingSiloCount = 8;
-    const firstTargetCellId = fundingSiloCount + 1;
-    const secondTargetCellId = fundingSiloCount + 2;
+    const fundingSiloSpacing = 10;
+    const firstTargetCellId = fundingSiloCount * fundingSiloSpacing + 1;
+    const secondTargetCellId = firstTargetCellId + 1;
     const width = secondTargetCellId + 1;
     const uniqueTraits = Object.freeze([
       ...new Set<Parameters<typeof originRuleProfileInput>[0][number]>([
@@ -1344,7 +1345,7 @@ describe("issue #206 strategic weapon baseline RED", () => {
             structureId: "funding-silo-" + index,
             ownerId: "alpha",
             type: "MISSILE_SILO" as const,
-            cellId: index + 1,
+            cellId: (index + 1) * fundingSiloSpacing,
             level: 5 as const,
           })),
         ],
