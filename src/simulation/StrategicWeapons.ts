@@ -99,6 +99,7 @@ export type StrategicLaunchQuoteResult =
   | Readonly<{
       readonly ok: true;
       readonly ffyCost: number;
+      readonly ffySpent: number;
       readonly chargeSlotId: number;
       readonly acceptedLaunchOrdinal: number;
       readonly launchCellId: number;
@@ -313,6 +314,17 @@ function weaponUsePermitted(
   );
 }
 
+function factionHasCustomRuleDomain(
+  state: MatchState,
+  ownerId: string,
+  domain: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  return (
+    owner?.rules.customDomains.some((entry) => entry.domain === domain) ?? false
+  );
+}
+
 function effectiveWeaponFfyCost(
   state: MatchState,
   ownerId: string,
@@ -500,9 +512,16 @@ export function quoteStrategicLaunch(
   });
   if (!debit.ok) return failure(ffyCost, "INSUFFICIENT_FFY");
 
+  const ffySpent =
+    request.weapon === "MIRV" &&
+    factionHasCustomRuleDomain(state, request.ownerId, "MIRV_USE_ENTITLEMENT")
+      ? 0
+      : debit.cost;
+
   return Object.freeze({
     ok: true as const,
     ffyCost: debit.cost,
+    ffySpent,
     chargeSlotId: charge.slotId,
     acceptedLaunchOrdinal: launcher.acceptedLaunchCount ?? 0,
     launchCellId: launcher.cellId,
@@ -576,7 +595,7 @@ export function tryCommitStrategicLaunch(
   }
 
   const debit = tryDebitFfy(owner.ffy, {
-    numerator: BigInt(quote.ffyCost),
+    numerator: BigInt(quote.ffySpent),
     denominator: 1n,
   });
   if (!debit.ok) {
