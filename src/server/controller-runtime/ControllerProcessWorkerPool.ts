@@ -99,6 +99,10 @@ type ControllerWorkerQueryRequest =
       args: readonly [StructureLocator];
     }>
   | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
+  | Readonly<{
       operation: "TERRITORY_CHECK_RELINQUISH";
       args: readonly [CellSelector];
     }>
@@ -329,6 +333,13 @@ function isControllerWorkerQueryRequest(
         typeof args[0] === "string" &&
         typeof args[1] === "number"
       );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
+        typeof args[2] === "number"
+      );
     case "TERRITORY_CHECK_RELINQUISH":
       return args.length === 1 && isSelectorArgument(args[0]);
     case "WEAPONS_CHECK_LAUNCH":
@@ -410,6 +421,12 @@ async function resolveControllerWorkerQuery(
       return session.structures.checkBuild(query.args[0], query.args[1]);
     case "STRUCTURES_CHECK_UPGRADE":
       return session.structures.checkUpgrade(query.args[0]);
+    case "TRANSPORTS_CHECK_EMBARK":
+      return session.transports.checkEmbark(
+        query.args[0],
+        query.args[1],
+        query.args[2],
+      );
     case "TERRITORY_CHECK_RELINQUISH":
       return session.territory.checkRelinquish(query.args[0]);
     case "WEAPONS_CHECK_LAUNCH":

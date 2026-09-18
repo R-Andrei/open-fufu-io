@@ -70,6 +70,10 @@ type ControllerWorkerQueryRequest =
       args: readonly [StructureLocator];
     }>
   | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
+  | Readonly<{
       operation: "TERRITORY_CHECK_RELINQUISH";
       args: readonly [CellSelector];
     }>
@@ -591,7 +595,13 @@ const invokeEntrypointSource = `
     transports: {
       embark: (sourceCellId, targetCellId, population) =>
         stageAction("EMBARK_TRANSPORT", { sourceCellId, targetCellId, population }),
-      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit })
+      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit }),
+      checkEmbark: (sourceCellId, targetCellId, population) =>
+        hostCheck("TRANSPORTS_CHECK_EMBARK", [
+          sourceCellId,
+          targetCellId,
+          population
+        ])
     },
     weapons: {
       launch: (launcher, weapon, targetCellId, targetFaction) =>
@@ -780,6 +790,13 @@ function isControllerWorkerQueryRequest(
         args.length === 2 &&
         typeof args[0] === "string" &&
         typeof args[1] === "number"
+      );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
+        typeof args[2] === "number"
       );
     case "TERRITORY_CHECK_RELINQUISH":
       return args.length === 1 && isSelectorArgument(args[0]);
