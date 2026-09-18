@@ -1827,10 +1827,11 @@ describe("issue #206 strategic weapon baseline RED", () => {
       receipts.find((entry) => entry.factionId === "alpha")?.receipt,
     ).toMatchObject({ accepted: true });
 
-    const projectile = runtime
-      .tick()
-      .strategicProjectiles.find((entry) => entry.launcherId === "silo-alpha") as
-      | (typeof runtime.snapshot().strategicProjectiles[number] & {
+    const after = runtime.tick();
+    const projectile = after.strategicProjectiles.find(
+      (entry) => entry.launcherId === "silo-alpha",
+    ) as
+      | (typeof after.strategicProjectiles[number] & {
           readonly mirvPayload?: {
             readonly childSpeedCellsPerSecond: number;
           };
