@@ -42,9 +42,15 @@ const BASE_PROJECTILE_SPEED = Object.freeze({
 const BASE_WARHEAD_BLAST_RADIUS = Object.freeze({
   ATOM_BOMB: Object.freeze({ inner: 12, outer: 30 }),
   HYDROGEN_BOMB: Object.freeze({ inner: 80, outer: 100 }),
+  MIRV: Object.freeze({ inner: 12, outer: 18 }),
 } satisfies Readonly<
-  Record<"ATOM_BOMB" | "HYDROGEN_BOMB", Readonly<{ inner: number; outer: number }>>
+  Record<StrategicWeaponType, Readonly<{ inner: number; outer: number }>>
 >);
+
+const BASE_MIRV_CHILD_SPEED = 220;
+const MIRV_DISTRIBUTION_RADIUS_CELLS = 750;
+const MIRV_MINIMUM_CENTER_SPACING_CELLS = 55;
+const MIRV_MAX_CHILDREN = 250;
 
 const CANONICAL_WEAPON_ORDER = Object.freeze({
   ATOM_BOMB: 0,
@@ -65,7 +71,7 @@ export interface StrategicLaunchRequest {
 export interface StrategicLaunchCommitRequest {
   readonly ownerId: string;
   readonly launcherId: string;
-  readonly weapon: "ATOM_BOMB" | "HYDROGEN_BOMB";
+  readonly weapon: StrategicWeaponType;
   readonly targetCellId: number;
   readonly targetFactionId?: string;
 }
@@ -185,12 +191,13 @@ function exactPositiveSafeNumber(value: bigint, label: string): number {
 function effectiveWarheadProjectileSpeed(
   state: MatchState,
   ownerId: string,
-  weapon: "ATOM_BOMB" | "HYDROGEN_BOMB",
+  weapon: StrategicWeaponType,
+  baseSpeed = BASE_PROJECTILE_SPEED[weapon],
 ): number {
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
   const effective = materializeCompiledScalarRule(
-    BASE_PROJECTILE_SPEED[weapon],
+    baseSpeed,
     owner.rules,
     RULE_AXIS_REGISTRY,
     "WEAPON_PROJECTILE_SPEED",
@@ -207,7 +214,7 @@ function effectiveWarheadProjectileSpeed(
 function effectiveWarheadBlastProfile(
   state: MatchState,
   ownerId: string,
-  weapon: "ATOM_BOMB" | "HYDROGEN_BOMB",
+  weapon: StrategicWeaponType,
 ): StrategicBlastProfileState {
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
@@ -237,6 +244,97 @@ function effectiveWarheadBlastProfile(
       "strategic blast profile denominator",
     ),
   });
+}
+
+function isMirvLandTerrain(terrain: MatchState["map"]["terrain"][number]): boolean {
+  return (
+    terrain !== "SHALLOW_WATER" &&
+    terrain !== "DEEP_WATER" &&
+    terrain !== "IMPASSABLE"
+  );
+}
+
+function squaredCellDistance(
+  state: MatchState,
+  leftCellId: number,
+  rightCellId: number,
+): number {
+  const left = state.map.positionOf(leftCellId);
+  const right = state.map.positionOf(rightCellId);
+  const dx = left.x - right.x;
+  const dy = left.y - right.y;
+  return dx * dx + dy * dy;
+}
+
+function canonicalMirvChildTargets(
+  state: MatchState,
+  primaryTargetCellId: number,
+  targetFactionId: string | undefined,
+): readonly number[] {
+  const selected = [primaryTargetCellId];
+  if (targetFactionId === undefined) return Object.freeze(selected);
+
+  const primary = state.map.positionOf(primaryTargetCellId);
+  const radius = MIRV_DISTRIBUTION_RADIUS_CELLS;
+  const radiusSquared = radius * radius;
+  const minX = Math.max(0, primary.x - radius);
+  const maxX = Math.min(state.map.width - 1, primary.x + radius);
+  const minY = Math.max(0, primary.y - radius);
+  const maxY = Math.min(state.map.height - 1, primary.y + radius);
+  const candidates: number[] = [];
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const cellId = state.map.cellIdAt(x, y);
+      if (
+        cellId === undefined ||
+        cellId === primaryTargetCellId ||
+        state.ownership[cellId] !== targetFactionId ||
+        !isMirvLandTerrain(state.map.terrainAt(cellId))
+      ) {
+        continue;
+      }
+      const dx = x - primary.x;
+      const dy = y - primary.y;
+      if (dx * dx + dy * dy <= radiusSquared) {
+        candidates.push(cellId);
+      }
+    }
+  }
+
+  candidates.sort((left, right) => {
+    const distanceOrder =
+      squaredCellDistance(state, primaryTargetCellId, left) -
+      squaredCellDistance(state, primaryTargetCellId, right);
+    return distanceOrder || left - right;
+  });
+
+  const spacingSquared =
+    MIRV_MINIMUM_CENTER_SPACING_CELLS * MIRV_MINIMUM_CENTER_SPACING_CELLS;
+  for (const candidate of candidates) {
+    if (
+      selected.every(
+        (existing) =>
+          squaredCellDistance(state, existing, candidate) >= spacingSquared,
+      )
+    ) {
+      selected.push(candidate);
+      if (selected.length >= MIRV_MAX_CHILDREN) break;
+    }
+  }
+  return Object.freeze(selected);
+}
+
+function mirvUseEntitlementAvailable(
+  state: MatchState,
+  ownerId: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  return (
+    owner !== undefined &&
+    factionHasCustomRuleDomain(state, ownerId, "MIRV_USE_ENTITLEMENT") &&
+    owner.mirvUseEntitlementConsumed !== true
+  );
 }
 
 function failure(
@@ -489,6 +587,13 @@ export function quoteStrategicLaunch(
   if (!weaponUsePermitted(state, request.ownerId, request.weapon)) {
     return failure(ffyCost, "WEAPON_NOT_PERMITTED");
   }
+  if (
+    request.weapon === "MIRV" &&
+    factionHasCustomRuleDomain(state, request.ownerId, "MIRV_USE_ENTITLEMENT") &&
+    !mirvUseEntitlementAvailable(state, request.ownerId)
+  ) {
+    return failure(ffyCost, "WEAPON_NOT_PERMITTED");
+  }
   if (!state.map.isValidCellId(request.targetCellId)) {
     return failure(ffyCost, "INVALID_TARGET");
   }
@@ -514,7 +619,7 @@ export function quoteStrategicLaunch(
 
   const ffySpent =
     request.weapon === "MIRV" &&
-    factionHasCustomRuleDomain(state, request.ownerId, "MIRV_USE_ENTITLEMENT")
+    mirvUseEntitlementAvailable(state, request.ownerId)
       ? 0
       : debit.cost;
 
@@ -633,6 +738,49 @@ export function tryCommitStrategicLaunch(
     ),
   );
 
+  const blastSeed = strategicBlastHash32(
+    "strategic-blast-root",
+    state.seed,
+    launcher.id,
+    acceptedLaunchOrdinal,
+    request.weapon,
+    request.targetCellId,
+  );
+  const blastProfile = effectiveWarheadBlastProfile(
+    state,
+    request.ownerId,
+    request.weapon,
+  );
+  const mirvPayload =
+    request.weapon === "MIRV"
+      ? Object.freeze({
+          childSpeedCellsPerSecond: effectiveWarheadProjectileSpeed(
+            state,
+            request.ownerId,
+            "MIRV",
+            BASE_MIRV_CHILD_SPEED,
+          ),
+          distributionRadiusCells: MIRV_DISTRIBUTION_RADIUS_CELLS,
+          minimumCenterSpacingCells: MIRV_MINIMUM_CENTER_SPACING_CELLS,
+          children: Object.freeze(
+            canonicalMirvChildTargets(
+              state,
+              request.targetCellId,
+              quote.targetFactionId,
+            ).map((targetCellId, childIndex) =>
+              Object.freeze({
+                targetCellId,
+                blastSeed: strategicBlastHash32(
+                  "strategic-blast-child",
+                  state.seed,
+                  blastSeed,
+                  childIndex,
+                ),
+              }),
+            ),
+          ),
+        })
+      : undefined;
   const projectile: StrategicProjectileState = Object.freeze({
     id: `strategic:${launcher.id}:${acceptedLaunchOrdinal}`,
     ownerId: request.ownerId,
@@ -646,28 +794,32 @@ export function tryCommitStrategicLaunch(
     acceptedLaunchOrdinal,
     consumedChargeSlotId: chargeSlotId,
     launchedAtTick: transitionTick,
-    speedCellsPerSecond: effectiveWarheadProjectileSpeed(
-      state,
-      request.ownerId,
-      request.weapon,
-    ),
-    blastProfile: effectiveWarheadBlastProfile(
-      state,
-      request.ownerId,
-      request.weapon,
-    ),
-    blastSeed: strategicBlastHash32(
-      "strategic-blast-root",
-      state.seed,
-      launcher.id,
-      acceptedLaunchOrdinal,
-      request.weapon,
-      request.targetCellId,
-    ),
+    speedCellsPerSecond:
+      request.weapon === "MIRV"
+        ? BASE_PROJECTILE_SPEED.MIRV
+        : effectiveWarheadProjectileSpeed(
+            state,
+            request.ownerId,
+            request.weapon,
+          ),
+    blastProfile,
+    blastSeed,
+    ...(mirvPayload === undefined ? {} : { mirvPayload }),
   });
 
+  const consumesMirvEntitlement =
+    request.weapon === "MIRV" &&
+    mirvUseEntitlementAvailable(state, request.ownerId);
   const factions = state.factions.map((faction) =>
-    faction.id === owner.id ? { ...faction, ffy: debit.balance } : faction,
+    faction.id === owner.id
+      ? {
+          ...faction,
+          ffy: debit.balance,
+          ...(consumesMirvEntitlement
+            ? { mirvUseEntitlementConsumed: true as const }
+            : {}),
+        }
+      : faction,
   );
   let hostilityGrace = state.hostilityGrace;
   if (quote.targetFactionId !== undefined) {
