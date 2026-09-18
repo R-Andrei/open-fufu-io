@@ -218,12 +218,47 @@ describe("Transport runtime endpoint materialization", () => {
   });
 });
 
-describe("Transport authoritative occupancy-aware routing", () => {
-  it("excludes an occupied preferred endpoint and deterministically selects the next lawful endpoint", () => {
+describe("Transport endpoint stability with physical occupancy", () => {
+  it("keeps the statically selected endpoint when that embark cell is temporarily occupied", () => {
     const state = transportFixture("transport-endpoint-occupancy-red");
     const blockedState = addUnit(state, "TRADE_SHIP", "NAVAL", 5);
 
-    expect(resolveTransportEndpointRouteForState(blockedState, {
+    const resolved = resolveTransportEndpointRouteForState(blockedState, {
+      sourceCellId: 0,
+      targetCellId: 14,
+      embarkCoastCellIds: [0, 1],
+      landingCoastCellIds: [14],
+    });
+    expect(resolved).toMatchObject({
+      status: "FOUND",
+      route: {
+        sourceCellId: 0,
+        targetCellId: 14,
+        embarkCellId: 5,
+        landingCellId: 9,
+      },
+    });
+    if (resolved.status !== "FOUND") {
+      throw new Error("expected stable Transport endpoint route");
+    }
+
+    expect(
+      tryMaterializeTransportAtResolvedRoute(blockedState, {
+        ownerId: "alpha",
+        route: resolved.route,
+      }),
+    ).toMatchObject({
+      ok: false,
+      failure: { code: "EMBARK_BLOCKED" },
+    });
+  });
+
+  it("does not turn a statically valid endpoint pair into no-solution because its candidate cells are occupied", () => {
+    const state = transportFixture("transport-endpoint-no-oracle-red");
+    const firstBlocked = addUnit(state, "TRADE_SHIP", "NAVAL", 5);
+    const fullyBlocked = addUnit(firstBlocked, "TRADE_SHIP", "NAVAL", 6);
+
+    expect(resolveTransportEndpointRouteForState(fullyBlocked, {
       sourceCellId: 0,
       targetCellId: 14,
       embarkCoastCellIds: [0, 1],
@@ -233,23 +268,10 @@ describe("Transport authoritative occupancy-aware routing", () => {
       route: {
         sourceCellId: 0,
         targetCellId: 14,
-        embarkCellId: 6,
+        embarkCellId: 5,
         landingCellId: 9,
       },
     });
-  });
-
-  it("returns the same coarse no-solution result when occupancy eliminates every lawful endpoint", () => {
-    const state = transportFixture("transport-endpoint-no-solution-red");
-    const firstBlocked = addUnit(state, "TRADE_SHIP", "NAVAL", 5);
-    const fullyBlocked = addUnit(firstBlocked, "TRADE_SHIP", "NAVAL", 6);
-
-    expect(resolveTransportEndpointRouteForState(fullyBlocked, {
-      sourceCellId: 0,
-      targetCellId: 14,
-      embarkCoastCellIds: [0, 1],
-      landingCoastCellIds: [14],
-    })).toEqual({ status: "UNREACHABLE" });
   });
 
   it("routes around occupied water cells when another lawful Transport path exists", () => {
