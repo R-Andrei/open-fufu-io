@@ -1214,6 +1214,14 @@ describe("issue #206 strategic weapon baseline RED", () => {
       weapon: "ATOM_BOMB",
       targetCellId: 1,
       acceptedLaunchOrdinal: 0,
+      speedCellsPerSecond: 100,
+      blastProfile: {
+        profileVersion: "STRATEGIC_BLAST_V1",
+        innerNumerator: 144,
+        outerNumerator: 900,
+        profileDenominator: 1,
+      },
+      blastSeed: 3_808_051_912,
     });
     expect(matchStateAtWar(after, "alpha", "beta")).toBe(true);
   });
