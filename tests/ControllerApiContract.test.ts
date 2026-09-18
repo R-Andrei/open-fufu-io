@@ -111,14 +111,6 @@ const fixtureUnitRef = "unit-1" as UnitRef;
 const fixtureFactionARef = "faction-a" as FactionRef;
 const fixtureFactionBRef = "faction-b" as FactionRef;
 
-const fixtureBuildTank: BuildUnitCommand = {
-  kind: "BUILD_UNIT",
-  key: "build-tank",
-  unit: "TANK",
-  producerId: fixtureFactoryRef,
-};
-void fixtureBuildTank;
-
 const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void fixtureCapturedFactoryPath;
 
