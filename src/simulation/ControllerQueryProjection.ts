@@ -2137,7 +2137,7 @@ export function createControllerQuerySession(
   ): WeaponLaunchQuote => {
     beginQuery();
 
-    if (weapon !== "ATOM_BOMB") {
+    if (weapon === "MIRV") {
       return Object.freeze({
         legal: false,
         failureCode: "INVALID_COMMAND" as const,
