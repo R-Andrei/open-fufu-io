@@ -161,7 +161,7 @@ export interface LaunchStrategicWeaponAction {
   readonly type: "LAUNCH_STRATEGIC_WEAPON";
   readonly ownerId: string;
   readonly launcherId: string;
-  readonly weapon: Exclude<StrategicWeaponType, "MIRV">;
+  readonly weapon: StrategicWeaponType;
   readonly targetCellId: number;
   readonly targetFactionId?: string;
 }
