@@ -56,6 +56,8 @@ not a warhead projectile:
   pre-separation MIRV carrier
 ```
 
+Strategic projectiles, including the pre-separation MIRV carrier and separated MIRV warheads, occupy a distinct aerial/projectile layer. Their cell position is non-blocking: they do not reserve or contest the ordinary persistent-structure/mobile-unit physical occupancy plane and are not route blockers merely because their flight state has a cell location.
+
 Origin rules such as P10 may transform the `warhead projectile` class; the modifier itself remains authored in `ORIGIN_TRAIT_CATALOGUE.md`. A projectile class outside that set does not inherit a warhead-only modifier merely because it participates in the same strategic weapon.
 
 Changing projectile speed changes elapsed travel time and therefore the physical interception opportunity. It does **not** by itself change blast geometry/effect, weapon cost, launcher legality, target distribution, MIRV payload count, or MIRV separation progress.
@@ -671,6 +673,8 @@ A non-committing prospective build evaluation is not a reservation. Consequently
 
 Hard build prohibitions are evaluated before transaction resources are committed and remain effective even when another rule changes the payment resource or makes the purchase free. Alternate payment therefore never bypasses a Warship build prohibition or ownership cap.
 
+Warship completion uses the producing Port's persistent designated Deep-Water output/dock cell from `TERRAIN_AND_STRUCTURES.md`. When construction completes, the Warship materializes only on that exact slot. If the slot is occupied or is no longer a legal Deep-Water deployment cell, the completed job remains `READY_TO_DEPLOY`, continues consuming the Port's production/completion capacity, and retries the same slot on later ticks. It never scans or reroutes to another neighboring water cell.
+
 ## 3.2 Strategic/autonomous control
 
 Warships are autonomous combat formations rather than RTS-micro units.
@@ -759,15 +763,38 @@ The three-Transport cap prevents fragmentation of one invasion into very large n
 
 ## 5.1 Embark and autonomous travel
 
-The controller begins an amphibious operation by choosing a legal embark source, legal landing target, and Population commitment. The simulation creates the Transport and owns pathfinding/travel to that target; Transports do not accept generic controller movement orders. Baseline Transport routing may traverse both Shallow Water and Deep Water. This traversal permission is Transport-specific and does not broaden the movement rule of another water unit.
+The controller begins an amphibious operation by choosing desired source and target cells as **strategic intent**, plus a Population commitment. Those authored cells do not themselves have to be legal physical water embark/landing cells. Transport admission supplies the lawful land-side embark/landing coast candidates around the authored intents; the simulation maps each such coast to its cardinally adjacent Shallow-Water/Deep-Water physical candidates and resolves one connected water route.
+
+Endpoint selection has no arbitrary search-radius cap. For each connected physical embark/landing pair:
+
+```text
+sourceOffset = ManhattanDistance(authoredSource, physicalEmbark)
+waterCost    = number of legal cardinal water edges in the route
+targetOffset = ManhattanDistance(physicalLanding, authoredTarget)
+totalCost    = sourceOffset + waterCost + targetOffset
+```
+
+Choose the lexicographically smallest result by:
+
+1. `totalCost`;
+2. `sourceOffset + targetOffset`;
+3. `waterCost`;
+4. physical embark `cellId`;
+5. physical landing `cellId`.
+
+Endpoint identity is selected from stable geography, coast legality, Transport-water legality, and connectivity rather than transient physical occupancy. Temporary mobile-unit occupancy does not remove endpoint candidates, change the endpoint-selection objective, or turn an otherwise connected endpoint pair into a new no-solution result. After the pair is fixed, current occupancy is an execution/pathing constraint: routing may use another lawful water path to the same physical landing endpoint when one exists, but it does not silently select different embark/landing endpoints. If no alternate current path exists, the operation retains its selected endpoints and waits/blocks under ordinary physical occupancy instead of exposing occupancy through endpoint reselection or a distinct failure.
+
+The authored source/target intent and the resolved physical route are distinct persistent semantics. The Transport materializes at the resolved physical embark cell and autonomously follows the resolved water route, while the authored target remains the strategic landing/hostility target for downstream rules. If the resolved embark cell is occupied when materialization is attempted, the operation waits/fails that attempt as blocked without silently selecting a different endpoint. Later physical movement participates in the shared occupancy/arbitration rules rather than a Transport-specific stacking exception.
+
+Transports do not accept generic controller movement orders. Baseline Transport routing may traverse both Shallow Water and Deep Water. This traversal permission is Transport-specific and does not broaden the movement rule of another water unit.
 
 When the accepted target is owned by an opposing hostility side, the resulting Transport operation is controller-directed hostility under `OPEN_FUFU_DESIGN.md` and maintains the corresponding `atWar` relation while that directed hostile operation remains active. The Transport's autonomous routing does not create additional war relations with third parties merely because ownership or nearby combat later changes.
 
 ## 5.2 Amphibious landing
 
-Reaching a legal hostile/neutral landing coast does **not** award the target cell.
+Reaching the resolved physical landing water endpoint does **not** award the authored target cell. The authored target remains the political/acquisition target even when the physical water endpoint is a different cell.
 
-When an active Transport physically reaches its legal landing target and proceeds down the landing path, the authoritative landing transition is:
+When an active Transport reaches its resolved landing endpoint and proceeds down the landing path, the authoritative sequence is:
 
 ```text
 freeze current carried Population
@@ -778,22 +805,26 @@ remove landing casualties from Total Population
     ↓
 move surviving Population out of the Transport bucket
     ↓
-terminate the Transport as LANDED (not destroyed)
-    ↓
-create one local amphibious territorial commitment from the survivors
+create one local amphibious territorial commitment against the authored target
     ↓
 ordinary hostile/neutral acquisition resolution
+    ↓
+if ownership is established, complete canonical structure-capture resolution
+    ↓
+terminate/remove the Transport as LANDED (not destroyed)
+    ↓
+run post-success landing consequences such as P37
 ```
 
-The effective landing-survival transform is resolved before any local land commitment exists and before the first acquisition/capture resolution at that coast. Its exact Origin-specific value/rounding, when transformed, is owned by `ORIGIN_TRAIT_CATALOGUE.md`.
+The effective landing-survival transform is resolved before any local land commitment exists and before the first acquisition/capture resolution at the authored target. Its exact Origin-specific value/rounding, when transformed, is owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
 Landing casualty resolution is a one-shot whole-Population event under `OPEN_FUFU_DESIGN.md`; it does not create a hidden residual ledger. If zero Population survives the landing transition, no local amphibious commitment is created and that Transport cannot establish ownership or produce a successful-landing consequence.
 
-The surviving local commitment then uses ordinary capture, casualty, terrain, defense, and structure-capture rules. The Transport itself never bypasses political ownership resolution merely by arriving.
+The surviving local commitment then uses ordinary capture, casualty, terrain, defense, and structure-capture rules. The Transport itself never bypasses political ownership resolution merely by reaching its physical landing endpoint.
 
-For one Transport operation, **successful amphibious landing** becomes true exactly when that operation's local amphibious commitment first successfully establishes ownership of the authored landing cell. If the cell contains an enemy persistent structure, canonical structure-capture resolution completes before post-success landing consequences run.
+For one Transport operation, **successful amphibious landing** becomes true exactly when that operation's local amphibious commitment first successfully establishes ownership of the authored landing cell. If the cell contains an enemy persistent structure, canonical structure-capture resolution completes before the Transport's post-success terminal removal and later landing consequences.
 
-After both ownership establishment and any structure-capture resolution are fixed, the simulation emits one immutable `AMPHIBIOUS_LANDING_ESTABLISHED` consequence/fact for that Transport operation. Origin effects such as P37 consume that post-success lifecycle point. Failure/destruction/abort before ownership establishment emits no such fact.
+After ownership establishment and any structure-capture resolution are fixed, the Transport is removed/terminated as `LANDED`. Only then does the simulation run the post-success landing consequence represented by `AMPHIBIOUS_LANDING_ESTABLISHED`. P37 consumes that lifecycle point by requesting an ordinary L1 Fort `GRANT` on the authored target cell. If ordinary Fort admission succeeds, the Fort materializes; if the cell is occupied or any ordinary grant/placement/admission rule rejects it, the result is `SKIP_GRANT_KEEP_LANDING`: ownership remains established, the Transport remains terminated, and no fallback Fort location is searched. Failure/destruction/abort before ownership establishment emits no successful-landing consequence.
 
 ## 5.3 Retreat / abort
 

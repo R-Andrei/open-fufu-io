@@ -615,6 +615,19 @@ Therefore a capped faction that loses its existing Factory and captures one repl
 
 ## 2.7 Structure-specific rules
 
+### Producer output slots
+
+Factory and Port are producer structures with one persistent designated physical output slot. `PURCHASE_BUILD` and `GRANT` admission for either producer must be able to assign that slot; there is no arbitrary-neighbor fallback when the required typed geometry is absent.
+
+The slot is selected once from cardinally adjacent candidates in ascending stable `cellId` order:
+
+- **Factory:** the candidate terrain must be valid for the canonical baseline Tank-derived output profile: Plains, Highland, Desert, Forest, Tundra, or Marsh. Mountain, Shallow Water, Deep Water, Impassable, and test-only terrain are invalid.
+- **Port:** the candidate must be Deep Water.
+
+Transient mobile occupancy does not change which slot the structure owns. The selected `outputCellId` is persistent deterministic state, is serialized/replayed, and survives construction completion, upgrades, and ownership transfer while the same physical structure incarnation survives.
+
+A consumer that finishes production into a designated slot must use that exact slot. If current ownership, terrain, or physical-occupancy rules make the slot temporarily unusable for that product, completed output waits in its producer-owned completion state and retains producer capacity until that same slot becomes legal. Completion never silently reroutes to another neighbor.
+
 ### City
 
 Each completed City contributes its listed percentage additively to the faction's City-derived Population Growth modifier. Cities never increase Population Capacity. Cities are eligible Train stations under `FFY_ECONOMY.md` through the rail station-interface contract in §1.8.
@@ -876,7 +889,7 @@ The accepted job snapshots the resulting chassis identity/profile, its finalized
 
 If the producing Factory still exists under the same owner but is temporarily ineligible/inactive, the job pauses with its remaining work unchanged. If that Factory is destroyed or changes owner, the unfinished job is cancelled; it is not transferred and its already committed FFY is not refunded.
 
-When work is complete, deployment considers the Factory's cardinal neighbors that are currently owned by the job owner, traversable by the resulting chassis, and physically unoccupied under §1.9. The deployment cell is the lowest stable `cellId` among those legal neighbors. If no such cell exists, the completed output remains waiting at the Factory and continues occupying the Factory's one Tank-build slot until deployment becomes possible. Deployment creates exactly one chassis at full effective maximum health; the deployment cell is its initial operating anchor. If the snapshotted strategic destination differs from that deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
+When work is complete, deployment uses the Factory's persistent designated `outputCellId` from Section 2.7; it does not rescan or substitute another neighbor. The exact slot must still be owned by the job owner, traversable by the resulting chassis, and physically unoccupied under §1.9. Otherwise the completed output remains `READY_TO_DEPLOY` at the Factory and continues occupying the Factory's one Tank-build slot until that same slot becomes legal. Deployment creates exactly one chassis at full effective maximum health on the designated slot; that cell is its initial operating anchor. If the snapshotted strategic destination differs from the deployment cell, it becomes the deployed chassis's active retained strategic destination under `OPEN_FUFU_DESIGN.md` §6.5.1. If the deployment cell itself is the requested destination, that order is already fulfilled there. A chassis deployed in the production phase cannot move, acquire a target, fire, receive repair, or otherwise act until the following simulation tick.
 
 ## 3.6 Autonomous intent, target selection, and pursuit
 

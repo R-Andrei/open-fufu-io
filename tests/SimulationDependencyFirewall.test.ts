@@ -47,6 +47,7 @@ const ALLOWED_BOUNDARY_OWNERS = new Set([
   "RUNTIME_CORE",
   "TEST_HARNESS",
   "MOBILE_UNITS",
+  "NAVAL",
   "POPULATION",
   "SIMULATION_EVENTS",
   "SPAWN",
@@ -561,8 +562,8 @@ describe("simulation dependency firewall", () => {
     const policy = loadSimulationBoundaryPolicy();
 
     expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
-    expect(graph.modules).toHaveLength(39);
-    expect(graph.edges).toHaveLength(139);
+    expect(graph.modules).toHaveLength(42);
+    expect(graph.edges).toHaveLength(153);
   });
 
   it("rejects unclassified, stale, duplicate, and misclassified architecture policy", () => {

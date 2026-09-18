@@ -38,7 +38,7 @@ function collidingStructureState(structureId: string) {
         {
           structureId,
           ownerId: "alpha",
-          type: "FACTORY",
+          type: "CITY",
           cellId: 0,
           level: 1,
         },
