@@ -4,6 +4,7 @@ import type {
   DecisionFailure,
   DecisionReceipt,
   EconomyView,
+  FactionRef,
   FactionStatus,
   PopulationView,
   SpawnInfluenceContext,
@@ -26,6 +27,7 @@ import {
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
 import { ECONOMY_TICKS_PER_SECOND, resolvePassiveFfyAwards } from "./Economy";
+import { calculateFactionScore } from "./FactionScore";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
@@ -55,9 +57,12 @@ export const CONTROLLER_QUERY_LIMITS = Object.freeze({
 });
 
 type ControllerHostFaultClassification = "INVALID_OUTPUT";
+type ControllerFactionReferenceSource = NonNullable<
+  Parameters<typeof createControllerQuerySession>[3]
+>;
 
 export interface LawfulFactionObservation {
-  readonly id: string;
+  readonly ref: FactionRef;
   readonly status: FactionStatus;
 }
 
@@ -416,6 +421,43 @@ function materializeControllerValue(
   }
 }
 
+function trustedInProcessOutputHasExpectedStructure(
+  outputKind: ControllerOutputKind,
+  output: Record<string, unknown>,
+): boolean {
+  if (controllerOutputHasExpectedStructure(outputKind, output)) return true;
+  if (outputKind !== "DECIDE" || !isPlainRecord(output.directives)) return false;
+  const set = output.directives.set;
+  if (!Array.isArray(set)) return false;
+
+  let normalizedLegacyCounterResponse = false;
+  const normalizedSet = set.map((directive) => {
+    if (
+      !isPlainRecord(directive) ||
+      directive.kind !== "COUNTER_RESPONSE" ||
+      directive.incomingOperation !== undefined ||
+      typeof directive.incomingOperationId !== "string"
+    ) {
+      return directive;
+    }
+    normalizedLegacyCounterResponse = true;
+    const { incomingOperationId, ...rest } = directive;
+    return Object.freeze({
+      ...rest,
+      incomingOperation: incomingOperationId,
+    });
+  });
+  if (!normalizedLegacyCounterResponse) return false;
+
+  return controllerOutputHasExpectedStructure(outputKind, {
+    ...output,
+    directives: {
+      ...output.directives,
+      set: normalizedSet,
+    },
+  });
+}
+
 function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
   return output === undefined
     ? Object.freeze({ ok: true as const })
@@ -606,7 +648,12 @@ export class InProcessTestControllerHost implements ControllerHost {
         output,
         new Set<object>(),
       ) as T;
-      if (!controllerOutputHasExpectedStructure(outputKind, materialized)) {
+      if (
+        !trustedInProcessOutputHasExpectedStructure(
+          outputKind,
+          materialized as Record<string, unknown>,
+        )
+      ) {
         return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
       }
 
@@ -696,10 +743,10 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
 }
 
 function freezeFactionObservation(
-  id: string,
+  ref: FactionRef,
   status: FactionStatus,
 ): LawfulFactionObservation {
-  return Object.freeze({ id, status });
+  return Object.freeze({ ref, status });
 }
 
 function freezePopulationObservation(
@@ -716,13 +763,13 @@ function freezePopulationObservation(
 }
 
 function freezeSelfFactionObservation(
-  id: string,
+  ref: FactionRef,
   status: FactionStatus,
   ffy: number,
   population: PopulationState,
 ): LawfulSelfFactionObservation {
   return Object.freeze({
-    id,
+    ref,
     status,
     ffy,
     population: freezePopulationObservation(population),
@@ -749,11 +796,23 @@ function realizedPassiveFfyPerSecondByFaction(
   return rates;
 }
 
+function requireFactionRef(
+  controllerReferences: ControllerFactionReferenceSource,
+  factionId: string,
+): FactionRef {
+  const ref = controllerReferences.issueFaction(factionId);
+  if (ref === undefined) {
+    throw new Error(`missing controller FactionRef for faction ${factionId}`);
+  }
+  return ref;
+}
+
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
   decisionNumber: number,
-  lastDecision?: DecisionReceipt,
+  lastDecision: DecisionReceipt | undefined,
+  controllerReferences: ControllerFactionReferenceSource,
 ): LawfulControllerObservation {
   const me = state.factions.find((faction) => faction.id === factionId);
   if (me === undefined) {
@@ -763,7 +822,12 @@ export function projectLawfulControllerObservation(
   const factions = Object.freeze(
     [...state.factions]
       .sort((left, right) => compareIds(left.id, right.id))
-      .map((faction) => freezeFactionObservation(faction.id, faction.status)),
+      .map((faction) =>
+        freezeFactionObservation(
+          requireFactionRef(controllerReferences, faction.id),
+          faction.status,
+        ),
+      ),
   );
   const passiveFfyPerSecond =
     realizedPassiveFfyPerSecondByFaction(state).get(factionId);
@@ -778,7 +842,12 @@ export function projectLawfulControllerObservation(
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
-    me: freezeSelfFactionObservation(me.id, me.status, me.ffy, me.population),
+    me: freezeSelfFactionObservation(
+      requireFactionRef(controllerReferences, me.id),
+      me.status,
+      me.ffy,
+      me.population,
+    ),
     factions,
     economy,
     ...(lastDecision === undefined ? {} : { lastDecision }),
@@ -1077,9 +1146,25 @@ export function evaluateControllerRound(
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
   controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
+  if (controllerReferences === undefined) {
+    throw new Error("controller reference session is required for controller round");
+  }
+
   const orderedFactionIds = [...state.factions]
     .map((faction) => faction.id)
     .sort(compareIds);
+  const factionScores = new (class extends Map<string, number> {
+    override get(factionId: string): number | undefined {
+      if (this.has(factionId)) return super.get(factionId);
+      const faction = state.factions.find(
+        (candidate) => candidate.id === factionId,
+      );
+      if (faction === undefined || faction.isMinorFaction) return undefined;
+      const score = calculateFactionScore(state, factionId);
+      this.set(factionId, score);
+      return score;
+    }
+  })();
   const outcomes: Array<InvocationOutcome | Promise<InvocationOutcome>> = [];
   let hasAsyncInvocation = false;
 
@@ -1094,12 +1179,14 @@ export function evaluateControllerRound(
       factionId,
       decisionNumber,
       previousReceipts.get(factionId),
+      controllerReferences,
     );
     const querySession = createControllerQuerySession(
       state,
       factionId,
       CONTROLLER_QUERY_LIMITS,
       controllerReferences,
+      factionScores,
     );
 
     try {

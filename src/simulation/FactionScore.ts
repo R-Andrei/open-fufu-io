@@ -171,6 +171,9 @@ export function calculateFactionScore(
 ): number {
   const faction = state.factions.find((candidate) => candidate.id === factionId);
   if (faction === undefined) throw new Error(`unknown faction: ${factionId}`);
+  if (faction.isMinorFaction) {
+    throw new Error("Minor Factions have no authoritative V1 combined score");
+  }
   if (faction.status !== "ACTIVE") return 0;
 
   const currentPower =
@@ -184,12 +187,16 @@ export function calculateFactionScore(
 
   const scoringState = Object.freeze({
     ...state,
+    // The canonical N denominator is the fixed starting Major-Faction roster;
+    // Minor Factions are actors but are not score participants.
     factions: Object.freeze(
-      state.factions.map((candidate) =>
-        candidate.id === factionId
-          ? Object.freeze({ ...candidate, ffy: Number(currentPower) })
-          : candidate,
-      ),
+      state.factions
+        .filter((candidate) => !candidate.isMinorFaction)
+        .map((candidate) =>
+          candidate.id === factionId
+            ? Object.freeze({ ...candidate, ffy: Number(currentPower) })
+            : candidate,
+        ),
     ),
     structures: Object.freeze(
       state.structures.filter((structure) => structure.ownerId !== factionId),

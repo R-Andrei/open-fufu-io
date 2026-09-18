@@ -444,6 +444,20 @@ function relationIdentity(faction: LandFactionStateLike) {
   };
 }
 
+type PublicCounterResponseDirective = Extract<
+  PersistentDirective,
+  { readonly kind: "COUNTER_RESPONSE" }
+>;
+type TrustedCounterResponseDirective = PublicCounterResponseDirective & {
+  readonly incomingOperationId?: string;
+};
+
+function trustedIncomingOperationId(
+  directive: PublicCounterResponseDirective,
+): string | undefined {
+  return (directive as TrustedCounterResponseDirective).incomingOperationId;
+}
+
 function cloneDirective(directive: PersistentDirective): PersistentDirective {
   switch (directive.kind) {
     case "LAND_OPERATION":
@@ -478,18 +492,20 @@ function cloneDirective(directive: PersistentDirective): PersistentDirective {
         key: directive.key,
         priority: materializeSpatialPolicy(directive.priority)!,
       });
-    case "COUNTER_RESPONSE":
+    case "COUNTER_RESPONSE": {
+      const incomingOperationId = trustedIncomingOperationId(directive);
       return Object.freeze({
         kind: directive.kind,
         key: directive.key,
         ...(directive.incomingOperation === undefined
           ? {}
           : { incomingOperation: directive.incomingOperation }),
-        ...(directive.incomingOperationId === undefined
+        ...(incomingOperationId === undefined
           ? {}
-          : { incomingOperationId: directive.incomingOperationId }),
+          : { incomingOperationId }),
         population: directive.population,
-      });
+      }) as unknown as PersistentDirective;
+    }
   }
 }
 
@@ -732,8 +748,9 @@ export function tryApplyPersistentDirectiveChanges<
       if (!isPositivePopulation(directive.population)) {
         return directiveFailure("INVALID_DIRECTIVE", directive.key);
       }
+      const incomingOperationId = trustedIncomingOperationId(directive);
       const incoming = state.operations.find(
-        (operation) => operation.id === directive.incomingOperationId,
+        (operation) => operation.id === incomingOperationId,
       );
       const incomingOwner =
         incoming?.kind === "ATTACK"

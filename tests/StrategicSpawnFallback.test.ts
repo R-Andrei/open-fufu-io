@@ -8,6 +8,7 @@ import type {
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
   InProcessTestControllerHost,
   projectLawfulControllerObservation,
@@ -169,6 +170,10 @@ describe("#107 Strategic Spawn certification regressions", () => {
         ],
       }),
     );
+    const references = new ControllerReferenceSession(
+      "strategic-memory-continuity",
+      state,
+    );
     let normalDecideCalls = 0;
     const host = new InProcessTestControllerHost({
       alpha: {
@@ -197,7 +202,13 @@ describe("#107 Strategic Spawn certification regressions", () => {
     expect(
       host.invoke(
         "alpha",
-        projectLawfulControllerObservation(state, "alpha", 0),
+        projectLawfulControllerObservation(
+          state,
+          "alpha",
+          0,
+          undefined,
+          references,
+        ),
       ),
     ).toEqual({ ok: true, output: { commands: [] } });
     expect(normalDecideCalls).toBe(1);

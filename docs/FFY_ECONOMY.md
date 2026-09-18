@@ -316,6 +316,8 @@ Baseline Trade Ship speed is:
 
 Baseline Trade Ship routing traverses **Deep Water only**. `SHALLOW_WATER` is not a legal Trade Ship route cell and does not contribute to Trade Ship reachability.
 
+Every launched Trade Ship materializes through its source Port's persistent designated Deep-Water output/dock cell from `TERRAIN_AND_STRUCTURES.md`. Transient physical occupancy of that exact dock blocks launch; the Port does not choose another neighboring water cell as a fallback.
+
 Every active Port with at least one legal reachable foreign Trade destination maintains its own independent deterministic dispatch timer.
 
 After the Port becomes active and after every successful dispatch, the next ordinary dispatch delay is a deterministic match-RNG value in:
@@ -425,6 +427,14 @@ A never-selected destination is older than every previously selected destination
 Distance does not affect destination selection. Peaceful factions, fixed teammates, and factions currently at war are all foreign destinations when otherwise legally reachable.
 
 The selected destination and planned route length are snapshotted at launch.
+
+Ordinary destination service does not serialize arrivals through the destination Port's designated dock. A lawful completion cell is any **Deep Water** cell whose center lies inside the inclusive radius-5 circle around the active destination Port cell:
+
+```text
+dx² + dy² <= 25
+```
+
+Reaching any such lawful delivery cell completes ordinary service even when the destination Port's designated dock is occupied by another physical unit. Cells outside that radius or on non-Deep-Water terrain do not complete service.
 
 If the destination changes owner but remains active, reachable, and foreign, the vessel continues to that physical Port. If it becomes invalid, the ship reroutes using the same policy without recomputing the voyage's snapshotted cargo value or `Vowner`.
 

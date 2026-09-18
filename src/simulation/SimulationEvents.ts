@@ -7,6 +7,10 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 
+type FactionId = string;
+type StructureId = string;
+type UnitId = string;
+
 const MOBILE_UNIT_TYPES = new Set<MobileUnitType>([
   "TANK",
   "HEAVY_ARTILLERY",

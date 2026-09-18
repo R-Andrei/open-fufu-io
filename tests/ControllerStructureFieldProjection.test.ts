@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import {
   STRUCTURE_FIELD_AFFILIATIONS as CONTROLLER_FIELD_AFFILIATIONS,
   STRUCTURE_FIELD_IDS as CONTROLLER_FIELD_IDS,
+  type StructureRef,
 } from "../src/core/controller/ControllerApi";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
@@ -11,6 +12,7 @@ import {
   STRUCTURE_FIELD_IDS,
 } from "../src/core/rules/RuleComposition";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createProspectiveMatchState } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
@@ -93,7 +95,7 @@ describe("controller structure-field projection", () => {
     );
     const structureView = source.slice(structureStart, structureEnd);
     expect(structureStart).toBeGreaterThanOrEqual(0);
-    expect(structureView).toContain("readonly ownerId: FactionId;");
+    expect(structureView).toContain("readonly ownerId: FactionRef;");
     expect(structureView).toContain("readonly type: StructureType;");
     expect(structureView).toContain("readonly cellId: CellId;");
     expect(structureView).toContain("readonly completedLevel?: StructureLevel;");
@@ -219,20 +221,20 @@ describe("controller structure-field projection", () => {
     );
     expect(source).toContain('readonly kind: "STRUCTURE_FIELD";');
     expect(source).toContain("readonly field: ControllerStructureFieldId;");
-    expect(source).toContain("readonly referenceFactionId: FactionId;");
+    expect(source).toContain("readonly referenceFactionId: FactionRef;");
     expect(source).toContain("readonly affiliation: StructureFieldAffiliation;");
     expect(source).toContain(
       "controllers must not approximate this with CIRCLE",
     );
   });
 
-  it("surfaces authoritative per-structure field selection for P27", () => {
+  it("surfaces ref-addressed per-structure field selection for P27", () => {
     const source = readFileSync(
       "src/core/controller/ControllerApi.ts",
       "utf8",
     );
     expect(source).toContain('readonly kind: "STRUCTURE_FIELD_INSTANCE";');
-    expect(source).toContain("readonly structureId: StructureId;");
+    expect(source).toContain("readonly structureId: StructureRef;");
     expect(source).toContain("readonly field: StructureFieldId;");
     expect(source).toContain(
       'readonly eligibilityField: Extract<StructureFieldId, "SAM_LAUNCHER">;',
@@ -242,7 +244,7 @@ describe("controller structure-field projection", () => {
     );
   });
 
-  it("keeps P45-concealed structure fields indistinguishable from unknown IDs across aggregate Cells APIs", async () => {
+  it("keeps P45-concealed structure fields indistinguishable from fabricated refs across aggregate Cells APIs", async () => {
     const alphaRules = compileRuleProfile(RULE_AXIS_REGISTRY, {
       contributions: [],
     });
@@ -312,24 +314,52 @@ describe("controller structure-field projection", () => {
       queriesPerDecision: 128,
       materializedCellsPerDecision: 25_000,
     } as const;
+    const references = new ControllerReferenceSession(
+      "controller-field-visibility-red:refs",
+      visibleState,
+    );
+    const betaFactionRef = references.issueFaction("beta");
+    const betaFortRef = references.issue(
+      "alpha",
+      "STRUCTURE",
+      "beta-fort",
+    ) as StructureRef | undefined;
+    const betaFortSelfRef = references.issue(
+      "beta",
+      "STRUCTURE",
+      "beta-fort",
+    ) as StructureRef | undefined;
+    if (
+      betaFactionRef === undefined ||
+      betaFortRef === undefined ||
+      betaFortSelfRef === undefined
+    ) {
+      throw new Error("expected public structure-field refs");
+    }
+    const fabricatedFortRef = `${betaFortRef}:fabricated` as StructureRef;
     const fortField = {
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "beta-fort",
+      structureId: betaFortRef,
       field: "FORT",
     } as const;
     const unknownFortField = {
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "does-not-exist",
+      structureId: fabricatedFortRef,
       field: "FORT",
     } as const;
     const aggregateBetaFortField = {
       kind: "STRUCTURE_FIELD",
       field: "FORT",
-      referenceFactionId: "beta",
+      referenceFactionId: betaFactionRef,
       affiliation: "SELF",
     } as const;
 
-    const visible = createControllerQuerySession(visibleState, "alpha", limits);
+    const visible = createControllerQuerySession(
+      visibleState,
+      "alpha",
+      limits,
+      references,
+    );
     expect((await visible.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
       Array.from({ length: cellCount }, (_, id) => id),
     );
@@ -343,10 +373,12 @@ describe("controller structure-field projection", () => {
     });
     expect(visibleFortCell?.structure).not.toHaveProperty("id");
 
+    references.reconcile(concealedState);
     const concealed = createControllerQuerySession(
       concealedState,
       "alpha",
       limits,
+      references,
     );
     expect(await concealed.cells.query(fortField)).toEqual({
       items: [],
@@ -382,8 +414,18 @@ describe("controller structure-field projection", () => {
     expect(concealedFortCell).toMatchObject({ id: 10, ownerId: "beta" });
     expect(concealedFortCell).not.toHaveProperty("structure");
 
-    const self = createControllerQuerySession(concealedState, "beta", limits);
-    expect((await self.cells.query(fortField)).items.map((cell) => cell.id)).toEqual(
+    const selfFortField = {
+      kind: "STRUCTURE_FIELD_INSTANCE",
+      structureId: betaFortSelfRef,
+      field: "FORT",
+    } as const;
+    const self = createControllerQuerySession(
+      concealedState,
+      "beta",
+      limits,
+      references,
+    );
+    expect((await self.cells.query(selfFortField)).items.map((cell) => cell.id)).toEqual(
       Array.from({ length: cellCount }, (_, id) => id),
     );
     expect((await self.cells.get(10))?.structure).toEqual({
@@ -443,19 +485,34 @@ describe("controller structure-field projection", () => {
       }),
       { controllerReferenceNamespace: "controller-p49-visibility-red" },
     );
-    const session = createControllerQuerySession(runtime.snapshot(), "alpha", {
-      queriesPerDecision: 128,
-      materializedCellsPerDecision: 25_000,
-    });
+    const references = runtime.controllerReferenceSession();
+    const betaFactionRef = references.issueFaction("beta");
+    const betaFortRef = references.issue(
+      "alpha",
+      "STRUCTURE",
+      "beta-fort",
+    ) as StructureRef | undefined;
+    if (betaFactionRef === undefined || betaFortRef === undefined) {
+      throw new Error("expected P49 structure-field refs");
+    }
+    const session = createControllerQuerySession(
+      runtime.snapshot(),
+      "alpha",
+      {
+        queriesPerDecision: 128,
+        materializedCellsPerDecision: 25_000,
+      },
+      references,
+    );
     const fortField = {
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "beta-fort",
+      structureId: betaFortRef,
       field: "FORT",
     } as const;
     const publicBlackoutField = {
       kind: "STRUCTURE_FIELD",
       field: "OBSERVATION",
-      referenceFactionId: "beta",
+      referenceFactionId: betaFactionRef,
       affiliation: "SELF",
     } as const;
 

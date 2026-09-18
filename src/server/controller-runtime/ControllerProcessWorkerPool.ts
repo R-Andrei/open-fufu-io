@@ -118,7 +118,8 @@ type WorkerPublicFactionEntry = Readonly<{
   relation: ControllerPublicFactionSource["entries"][number]["relation"];
   territoryCells: number;
   isMinorFaction: boolean;
-  score: number;
+  origin?: NonNullable<ControllerPublicFactionSource["entries"][number]["origin"]>;
+  score?: number;
   ownerCode?: number;
   teamId?: string;
 }>;
@@ -421,6 +422,35 @@ function encodeOwnership(
   });
 }
 
+function projectPublicOwnership(
+  ownership: CachedOwnershipSnapshot,
+  factions: ControllerPublicFactionSource | undefined,
+): WorkerOwnershipSnapshot {
+  if (factions === undefined) {
+    throw new Error("controller public ownership requires FactionRef metadata");
+  }
+
+  const factionRefs = new Array<string>(ownership.ownerCodeByFactionId.size);
+  for (const entry of factions.entries) {
+    const ownerCode = ownership.ownerCodeByFactionId.get(entry.authoritativeId);
+    if (ownerCode === undefined) continue;
+    const index = ownerCode - 1;
+    if (factionRefs[index] !== undefined) {
+      throw new Error("controller public ownership has duplicate faction metadata");
+    }
+    factionRefs[index] = entry.ref;
+  }
+
+  if (factionRefs.some((ref) => typeof ref !== "string" || ref.length === 0)) {
+    throw new Error("controller public ownership is missing FactionRef metadata");
+  }
+
+  return Object.freeze({
+    factionIds: Object.freeze(factionRefs),
+    ownerCodes: ownership.snapshot.ownerCodes,
+  });
+}
+
 function requirePositiveFinite(value: number, name: string): number {
   if (!Number.isFinite(value) || value <= 0) {
     throw new RangeError(`${name} must be a positive finite number`);
@@ -590,15 +620,26 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
           const ownerCode = ownership.ownerCodeByFactionId.get(
             entry.authoritativeId,
           );
+          const origin =
+            entry.origin === undefined
+              ? undefined
+              : Object.freeze({
+                  id: entry.origin.id,
+                  displayName: entry.origin.displayName,
+                  version: entry.origin.version,
+                  positiveTraitIds: Object.freeze([...entry.origin.positiveTraitIds]),
+                  negativeTraitIds: Object.freeze([...entry.origin.negativeTraitIds]),
+                });
           return Object.freeze({
             ref: entry.ref,
-            displayName: entry.displayName ?? entry.authoritativeId,
+            displayName: entry.displayName,
             status: entry.status,
             relation: entry.relation,
             territoryCells:
               ownership.cellCountByFactionId.get(entry.authoritativeId) ?? 0,
-            isMinorFaction: entry.isMinorFaction ?? false,
-            score: entry.score ?? 0,
+            isMinorFaction: entry.isMinorFaction,
+            ...(origin === undefined ? {} : { origin }),
+            ...(entry.score === undefined ? {} : { score: entry.score }),
             ...(ownerCode === undefined ? {} : { ownerCode }),
             ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
           });
@@ -610,6 +651,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
   private publicSpatialUpdate(
     slot: WorkerSlot,
     source: ControllerPublicSpatialSource | undefined,
+    factions: ControllerPublicFactionSource | undefined,
   ): WorkerPublicSpatialUpdate | undefined {
     if (source === undefined) return undefined;
     const staticSpatial = this.staticSpatialFor(source);
@@ -623,7 +665,9 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
       cacheKey: staticSpatial.cacheKey,
       ownershipCacheKey: ownership.cacheKey,
       ...(needsStatic ? { static: staticSpatial } : {}),
-      ...(needsOwnership ? { ownership: ownership.snapshot } : {}),
+      ...(needsOwnership
+        ? { ownership: projectPublicOwnership(ownership, factions) }
+        : {}),
     });
   }
 
@@ -673,6 +717,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
         publicSpatial = this.publicSpatialUpdate(
           slot,
           queued.querySession?.publicSpatial,
+          queued.querySession?.publicFactions,
         );
         publicFactions =
           queued.querySession?.publicFactions === undefined

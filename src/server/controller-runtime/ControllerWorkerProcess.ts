@@ -76,7 +76,8 @@ type WorkerPublicFactionEntry = Readonly<{
   relation: FactionReadView["relation"];
   territoryCells: number;
   isMinorFaction: boolean;
-  score: number;
+  origin?: NonNullable<FactionReadView["origin"]>;
+  score?: number;
   ownerCode?: number;
   teamId?: string;
 }>;
@@ -591,15 +592,19 @@ function isSelectorArgument(value: unknown): value is CellSelector {
   return isPlainRecord(value) && typeof value.kind === "string";
 }
 
-function isEntityFilterArgument(value: unknown): value is UnitFindFilter | StructureFindFilter {
+function isEntityFilterArgument(
+  value: unknown,
+): value is UnitFindFilter | StructureFindFilter {
   return isPlainRecord(value);
 }
 
 function isUnitLocatorArgument(value: unknown): value is UnitLocator {
   return (
     isPlainRecord(value) &&
-    ((typeof value.ref === "string" && !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
-      (typeof value.cellId === "number" && !Object.prototype.hasOwnProperty.call(value, "ref")))
+    ((typeof value.ref === "string" &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
   );
 }
 
@@ -608,7 +613,9 @@ function isStructureLocatorArgument(value: unknown): value is StructureLocator {
 }
 
 function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {
-  return args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]));
+  return (
+    args.length === 0 || (args.length === 1 && isEntityFilterArgument(args[0]))
+  );
 }
 
 function isControllerWorkerQueryRequest(
@@ -841,6 +848,44 @@ function installPublicSpatialUpdate(
   return update.cacheKey;
 }
 
+function validatePublicOrigin(
+  value: unknown,
+): NonNullable<FactionReadView["origin"]> | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainRecord(value)) {
+    throw new Error("controller public faction Origin is invalid");
+  }
+  const allowed = new Set([
+    "id",
+    "displayName",
+    "version",
+    "positiveTraitIds",
+    "negativeTraitIds",
+  ]);
+  if (
+    Object.keys(value).some((key) => !allowed.has(key)) ||
+    typeof value.id !== "string" ||
+    value.id.length === 0 ||
+    typeof value.displayName !== "string" ||
+    value.displayName.length === 0 ||
+    typeof value.version !== "string" ||
+    value.version.length === 0 ||
+    !Array.isArray(value.positiveTraitIds) ||
+    value.positiveTraitIds.some((traitId) => typeof traitId !== "string") ||
+    !Array.isArray(value.negativeTraitIds) ||
+    value.negativeTraitIds.some((traitId) => typeof traitId !== "string")
+  ) {
+    throw new Error("controller public faction Origin is invalid");
+  }
+  return Object.freeze({
+    id: value.id,
+    displayName: value.displayName,
+    version: value.version,
+    positiveTraitIds: Object.freeze([...value.positiveTraitIds]),
+    negativeTraitIds: Object.freeze([...value.negativeTraitIds]),
+  });
+}
+
 function validatePublicFactionSnapshot(
   value: WorkerPublicFactionSnapshot | undefined,
 ): WorkerPublicFactionSnapshot | undefined {
@@ -867,6 +912,7 @@ function validatePublicFactionSnapshot(
       "relation",
       "territoryCells",
       "isMinorFaction",
+      "origin",
       "score",
       "ownerCode",
       "teamId",
@@ -886,13 +932,15 @@ function validatePublicFactionSnapshot(
       !Number.isSafeInteger(entry.territoryCells) ||
       entry.territoryCells < 0 ||
       typeof entry.isMinorFaction !== "boolean" ||
-      typeof entry.score !== "number" || !Number.isFinite(entry.score) ||
+      (entry.score !== undefined &&
+        (typeof entry.score !== "number" || !Number.isFinite(entry.score))) ||
       (entry.ownerCode !== undefined &&
         (!Number.isSafeInteger(entry.ownerCode) || entry.ownerCode <= 0)) ||
       (entry.teamId !== undefined && typeof entry.teamId !== "string")
     ) {
       throw new Error("controller public faction entry is invalid");
     }
+    const origin = validatePublicOrigin(entry.origin);
     refs.add(entry.ref);
     return Object.freeze({
       ref: entry.ref,
@@ -901,7 +949,8 @@ function validatePublicFactionSnapshot(
       relation: entry.relation,
       territoryCells: entry.territoryCells as number,
       isMinorFaction: entry.isMinorFaction as boolean,
-      score: entry.score as number,
+      ...(origin === undefined ? {} : { origin }),
+      ...(entry.score === undefined ? {} : { score: entry.score as number }),
       ...(entry.ownerCode === undefined
         ? {}
         : { ownerCode: entry.ownerCode as number }),
@@ -1069,7 +1118,8 @@ function materializeFactionView(entry: WorkerPublicFactionEntry): FactionReadVie
     relation: entry.relation,
     territoryCells: entry.territoryCells,
     isMinorFaction: entry.isMinorFaction,
-    score: entry.score,
+    ...(entry.origin === undefined ? {} : { origin: entry.origin }),
+    ...(entry.score === undefined ? {} : { score: entry.score }),
     ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
   });
 }

@@ -35,8 +35,8 @@
     "src/simulation/StructuresCore.ts": "STRUCTURES",
     "src/simulation/TankCombat.ts": "TANK",
     "src/simulation/TankRepair.ts": "TANK",
-    "src/simulation/TankTargeting.ts": "TANK",
     "src/simulation/Tanks.ts": "TANK",
+    "src/simulation/TankTargeting.ts": "TANK",
     "src/simulation/TerritoryEffects.ts": "LAND",
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
     "src/simulation/TradeShips.ts": "ECONOMY",
@@ -81,6 +81,12 @@
       "to": "src/simulation/Economy.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller observation and admission use current Economy calculations without creating a cross-owner occurrence channel."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/FactionScore.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller runtime reads the Economy-owned authoritative combined faction score for lawful public faction projection; it does not duplicate score mechanics or convey an occurrence."
     },
     {
       "from": "src/simulation/ControllerRuntime.ts",
@@ -515,36 +521,6 @@
       "rationale": "Tank repair reads current Factory structure state and fields for service eligibility."
     },
     {
-      "from": "src/simulation/TankTargeting.ts",
-      "to": "src/simulation/HostilityState.ts",
-      "classification": "CURRENT_STATE_READ",
-      "rationale": "Tank targeting queries current hostility state for target legality rather than receiving an occurrence."
-    },
-    {
-      "from": "src/simulation/TankTargeting.ts",
-      "to": "src/simulation/LandOperations.ts",
-      "classification": "SHARED_CONTRACT",
-      "rationale": "Tank targeting reuses Land terrain base-spec contracts for legal traversal and targeting evaluation."
-    },
-    {
-      "from": "src/simulation/TankTargeting.ts",
-      "to": "src/simulation/MatchState.ts",
-      "classification": "CURRENT_STATE_READ",
-      "rationale": "Tank targeting derives deterministic choices from current authoritative MatchState."
-    },
-    {
-      "from": "src/simulation/TankTargeting.ts",
-      "to": "src/simulation/Navigation.ts",
-      "classification": "SHARED_CONTRACT",
-      "rationale": "Tank targeting consumes the canonical navigation substrate to rank reachable firing positions."
-    },
-    {
-      "from": "src/simulation/TankTargeting.ts",
-      "to": "src/simulation/SimulationMap.ts",
-      "classification": "CURRENT_STATE_READ",
-      "rationale": "Tank targeting reads current map geometry and terrain for leash, range, and firing-position calculations."
-    },
-    {
       "from": "src/simulation/Tanks.ts",
       "to": "src/simulation/Economy.ts",
       "classification": "ORCHESTRATION",
@@ -585,6 +561,36 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Tank production and repair-related lifecycle logic read current Factory structure state."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting queries current hostility state for target legality rather than receiving an occurrence."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank targeting reuses Land terrain base-spec contracts for legal traversal and targeting evaluation."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting derives deterministic choices from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Tank targeting consumes the canonical navigation substrate to rank reachable firing positions."
+    },
+    {
+      "from": "src/simulation/TankTargeting.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Tank targeting reads current map geometry and terrain for leash, range, and firing-position calculations."
     },
     {
       "from": "src/simulation/TerritoryEffects.ts",
@@ -654,15 +660,15 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
-      "to": "src/simulation/TankTargeting.ts",
-      "classification": "ORCHESTRATION",
-      "rationale": "TickEngine invokes Tank-owned autonomous target selection and pursuit routing in deterministic order."
-    },
-    {
-      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Tanks.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine invokes Tank-owned lifecycle and final production phases in deterministic authoritative order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TankTargeting.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Tank-owned autonomous target selection and pursuit routing in deterministic order."
     },
     {
       "from": "src/simulation/TickEngine.ts",
@@ -720,6 +726,18 @@
     },
     {
       "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Transport endpoint resolution/materialization and post-success landing consequences read and materialize current authoritative MatchState while applying Naval-owned Transport lifecycle semantics."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport materialization, physical routing, and terminal landing removal use MobileUnits-owned canonical physical-unit primitives."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
       "to": "src/simulation/Navigation.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "Transport endpoint resolution consumes the canonical navigation substrate for deterministic strategic-intent endpoint pairing and water routing."
@@ -729,6 +747,12 @@
       "to": "src/simulation/SimulationMap.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Transport endpoint resolution reads map terrain and geometry to map lawful coast candidates onto Shallow/Deep physical water endpoints."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Post-success Transport landing consequences invoke Structure-owned ordinary Fort grant admission for P37 rather than bypassing physical placement or ownership rules."
     },
     {
       "from": "src/simulation/VisibilityState.ts",

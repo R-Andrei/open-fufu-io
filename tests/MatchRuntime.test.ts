@@ -40,11 +40,12 @@ function twoFactionRuntime(seed = "controller-runtime") {
 }
 
 function ordinaryObservation(): LawfulControllerObservation {
+  const alphaRef = "fixture:alpha" as LawfulControllerObservation["me"]["ref"];
   return Object.freeze({
     tick: 0,
     decisionNumber: 0,
     me: Object.freeze({
-      id: "alpha",
+      ref: alphaRef,
       status: "ACTIVE" as const,
       population: Object.freeze({
         total: 0,
@@ -55,7 +56,7 @@ function ordinaryObservation(): LawfulControllerObservation {
         neutralSettlementHalfResidual: 0,
       }),
     }),
-    factions: Object.freeze([{ id: "alpha", status: "ACTIVE" as const }]),
+    factions: Object.freeze([{ ref: alphaRef, status: "ACTIVE" as const }]),
   });
 }
 
@@ -149,6 +150,12 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       value: 73,
     });
     runtime.tick();
+    const references = runtime.controllerReferenceSession();
+    const alphaRef = references.issueFaction("alpha");
+    const betaRef = references.issueFaction("beta");
+    if (alphaRef === undefined || betaRef === undefined) {
+      throw new Error("expected match-global faction refs");
+    }
 
     let alphaObservation: LawfulInProcessControllerObservation | undefined;
     runtime.runControllerRound(
@@ -163,7 +170,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
       tick: 1,
       decisionNumber: 0,
       me: {
-        id: "alpha",
+        ref: alphaRef,
         status: "ACTIVE",
         population: {
           total: 0,
@@ -175,10 +182,14 @@ describe("authoritative MatchRuntime walking skeleton", () => {
         },
       },
       factions: [
-        { id: "alpha", status: "ACTIVE" },
-        { id: "beta", status: "ACTIVE" },
+        { ref: alphaRef, status: "ACTIVE" },
+        { ref: betaRef, status: "ACTIVE" },
       ],
     });
+    expect(alphaObservation?.me).not.toHaveProperty("id");
+    expect(alphaObservation?.factions.every((faction) => !("id" in faction))).toBe(
+      true,
+    );
     expect(alphaObservation?.map?.cellCount).toBe(4);
     expect(alphaObservation?.cells?.owner(0)).toBeNull();
     expect(alphaObservation?.segments?.cellIds(0)).toBeUndefined();

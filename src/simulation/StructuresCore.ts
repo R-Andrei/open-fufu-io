@@ -53,6 +53,15 @@ const PORT_LAND_TERRAINS = new Set([
   "MARSH",
 ]);
 
+const FACTORY_OUTPUT_TERRAINS = new Set([
+  "PLAINS",
+  "HIGHLAND",
+  "DESERT",
+  "FOREST",
+  "TUNDRA",
+  "MARSH",
+]);
+
 const BASE_STRUCTURE_CONSTRUCTION_TICKS: Readonly<Record<StructureType, number>> =
   Object.freeze({
     CITY: 50,
@@ -758,10 +767,9 @@ function designatedProducerOutputCell(
   if (type === "PORT") {
     return neighbors.find((candidate) => state.map.terrainAt(candidate) === "DEEP_WATER");
   }
-  return neighbors.find((candidate) => {
-    const terrain = state.map.terrainAt(candidate);
-    return terrain !== "DEEP_WATER" && terrain !== "SHALLOW_WATER" && terrain !== "IMPASSABLE";
-  });
+  return neighbors.find((candidate) =>
+    FACTORY_OUTPUT_TERRAINS.has(state.map.terrainAt(candidate)),
+  );
 }
 
 function initialGrantedChargeSlots(

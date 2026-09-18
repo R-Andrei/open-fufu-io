@@ -37,11 +37,16 @@ function decideBaseline(
   if (profile.planners.expansion !== "NEAREST") return;
   if (profile.arbiter.kind !== "SIMPLE_PRIORITY") return;
 
+  const selfFaction = spatial.factions
+    .find()
+    .find((faction) => faction.relation === "SELF");
+  if (selfFaction === undefined) return;
+
   let sourceId: number | undefined;
   let targetId: number | undefined;
   for (let id = 0; id < spatial.map.cellCount; id += 1) {
     const ownerId = spatial.cells.owner(id);
-    if (ownerId === observation.me.id) {
+    if (ownerId === selfFaction.ref) {
       if (sourceId !== undefined) return;
       sourceId = id;
     } else if (ownerId === null) {

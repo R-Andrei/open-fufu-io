@@ -1,3 +1,4 @@
+import type { OriginView } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import type { MapArtifactBinding } from "./MapArtifact";
 import type { StructureGrantRequest } from "./Structures";
@@ -27,6 +28,9 @@ export function isArtifactMapSpec(map: MatchMapSpec): map is ArtifactMapSpec {
 
 export interface MatchFactionSpec {
   readonly id: string;
+  readonly displayName: string;
+  readonly isMinorFaction: boolean;
+  readonly origin?: OriginView;
   readonly rules: CompiledRuleProfile;
   readonly fixedTeamId?: string;
 }

@@ -1,6 +1,7 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
   evaluateControllerRound,
 } from "../src/simulation/ControllerRuntime";
@@ -58,26 +59,45 @@ function localSpatialState(): MatchState {
     factions: Object.freeze([
       Object.freeze({
         id: "alpha",
+        displayName: "Alpha Republic",
+        isMinorFaction: false,
+        origin: Object.freeze({
+          id: "origin-alpha",
+          displayName: "Alpha Origin",
+          version: "1",
+          positiveTraitIds: Object.freeze(["P01"]),
+          negativeTraitIds: Object.freeze(["N01"]),
+        }),
         status: "ACTIVE" as const,
         rules,
         population,
         ffy: 25_000,
         lifetimeGrossPositiveFfyEarned: 0,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
       Object.freeze({
         id: "beta",
+        displayName: "Beta Goons",
+        isMinorFaction: true,
         status: "ACTIVE" as const,
         rules,
         population,
         ffy: 25_000,
         lifetimeGrossPositiveFfyEarned: 0,
+        successfulStructurePurchaseTypes: Object.freeze([]),
         testMarker: 0,
       }),
     ]),
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    factoryRailLoops: Object.freeze([]),
+    factoryTrainEpochs: Object.freeze([]),
+    trainServices: Object.freeze([]),
+    tankProductionJobs: Object.freeze([]),
+    tankOperationalStates: Object.freeze([]),
+    directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -122,12 +142,21 @@ describe("controller local public spatial runtime", () => {
 
   it("serves map, public ownership, and canonical Segment cells synchronously inside the isolate", async () => {
     const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-local-read",
+      state,
+    );
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
         alpha: artifact(`
           export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
             const checks = [
+              self !== undefined,
+              enemy !== undefined,
               context.map.width === 3,
               context.map.height === 2,
               context.map.cellCount === 6,
@@ -144,8 +173,8 @@ describe("controller local public spatial runtime", () => {
               JSON.stringify(context.map.cardinalNeighbors(1)) === "[0,2,4]",
               context.map.cardinalNeighbors(6) === undefined,
               context.cells.owner(0) === null,
-              context.cells.owner(1) === "alpha",
-              context.cells.owner(2) === "beta",
+              context.cells.owner(1) === self?.ref,
+              context.cells.owner(2) === enemy?.ref,
               context.cells.owner(6) === undefined,
               JSON.stringify(context.segments.cellIds(0)) === "[0,1,2,3,4,5]",
               context.segments.cellIds(1) === undefined,
@@ -171,6 +200,7 @@ describe("controller local public spatial runtime", () => {
           new Map(),
           new Map(),
           new Set(),
+          references,
         ),
       );
 
@@ -185,8 +215,69 @@ describe("controller local public spatial runtime", () => {
     }
   });
 
+  it("preserves authoritative faction metadata through the production isolate without Minor score placeholders", async () => {
+    const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-faction-metadata-worker-red",
+      state,
+    );
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
+            const valid =
+              self?.displayName === "Alpha Republic" &&
+              self?.isMinorFaction === false &&
+              self?.origin?.id === "origin-alpha" &&
+              self?.origin?.displayName === "Alpha Origin" &&
+              typeof self?.score === "number" &&
+              enemy?.displayName === "Beta Goons" &&
+              enemy?.isMinorFaction === true &&
+              !Object.prototype.hasOwnProperty.call(enemy, "score") &&
+              !Object.prototype.hasOwnProperty.call(enemy, "origin");
+            return valid
+              ? {
+                  commands: [
+                    { kind: "CAPITULATE", key: "faction-metadata-worker-ok" },
+                  ],
+                }
+              : { commands: [] };
+          }
+        `),
+        beta: artifact("export function decide() { return { commands: [] }; }"),
+      });
+
+      const evaluated = await Promise.resolve(
+        evaluateControllerRound(
+          state,
+          host,
+          41,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Set(),
+          references,
+        ),
+      );
+
+      expect(evaluated.actions).toEqual([
+        { type: "CAPITULATE_FACTION", factionId: "alpha" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("does not retain removed connectedComponents as a hidden production isolate capability", async () => {
     const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-removed-components",
+      state,
+    );
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
@@ -212,6 +303,7 @@ describe("controller local public spatial runtime", () => {
           new Map(),
           new Map(),
           new Set(),
+          references,
         ),
       );
 
@@ -276,8 +368,10 @@ describe("controller local public spatial runtime", () => {
           Object.freeze({
             authoritativeId: "beta",
             ref: factionRef,
+            displayName: "Beta Goons",
             status: "ACTIVE" as const,
             relation: "ENEMY" as const,
+            isMinorFaction: true,
           }),
         ]),
       }),
@@ -400,6 +494,60 @@ describe("controller local public spatial runtime", () => {
     }
   });
 
+  it("uses FactionRef values for production-isolate ownership reads", async () => {
+    const state = localSpatialState();
+    const references = new ControllerReferenceSession(
+      "controller-public-spatial-ownership-ref-red",
+      state,
+    );
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            const factions = context.factions.find();
+            const self = factions.find((candidate) => candidate.relation === "SELF");
+            const enemy = factions.find((candidate) => candidate.relation === "ENEMY");
+            const valid =
+              self !== undefined &&
+              enemy !== undefined &&
+              self.ref !== "alpha" &&
+              enemy.ref !== "beta" &&
+              context.cells.owner(1) === self.ref &&
+              context.cells.owner(2) === enemy.ref;
+            return valid
+              ? {
+                  commands: [
+                    { kind: "CAPITULATE", key: "faction-ref-ownership-ok" },
+                  ],
+                }
+              : { commands: [] };
+          }
+        `),
+        beta: artifact("export function decide() { return { commands: [] }; }"),
+      });
+
+      const evaluated = await Promise.resolve(
+        evaluateControllerRound(
+          state,
+          host,
+          6,
+          new Map(),
+          new Map(),
+          new Map(),
+          new Set(),
+          references,
+        ),
+      );
+
+      expect(evaluated.actions).toEqual([
+        { type: "CAPITULATE_FACTION", factionId: "alpha" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  });
+
   it("preserves the immutable ownership revision across a tick with no ownership change", () => {
     const state = localSpatialState();
     const advanced = new TickEngine().advance(state, []);
@@ -412,6 +560,31 @@ describe("controller local public spatial runtime", () => {
     const width = 2_400;
     const height = 2_000;
     const cellCount = width * height;
+    const alphaRef = "ofr1:controller-worker-cache:f:000000000001";
+    const betaRef = "ofr1:controller-worker-cache:f:000000000002";
+    const publicFactions = Object.freeze({
+      requesterFactionId: "alpha",
+      entries: Object.freeze([
+        Object.freeze({
+          authoritativeId: "alpha",
+          ref: alphaRef,
+          displayName: "Alpha Republic",
+          status: "ACTIVE" as const,
+          relation: "SELF" as const,
+          isMinorFaction: false,
+          score: 1000,
+        }),
+        Object.freeze({
+          authoritativeId: "beta",
+          ref: betaRef,
+          displayName: "Beta Republic",
+          status: "ACTIVE" as const,
+          relation: "ENEMY" as const,
+          isMinorFaction: false,
+          score: 1000,
+        }),
+      ]),
+    });
     let terrainReads = 0;
     let allowTerrainReads = true;
     const map = Object.freeze({
@@ -454,6 +627,7 @@ describe("controller local public spatial runtime", () => {
     });
     const firstSession = Object.freeze({
       publicSpatial: Object.freeze({ map, ownership: firstOwnership }),
+      publicFactions,
       usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
     }) as unknown as ControllerQuerySession;
 
@@ -479,7 +653,7 @@ describe("controller local public spatial runtime", () => {
         ok: true,
         output: {
           commands: [],
-          log: "4800000:PLAINS:alpha:alpha:alpha",
+          log: `4800000:PLAINS:${alphaRef}:${alphaRef}:${alphaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },
       });
@@ -501,6 +675,7 @@ describe("controller local public spatial runtime", () => {
             replacementOwnershipReads += 1;
           }),
         }),
+        publicFactions,
         usage: () => Object.freeze({ queries: 0, materializedCells: 0 }),
       }) as unknown as ControllerQuerySession;
       const replaced = await pool.invoke(request, replacementSession);
@@ -508,7 +683,7 @@ describe("controller local public spatial runtime", () => {
         ok: true,
         output: {
           commands: [],
-          log: "4800000:PLAINS:beta:beta:beta",
+          log: `4800000:PLAINS:${betaRef}:${betaRef}:${betaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },
       });

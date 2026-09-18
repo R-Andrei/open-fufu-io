@@ -1,10 +1,14 @@
 // Independent adversarial certification probes for issue #143.
-import type { StructureType } from "../src/core/controller/ControllerApi";
+import type {
+  StructureRef,
+  StructureType,
+} from "../src/core/controller/ControllerApi";
 import { echoRuleContribution } from "../src/core/rules/EchoRuleRegistry";
 import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
@@ -263,15 +267,26 @@ describe("persistent structure adversarial certification", () => {
         }),
       ],
     });
+    const references = new ControllerReferenceSession(
+      "structure-certification-field-transfer",
+      withFort,
+    );
+    const beforeRef = references.issue("beta", "STRUCTURE", "captured-fort");
+    if (beforeRef === undefined) throw new Error("expected captured Fort ref for beta");
 
-    const before = createControllerQuerySession(withFort, "beta", {
-      queriesPerDecision: 4,
-      materializedCellsPerDecision: 4,
-    });
+    const before = createControllerQuerySession(
+      withFort,
+      "beta",
+      {
+        queriesPerDecision: 4,
+        materializedCellsPerDecision: 4,
+      },
+      references,
+    );
     expect(
       await before.cells.count({
         kind: "STRUCTURE_FIELD_INSTANCE",
-        structureId: "captured-fort",
+        structureId: beforeRef as StructureRef,
         field: "FORT",
       }),
     ).toBe(31);
@@ -297,10 +312,18 @@ describe("persistent structure adversarial certification", () => {
     const transferred = createProspectiveMatchState(postLand, {
       structures: transferredStructures,
     });
-    const after = createControllerQuerySession(transferred, "alpha", {
-      queriesPerDecision: 4,
-      materializedCellsPerDecision: 4,
-    });
+    references.reconcile(transferred);
+    const afterRef = references.issue("alpha", "STRUCTURE", "captured-fort");
+    if (afterRef === undefined) throw new Error("expected captured Fort ref for alpha");
+    const after = createControllerQuerySession(
+      transferred,
+      "alpha",
+      {
+        queriesPerDecision: 4,
+        materializedCellsPerDecision: 4,
+      },
+      references,
+    );
 
     expect(transferred.structures[0]).toEqual(
       expect.objectContaining({
@@ -313,7 +336,7 @@ describe("persistent structure adversarial certification", () => {
     expect(
       await after.cells.count({
         kind: "STRUCTURE_FIELD_INSTANCE",
-        structureId: "captured-fort",
+        structureId: afterRef as StructureRef,
         field: "FORT",
       }),
     ).toBe(43);
