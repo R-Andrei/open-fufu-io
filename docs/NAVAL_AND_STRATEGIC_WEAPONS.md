@@ -591,9 +591,16 @@ distribution radius = 750 cells
 minimum warhead-center spacing = 55 cells
 ```
 
-The first warhead targets the submitted primary target cell.
+The first warhead targets the submitted primary target cell and is canonical child index `0`.
 
-Remaining centers are chosen deterministically from legal land cells within 750 cells of the primary target that belong to the snapshotted target faction, respecting the 55-cell minimum spacing.
+For secondary warheads, enumerate legal land cells within 750 cells of the primary target that belong to the snapshotted target faction, excluding the primary cell. Canonical secondary-candidate order is:
+
+1. ascending squared Euclidean distance from the primary target;
+2. ascending canonical `cellId` for equal-distance candidates.
+
+Walk that ordered list once. Greedily accept a candidate only when its center is at least 55 cells from every already-selected warhead center, including the primary. Stop when 250 total warheads have been selected or when the candidate list is exhausted.
+
+The accepted order is the canonical MIRV child order. It determines child indices and therefore the deterministic child seed inputs.
 
 The resolver does not search beyond the authored distribution radius merely to fill all 250 warheads. If fewer legal spaced centers exist, fewer warheads resolve.
 
