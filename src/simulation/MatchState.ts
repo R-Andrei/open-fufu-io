@@ -441,7 +441,8 @@ function freezeStrategicProjectiles(
         throw new Error("MIRV payload profile is invalid");
       }
       const seenTargets = new Set<number>();
-      const children = payload.children.map((child, childIndex) => {
+      const children = payload.children.map(
+        (child: MirvPayloadChildState, childIndex: number) => {
         if (
           child === null ||
           typeof child !== "object" ||
@@ -457,11 +458,12 @@ function freezeStrategicProjectiles(
           throw new Error("MIRV payload child 0 must target the primary cell");
         }
         seenTargets.add(child.targetCellId);
-        return Object.freeze({
-          targetCellId: child.targetCellId,
-          blastSeed: child.blastSeed,
-        });
-      });
+          return Object.freeze({
+            targetCellId: child.targetCellId,
+            blastSeed: child.blastSeed,
+          });
+        },
+      );
       mirvPayload = Object.freeze({
         childSpeedCellsPerSecond: payload.childSpeedCellsPerSecond,
         distributionRadiusCells: payload.distributionRadiusCells,
