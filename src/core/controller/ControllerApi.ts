@@ -703,7 +703,8 @@ export interface TransportEmbarkQuote extends ActionQuote {
 }
 
 export interface WeaponLaunchQuote extends ActionQuote {
-  readonly launcherId: StructureRef | UnitRef;
+  /** Present only when the launcher is lawfully resolvable to the requester. */
+  readonly launcherId?: StructureRef | UnitRef;
   readonly weapon: StrategicWeaponType;
   readonly targetCellId: CellId;
   readonly chargeConsumed: boolean;

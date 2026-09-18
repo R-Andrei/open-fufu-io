@@ -5,10 +5,12 @@ import { fileURLToPath } from "node:url";
 import type {
   CellId,
   CellSelector,
+  FactionRef,
   SegmentId,
   StructureFindFilter,
   StructureType,
   StructureLocator,
+  StrategicWeaponType,
   TerrainType,
   PurchasableUnitType,
   UnitFindFilter,
@@ -99,6 +101,15 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "TERRITORY_CHECK_RELINQUISH";
       args: readonly [CellSelector];
+    }>
+  | Readonly<{
+      operation: "WEAPONS_CHECK_LAUNCH";
+      args: readonly [
+        StructureLocator | UnitLocator,
+        StrategicWeaponType,
+        CellId,
+        FactionRef?,
+      ];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -320,6 +331,17 @@ function isControllerWorkerQueryRequest(
       );
     case "TERRITORY_CHECK_RELINQUISH":
       return args.length === 1 && isSelectorArgument(args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return (
+        (args.length === 3 || args.length === 4) &&
+        (isStructureLocatorArgument(args[0]) ||
+          isUnitLocatorArgument(args[0])) &&
+        (args[1] === "ATOM_BOMB" ||
+          args[1] === "HYDROGEN_BOMB" ||
+          args[1] === "MIRV") &&
+        typeof args[2] === "number" &&
+        (args.length === 3 || typeof args[3] === "string")
+      );
     default:
       return false;
   }
@@ -390,6 +412,13 @@ async function resolveControllerWorkerQuery(
       return session.structures.checkUpgrade(query.args[0]);
     case "TERRITORY_CHECK_RELINQUISH":
       return session.territory.checkRelinquish(query.args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return session.weapons.checkLaunch(
+        query.args[0],
+        query.args[1],
+        query.args[2],
+        query.args[3],
+      );
   }
 }
 

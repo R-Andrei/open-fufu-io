@@ -998,6 +998,72 @@ function evaluateProposal(
       );
       continue;
     }
+    if (staged.kind === "LAUNCH_WEAPON") {
+      // Baseline slice: persistent-Silo Atom execution only. Hydrogen/MIRV and
+      // mobile Warship launchers enter through later focused RED/GREEN slices.
+      if (staged.weapon !== "ATOM_BOMB") {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      if (
+        staged.launcher === null ||
+        typeof staged.launcher !== "object"
+      ) {
+        return invalid("INVALID_LAUNCHER", staged.actionRef);
+      }
+      const resolvedLauncherId =
+        "ref" in staged.launcher
+          ? controllerReferences.resolve(
+              factionId,
+              "STRUCTURE",
+              staged.launcher.ref,
+            )
+          : undefined;
+      const launcher =
+        resolvedLauncherId !== undefined
+          ? state.structures.find(
+              (candidate) =>
+                candidate.id === resolvedLauncherId &&
+                candidate.ownerId === factionId,
+            )
+          : "cellId" in staged.launcher &&
+              state.map.isValidCellId(staged.launcher.cellId)
+            ? state.structures.find(
+                (candidate) =>
+                  candidate.cellId === staged.launcher.cellId &&
+                  candidate.ownerId === factionId,
+              )
+            : undefined;
+      if (launcher === undefined) {
+        return invalid("INVALID_LAUNCHER", staged.actionRef);
+      }
+
+      let targetFactionId: string | undefined;
+      if (staged.targetFaction !== undefined) {
+        targetFactionId = controllerReferences.resolveFaction(
+          staged.targetFaction,
+        );
+        if (targetFactionId === undefined) {
+          return invalid("INVALID_TARGET", staged.actionRef);
+        }
+      }
+
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "LAUNCH_STRATEGIC_WEAPON" as const,
+            ownerId: factionId,
+            launcherId: launcher.id,
+            weapon: staged.weapon,
+            targetCellId: staged.targetCellId,
+            ...(targetFactionId === undefined
+              ? {}
+              : { targetFactionId }),
+          }),
+        }),
+      );
+      continue;
+    }
     return invalid("INVALID_COMMAND", staged.actionRef);
   }
 

@@ -59,6 +59,10 @@ import {
   type TerritoryRelinquishmentFailureCode,
 } from "./TerritoryEffects";
 import {
+  tryCommitStrategicLaunch,
+  type StrategicLaunchFailureCode,
+} from "./StrategicWeapons";
+import {
   TickEngine,
   type AcceptedSimulationInput,
   type SimulationAction,
@@ -498,6 +502,27 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "LAUNCH_STRATEGIC_WEAPON": {
+      const launched = tryCommitStrategicLaunch(
+        state,
+        {
+          ownerId: action.ownerId,
+          launcherId: action.launcherId,
+          weapon: action.weapon,
+          targetCellId: action.targetCellId,
+          ...(action.targetFactionId === undefined
+            ? {}
+            : { targetFactionId: action.targetFactionId }),
+        },
+        state.tick + 1,
+      );
+      if (!launched.ok) {
+        throw new Error(
+          `invalid strategic launch: ${launched.failure.code}`,
+        );
+      }
+      break;
+    }
   }
 }
 
@@ -540,6 +565,30 @@ function mapTerritoryRelinquishmentFailure(
       return decisionFailure("CELL_NOT_OWNED", key);
     case "PERSISTENT_STRUCTURE_PRESENT":
       return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
+  }
+}
+
+function mapStrategicLaunchFailure(
+  code: StrategicLaunchFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+      return decisionFailure("INVALID_TARGET", key);
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_LAUNCHER":
+    case "LAUNCHER_INACTIVE":
+    case "LAUNCHER_LEVEL_REQUIRED":
+      return decisionFailure("INVALID_LAUNCHER", key);
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "WEAPON_NOT_PERMITTED":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "NO_READY_CHARGE":
+      return decisionFailure("COMMITMENT_LIMIT", key);
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
   }
 }
 
@@ -606,6 +655,27 @@ function controllerActionFailure(
         ? undefined
         : mapTerritoryRelinquishmentFailure(
             relinquished.failure.code,
+            proposed.key,
+          );
+    }
+    case "LAUNCH_STRATEGIC_WEAPON": {
+      const launched = tryCommitStrategicLaunch(
+        state,
+        {
+          ownerId: action.ownerId,
+          launcherId: action.launcherId,
+          weapon: action.weapon,
+          targetCellId: action.targetCellId,
+          ...(action.targetFactionId === undefined
+            ? {}
+            : { targetFactionId: action.targetFactionId }),
+        },
+        state.tick + 1,
+      );
+      return launched.ok
+        ? undefined
+        : mapStrategicLaunchFailure(
+            launched.failure.code,
             proposed.key,
           );
     }

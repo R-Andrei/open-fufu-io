@@ -43,7 +43,8 @@
     "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
-    "src/simulation/Warships.ts": "NAVAL"
+    "src/simulation/Warships.ts": "NAVAL",
+    "src/simulation/StrategicWeapons.ts": "STRATEGIC_WEAPONS"
   },
   "crossOwnerImports": [
     {
@@ -63,6 +64,12 @@
       "to": "src/simulation/SimulationMap.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection reads the current map substrate for requester-lawful spatial queries; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Strategic-Weapons-owned prospective launch admission against the immutable decision snapshot for lawful checkLaunch results; it does not commit launcher/resource/projectile state."
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
@@ -282,6 +289,12 @@
     },
     {
       "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller strategic-launch actions through the Strategic-Weapons-owned atomic launch transaction before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "ORCHESTRATION",
       "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
@@ -465,6 +478,30 @@
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Strategic Spawn reads current or prospective MatchState while evaluating legal deterministic choices."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Strategic launch transaction uses the Economy-owned canonical FFY debit primitive for atomic effective weapon payment."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "A committed strategic launch delegates one-shot directed-hostility grace mutation to the Hostility owner when its intended target resolves to an opposing side."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Strategic weapon launch admission/commit consumes and materializes the canonical MatchState contract, including replay-stable projectile state."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Strategic launch transaction consumes the Structures-owned Silo charge bank/effective recharge contract and materializes the updated physical launcher state."
     },
     {
       "from": "src/simulation/Structures.ts",
@@ -663,6 +700,12 @@
       "to": "src/simulation/SimulationEvents.ts",
       "classification": "CANONICAL_EVENT",
       "rationale": "TickEngine explicitly sequences canonical simulation event creation and delivery in deterministic phase order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine commits accepted strategic-launch simulation inputs through the Strategic-Weapons-owned atomic launch transaction."
     },
     {
       "from": "src/simulation/TickEngine.ts",

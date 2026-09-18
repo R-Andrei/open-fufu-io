@@ -50,6 +50,7 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import { tryCommitStrategicLaunch } from "./StrategicWeapons";
 import {
   resolveAdmittedTankPopulationAttacks,
   resolveAdmittedTankUnitAttackEffects,
@@ -152,6 +153,15 @@ export interface RelinquishTerritoryAction {
   readonly cellIds: readonly number[];
 }
 
+export interface LaunchStrategicWeaponAction {
+  readonly type: "LAUNCH_STRATEGIC_WEAPON";
+  readonly ownerId: string;
+  readonly launcherId: string;
+  readonly weapon: "ATOM_BOMB";
+  readonly targetCellId: number;
+  readonly targetFactionId?: string;
+}
+
 export type SimulationAction =
   | SetTestMarkerAction
   | CapitulateFactionAction
@@ -162,7 +172,8 @@ export type SimulationAction =
   | ApplyPersistentDirectivesAction
   | PurchaseStructureBuildAction
   | PurchaseStructureUpgradeAction
-  | RelinquishTerritoryAction;
+  | RelinquishTerritoryAction
+  | LaunchStrategicWeaponAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -1169,6 +1180,28 @@ export class TickEngine {
             ownership: relinquished.ownership,
             fallout: relinquished.fallout,
           });
+          break;
+        }
+        case "LAUNCH_STRATEGIC_WEAPON": {
+          const launched = tryCommitStrategicLaunch(
+            working,
+            {
+              ownerId: action.ownerId,
+              launcherId: action.launcherId,
+              weapon: action.weapon,
+              targetCellId: action.targetCellId,
+              ...(action.targetFactionId === undefined
+                ? {}
+                : { targetFactionId: action.targetFactionId }),
+            },
+            nextTick,
+          );
+          if (!launched.ok) {
+            throw new Error(
+              `accepted strategic launch became invalid: ${launched.failure.code}`,
+            );
+          }
+          working = launched.state;
           break;
         }
       }

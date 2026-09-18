@@ -39,6 +39,7 @@ import type {
   UnitLocator,
   UnitRef,
   UnitView,
+  WeaponLaunchQuote,
 } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
@@ -72,6 +73,10 @@ import {
   tryStartWarshipProduction,
   type WarshipProductionFailureCode,
 } from "./Warships";
+import {
+  quoteStrategicLaunch,
+  type StrategicLaunchFailureCode,
+} from "./StrategicWeapons";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -258,6 +263,12 @@ export interface ControllerQuerySession {
       targetCellId: CellId,
       targetFaction?: FactionRef,
     ): ActionRef;
+    checkLaunch(
+      launcher: StructureLocator | UnitLocator,
+      weapon: StrategicWeaponType,
+      targetCellId: CellId,
+      targetFaction?: FactionRef,
+    ): WeaponLaunchQuote;
   }>;
   readonly territory: Readonly<{
     relinquish(cells: CellSelector): ActionRef;
@@ -1068,6 +1079,29 @@ function territoryRelinquishmentFailureCode(
       return "CELL_NOT_OWNED";
     case "PERSISTENT_STRUCTURE_PRESENT":
       return "PERSISTENT_STRUCTURE_PRESENT";
+  }
+}
+
+function strategicLaunchFailureCode(
+  code: StrategicLaunchFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+      throw new Error("controller strategic-launch requester is missing");
+    case "UNKNOWN_LAUNCHER":
+    case "NOT_OWNER":
+    case "LAUNCHER_INACTIVE":
+    case "LAUNCHER_LEVEL_REQUIRED":
+      return "INVALID_LAUNCHER";
+    case "WEAPON_NOT_PERMITTED":
+      return "INVALID_COMMAND";
+    case "NO_READY_CHARGE":
+      return "COMMITMENT_LIMIT";
+    case "INSUFFICIENT_FFY":
+      return "INSUFFICIENT_FFY";
   }
 }
 
@@ -2095,6 +2129,116 @@ export function createControllerQuerySession(
     });
   };
 
+  const checkWeaponLaunch = (
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): WeaponLaunchQuote => {
+    beginQuery();
+
+    if (weapon !== "ATOM_BOMB") {
+      return Object.freeze({
+        legal: false,
+        failureCode: "INVALID_COMMAND" as const,
+        cost: quoteCost(0, 0),
+        weapon,
+        targetCellId,
+        chargeConsumed: false,
+      });
+    }
+
+    const unavailable = (
+      failureCode: DecisionFailure["code"],
+      ffyRequired = 0,
+    ): WeaponLaunchQuote =>
+      Object.freeze({
+        legal: false,
+        failureCode,
+        cost: quoteCost(ffyRequired, 0),
+        weapon,
+        targetCellId,
+        chargeConsumed: false,
+      });
+
+    if (
+      references === undefined ||
+      launcher === null ||
+      typeof launcher !== "object"
+    ) {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    const authoritativeId =
+      "ref" in launcher
+        ? references.resolve(requesterFactionId, "STRUCTURE", launcher.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find(
+            (candidate) =>
+              candidate.id === authoritativeId &&
+              candidate.ownerId === requesterFactionId,
+          )
+        : "cellId" in launcher && state.map.isValidCellId(launcher.cellId)
+          ? state.structures.find(
+              (candidate) =>
+                candidate.cellId === launcher.cellId &&
+                candidate.ownerId === requesterFactionId,
+            )
+          : undefined;
+    if (structure === undefined || structure.type !== "MISSILE_SILO") {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    const launcherRef = references.issue(
+      requesterFactionId,
+      "STRUCTURE",
+      structure.id,
+    ) as StructureRef | undefined;
+    if (launcherRef === undefined) {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    let targetFactionId: string | undefined;
+    if (targetFaction !== undefined) {
+      targetFactionId = references.resolveFaction(targetFaction);
+      if (targetFactionId === undefined) {
+        return Object.freeze({
+          ...unavailable("INVALID_TARGET"),
+          launcherId: launcherRef,
+        });
+      }
+    }
+
+    const result = quoteStrategicLaunch(state, {
+      ownerId: requesterFactionId,
+      launcherId: structure.id,
+      weapon,
+      targetCellId,
+      ...(targetFactionId === undefined ? {} : { targetFactionId }),
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: strategicLaunchFailureCode(result.failure.code),
+        cost: quoteCost(result.ffyCost, 0),
+        launcherId: launcherRef,
+        weapon,
+        targetCellId,
+        chargeConsumed: false,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(result.ffyCost, result.ffyCost),
+      launcherId: launcherRef,
+      weapon,
+      targetCellId,
+      chargeConsumed: true,
+    });
+  };
+
   const consumeStagedActions = (): readonly ControllerStagedAction[] =>
     Object.freeze([...stagedActions]);
 
@@ -2432,6 +2576,7 @@ export function createControllerQuerySession(
     }),
     weapons: Object.freeze({
       launch: stageWeaponLaunch,
+      checkLaunch: checkWeaponLaunch,
     }),
     territory: Object.freeze({
       relinquish: stageRelinquish,

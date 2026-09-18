@@ -8,11 +8,13 @@ import type {
   CellId,
   CellSelector,
   FactionFindFilter,
+  FactionRef,
   FactionReadView,
   SegmentId,
   StructureFindFilter,
   StructureType,
   StructureLocator,
+  StrategicWeaponType,
   TerrainType,
   PurchasableUnitType,
   UnitFindFilter,
@@ -70,6 +72,15 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "TERRITORY_CHECK_RELINQUISH";
       args: readonly [CellSelector];
+    }>
+  | Readonly<{
+      operation: "WEAPONS_CHECK_LAUNCH";
+      args: readonly [
+        StructureLocator | UnitLocator,
+        StrategicWeaponType,
+        CellId,
+        FactionRef?,
+      ];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -589,7 +600,14 @@ const invokeEntrypointSource = `
           weapon,
           targetCellId,
           ...(targetFaction === undefined ? {} : { targetFaction })
-        })
+        }),
+      checkLaunch: (launcher, weapon, targetCellId, targetFaction) =>
+        hostCheck(
+          "WEAPONS_CHECK_LAUNCH",
+          targetFaction === undefined
+            ? [launcher, weapon, targetCellId]
+            : [launcher, weapon, targetCellId, targetFaction]
+        )
     },
     territory: {
       relinquish: (cells) => stageAction("RELINQUISH", { cells }),
@@ -765,6 +783,17 @@ function isControllerWorkerQueryRequest(
       );
     case "TERRITORY_CHECK_RELINQUISH":
       return args.length === 1 && isSelectorArgument(args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return (
+        (args.length === 3 || args.length === 4) &&
+        (isStructureLocatorArgument(args[0]) ||
+          isUnitLocatorArgument(args[0])) &&
+        (args[1] === "ATOM_BOMB" ||
+          args[1] === "HYDROGEN_BOMB" ||
+          args[1] === "MIRV") &&
+        typeof args[2] === "number" &&
+        (args.length === 3 || typeof args[3] === "string")
+      );
     default:
       return false;
   }

@@ -69,6 +69,29 @@ const STRUCTURE_TYPES = new Set<StructureType>([
 type MatchTankOperationalState = TankOperationalState &
   Readonly<{ roamingOrdinal?: number }>;
 
+export interface StrategicBlastProfileState {
+  readonly profileVersion: "STRATEGIC_BLAST_V1";
+  readonly innerNumerator: number;
+  readonly outerNumerator: number;
+  readonly profileDenominator: number;
+}
+
+export interface StrategicProjectileState {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly launcherId: string;
+  readonly weapon: import("../core/controller/ControllerApi").StrategicWeaponType;
+  readonly launchCellId: number;
+  readonly targetCellId: number;
+  readonly targetFactionId?: string;
+  readonly acceptedLaunchOrdinal: number;
+  readonly consumedChargeSlotId: number;
+  readonly launchedAtTick: number;
+  readonly speedCellsPerSecond: number;
+  readonly blastProfile: StrategicBlastProfileState;
+  readonly blastSeed: number;
+}
+
 export interface MatchFactionState {
   readonly id: string;
   readonly displayName: string;
@@ -97,6 +120,7 @@ export interface MatchState extends FactoryTrainState {
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
+  readonly strategicProjectiles: readonly StrategicProjectileState[];
   readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -115,6 +139,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
+  readonly strategicProjectiles?: readonly StrategicProjectileState[];
   readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
@@ -291,6 +316,117 @@ function freezeHostilityGrace(
           ),
       ),
   );
+}
+
+function freezeStrategicProjectiles(
+  entries: readonly StrategicProjectileState[],
+  map: SimulationMap,
+): readonly StrategicProjectileState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("strategicProjectiles must be an array");
+  }
+  const seen = new Set<string>();
+  const frozen = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("strategic projectile must be an object");
+    }
+    if (
+      typeof entry.id !== "string" ||
+      entry.id.length === 0 ||
+      seen.has(entry.id)
+    ) {
+      throw new Error("strategic projectile id must be unique and non-empty");
+    }
+    seen.add(entry.id);
+    if (
+      typeof entry.ownerId !== "string" ||
+      entry.ownerId.length === 0 ||
+      typeof entry.launcherId !== "string" ||
+      entry.launcherId.length === 0
+    ) {
+      throw new Error("strategic projectile owner/launcher identity is invalid");
+    }
+    if (
+      entry.weapon !== "ATOM_BOMB" &&
+      entry.weapon !== "HYDROGEN_BOMB" &&
+      entry.weapon !== "MIRV"
+    ) {
+      throw new Error("strategic projectile weapon is invalid");
+    }
+    if (
+      !map.isValidCellId(entry.launchCellId) ||
+      !map.isValidCellId(entry.targetCellId)
+    ) {
+      throw new Error("strategic projectile cells must be valid map cells");
+    }
+    assertNonNegativeSafeInteger(
+      entry.acceptedLaunchOrdinal,
+      "strategic projectile acceptedLaunchOrdinal",
+    );
+    assertNonNegativeSafeInteger(
+      entry.consumedChargeSlotId,
+      "strategic projectile consumedChargeSlotId",
+    );
+    assertNonNegativeSafeInteger(
+      entry.launchedAtTick,
+      "strategic projectile launchedAtTick",
+    );
+    if (
+      !Number.isFinite(entry.speedCellsPerSecond) ||
+      entry.speedCellsPerSecond <= 0
+    ) {
+      throw new Error("strategic projectile speed must be finite and positive");
+    }
+    if (
+      entry.blastProfile === null ||
+      typeof entry.blastProfile !== "object" ||
+      entry.blastProfile.profileVersion !== "STRATEGIC_BLAST_V1" ||
+      !Number.isSafeInteger(entry.blastProfile.innerNumerator) ||
+      entry.blastProfile.innerNumerator < 0 ||
+      !Number.isSafeInteger(entry.blastProfile.outerNumerator) ||
+      entry.blastProfile.outerNumerator < entry.blastProfile.innerNumerator ||
+      !Number.isSafeInteger(entry.blastProfile.profileDenominator) ||
+      entry.blastProfile.profileDenominator <= 0
+    ) {
+      throw new Error("strategic projectile blast profile is invalid");
+    }
+    if (
+      !Number.isSafeInteger(entry.blastSeed) ||
+      entry.blastSeed < 0 ||
+      entry.blastSeed > 0xffff_ffff
+    ) {
+      throw new Error("strategic projectile blastSeed must be uint32");
+    }
+    return Object.freeze({
+      id: entry.id,
+      ownerId: entry.ownerId,
+      launcherId: entry.launcherId,
+      weapon: entry.weapon,
+      launchCellId: entry.launchCellId,
+      targetCellId: entry.targetCellId,
+      ...(entry.targetFactionId === undefined
+        ? {}
+        : { targetFactionId: entry.targetFactionId }),
+      acceptedLaunchOrdinal: entry.acceptedLaunchOrdinal,
+      consumedChargeSlotId: entry.consumedChargeSlotId,
+      launchedAtTick: entry.launchedAtTick,
+      speedCellsPerSecond: entry.speedCellsPerSecond,
+      blastProfile: Object.freeze({
+        profileVersion: "STRATEGIC_BLAST_V1" as const,
+        innerNumerator: entry.blastProfile.innerNumerator,
+        outerNumerator: entry.blastProfile.outerNumerator,
+        profileDenominator: entry.blastProfile.profileDenominator,
+      }),
+      blastSeed: entry.blastSeed,
+    });
+  });
+  frozen.sort(
+    (left, right) =>
+      compareIds(left.launcherId, right.launcherId) ||
+      left.acceptedLaunchOrdinal - right.acceptedLaunchOrdinal ||
+      compareIds(left.id, right.id),
+  );
+  return Object.freeze(frozen);
 }
 
 function freezeDirectReveals(
@@ -699,6 +835,10 @@ function createState(
       update.warshipProductionJobs ?? previous.warshipProductionJobs ?? [],
     ),
     tankOperationalStates,
+    strategicProjectiles: freezeStrategicProjectiles(
+      update.strategicProjectiles ?? previous.strategicProjectiles ?? [],
+      previous.map,
+    ),
     directReveals: freezeDirectReveals(
       update.directReveals ?? previous.directReveals ?? [],
     ),
@@ -793,6 +933,7 @@ function createEmptyInitialMatchState(
     tankProductionJobs: Object.freeze([]),
     warshipProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
+    strategicProjectiles: Object.freeze([]),
     directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
@@ -957,6 +1098,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
                   },
             ),
           }),
+      ...(structure.acceptedLaunchCount === undefined
+        ? {}
+        : { acceptedLaunchCount: structure.acceptedLaunchCount }),
       acquisitionPath: structure.acquisitionPath,
     }));
 
@@ -1066,6 +1210,36 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const strategicProjectiles = [...state.strategicProjectiles]
+    .sort(
+      (left, right) =>
+        compareIds(left.launcherId, right.launcherId) ||
+        left.acceptedLaunchOrdinal - right.acceptedLaunchOrdinal ||
+        compareIds(left.id, right.id),
+    )
+    .map((entry) => ({
+      id: entry.id,
+      ownerId: entry.ownerId,
+      launcherId: entry.launcherId,
+      weapon: entry.weapon,
+      launchCellId: entry.launchCellId,
+      targetCellId: entry.targetCellId,
+      ...(entry.targetFactionId === undefined
+        ? {}
+        : { targetFactionId: entry.targetFactionId }),
+      acceptedLaunchOrdinal: entry.acceptedLaunchOrdinal,
+      consumedChargeSlotId: entry.consumedChargeSlotId,
+      launchedAtTick: entry.launchedAtTick,
+      speedCellsPerSecond: entry.speedCellsPerSecond,
+      blastProfile: {
+        profileVersion: entry.blastProfile.profileVersion,
+        innerNumerator: entry.blastProfile.innerNumerator,
+        outerNumerator: entry.blastProfile.outerNumerator,
+        profileDenominator: entry.blastProfile.profileDenominator,
+      },
+      blastSeed: entry.blastSeed,
+    }));
+
   const directReveals = state.directReveals.map((entry) => ({
     viewerFactionId: entry.viewerFactionId,
     sourceKind: entry.sourceKind,
@@ -1141,6 +1315,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     tankProductionJobs,
     warshipProductionJobs,
     tankOperationalStates,
+    strategicProjectiles,
     directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]
