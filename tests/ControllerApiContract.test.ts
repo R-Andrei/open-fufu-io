@@ -1,9 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 import type {
-  BuildUnitCommand,
   CaptureCalculation,
-  ControllerCommand,
   ControllerEvent,
   FactionRef,
   FactionsApi,
@@ -208,22 +206,7 @@ const fixtureLandingGrant: NonNullable<
 };
 void fixtureLandingGrant;
 
-const fixtureMove: ControllerCommand = {
-  kind: "MOVE_UNIT",
-  key: "move-1",
-  unitId: fixtureUnitRef,
-  destination: 42,
-};
-void fixtureMove;
 
-const fixtureEmbark: ControllerCommand = {
-  kind: "EMBARK_TRANSPORT",
-  key: "transport-1",
-  sourceCellId: 10,
-  targetCellId: 20,
-  population: 100,
-};
-void fixtureEmbark;
 
 const fixtureWarQuery = (factions: FactionsApi): boolean =>
   factions.atWar(fixtureFactionARef, fixtureFactionBRef);
@@ -251,8 +234,6 @@ const fixtureWarChanged: ControllerEvent = {
 };
 void fixtureWarChanged;
 
-// @ts-expect-error Patrol is deliberately not a controller command.
-const fixturePatrol: ControllerCommand = { kind: "PATROL", key: "patrol-1" };
 const fixtureUnitOrder: PersistentDirective = {
   // @ts-expect-error Unit orders are deliberately not persistent directives.
   kind: "UNIT_ORDER",
@@ -588,7 +569,6 @@ const controller: OpenFufuController<FixtureMemory> = {
     await context.segments.list();
     return {
       memory: { ...context.memory, marker: context.game.decisionNumber },
-      commands: [],
     };
   },
 };

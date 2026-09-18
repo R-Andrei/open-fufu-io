@@ -35,7 +35,7 @@ export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
   materializedCellsPerDecision:
     CONTROLLER_QUERY_LIMITS.materializedCellsPerDecision,
   directiveUpdatesPerDecision: 128,
-  commandsPerDecision: 64,
+  actionsPerDecision: 64,
   policyRulesPerDecision: 256,
   debugItemsPerDecision: 256,
   logBytesPerDecision: 8 * 1024,
@@ -388,15 +388,14 @@ function teamSignalPayloadWithinLimit(command: unknown): boolean {
   }
 }
 
-function outputWithinResourceCeilings(output: OutputRecord): boolean {
-  if (Object.prototype.hasOwnProperty.call(output, "commands")) {
-    if (!Array.isArray(output.commands)) return false;
-    if (output.commands.length > PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision) {
-      return false;
-    }
-    if (!output.commands.every(teamSignalPayloadWithinLimit)) return false;
-  }
+function stagedActionsWithinResourceCeilings(
+  actions: readonly ControllerStagedAction[],
+): boolean {
+  if (actions.length > PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision) return false;
+  return actions.every(teamSignalPayloadWithinLimit);
+}
 
+function outputWithinResourceCeilings(output: OutputRecord): boolean {
   if (Object.prototype.hasOwnProperty.call(output, "directives")) {
     if (!isPlainRecord(output.directives)) return false;
     const set = output.directives.set;
@@ -644,6 +643,10 @@ export class ProductionControllerHost implements ControllerHost {
         PRODUCTION_CONTROLLER_LIMITS.materializedCellsPerDecision
     ) {
       return hostFault("RUNTIME_ERROR");
+    }
+
+    if (!stagedActionsWithinResourceCeilings(response.stagedActions ?? [])) {
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
     }
 
     const validated = validateProductionControllerOutput(hook, response.output);

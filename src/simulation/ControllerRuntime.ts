@@ -524,13 +524,9 @@ export class InProcessTestControllerHost implements ControllerHost {
     Record<string, InProcessTestControllerRegistration>
   >;
   private readonly memoryByFaction = new Map<string, string>();
-  private readonly allowLegacyCommands: boolean;
-
   constructor(
     controllers: Readonly<Record<string, InProcessTestControllerRegistration>>,
-    options: Readonly<{ readonly allowLegacyCommands?: boolean }> = {},
   ) {
-    this.allowLegacyCommands = options.allowLegacyCommands ?? true;
     this.controllers = Object.freeze(
       Object.fromEntries(
         Object.entries(controllers).map(([factionId, registration]) => [
@@ -553,25 +549,6 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
-    const validateLegacyCommands = (
-      output: ControllerDecision | void,
-    ): ControllerDecision | void => {
-      const rawCommands = (
-        output as unknown as
-          | { readonly commands?: readonly unknown[] }
-          | undefined
-      )?.commands;
-      if (
-        !this.allowLegacyCommands &&
-        rawCommands !== undefined &&
-        rawCommands.length > 0
-      ) {
-        throw new InvalidControllerValueError(
-          "legacy raw controller commands are not accepted",
-        );
-      }
-      return output;
-    };
     const attachStagedActions = (
       result: ControllerHostInvocationResult<ControllerDecision>,
     ): ControllerHostInvocationResult<ControllerDecision> => {
@@ -587,7 +564,7 @@ export class InProcessTestControllerHost implements ControllerHost {
         this.executeInvocation<ControllerDecision>(
           factionId,
           "DECIDE",
-          () => validateLegacyCommands(registration(inProcessObservation)),
+          () => registration(inProcessObservation),
         ),
       );
     }
@@ -597,10 +574,8 @@ export class InProcessTestControllerHost implements ControllerHost {
         factionId,
         "DECIDE",
         (memory) =>
-          validateLegacyCommands(
-            registration.decide?.(
-              projectHostedContext(inProcessObservation, memory),
-            ),
+          registration.decide?.(
+            projectHostedContext(inProcessObservation, memory),
           ),
       ),
     );
@@ -998,76 +973,6 @@ function evaluateProposal(
       continue;
     }
     return invalid("INVALID_COMMAND", staged.actionRef);
-  }
-
-  const commands =
-    (
-      decision as unknown as {
-        readonly commands?: readonly import("../core/controller/ControllerApi").ControllerCommand[];
-      }
-    ).commands ?? [];
-  const seenKeys = new Set<string>();
-  let hasCapitulation = false;
-
-  for (const command of commands) {
-    if (seenKeys.has(command.key)) {
-      return invalid("CONFLICTING_PROPOSAL", command.key);
-    }
-    seenKeys.add(command.key);
-
-    if (command.kind === "CAPITULATE") {
-      if (hasCapitulation) {
-        return invalid("CONFLICTING_PROPOSAL", command.key);
-      }
-      const faction = state.factions.find(
-        (candidate) => candidate.id === factionId,
-      );
-      if (faction === undefined || faction.status !== "ACTIVE") {
-        return invalid("INVALID_TARGET", command.key);
-      }
-      hasCapitulation = true;
-      actions.push(
-        Object.freeze({
-          key: command.key,
-          action: Object.freeze({
-            type: "CAPITULATE_FACTION" as const,
-            factionId,
-          }),
-        }),
-      );
-      continue;
-    }
-
-    if (command.kind === "BUILD_STRUCTURE") {
-      actions.push(
-        Object.freeze({
-          key: command.key,
-          action: Object.freeze({
-            type: "CONTROLLER_PURCHASE_STRUCTURE_BUILD" as const,
-            ownerId: factionId,
-            structureType: command.structure,
-            cellId: command.cellId,
-          }),
-        }),
-      );
-      continue;
-    }
-
-    if (command.kind === "UPGRADE_STRUCTURE") {
-      actions.push(
-        Object.freeze({
-          key: command.key,
-          action: Object.freeze({
-            type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE" as const,
-            ownerId: factionId,
-            cellId: command.cellId,
-          }),
-        }),
-      );
-      continue;
-    }
-
-    return invalid("INVALID_COMMAND", command.key);
   }
 
   return Object.freeze({ actions: Object.freeze(actions) });

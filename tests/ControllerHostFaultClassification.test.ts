@@ -277,13 +277,13 @@ describe("controller-host internal fault classification", () => {
           commands: [
             {
               kind: "BUILD_STRUCTURE",
-              key: `structurally-valid-${cellId}`,
+              key: `legacy-${cellId}`,
               structure: "CITY",
               cellId,
             },
           ],
         }),
-      ).toBe(true);
+      ).toBe(false);
     }
   });
 

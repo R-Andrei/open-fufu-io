@@ -55,7 +55,7 @@ function healthyHost(
   return new ProductionControllerHost(pool, {
     alpha: artifact(`
       export function decide() {
-        return { commands: [], log: ${JSON.stringify(log)} };
+        return { log: ${JSON.stringify(log)} };
       }
     `),
   });
@@ -130,7 +130,6 @@ describe("production controller sandbox process", () => {
         alpha: artifact(`
           export function decide(context) {
             return {
-              commands: [],
               log: String(context.tick) + ":" + String(context.me.id),
             };
           }
@@ -141,7 +140,7 @@ describe("production controller sandbox process", () => {
 
       expect(result).toEqual({
         ok: true,
-        output: { commands: [], log: "7:alpha" },
+        output: { log: "7:alpha" },
       });
       expect(pool.workerProcessIds()).toHaveLength(1);
       expect(pool.workerProcessIds()[0]).not.toBe(process.pid);
@@ -199,7 +198,6 @@ describe("production controller sandbox process", () => {
               mutationBlocked = true;
             }
             return {
-              commands: [],
               log: JSON.stringify({
                 id: page.items[0].id,
                 ownerId: page.items[0].ownerId,
@@ -227,7 +225,6 @@ describe("production controller sandbox process", () => {
       expect(response).toEqual({
         ok: true,
         output: {
-          commands: [],
           log: JSON.stringify({
             id: 9,
             ownerId: "alpha",
@@ -257,7 +254,7 @@ describe("production controller sandbox process", () => {
               kind: "UNION",
               selectors: [null],
             });
-            return { commands: [] };
+            return {};
           }
         `),
         malformedSession,
@@ -274,14 +271,14 @@ describe("production controller sandbox process", () => {
         workerQueryRequest(`
           export async function decide(context) {
             const count = await context.cells.count({ kind: "CELLS", ids: [] });
-            return { commands: [], log: String(count) };
+            return { log: String(count) };
           }
         `),
         recoverySession,
       );
       expect(recovered).toEqual({
         ok: true,
-        output: { commands: [], log: "0" },
+        output: { log: "0" },
         usage: { queries: 1, materializedCells: 0 },
       });
     });
@@ -297,7 +294,7 @@ describe("production controller sandbox process", () => {
               for (let index = 0; index < 129; index += 1) {
                 await context.cells.count({ kind: "CELLS", ids: [] });
               }
-              return { commands: [] };
+              return {};
             }
           `,
           2_000,
@@ -316,14 +313,14 @@ describe("production controller sandbox process", () => {
         workerQueryRequest(`
           export async function decide(context) {
             const count = await context.cells.count({ kind: "CELLS", ids: [] });
-            return { commands: [], log: String(count) };
+            return { log: String(count) };
           }
         `),
         recoverySession,
       );
       expect(recovered).toEqual({
         ok: true,
-        output: { commands: [], log: "0" },
+        output: { log: "0" },
         usage: { queries: 1, materializedCells: 0 },
       });
     });
@@ -335,7 +332,6 @@ describe("production controller sandbox process", () => {
         alpha: artifact(`
           export function decide() {
             return {
-              commands: [],
               log: JSON.stringify({
                 process: typeof globalThis.process,
                 require: typeof globalThis.require,
@@ -385,7 +381,6 @@ describe("production controller sandbox process", () => {
             }
             const prior = context.memory.count ?? 0;
             return {
-              commands: [],
               memory: { count: prior + 1 },
               log: [moduleGlobal, prior, mutationBlocked, context.me.status].join(":"),
             };
@@ -399,7 +394,6 @@ describe("production controller sandbox process", () => {
       expect(first).toEqual({
         ok: true,
         output: {
-          commands: [],
           memory: { count: 1 },
           log: "1:0:true:ACTIVE",
         },
@@ -407,7 +401,6 @@ describe("production controller sandbox process", () => {
       expect(second).toEqual({
         ok: true,
         output: {
-          commands: [],
           memory: { count: 2 },
           log: "1:1:true:ACTIVE",
         },
@@ -433,7 +426,7 @@ describe("production controller sandbox process", () => {
       const moduleTimeout = new ProductionControllerHost(pool, {
         alpha: artifact(`
           while (true) {}
-          export function decide() { return { commands: [] }; }
+          export function decide() { return {}; }
         `),
       });
       expect(await moduleTimeout.invoke("alpha", ordinaryObservation())).toEqual({
@@ -444,7 +437,7 @@ describe("production controller sandbox process", () => {
       const healthy = healthyHost(pool);
       expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "healthy" },
+        output: { log: "healthy" },
       });
     });
   });
@@ -456,7 +449,7 @@ describe("production controller sandbox process", () => {
           factionId: "alpha",
           artifact: artifact(
             `/*${"x".repeat(8 * 1024 * 1024)}*/\n` +
-              "export function decide() { return { commands: [] }; }",
+              "export function decide() { return {}; }",
           ),
           hook: "DECIDE" as const,
           entrypoint: "decide",
@@ -471,7 +464,7 @@ describe("production controller sandbox process", () => {
       expect(response).toEqual({ ok: false, fault: "TIMEOUT" });
       expect(await healthyHost(pool, "after-compile-timeout").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-compile-timeout" },
+        output: { log: "after-compile-timeout" },
       });
     });
   });
@@ -481,7 +474,7 @@ describe("production controller sandbox process", () => {
       const host = new ProductionControllerHost(pool, {
         alpha: artifact(`
           await new Promise(() => {});
-          export function decide() { return { commands: [] }; }
+          export function decide() { return {}; }
         `),
       });
 
@@ -491,7 +484,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await healthyHost(pool, "after-tla-timeout").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-tla-timeout" },
+        output: { log: "after-tla-timeout" },
       });
     });
   });
@@ -502,14 +495,14 @@ describe("production controller sandbox process", () => {
         alpha: artifact(`
           await Promise.resolve();
           export function decide() {
-            return { commands: [], log: "tla-settled" };
+            return { log: "tla-settled" };
           }
         `),
       });
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "tla-settled" },
+        output: { log: "tla-settled" },
       });
     });
   });
@@ -520,7 +513,6 @@ describe("production controller sandbox process", () => {
         alpha: artifact(`
           export function decide() {
             return {
-              commands: [],
               get log() {
                 while (true) {}
               },
@@ -535,7 +527,7 @@ describe("production controller sandbox process", () => {
       });
       expect(await healthyHost(pool, "after-getter-timeout").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-getter-timeout" },
+        output: { log: "after-getter-timeout" },
       });
     });
   });
@@ -549,7 +541,6 @@ describe("production controller sandbox process", () => {
             export function decide() {
               const largeName = "x".repeat(2048);
               return {
-                commands: [],
                 debug: Array.from({ length: 256 }, (_, index) => ({
                   kind: "METRIC",
                   name: largeName + String(index),
@@ -571,7 +562,7 @@ describe("production controller sandbox process", () => {
       expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
       expect(await healthyHost(pool, "after-oversized-output").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-oversized-output" },
+        output: { log: "after-oversized-output" },
       });
     });
   });
@@ -581,7 +572,7 @@ describe("production controller sandbox process", () => {
       const importing = new ProductionControllerHost(pool, {
         alpha: artifact(`
           import fs from "node:fs";
-          export function decide() { return { commands: [], log: String(fs) }; }
+          export function decide() { return { log: String(fs) }; }
         `),
       });
       expect(await importing.invoke("alpha", ordinaryObservation())).toEqual({
@@ -606,7 +597,7 @@ describe("production controller sandbox process", () => {
       const host = new ProductionControllerHost(pool, {
         alpha: artifact(
           `
-            export function decide() { return { commands: [] }; }
+            export function decide() { return {}; }
             export function chooseInfluence(context) {
               return { centers: [11], memory: { spawn: context.phase } };
             }
@@ -696,7 +687,7 @@ describe("production controller sandbox process", () => {
       expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
       expect(await healthyHost(pool, "after-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-memory-limit" },
+        output: { log: "after-memory-limit" },
       });
     });
   });
@@ -727,7 +718,7 @@ describe("production controller sandbox process", () => {
       expect(response).toEqual({ ok: false, fault: "MEMORY_LIMIT" });
       expect(await healthyHost(pool, "after-fatal-memory-limit").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-fatal-memory-limit" },
+        output: { log: "after-fatal-memory-limit" },
       });
     });
   });
@@ -756,7 +747,7 @@ describe("production controller sandbox process", () => {
 
       expect(await healthyHost(pool, "replacement").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "replacement" },
+        output: { log: "replacement" },
       });
     });
   });
@@ -775,14 +766,14 @@ describe("production controller sandbox process", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "aged" },
+        output: { log: "aged" },
       });
       expect(pool.workerProcessIds()[0]).toBe(originalPid);
 
       nowMs = 100;
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "aged" },
+        output: { log: "aged" },
       });
       await waitFor(() => pool.workerProcessIds()[0] !== originalPid);
     } finally {
@@ -801,7 +792,7 @@ describe("production controller sandbox process", () => {
 
       expect(await healthyHost(pool, "rss").invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "rss" },
+        output: { log: "rss" },
       });
       await waitFor(() => pool.workerProcessIds()[0] !== originalPid);
     } finally {

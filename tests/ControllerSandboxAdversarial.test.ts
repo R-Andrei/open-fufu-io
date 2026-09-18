@@ -124,14 +124,14 @@ describe("production controller sandbox adversarial capabilities", () => {
               }).format();
               wallClockReadable = typeof formatted === "string" && formatted.length > 0;
             } catch {}
-            return { commands: [], log: String(wallClockReadable) };
+            return { log: String(wallClockReadable) };
           }
         `),
       });
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "false" },
+        output: { log: "false" },
       });
     });
   });
@@ -142,7 +142,6 @@ describe("production controller sandbox adversarial capabilities", () => {
         alpha: artifact(`
           export function decide() {
             return {
-              commands: [],
               log: typeof globalThis.Atomics?.wait + ":" + typeof globalThis.Atomics?.waitAsync,
             };
           }
@@ -151,7 +150,7 @@ describe("production controller sandbox adversarial capabilities", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "undefined:undefined" },
+        output: { log: "undefined:undefined" },
       });
     });
   });
@@ -162,7 +161,6 @@ describe("production controller sandbox adversarial capabilities", () => {
         alpha: artifact(`
           export function decide() {
             return {
-              commands: [],
               log: typeof globalThis.Temporal + ":" + typeof globalThis.Temporal?.Now?.instant,
             };
           }
@@ -171,7 +169,7 @@ describe("production controller sandbox adversarial capabilities", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "undefined:undefined" },
+        output: { log: "undefined:undefined" },
       });
     });
   });
@@ -189,7 +187,7 @@ describe("production controller sandbox adversarial capabilities", () => {
               .count({ kind: "CELLS", ids: [1] })
               .then(() => completionOrder.push("second"));
             await Promise.all([first, second]);
-            return { commands: [], log: completionOrder.join(",") };
+            return { log: completionOrder.join(",") };
           }
         `),
       });
@@ -225,7 +223,7 @@ describe("production controller sandbox adversarial capabilities", () => {
               .count({ kind: "CELLS", ids: [1] })
               .then(() => completionOrder.push("second"));
             await Promise.all([first, second]);
-            return { commands: [], log: completionOrder.join(",") };
+            return { log: completionOrder.join(",") };
           }
         `),
       });
@@ -235,7 +233,7 @@ describe("production controller sandbox adversarial capabilities", () => {
         await host.invoke("alpha", ordinaryObservation(), session),
       ).toEqual({
         ok: true,
-        output: { commands: [], log: "first,second" },
+        output: { log: "first,second" },
       });
       expect(session.usage()).toEqual({ queries: 2, materializedCells: 0 });
     });
@@ -247,7 +245,6 @@ describe("production controller sandbox adversarial capabilities", () => {
         alpha: artifact(`
           export function decide() {
             return {
-              commands: [],
               log: typeof globalThis.WeakRef + ":" + typeof globalThis.FinalizationRegistry,
             };
           }
@@ -256,7 +253,7 @@ describe("production controller sandbox adversarial capabilities", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "undefined:undefined" },
+        output: { log: "undefined:undefined" },
       });
     });
   });
@@ -276,7 +273,6 @@ describe("production controller sandbox adversarial capabilities", () => {
               mutationBlocked = true;
             }
             return {
-              commands: [],
               log: String(mutationBlocked) + ":" + String(context.me.status),
             };
           }
@@ -285,7 +281,7 @@ describe("production controller sandbox adversarial capabilities", () => {
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "true:ACTIVE" },
+        output: { log: "true:ACTIVE" },
       });
     });
   });
@@ -297,14 +293,14 @@ describe("production controller sandbox adversarial capabilities", () => {
           Object.keys = () => [];
 
           export function decide() {
-            return { commands: [], log: "preserved" };
+            return { log: "preserved" };
           }
         `),
       });
 
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "preserved" },
+        output: { log: "preserved" },
       });
     });
   });
@@ -319,7 +315,7 @@ describe("production controller sandbox adversarial capabilities", () => {
               try {
                 new Uint8Array(256 * 1024 * 1024);
               } catch {}
-              return { commands: [] };
+              return {};
             }
           `),
           hook: "DECIDE" as const,
@@ -337,13 +333,13 @@ describe("production controller sandbox adversarial capabilities", () => {
       const healthy = new ProductionControllerHost(pool, {
         alpha: artifact(`
           export function decide() {
-            return { commands: [], log: "after-caught-memory-limit" };
+            return { log: "after-caught-memory-limit" };
           }
         `),
       });
       expect(await healthy.invoke("alpha", ordinaryObservation())).toEqual({
         ok: true,
-        output: { commands: [], log: "after-caught-memory-limit" },
+        output: { log: "after-caught-memory-limit" },
       });
     });
   });

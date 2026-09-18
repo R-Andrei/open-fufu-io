@@ -42,7 +42,7 @@ function ordinaryObservation(): LawfulControllerObservation {
 }
 
 const artifact: ControllerRuntimeArtifact = Object.freeze({
-  moduleSource: "export function decide() { return { commands: [] }; }",
+  moduleSource: "export function decide() { return {}; }",
   entrypoints: Object.freeze({ decide: "decide" }),
 });
 
@@ -209,7 +209,7 @@ describe("production controller worker host", () => {
       );
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -217,7 +217,7 @@ describe("production controller worker host", () => {
 
     expect(await host.invoke("alpha", original)).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(pool.requests).toHaveLength(1);
   });
@@ -236,7 +236,7 @@ describe("production controller worker host", () => {
       expect(cell).toMatchObject({ id: 9, ownerId: "alpha", terrain: "PLAINS" });
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: queries.usage(),
       };
     });
@@ -275,13 +275,13 @@ describe("production controller worker host", () => {
       if (invocation === 1) {
         return {
           ok: true,
-          output: { commands: [], memory: { z: 1, a: 2 } },
+          output: { memory: { z: 1, a: 2 } },
           usage: { queries: 0, materializedCells: 0 },
         };
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -303,7 +303,6 @@ describe("production controller worker host", () => {
         return {
           ok: true,
           output: {
-            commands: [],
             log: "x".repeat(PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes),
             memory: { mustNotCommit: true },
           },
@@ -313,7 +312,7 @@ describe("production controller worker host", () => {
       if (invocation === 2) {
         return {
           ok: true,
-          output: { commands: [], memory: { mustNotCommit: true } },
+          output: { memory: { mustNotCommit: true } },
           usage: {
             queries: PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision + 1,
             materializedCells: 0,
@@ -322,7 +321,7 @@ describe("production controller worker host", () => {
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: {
           queries: 0,
           materializedCells:
@@ -342,46 +341,64 @@ describe("production controller worker host", () => {
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
   });
 
-  it("enforces output-count and log ceilings before returning a worker result to simulation", async () => {
-    const outputs: ControllerDecision[] = [
+  it("enforces staged-action count and public-output ceilings before returning a worker result to simulation", async () => {
+    const cases: ReadonlyArray<{
+      readonly output: ControllerDecision;
+      readonly stagedActions?: readonly unknown[];
+    }> = [
       {
-        commands: Array.from(
-          { length: PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision + 1 },
+        output: {},
+        stagedActions: Array.from(
+          { length: PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision + 1 },
           (_, index) => ({
             kind: "CAPITULATE" as const,
-            key: `command-${index}`,
+            actionRef: `action_${index + 1}`,
           }),
         ),
       },
       {
-        directives: {
-          end: Array.from(
-            { length: PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision + 1 },
-            (_, index) => `directive-${index}`,
-          ),
+        output: {
+          directives: {
+            end: Array.from(
+              { length: PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision + 1 },
+              (_, index) => `directive-${index}`,
+            ),
+          },
         },
       },
       {
-        debug: Array.from(
-          { length: PRODUCTION_CONTROLLER_LIMITS.debugItemsPerDecision + 1 },
-          (_, index) => ({
-            kind: "METRIC" as const,
-            name: `debug-${index}`,
-            value: index,
-          }),
-        ),
+        output: {
+          debug: Array.from(
+            { length: PRODUCTION_CONTROLLER_LIMITS.debugItemsPerDecision + 1 },
+            (_, index) => ({
+              kind: "METRIC" as const,
+              name: `debug-${index}`,
+              value: index,
+            })),
+        },
       },
-      { log: "é".repeat(PRODUCTION_CONTROLLER_LIMITS.logBytesPerDecision) },
+      {
+        output: {
+          log: "é".repeat(PRODUCTION_CONTROLLER_LIMITS.logBytesPerDecision),
+        },
+      },
     ];
     let cursor = 0;
-    const pool = new RecordingPool(() => ({
-      ok: true,
-      output: outputs[cursor++],
-      usage: { queries: 0, materializedCells: 0 },
-    }));
+    const pool = new RecordingPool(() => {
+      const candidate = cases[cursor++];
+      if (candidate === undefined) throw new Error("missing ceiling case");
+      return {
+        ok: true,
+        output: candidate.output,
+        ...(candidate.stagedActions === undefined
+          ? {}
+          : { stagedActions: candidate.stagedActions }),
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
     const host = new ProductionControllerHost(pool, { alpha: artifact });
 
-    for (let index = 0; index < outputs.length; index += 1) {
+    for (let index = 0; index < cases.length; index += 1) {
       expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
         ok: false,
         fault: { code: "RUNTIME_ERROR" },
@@ -432,15 +449,25 @@ describe("production controller worker host", () => {
     const invoke = async (
       output: ControllerDecision,
       usage: Usage = zeroUsage,
+      stagedActions: readonly unknown[] = [],
     ) => {
-      const pool = new RecordingPool(() => ({ ok: true, output, usage }));
+      const pool = new RecordingPool(() => ({
+        ok: true,
+        output,
+        ...(stagedActions.length === 0 ? {} : { stagedActions }),
+        usage,
+      }));
       const host = new ProductionControllerHost(pool, { alpha: artifact });
       return host.invoke("alpha", ordinaryObservation());
     };
 
     const expectRuntimeBoundary = async (
       limit: number,
-      build: (value: number) => { output: ControllerDecision; usage?: Usage },
+      build: (value: number) => {
+        output: ControllerDecision;
+        usage?: Usage;
+        stagedActions?: readonly unknown[];
+      },
     ) => {
       for (const [delta, accepted] of [
         [-1, true],
@@ -448,7 +475,11 @@ describe("production controller worker host", () => {
         [1, false],
       ] as const) {
         const testCase = build(limit + delta);
-        const result = await invoke(testCase.output, testCase.usage ?? zeroUsage);
+        const result = await invoke(
+          testCase.output,
+          testCase.usage ?? zeroUsage,
+          testCase.stagedActions ?? [],
+        );
         if (accepted) {
           expect(result.ok).toBe(true);
         } else {
@@ -466,26 +497,25 @@ describe("production controller worker host", () => {
     await expectRuntimeBoundary(
       PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
       (queries) => ({
-        output: { commands: [] },
+        output: {},
         usage: { queries, materializedCells: 0 },
       }),
     );
     await expectRuntimeBoundary(
       PRODUCTION_CONTROLLER_LIMITS.materializedCellsPerDecision,
       (materializedCells) => ({
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells },
       }),
     );
     await expectRuntimeBoundary(
-      PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision,
+      PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision,
       (count) => ({
-        output: {
-          commands: Array.from({ length: count }, (_, index) => ({
-            kind: "CAPITULATE" as const,
-            key: `command-boundary-${index}`,
-          })),
-        },
+        output: {},
+        stagedActions: Array.from({ length: count }, (_, index) => ({
+          kind: "CAPITULATE" as const,
+          actionRef: `action_${index + 1}`,
+        })),
       }),
     );
     await expectRuntimeBoundary(
@@ -573,7 +603,7 @@ describe("production controller worker host", () => {
       const bytes = PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes + delta;
       const memory = { x: utf8Payload(bytes - memoryOverhead) };
       expect(encoder.encode(JSON.stringify(memory)).byteLength).toBe(bytes);
-      const result = await invoke({ commands: [], memory });
+      const result = await invoke({ memory });
       if (accepted) {
         expect(result.ok).toBe(true);
       } else {
@@ -637,7 +667,7 @@ describe("production controller worker host", () => {
       if (invocation === 1) {
         return {
           ok: true,
-          output: { commands: [], memory: { invalid: Number.NaN } },
+          output: { memory: { invalid: Number.NaN } },
           usage: { queries: 0, materializedCells: 0 },
         };
       }
@@ -645,7 +675,6 @@ describe("production controller worker host", () => {
         return {
           ok: true,
           output: {
-            commands: [],
             memory: {
               oversized: "x".repeat(PRODUCTION_CONTROLLER_LIMITS.persistentMemoryBytes),
             },
@@ -655,7 +684,7 @@ describe("production controller worker host", () => {
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -671,12 +700,12 @@ describe("production controller worker host", () => {
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
   });
 
-  it("enforces the canonical TEAM_SIGNAL payload byte limit without charging key or channel bytes", async () => {
+  it("enforces the canonical TEAM_SIGNAL payload byte limit without charging ActionRef or channel bytes", async () => {
     const payloads = [
       "x".repeat(1021),
       "x".repeat(1022),
@@ -685,65 +714,31 @@ describe("production controller worker host", () => {
       "é".repeat(512),
     ];
     let cursor = 0;
-    const pool = new RecordingPool(() => ({
-      ok: true,
-      output: {
-        commands: [
+    const pool = new RecordingPool(() => {
+      const payload = payloads[cursor++];
+      return {
+        ok: true,
+        output: {},
+        stagedActions: [
           {
             kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
+            actionRef: "a".repeat(4096),
             channel: "c".repeat(4096),
-            payload: payloads[cursor++],
+            payload,
           },
         ],
-      },
-      usage: { queries: 0, materializedCells: 0 },
-    }));
+        usage: { queries: 0, materializedCells: 0 },
+      };
+    });
     const host = new ProductionControllerHost(pool, { alpha: artifact });
 
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[0],
-          },
-        ],
-      },
-    });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[1],
-          },
-        ],
-      },
-    });
+    expect((await host.invoke("alpha", ordinaryObservation())).ok).toBe(true);
+    expect((await host.invoke("alpha", ordinaryObservation())).ok).toBe(true);
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: false,
       fault: { code: "RUNTIME_ERROR" },
     });
-    expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
-      ok: true,
-      output: {
-        commands: [
-          {
-            kind: "TEAM_SIGNAL",
-            key: "k".repeat(4096),
-            channel: "c".repeat(4096),
-            payload: payloads[3],
-          },
-        ],
-      },
-    });
+    expect((await host.invoke("alpha", ordinaryObservation())).ok).toBe(true);
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: false,
       fault: { code: "RUNTIME_ERROR" },
@@ -792,7 +787,7 @@ describe("production controller worker host", () => {
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -804,7 +799,7 @@ describe("production controller worker host", () => {
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(seenMemoryJson).toEqual(["{}", "{}"]);
   });
@@ -834,7 +829,7 @@ describe("production controller worker host", () => {
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -851,7 +846,7 @@ describe("production controller worker host", () => {
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(seenMemoryJson).toEqual(["{}", "{}"]);
   });

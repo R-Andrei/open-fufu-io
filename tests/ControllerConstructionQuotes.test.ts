@@ -184,7 +184,7 @@ function quoteForAlpha<T>(
             }
           ).mechanics;
           quote = read(mechanics);
-          return { commands: [] };
+          return {};
         },
       }),
     ),
@@ -197,35 +197,20 @@ function quoteForAlpha<T>(
   return quote;
 }
 
-function buildHost(cellId: number, key: string) {
+function buildHost(cellId: number, _key: string) {
   return new InProcessTestControllerHost({
-    alpha() {
-      return {
-        commands: [
-          {
-            kind: "BUILD_STRUCTURE" as const,
-            key,
-            structure: "FORT" as const,
-            cellId,
-          },
-        ],
-      };
+    alpha(context) {
+      context.structures!.build("FORT", cellId);
+      return {};
     },
   });
 }
 
-function upgradeHost(cellId: number, key: string) {
+function upgradeHost(cellId: number, _key: string) {
   return new InProcessTestControllerHost({
-    alpha() {
-      return {
-        commands: [
-          {
-            kind: "UPGRADE_STRUCTURE" as const,
-            key,
-            cellId,
-          },
-        ],
-      };
+    alpha(context) {
+      context.structures!.upgrade({ cellId });
+      return {};
     },
   });
 }
