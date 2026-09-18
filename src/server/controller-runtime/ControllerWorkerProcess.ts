@@ -736,7 +736,14 @@ function isControllerWorkerQueryRequest(
     case "STRUCTURES_COUNT":
       return isOptionalEntityFilterArgs(args);
     case "STRUCTURES_GET":
+    case "STRUCTURES_CHECK_UPGRADE":
       return args.length === 1 && isStructureLocatorArgument(args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return (
+        args.length === 2 &&
+        typeof args[0] === "string" &&
+        typeof args[1] === "number"
+      );
     default:
       return false;
   }
