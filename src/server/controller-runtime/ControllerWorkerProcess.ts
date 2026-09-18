@@ -435,12 +435,11 @@ const invokeEntrypointSource = `
   const hostCheck = (operation, args) => {
     consumeQuery();
     hostQuerySequence += 1;
-    const value = $1.applySyncPromise(
+    const value = $7.applySyncPromise(
       undefined,
       [{ sequence: hostQuerySequence, operation, args }],
       {
-        arguments: { copy: true },
-        result: { copy: true }
+        arguments: { copy: true }
       }
     );
     return deepFreeze(value);
@@ -1399,6 +1398,7 @@ async function executeRequest(
 ): Promise<ControllerWorkerResponse> {
   let isolate: ivm.Isolate | undefined;
   let queryReference: ivm.Reference | undefined;
+  let syncQueryReference: ivm.Reference | undefined;
   let localReference: ivm.Reference | undefined;
 
   try {
@@ -1510,6 +1510,21 @@ async function executeRequest(
       }
       return requestHostQuery(requestId, sequence as number, query);
     });
+    syncQueryReference = new ivm.Reference(async (query: unknown) => {
+      if (!isPlainRecord(query)) {
+        throw new Error("invalid controller query");
+      }
+      const sequence = query.sequence;
+      if (
+        !isControllerWorkerQueryRequest(query) ||
+        !Number.isInteger(sequence) ||
+        (sequence as number) <= 0
+      ) {
+        throw new Error("invalid controller query");
+      }
+      const value = await requestHostQuery(requestId, sequence as number, query);
+      return new ivm.ExternalCopy(value).copyInto({ release: true });
+    });
     localReference = new ivm.Reference((query: unknown) =>
       resolveLocalRead(spatialCacheKey, publicFactions, publicOperations, query),
     );
@@ -1526,6 +1541,7 @@ async function executeRequest(
           publicFactions !== undefined,
           PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
           publicOperations !== undefined,
+          syncQueryReference,
         ],
         {
           timeout: request.timeoutMs,
@@ -1602,6 +1618,7 @@ async function executeRequest(
     return workerFault("RUNTIME_ERROR");
   } finally {
     localReference?.release();
+    syncQueryReference?.release();
     queryReference?.release();
     if (isolate !== undefined && !isolate.isDisposed) {
       isolate.dispose();
