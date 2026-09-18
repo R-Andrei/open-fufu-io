@@ -735,6 +735,23 @@ describe("issue #206 Transport facade authoritative RED", () => {
     return { state, session };
   }
 
+  function checkTransportEmbark(
+    session: ControllerQuerySession,
+    sourceCellId: number,
+    targetCellId: number,
+    population: number,
+  ): Record<string, unknown> {
+    return (
+      session.transports as unknown as {
+        checkEmbark(
+          sourceCellId: number,
+          targetCellId: number,
+          population: number,
+        ): Record<string, unknown>;
+      }
+    ).checkEmbark(sourceCellId, targetCellId, population);
+  }
+
   function transportRuntime(
     seed: string,
     traits: Parameters<typeof originRuleProfileInput>[0] = [],
@@ -788,7 +805,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
     });
 
     const before = session.usage();
-    const quote = session.transports.checkEmbark(3, 5, 100);
+    const quote = checkTransportEmbark(session, 3, 5, 100);
     expect(quote).toMatchObject({
       legal: true,
       cost: {
@@ -885,7 +902,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
       }).status,
     ).toBe("FOUND");
 
-    expect(session.transports.checkEmbark(0, 7, 10)).toMatchObject({
+    expect(checkTransportEmbark(session, 0, 7, 10)).toMatchObject({
       legal: false,
       cost: { ffySpent: 0, populationSpent: 0 },
     });
@@ -896,7 +913,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
       traits: ["P37", "N15"],
       ffy: 1_000,
     });
-    expect(session.transports.checkEmbark(3, 5, 100)).toMatchObject({
+    expect(checkTransportEmbark(session, 3, 5, 100)).toMatchObject({
       legal: true,
       cost: {
         ffyRequired: 750,
@@ -915,7 +932,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
       factions: state.factions,
       units: state.mobileUnits,
     });
-    expect(session.transports.checkEmbark(3, 5, 1_001)).toMatchObject({
+    expect(checkTransportEmbark(session, 3, 5, 1_001)).toMatchObject({
       legal: false,
       failureCode: "INSUFFICIENT_AVAILABLE_POPULATION",
       cost: { ffySpent: 0, populationSpent: 0 },
