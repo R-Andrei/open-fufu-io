@@ -1,5 +1,6 @@
 import type {
   FactionStatus,
+  OriginView,
   StructureType,
 } from "../core/controller/ControllerApi";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
@@ -69,6 +70,9 @@ type MatchTankOperationalState = TankOperationalState &
 
 export interface MatchFactionState {
   readonly id: string;
+  readonly displayName: string;
+  readonly isMinorFaction: boolean;
+  readonly origin?: OriginView;
   readonly status: FactionStatus;
   readonly rules: CompiledRuleProfile;
   readonly population: PopulationState;
@@ -149,17 +153,52 @@ function freezeSuccessfulStructurePurchaseTypes(
   return Object.freeze([...seen].sort());
 }
 
+function freezeOrigin(origin: OriginView | undefined): OriginView | undefined {
+  if (origin === undefined) return undefined;
+  if (
+    typeof origin.id !== "string" ||
+    origin.id.length === 0 ||
+    typeof origin.displayName !== "string" ||
+    origin.displayName.length === 0 ||
+    typeof origin.version !== "string" ||
+    origin.version.length === 0 ||
+    !Array.isArray(origin.positiveTraitIds) ||
+    origin.positiveTraitIds.some((traitId) => typeof traitId !== "string") ||
+    !Array.isArray(origin.negativeTraitIds) ||
+    origin.negativeTraitIds.some((traitId) => typeof traitId !== "string")
+  ) {
+    throw new Error("faction Origin metadata is invalid");
+  }
+  return Object.freeze({
+    id: origin.id,
+    displayName: origin.displayName,
+    version: origin.version,
+    positiveTraitIds: Object.freeze([...origin.positiveTraitIds]),
+    negativeTraitIds: Object.freeze([...origin.negativeTraitIds]),
+  });
+}
+
 function freezeFactions(
   factions: readonly MatchFactionState[],
 ): readonly MatchFactionState[] {
   return Object.freeze(
     factions.map((faction) => {
+      if (typeof faction.displayName !== "string" || faction.displayName.length === 0) {
+        throw new Error("faction displayName must be a non-empty string");
+      }
+      if (typeof faction.isMinorFaction !== "boolean") {
+        throw new Error("faction isMinorFaction must be boolean");
+      }
       assertNonNegativeSafeInteger(
         faction.lifetimeGrossPositiveFfyEarned,
         "lifetimeGrossPositiveFfyEarned",
       );
+      const origin = freezeOrigin(faction.origin);
       return Object.freeze({
         id: faction.id,
+        displayName: faction.displayName,
+        isMinorFaction: faction.isMinorFaction,
+        ...(origin === undefined ? {} : { origin }),
         status: faction.status,
         rules: faction.rules,
         population: createPopulationState(faction.population),
@@ -672,6 +711,9 @@ function createEmptyInitialMatchState(
     factions: freezeFactions(
       spec.factions.map((faction) => ({
         id: faction.id,
+        displayName: faction.displayName,
+        isMinorFaction: faction.isMinorFaction,
+        ...(faction.origin === undefined ? {} : { origin: faction.origin }),
         status: "ACTIVE",
         rules: faction.rules,
         population: createEmptyPopulationState(),
@@ -777,6 +819,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     .sort((left, right) => compareIds(left.id, right.id))
     .map((faction) => ({
       id: faction.id,
+      displayName: faction.displayName,
+      isMinorFaction: faction.isMinorFaction,
+      ...(faction.origin === undefined
+        ? {}
+        : {
+            origin: {
+              id: faction.origin.id,
+              displayName: faction.origin.displayName,
+              version: faction.origin.version,
+              positiveTraitIds: [...faction.origin.positiveTraitIds],
+              negativeTraitIds: [...faction.origin.negativeTraitIds],
+            },
+          }),
       status: faction.status,
       ...(faction.fixedTeamId === undefined
         ? {}

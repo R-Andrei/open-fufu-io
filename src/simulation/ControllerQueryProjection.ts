@@ -120,7 +120,8 @@ export interface ControllerPublicFactionSource {
     readonly status: FactionReadView["status"];
     readonly relation: FactionReadView["relation"];
     readonly isMinorFaction: boolean;
-    readonly score: number;
+    readonly origin?: FactionReadView["origin"];
+    readonly score?: number;
     readonly teamId?: string;
   }>[];
 }
@@ -225,6 +226,8 @@ interface StructureVisibilityContext {
   readonly requesterFactionId: string;
   readonly remoteObservationFields: readonly StructureFieldSource[];
   readonly enemyBlackoutFields: readonly StructureFieldSource[];
+  readonly resolveFactionRef?: (ref: string) => string | undefined;
+  readonly resolveStructureRef?: (ref: string) => string | undefined;
 }
 
 interface ControllerQueryMobileUnitState {
@@ -584,6 +587,7 @@ function anyFieldSourceContainsCell(
 function createStructureVisibilityContext(
   state: MatchState,
   requesterFactionId: string,
+  references?: ControllerQueryReferenceSession,
 ): StructureVisibilityContext {
   const requester = factionById(state, requesterFactionId);
   if (requester === undefined) {
@@ -616,6 +620,13 @@ function createStructureVisibilityContext(
     requesterFactionId,
     remoteObservationFields: Object.freeze(remoteObservationFields),
     enemyBlackoutFields: Object.freeze(enemyBlackoutFields),
+    ...(references === undefined
+      ? {}
+      : {
+          resolveFactionRef: (ref: string) => references.resolveFaction(ref),
+          resolveStructureRef: (ref: string) =>
+            references.resolve(requesterFactionId, "STRUCTURE", ref),
+        }),
   });
 }
 
@@ -1054,12 +1065,16 @@ function visibleStructureFieldSources(
   context: StructureVisibilityContext,
   selector: Extract<CellSelector, { readonly kind: "STRUCTURE_FIELD" }>,
 ): readonly StructureFieldSource[] {
+  const referenceFactionId = context.resolveFactionRef?.(
+    selector.referenceFactionId,
+  );
+  if (referenceFactionId === undefined) return Object.freeze([]);
   const sources: StructureFieldSource[] = [];
   for (const structure of state.structures) {
     if (
       !ownerMatchesFieldAffiliation(
         state,
-        selector.referenceFactionId,
+        referenceFactionId,
         structure.ownerId,
         selector.affiliation,
       ) ||
@@ -1076,9 +1091,11 @@ function visibleStructureFieldSources(
 function visibleStructureFieldInstanceSource(
   state: MatchState,
   context: StructureVisibilityContext,
-  structureId: string,
+  structureRef: string,
   field: StructureFieldId,
 ): StructureFieldSource | undefined {
+  const structureId = context.resolveStructureRef?.(structureRef);
+  if (structureId === undefined) return undefined;
   const structure = state.structures.find((candidate) => candidate.id === structureId);
   if (
     structure === undefined ||
@@ -1102,7 +1119,11 @@ function compileSelectorMatcher(
       return (id) => ids.has(id);
     }
     case "OWNER": {
-      const ownerId = selector.factionId ?? null;
+      if (selector.factionId === undefined) {
+        return (id) => (state.ownership[id] ?? null) === null;
+      }
+      const ownerId = context.resolveFactionRef?.(selector.factionId);
+      if (ownerId === undefined) return () => false;
       return (id) => (state.ownership[id] ?? null) === ownerId;
     }
     case "SEGMENT": {
@@ -1354,11 +1375,16 @@ export function createControllerQuerySession(
   requesterFactionId: string,
   limits: ControllerQueryBudgetLimits,
   references?: ControllerQueryReferenceSession,
+  factionScores?: ReadonlyMap<string, number>,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
   }
-  const visibility = createStructureVisibilityContext(state, requesterFactionId);
+  const visibility = createStructureVisibilityContext(
+    state,
+    requesterFactionId,
+    references,
+  );
   const mechanics = createConstructionMechanics(
     state,
     requesterFactionId,
@@ -1636,11 +1662,16 @@ export function createControllerQuerySession(
         Object.freeze({
           authoritativeId: faction.id,
           ref,
-          displayName: faction.id,
+          displayName: faction.displayName,
           status: faction.status,
           relation,
-          isMinorFaction: false,
-          score: 0,
+          isMinorFaction: faction.isMinorFaction,
+          ...(faction.origin === undefined ? {} : { origin: faction.origin }),
+          get score(): number | undefined {
+            return faction.isMinorFaction
+              ? undefined
+              : factionScores?.get(faction.id);
+          },
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
@@ -1660,6 +1691,7 @@ export function createControllerQuerySession(
       (entry) => entry.authoritativeId === faction.id,
     );
     if (source === undefined) return undefined;
+    const score = source.score;
     return Object.freeze({
       ref: source.ref,
       displayName: source.displayName,
@@ -1667,7 +1699,8 @@ export function createControllerQuerySession(
       relation: source.relation,
       territoryCells: state.ownership.filter((ownerId) => ownerId === faction.id).length,
       isMinorFaction: source.isMinorFaction,
-      score: source.score,
+      ...(source.origin === undefined ? {} : { origin: source.origin }),
+      ...(score === undefined ? {} : { score }),
       ...(source.teamId === undefined ? {} : { teamId: source.teamId }),
     });
   };

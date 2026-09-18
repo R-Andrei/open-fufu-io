@@ -189,7 +189,11 @@ function isPersistentDirective(value: unknown): boolean {
     case "DEFENSE_PRIORITY":
       return isSpatialPolicy(value.priority);
     case "COUNTER_RESPONSE":
-      return typeof value.incomingOperationId === "string" && isFiniteNumber(value.population);
+      return (
+        typeof value.incomingOperation === "string" &&
+        value.incomingOperationId === undefined &&
+        isFiniteNumber(value.population)
+      );
     default:
       return false;
   }

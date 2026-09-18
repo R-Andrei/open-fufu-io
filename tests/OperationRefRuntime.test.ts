@@ -531,7 +531,7 @@ const publicFaction: FactionReadView | undefined = context.factions.get(factionR
 if (publicFaction !== undefined) {
   const name: string = publicFaction.displayName;
   const minor: boolean = publicFaction.isMinorFaction;
-  const score: number = publicFaction.score;
+  const score: number | undefined = publicFaction.score;
   void name;
   void minor;
   void score;

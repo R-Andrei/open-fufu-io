@@ -5,6 +5,7 @@ import type {
   CaptureCalculation,
   ControllerCommand,
   ControllerEvent,
+  FactionRef,
   FactionsApi,
   GrowthCalculation,
   HostilityMechanicsSpec,
@@ -17,9 +18,11 @@ import type {
   StructureAcquisitionPath,
   StructureBuildQuote,
   StructureMechanicsSpec,
+  StructureRef,
   StructureView,
   TransportMechanicsSpec,
   UnitAttackSpec,
+  UnitRef,
 } from "../src/core/controller/ControllerApi";
 
 // Compile-time fixtures for #47's newly surfaced controller mechanics. This file
@@ -105,11 +108,16 @@ void fixtureHeavy;
 void fixtureTrain;
 void fixtureTrade;
 
+const fixtureFactoryRef = "factory-1" as StructureRef;
+const fixtureUnitRef = "unit-1" as UnitRef;
+const fixtureFactionARef = "faction-a" as FactionRef;
+const fixtureFactionBRef = "faction-b" as FactionRef;
+
 const fixtureBuildTank: BuildUnitCommand = {
   kind: "BUILD_UNIT",
   key: "build-tank",
   unit: "TANK",
-  producerId: "factory-1",
+  producerId: fixtureFactoryRef,
 };
 void fixtureBuildTank;
 
@@ -160,10 +168,11 @@ void fixtureFreeFirstPurchaseQuote;
 const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
 const fixtureUpgradingCityRef =
   "fixture:upgrading-city" as StructureView["ref"];
+const fixtureOwnerRef = "fixture:faction-a" as StructureView["ownerId"];
 
 const fixtureFreshDirectLevel5City: StructureView = {
   ref: fixtureFreshCityRef,
-  ownerId: "faction-a",
+  ownerId: fixtureOwnerRef,
   type: "CITY",
   cellId: 43,
   active: false,
@@ -176,7 +185,7 @@ void fixtureFreshDirectLevel5City;
 
 const fixtureUpgradingCity: StructureView = {
   ref: fixtureUpgradingCityRef,
-  ownerId: "faction-a",
+  ownerId: fixtureOwnerRef,
   type: "CITY",
   completedLevel: 2,
   cellId: 44,
@@ -202,7 +211,7 @@ void fixtureLandingGrant;
 const fixtureMove: ControllerCommand = {
   kind: "MOVE_UNIT",
   key: "move-1",
-  unitId: "unit-1",
+  unitId: fixtureUnitRef,
   destination: 42,
 };
 void fixtureMove;
@@ -217,7 +226,7 @@ const fixtureEmbark: ControllerCommand = {
 void fixtureEmbark;
 
 const fixtureWarQuery = (factions: FactionsApi): boolean =>
-  factions.atWar("faction-a", "faction-b");
+  factions.atWar(fixtureFactionARef, fixtureFactionBRef);
 void fixtureWarQuery;
 
 const fixtureHostilitySpec: HostilityMechanicsSpec = {
@@ -236,8 +245,8 @@ void fixturePopulationAttack;
 
 const fixtureWarChanged: ControllerEvent = {
   type: "WAR_STATE_CHANGED",
-  factionAId: "faction-a",
-  factionBId: "faction-b",
+  factionAId: fixtureFactionARef,
+  factionBId: fixtureFactionBRef,
   atWar: true,
 };
 void fixtureWarChanged;
@@ -337,6 +346,7 @@ import type {
   OpenFufuController,
   SamAntiShipAttackSpec,
   StructureMechanicsSpec,
+  StructureRef,
   TransportDestructionMechanicsSpec,
   TransportLandingCalculation,
   TransportMechanicsSpec,
@@ -358,9 +368,10 @@ const p27AntiShipAttack: SamAntiShipAttackSpec = {
   requiresAtWar: false,
 };
 
+const p27SamRef = "sam-p27" as StructureRef;
 const p27SamField: CellSelector = {
   kind: "STRUCTURE_FIELD_INSTANCE",
-  structureId: "sam-p27",
+  structureId: p27SamRef,
   field: p27AntiShipAttack.eligibilityField,
 };
 
@@ -420,7 +431,7 @@ const samSpec = context.mechanics.structureTypeSpec(
 const antiShipCoveredCells = samSpec.antiShipAttack
   ? context.cells.count({
       kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: "sam-p27",
+      structureId: p27SamRef,
       field: samSpec.antiShipAttack.eligibilityField,
     })
   : Promise.resolve(0);
@@ -650,5 +661,163 @@ void controller;
 
     expect(formatDiagnostics(diagnostics)).toBe("");
     expect(program.getSourceFile(virtualFixturePath)).toBeDefined();
+  });
+
+  it("excludes authoritative identity aliases from the entire exported controller type graph", () => {
+    const apiPath = path.resolve("src/core/controller/ControllerApi.ts");
+    const sourceText = ts.sys.readFile(apiPath);
+    expect(sourceText).toBeDefined();
+    if (sourceText === undefined) throw new Error("ControllerApi.ts is unreadable");
+
+    const source = ts.createSourceFile(
+      apiPath,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TS,
+    );
+    const declarations = new Map<string, ts.Declaration>();
+    const exportedRoots = new Set<string>();
+    const forbiddenAliases = new Set([
+      "FactionId",
+      "UnitId",
+      "StructureId",
+      "OperationId",
+    ]);
+    const safePublicRefs = new Set([
+      "FactionRef",
+      "UnitRef",
+      "StructureRef",
+      "OperationRef",
+    ]);
+    const rawIdentityFieldNames = new Set([
+      "factionId",
+      "factionAId",
+      "factionBId",
+      "ownerId",
+      "byFactionId",
+      "fromFactionId",
+      "targetFactionId",
+      "referenceFactionId",
+      "unitId",
+      "structureId",
+      "operationId",
+      "producerId",
+      "launcherId",
+      "incomingOperationId",
+    ]);
+
+    const namedDeclaration = (declaration: ts.Declaration): string | undefined => {
+      const name = (declaration as ts.NamedDeclaration).name;
+      return name !== undefined && ts.isIdentifier(name) ? name.text : undefined;
+    };
+    const isExported = (node: ts.Node): boolean =>
+      ts.canHaveModifiers(node) &&
+      (ts.getModifiers(node)?.some(
+        (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+      ) ?? false);
+
+    for (const statement of source.statements) {
+      if (ts.isVariableStatement(statement)) {
+        for (const declaration of statement.declarationList.declarations) {
+          const name = namedDeclaration(declaration);
+          if (name === undefined) continue;
+          declarations.set(name, declaration);
+          if (isExported(statement)) exportedRoots.add(name);
+        }
+        continue;
+      }
+      if (
+        ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        ts.isClassDeclaration(statement) ||
+        ts.isEnumDeclaration(statement) ||
+        ts.isFunctionDeclaration(statement)
+      ) {
+        const name = namedDeclaration(statement);
+        if (name === undefined) continue;
+        declarations.set(name, statement);
+        if (isExported(statement)) exportedRoots.add(name);
+      }
+    }
+
+    const violations = new Set<string>();
+    const visited = new Set<string>();
+    const isRawStringIdentityType = (type: ts.TypeNode | undefined): boolean => {
+      if (type === undefined) return false;
+      if (type.kind === ts.SyntaxKind.StringKeyword) return true;
+      if (ts.isParenthesizedTypeNode(type)) {
+        return isRawStringIdentityType(type.type);
+      }
+      if (ts.isUnionTypeNode(type)) {
+        return type.types.some((member) => isRawStringIdentityType(member));
+      }
+      if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+        const name = type.typeName.text;
+        if (safePublicRefs.has(name)) return false;
+        if (forbiddenAliases.has(name)) return true;
+        const declaration = declarations.get(name);
+        if (declaration === undefined) return false;
+        return ts.isTypeAliasDeclaration(declaration)
+          ? isRawStringIdentityType(declaration.type)
+          : false;
+      }
+      return false;
+    };
+
+    const visitDeclaration = (name: string, route: readonly string[]): void => {
+      if (visited.has(name)) return;
+      visited.add(name);
+      const declaration = declarations.get(name);
+      if (declaration === undefined) return;
+      const nextRoute = [...route, name];
+
+      const walk = (node: ts.Node): void => {
+        if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+          const referenced = node.typeName.text;
+          if (forbiddenAliases.has(referenced)) {
+            violations.add(`${nextRoute.join(" -> ")} -> ${referenced}`);
+          } else if (declarations.has(referenced)) {
+            visitDeclaration(referenced, nextRoute);
+          }
+        } else if (
+          ts.isExpressionWithTypeArguments(node) &&
+          ts.isIdentifier(node.expression)
+        ) {
+          const referenced = node.expression.text;
+          if (forbiddenAliases.has(referenced)) {
+            violations.add(`${nextRoute.join(" -> ")} -> ${referenced}`);
+          } else if (declarations.has(referenced)) {
+            visitDeclaration(referenced, nextRoute);
+          }
+        }
+
+        if (ts.isPropertySignature(node) || ts.isParameter(node)) {
+          const memberName =
+            node.name !== undefined && ts.isIdentifier(node.name)
+              ? node.name.text
+              : node.name !== undefined && ts.isStringLiteral(node.name)
+                ? node.name.text
+                : undefined;
+          if (
+            memberName !== undefined &&
+            rawIdentityFieldNames.has(memberName) &&
+            isRawStringIdentityType(node.type)
+          ) {
+            violations.add(
+              `${nextRoute.join(" -> ")} -> ${memberName}: ${node.type?.getText(source) ?? "<missing>"}`,
+            );
+          }
+        }
+
+        ts.forEachChild(node, walk);
+      };
+
+      walk(declaration);
+    };
+
+    for (const root of exportedRoots) visitDeclaration(root, []);
+
+    expect([...violations].sort()).toEqual([]);
   });
 });

@@ -81,6 +81,12 @@
     },
     {
       "from": "src/simulation/ControllerRuntime.ts",
+      "to": "src/simulation/FactionScore.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller runtime reads the Economy-owned authoritative combined faction score for lawful public faction projection; it does not duplicate score mechanics or convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerRuntime.ts",
       "to": "src/simulation/LandOperations.ts",
       "classification": "ORCHESTRATION",
       "rationale": "The controller adapter explicitly routes accepted controller directives through Land-owned deterministic operations."

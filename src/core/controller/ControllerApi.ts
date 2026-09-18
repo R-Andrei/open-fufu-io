@@ -31,10 +31,6 @@ export type ControllerStructureFieldId = StructureFieldId | "OBSERVATION";
 export type Tick = number;
 export type CellId = number;
 export type SegmentId = number;
-type FactionId = string;
-type OperationId = string;
-type UnitId = string;
-type StructureId = string;
 
 declare const factionRefBrand: unique symbol;
 declare const unitRefBrand: unique symbol;
@@ -68,10 +64,6 @@ export type DirectiveKey = string;
 type CommandKey = string;
 
 declare global {
-  type FactionId = string;
-  type OperationId = string;
-  type UnitId = string;
-  type StructureId = string;
   type CommandKey = string;
 }
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
@@ -207,7 +199,7 @@ export interface EffectiveModifierSheet {
 }
 
 export interface FactionView {
-  readonly id: FactionId;
+  readonly id: FactionRef;
   readonly displayName: string;
   readonly status: FactionStatus;
   readonly teamId?: string;
@@ -235,7 +227,9 @@ export interface FactionReadView {
   readonly relation: PublicFactionRelation;
   readonly territoryCells: number;
   readonly isMinorFaction: boolean;
-  readonly score: number;
+  readonly origin?: OriginView;
+  /** Authoritative Major-Faction combined strength; absent for Minor Factions. */
+  readonly score?: number;
   readonly teamId?: string;
 }
 
@@ -246,7 +240,7 @@ export interface CellView {
   readonly hasFallout: boolean;
   readonly conquerable: boolean;
   readonly populationBearing: boolean;
-  readonly ownerId?: FactionId;
+  readonly ownerId?: FactionRef;
   readonly segmentId?: SegmentId;
   readonly isCoast: boolean;
   readonly isShoreline: boolean;
@@ -258,7 +252,7 @@ export interface SegmentView {
   readonly id: SegmentId;
   readonly cellCount: number;
   readonly populationBearingCellCount: number;
-  readonly ownerShares: Readonly<Record<FactionId, number>>;
+  readonly ownerShares: Readonly<Record<FactionRef, number>>;
   readonly adjacentSegmentIds: readonly SegmentId[];
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
 }
@@ -320,10 +314,10 @@ export interface StructureConstructionView {
 
 /**
  * ID-less persistent-structure facts exposed through CellView. The enclosing
- * CellId is the public address; internal stable StructureId remains engine-owned.
+ * CellId is the public address; internal stable structure identity remains engine-owned.
  */
 export interface ControllerStructureView {
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: StructureType;
   readonly cellId: CellId;
   readonly completedLevel?: StructureLevel;
@@ -334,7 +328,7 @@ export interface ControllerStructureView {
 
 export interface StructureView {
   readonly ref: StructureRef;
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: StructureType;
   /** Last fully completed level; absent while a never-completed fresh build is in progress. */
   readonly completedLevel?: StructureLevel;
@@ -351,7 +345,7 @@ export interface StructureView {
 
 export interface UnitView {
   readonly ref: UnitRef;
-  readonly ownerId: FactionId;
+  readonly ownerId: FactionRef;
   readonly type: MobileUnitType;
   readonly cellId: CellId;
   readonly active: boolean;
@@ -396,7 +390,7 @@ export interface FactionFindFilter {
 
 export type CellSelector =
   | { readonly kind: "CELLS"; readonly ids: readonly CellId[] }
-  | { readonly kind: "OWNER"; readonly factionId?: FactionId }
+  | { readonly kind: "OWNER"; readonly factionId?: FactionRef }
   | { readonly kind: "SEGMENT"; readonly segmentId: SegmentId }
   | { readonly kind: "TERRAIN"; readonly terrain: TerrainType }
   | { readonly kind: "FALLOUT"; readonly value: boolean }
@@ -417,7 +411,7 @@ export type CellSelector =
        */
       readonly kind: "STRUCTURE_FIELD";
       readonly field: ControllerStructureFieldId;
-      readonly referenceFactionId: FactionId;
+      readonly referenceFactionId: FactionRef;
       readonly affiliation: StructureFieldAffiliation;
     }
   | {
@@ -426,7 +420,7 @@ export type CellSelector =
        * Runtime owns field geometry; inactive or field-mismatched structures resolve empty.
        */
       readonly kind: "STRUCTURE_FIELD_INSTANCE";
-      readonly structureId: StructureId;
+      readonly structureId: StructureRef;
       readonly field: StructureFieldId;
     }
   | { readonly kind: "UNION"; readonly selectors: readonly CellSelector[] }
@@ -480,14 +474,14 @@ export interface SegmentsApi {
 export interface ContactsApi {
   territorial(): readonly TerritorialContactView[];
   territorialBetween(
-    a: FactionId,
-    b: FactionId,
+    a: FactionRef,
+    b: FactionRef,
   ): readonly TerritorialContactView[];
   /** Current operational contacts are already requester-lawful visibility projections. */
   operational(): readonly OperationalContactView[];
   operationalBetween(
-    a: FactionId,
-    b: FactionId,
+    a: FactionRef,
+    b: FactionRef,
   ): readonly OperationalContactView[];
 }
 
@@ -495,8 +489,8 @@ export interface FactionsApi {
   get(ref: FactionRef): FactionReadView | undefined;
   find(filter?: FactionFindFilter): readonly FactionReadView[];
   proximity(ref: FactionRef): number | undefined;
-  /** Symmetric team-normalized current war state; legacy actor-ID migration remains deferred. */
-  atWar(a: FactionId, b: FactionId): boolean;
+  /** Symmetric team-normalized current war state using public faction refs. */
+  atWar(a: FactionRef, b: FactionRef): boolean;
 }
 
 export interface OperationsApi {
@@ -662,8 +656,8 @@ export interface EffectiveActionCost {
  * or conflicting actions can therefore still make the complete atomic proposal reject.
  * When legal=false, ffySpent and populationSpent are always zero; ffyRequired may
  * remain non-zero to expose the effective affordability requirement independently.
- * Entity-addressed quotes must not distinguish a concealed known ID from an unknown
- * or otherwise unavailable ID, and blind cell-targeted quotes must not leak concealed
+ * Entity-addressed quotes must not distinguish a concealed known ref from an unknown
+ * or otherwise unavailable ref, and blind cell-targeted quotes must not leak concealed
  * contents through failureCode/detail/cost differences.
  */
 export interface ActionQuote {
@@ -692,7 +686,7 @@ export interface StructureUpgradeQuote extends ActionQuote {
 export interface UnitBuildQuote extends ActionQuote {
   readonly requestedUnit: PurchasableUnitType;
   readonly resultingUnit: MobileUnitType;
-  readonly producerId: StructureId;
+  readonly producerId: StructureRef;
   /** Effective producer-sensitive construction duration, including Factory transformations. */
   readonly buildTicks: number;
   /** Effective hard ownership cap when this unit type is capped for the faction. */
@@ -700,7 +694,7 @@ export interface UnitBuildQuote extends ActionQuote {
 }
 
 export interface MoveUnitQuote extends ActionQuote {
-  readonly unitId: UnitId;
+  readonly unitId: UnitRef;
   readonly destination: CellId;
 }
 
@@ -712,7 +706,7 @@ export interface TransportEmbarkQuote extends ActionQuote {
 }
 
 export interface WeaponLaunchQuote extends ActionQuote {
-  readonly launcherId: StructureId | UnitId;
+  readonly launcherId: StructureRef | UnitRef;
   readonly weapon: StrategicWeaponType;
   readonly targetCellId: CellId;
   readonly chargeConsumed: boolean;
@@ -897,7 +891,7 @@ export interface MechanicsApi {
   growth(
     population: number,
     capacity: number,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): GrowthCalculation;
 
   capture(
@@ -905,21 +899,21 @@ export interface MechanicsApi {
     targetCellId: CellId,
     attackingPressure: number,
     defendingPressure: number,
-    attackerId?: FactionId,
-    defenderId?: FactionId,
+    attackerId?: FactionRef,
+    defenderId?: FactionRef,
   ): CaptureCalculation;
 
   settlement(
     targetCellId: CellId,
     pressure: number,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): SettlementCalculation;
 
   counterResponse(
     attackingPopulation: number,
     respondingPopulation: number,
-    attackerId?: FactionId,
-    responderId?: FactionId,
+    attackerId?: FactionRef,
+    responderId?: FactionRef,
   ): CounterResponseCalculation;
 
   hostilitySpec(): HostilityMechanicsSpec;
@@ -927,7 +921,7 @@ export interface MechanicsApi {
   terrainSpec(
     terrain: TerrainType,
     hasFallout: boolean,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): TerrainMechanicsSpec;
 
   /**
@@ -939,25 +933,25 @@ export interface MechanicsApi {
   structureTypeSpec(
     type: StructureType,
     level: StructureLevel,
-    factionId?: FactionId,
+    factionId?: FactionRef,
     acquisitionPath?: StructureAcquisitionPath,
   ): StructureMechanicsSpec;
   /**
    * Effective currently active mechanics for a lawfully visible physical structure,
    * including its authoritative current-owner acquisition provenance. A hidden or
-   * unknown ID and fresh inactive construction all return undefined; an upgrade
+   * unknown ref and fresh inactive construction all return undefined; an upgrade
    * returns the previous completed level's active mechanics until completion.
    */
-  structureSpec(structureId: StructureId): StructureMechanicsSpec | undefined;
+  structureSpec(structureId: StructureRef): StructureMechanicsSpec | undefined;
 
-  unitTypeSpec(type: MobileUnitType, factionId?: FactionId): UnitMechanicsSpec;
-  /** Hidden and unknown unit IDs are indistinguishable and return undefined. */
-  unitSpec(unitId: UnitId): UnitMechanicsSpec | undefined;
-  transportSpec(factionId?: FactionId): TransportMechanicsSpec;
+  unitTypeSpec(type: MobileUnitType, factionId?: FactionRef): UnitMechanicsSpec;
+  /** Hidden and unknown unit refs are indistinguishable and return undefined. */
+  unitSpec(unitId: UnitRef): UnitMechanicsSpec | undefined;
+  transportSpec(factionId?: FactionRef): TransportMechanicsSpec;
   /** Exact whole-Population landing result for the current effective Transport rules. */
   transportLanding(
     carriedPopulation: number,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): TransportLandingCalculation;
   /**
    * Effective destruction consequences for a faction that would receive canonical
@@ -965,12 +959,12 @@ export interface MechanicsApi {
    * Origin-specific branching to controllers.
    */
   transportDestructionSpec(
-    destroyerFactionId?: FactionId,
+    destroyerFactionId?: FactionRef,
   ): TransportDestructionMechanicsSpec;
 
   weaponSpec(
     type: StrategicWeaponType,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): StrategicWeaponMechanicsSpec;
 
   structureBuildQuote(
@@ -980,21 +974,21 @@ export interface MechanicsApi {
   structureUpgradeQuote(cellId: CellId): StructureUpgradeQuote;
   unitBuildQuote(
     type: PurchasableUnitType,
-    producerId: StructureId,
-    factionId?: FactionId,
+    producerId: StructureRef,
+    factionId?: FactionRef,
   ): UnitBuildQuote;
-  moveUnitQuote(unitId: UnitId, destination: CellId): MoveUnitQuote;
+  moveUnitQuote(unitId: UnitRef, destination: CellId): MoveUnitQuote;
   transportEmbarkQuote(
     sourceCellId: CellId,
     targetCellId: CellId,
     population: number,
-    factionId?: FactionId,
+    factionId?: FactionRef,
   ): TransportEmbarkQuote;
   weaponLaunchQuote(
-    launcherId: StructureId | UnitId,
+    launcherId: StructureRef | UnitRef,
     type: StrategicWeaponType,
     targetCellId: CellId,
-    targetFactionId?: FactionId,
+    targetFactionId?: FactionRef,
   ): WeaponLaunchQuote;
   /** Self-faction quote for the exact selected cells on the current immutable snapshot. */
   relinquishQuote(cells: CellSelector): RelinquishQuote;
@@ -1090,7 +1084,7 @@ export type ControllerEvent =
   | {
       readonly type: "CELL_CAPTURED";
       readonly cellId: CellId;
-      readonly byFactionId: FactionId;
+      readonly byFactionId: FactionRef;
     }
   | {
       readonly type: "POPULATION_CHANGED";
@@ -1104,17 +1098,17 @@ export type ControllerEvent =
     }
   | {
       readonly type: "STRUCTURE_CHANGED";
-      readonly structureId: StructureId;
+      readonly structureId: StructureRef;
       readonly reason: string;
     }
   | {
       readonly type: "UNIT_CHANGED";
-      readonly unitId: UnitId;
+      readonly unitId: UnitRef;
       readonly reason: string;
     }
   | {
       readonly type: "OPERATION_CHANGED";
-      readonly operationId: OperationId;
+      readonly operationId: OperationRef;
       readonly reason: string;
     }
   | {
@@ -1123,13 +1117,13 @@ export type ControllerEvent =
     }
   | {
       readonly type: "WAR_STATE_CHANGED";
-      readonly factionAId: FactionId;
-      readonly factionBId: FactionId;
+      readonly factionAId: FactionRef;
+      readonly factionBId: FactionRef;
       readonly atWar: boolean;
     }
   | {
       readonly type: "FACTION_STATUS_CHANGED";
-      readonly factionId: FactionId;
+      readonly factionId: FactionRef;
       readonly status: FactionStatus;
     }
   | {
@@ -1140,7 +1134,7 @@ export type ControllerEvent =
     }
   | {
       readonly type: "TEAM_SIGNAL_RECEIVED";
-      readonly fromFactionId: FactionId;
+      readonly fromFactionId: FactionRef;
       readonly channel: string;
       readonly payload: JsonValue;
     };
@@ -1176,11 +1170,11 @@ export interface DebugMetric {
 }
 
 export type DebugSubject =
-  | { readonly kind: "FACTION"; readonly id: FactionId }
+  | { readonly kind: "FACTION"; readonly id: FactionRef }
   | { readonly kind: "SEGMENT"; readonly id: SegmentId }
-  | { readonly kind: "OPERATION"; readonly id: OperationId }
-  | { readonly kind: "UNIT"; readonly id: UnitId }
-  | { readonly kind: "STRUCTURE"; readonly id: StructureId }
+  | { readonly kind: "OPERATION"; readonly id: OperationRef }
+  | { readonly kind: "UNIT"; readonly id: UnitRef }
+  | { readonly kind: "STRUCTURE"; readonly id: StructureRef }
   | { readonly kind: "CELL"; readonly id: CellId };
 
 export interface DebugAnnotation {
@@ -1202,7 +1196,7 @@ export interface LandOperationDirective {
   readonly key: DirectiveKey;
   readonly operation: "ATTACK" | "NEUTRAL_EXPANSION";
   readonly population: number;
-  readonly targetFactionId?: FactionId;
+  readonly targetFactionId?: FactionRef;
   readonly source: CellSelector;
   readonly target: CellSelector;
   readonly engagementPriority?: SpatialPolicy;
@@ -1218,9 +1212,7 @@ export interface DefensePriorityDirective {
 export interface CounterResponseDirective {
   readonly kind: "COUNTER_RESPONSE";
   readonly key: DirectiveKey;
-  readonly incomingOperation?: OperationRef;
-  /** Trusted-runtime compatibility field; player code should use incomingOperation. */
-  readonly incomingOperationId?: OperationId;
+  readonly incomingOperation: OperationRef;
   readonly population: number;
 }
 
@@ -1251,7 +1243,7 @@ export interface BuildUnitCommand {
   readonly kind: "BUILD_UNIT";
   readonly key: CommandKey;
   readonly unit: PurchasableUnitType;
-  readonly producerId: StructureId;
+  readonly producerId: StructureRef;
 }
 
 /**
@@ -1263,7 +1255,7 @@ export interface BuildUnitCommand {
 export interface MoveUnitCommand {
   readonly kind: "MOVE_UNIT";
   readonly key: CommandKey;
-  readonly unitId: UnitId;
+  readonly unitId: UnitRef;
   readonly destination: CellId;
 }
 
@@ -1284,16 +1276,16 @@ export interface EmbarkTransportCommand {
 export interface ReturnTransportCommand {
   readonly kind: "RETURN_TRANSPORT";
   readonly key: CommandKey;
-  readonly unitId: UnitId;
+  readonly unitId: UnitRef;
 }
 
 export interface LaunchWeaponCommand {
   readonly kind: "LAUNCH_WEAPON";
   readonly key: CommandKey;
-  readonly launcherId: StructureId | UnitId;
+  readonly launcherId: StructureRef | UnitRef;
   readonly weapon: StrategicWeaponType;
   readonly targetCellId: CellId;
-  readonly targetFactionId?: FactionId;
+  readonly targetFactionId?: FactionRef;
 }
 
 export interface RelinquishCommand {
@@ -1386,7 +1378,7 @@ export interface SpawnProfileView {
 }
 
 export interface SpawnParticipantView {
-  readonly id: FactionId;
+  readonly id: FactionRef;
   readonly displayName: string;
   readonly origin: OriginView;
   readonly profile: SpawnProfileView;
@@ -1395,7 +1387,7 @@ export interface SpawnParticipantView {
 }
 
 export interface SpawnFactionView {
-  readonly id: FactionId;
+  readonly id: FactionRef;
   readonly displayName: string;
   readonly influenceCenters: readonly CellId[];
 }

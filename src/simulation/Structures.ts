@@ -17,6 +17,8 @@ import {
   type StructureChargeSlotState,
 } from "./StructuresCore";
 
+type FactionId = string;
+
 export * from "./StructuresCore";
 
 export interface PersistentStructureLifecycleTickResult {

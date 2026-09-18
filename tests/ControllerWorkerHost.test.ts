@@ -2,6 +2,7 @@ import type { ControllerDecision } from "../src/core/controller/ControllerApi";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import type { ControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
+import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
   evaluateControllerRound,
   type LawfulControllerObservation,
@@ -177,6 +178,8 @@ function productionShapedState(instrumentation: {
       }),
     ]),
     structures: Object.freeze([]),
+    mobileUnits: Object.freeze([]),
+    nextMobileUnitOrdinal: 0,
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
     captureProgress: Object.freeze([]),
@@ -222,6 +225,10 @@ describe("production controller worker host", () => {
   it("keeps a 4,800,000-cell normal controller round lazy until a bounded query is requested", async () => {
     const instrumentation = { eagerRasterTraversals: 0, terrainReads: 0 };
     const state = productionShapedState(instrumentation);
+    const references = new ControllerReferenceSession(
+      "controller-worker-production-shaped",
+      state,
+    );
     const pool = new RecordingPool(async (_request, queries) => {
       expect(queries).toBeDefined();
       if (queries === undefined) throw new Error("missing controller query session");
@@ -244,6 +251,7 @@ describe("production controller worker host", () => {
         new Map(),
         new Map(),
         new Set(["beta"]),
+        references,
       ),
     );
 

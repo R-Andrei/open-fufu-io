@@ -1,5 +1,6 @@
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
+import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
 import {
   ControllerReferenceSession,
   type ControllerReferenceDomain,
@@ -143,6 +144,34 @@ describe("controller reference session", () => {
     expect(first.resolve("alpha", "STRUCTURE", "fabricated-ref")).toBeUndefined();
     expect(second.resolve("alpha", "STRUCTURE", alphaStructure)).toBeUndefined();
     expect(first.issue("alpha", "UNIT", "does-not-exist")).toBeUndefined();
+  });
+
+  it("uses FactionRef rather than authoritative faction ID in OWNER selectors", async () => {
+    const state = baseState("owner-selector-faction-ref");
+    const references = new ControllerReferenceSession(
+      "owner-selector-faction-ref",
+      state,
+    );
+    const alphaRef = references.issueFaction("alpha");
+    if (alphaRef === undefined) throw new Error("expected Alpha FactionRef");
+    const session = createControllerQuerySession(
+      state,
+      "beta",
+      { queriesPerDecision: 16, materializedCellsPerDecision: 16 },
+      references,
+    );
+
+    expect(
+      (
+        await session.cells.query({ kind: "OWNER", factionId: alphaRef })
+      ).items.map((cell) => cell.id),
+    ).toEqual([0, 1, 2]);
+    expect(
+      await session.cells.count({
+        kind: "OWNER",
+        factionId: "alpha" as typeof alphaRef,
+      }),
+    ).toBe(0);
   });
 
   it("keeps a unit ref across movement and never aliases a destroyed/recreated structure incarnation", () => {

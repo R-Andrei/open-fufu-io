@@ -1,4 +1,6 @@
 import type {
+  ControllerDecision,
+  CounterResponseDirective,
   DecisionFailure,
   DecisionReceipt,
 } from "../core/controller/ControllerApi";
@@ -10,6 +12,7 @@ import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
   evaluateControllerRound,
   type ControllerHost,
+  type ControllerHostInvocationResult,
   type ControllerProposedAction,
   type ControllerRoundEvaluation,
   type ControllerRoundReceipt,
@@ -106,6 +109,117 @@ function isPromiseLike<T>(value: T | Promise<T>): value is Promise<T> {
     (typeof value === "object" || typeof value === "function") &&
     typeof (value as Promise<T>).then === "function"
   );
+}
+
+function operationDirectRevealIsActive(
+  state: MatchState,
+  viewerFactionId: string,
+  operationId: string,
+): boolean {
+  return state.directReveals.some(
+    (record) =>
+      record.viewerFactionId === viewerFactionId &&
+      record.sourceKind === "OPERATION" &&
+      record.sourceId === operationId &&
+      state.tick < record.expiryExclusiveTick,
+  );
+}
+
+function resolveCounterResponseOperationRefs(
+  state: MatchState,
+  factionId: string,
+  decision: ControllerDecision,
+  references: ControllerReferenceSession,
+): ControllerDecision {
+  const directives = decision.directives;
+  if (
+    directives?.set === undefined ||
+    !directives.set.some((directive) => directive.kind === "COUNTER_RESPONSE")
+  ) {
+    return decision;
+  }
+
+  const set = directives.set.map((directive) => {
+    if (directive.kind !== "COUNTER_RESPONSE") return directive;
+    const incomingOperation = directive.incomingOperation;
+    if (incomingOperation === undefined) return directive;
+
+    const operationId = references.resolve(
+      factionId,
+      "OPERATION",
+      incomingOperation,
+    );
+    if (operationId === undefined) return directive;
+
+    const operation = state.operations.find(
+      (candidate) => candidate.id === operationId,
+    );
+    if (
+      operation === undefined ||
+      operation.kind !== "ATTACK" ||
+      operation.targetFactionId !== factionId ||
+      !operationDirectRevealIsActive(state, factionId, operationId)
+    ) {
+      return directive;
+    }
+
+    return Object.freeze({
+      kind: "COUNTER_RESPONSE" as const,
+      key: directive.key,
+      incomingOperationId: operationId,
+      population: directive.population,
+    }) as CounterResponseDirective;
+  });
+
+  return Object.freeze({
+    ...decision,
+    directives: Object.freeze({
+      ...directives,
+      set: Object.freeze(set),
+    }),
+  });
+}
+
+function resolvingControllerHost(
+  host: ControllerHost,
+  state: MatchState,
+  references: ControllerReferenceSession,
+): ControllerHost {
+  const resolveInvocation = (
+    factionId: string,
+    result: ControllerHostInvocationResult<ControllerDecision>,
+  ): ControllerHostInvocationResult<ControllerDecision> => {
+    if (!result.ok || result.output === undefined) return result;
+    return Object.freeze({
+      ok: true as const,
+      output: resolveCounterResponseOperationRefs(
+        state,
+        factionId,
+        result.output,
+        references,
+      ),
+    });
+  };
+
+  return Object.freeze({
+    invoke(factionId, observation, querySession) {
+      const invocation = host.invoke(factionId, observation, querySession);
+      return isPromiseLike(invocation)
+        ? Promise.resolve(invocation).then((result) =>
+            resolveInvocation(factionId, result),
+          )
+        : resolveInvocation(factionId, invocation);
+    },
+    chooseInfluence(factionId, context) {
+      return host.chooseInfluence(factionId, context);
+    },
+    reconsiderInfluence(factionId, context) {
+      return host.reconsiderInfluence(factionId, context);
+    },
+    chooseOrigins(factionId, context) {
+      return host.chooseOrigins(factionId, context);
+    },
+  });
 }
 
 function validateArtifactMapSpec(map: ArtifactMapSpec): void {
@@ -670,12 +784,16 @@ export class MatchRuntime {
 
     const roundTick = this.state.tick;
     this.controllerRoundInFlightTick = roundTick;
+    const evaluationHost =
+      this.controllerReferences === undefined
+        ? host
+        : resolvingControllerHost(host, this.state, this.controllerReferences);
 
     let evaluated: ControllerRoundEvaluation | Promise<ControllerRoundEvaluation>;
     try {
       evaluated = evaluateControllerRound(
         this.state,
-        host,
+        evaluationHost,
         this.nextControllerDecisionNumber,
         this.controllerReceipts,
         this.controllerFaultCounts,
