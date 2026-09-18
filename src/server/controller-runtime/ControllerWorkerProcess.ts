@@ -11,6 +11,7 @@ import type {
   FactionReadView,
   SegmentId,
   StructureFindFilter,
+  StructureType,
   StructureLocator,
   TerrainType,
   UnitFindFilter,
@@ -52,6 +53,14 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_COUNT";
       args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_BUILD";
+      args: readonly [StructureType, CellId];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_UPGRADE";
+      args: readonly [StructureLocator];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -423,6 +432,20 @@ const invokeEntrypointSource = `
     return frozenResult;
   };
 
+  const hostCheck = (operation, args) => {
+    consumeQuery();
+    hostQuerySequence += 1;
+    const value = $1.applySyncPromise(
+      undefined,
+      [{ sequence: hostQuerySequence, operation, args }],
+      {
+        arguments: { copy: true },
+        result: { copy: true }
+      }
+    );
+    return deepFreeze(value);
+  };
+
   const localRead = (operation, args) => {
     const value = $2.applySync(
       undefined,
@@ -536,7 +559,11 @@ const invokeEntrypointSource = `
             build: (structure, cellId) =>
               stageAction("BUILD_STRUCTURE", { structure, cellId }),
             upgrade: (structure) =>
-              stageAction("UPGRADE_STRUCTURE", { structure })
+              stageAction("UPGRADE_STRUCTURE", { structure }),
+            checkBuild: (structure, cellId) =>
+              hostCheck("STRUCTURES_CHECK_BUILD", [structure, cellId]),
+            checkUpgrade: (structure) =>
+              hostCheck("STRUCTURES_CHECK_UPGRADE", [structure])
           }
         }
       : {}),

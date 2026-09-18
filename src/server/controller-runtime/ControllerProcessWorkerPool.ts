@@ -7,6 +7,7 @@ import type {
   CellSelector,
   SegmentId,
   StructureFindFilter,
+  StructureType,
   StructureLocator,
   TerrainType,
   UnitFindFilter,
@@ -81,6 +82,14 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_COUNT";
       args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_BUILD";
+      args: readonly [StructureType, CellId];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_UPGRADE";
+      args: readonly [StructureLocator];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -285,7 +294,14 @@ function isControllerWorkerQueryRequest(
     case "STRUCTURES_COUNT":
       return isOptionalEntityFilterArgs(args);
     case "STRUCTURES_GET":
+    case "STRUCTURES_CHECK_UPGRADE":
       return args.length === 1 && isStructureLocatorArgument(args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return (
+        args.length === 2 &&
+        typeof args[0] === "string" &&
+        typeof args[1] === "number"
+      );
     default:
       return false;
   }
@@ -348,6 +364,10 @@ async function resolveControllerWorkerQuery(
       return session.structures.find(query.args[0]);
     case "STRUCTURES_COUNT":
       return session.structures.count(query.args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return session.structures.checkBuild(query.args[0], query.args[1]);
+    case "STRUCTURES_CHECK_UPGRADE":
+      return session.structures.checkUpgrade(query.args[0]);
   }
 }
 

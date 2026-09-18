@@ -225,6 +225,7 @@ export interface ControllerQuerySession {
     build(type: StructureType, cellId: CellId): ActionRef;
     upgrade(locator: StructureLocator): ActionRef;
     checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
+    checkUpgrade(locator: StructureLocator): StructureUpgradeQuote;
   }>;
   readonly transports: Readonly<{
     embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
@@ -1822,6 +1823,35 @@ export function createControllerQuerySession(
     beginQuery();
     return mechanics.structureBuildQuote(type, cellId);
   };
+  const checkStructureUpgrade = (
+    locator: StructureLocator,
+  ): StructureUpgradeQuote => {
+    beginQuery();
+    if (
+      references === undefined ||
+      locator === null ||
+      typeof locator !== "object"
+    ) {
+      return mechanics.structureUpgradeQuote(-1);
+    }
+    const authoritativeId =
+      "ref" in locator
+        ? references.resolve(requesterFactionId, "STRUCTURE", locator.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in locator && state.map.isValidCellId(locator.cellId)
+          ? state.structures.find((candidate) => candidate.cellId === locator.cellId)
+          : undefined;
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return mechanics.structureUpgradeQuote(-1);
+    }
+    return mechanics.structureUpgradeQuote(structure.cellId);
+  };
   const consumeStagedActions = (): readonly ControllerStagedAction[] =>
     Object.freeze([...stagedActions]);
 
@@ -2150,6 +2180,7 @@ export function createControllerQuerySession(
       build: stageStructureBuild,
       upgrade: stageStructureUpgrade,
       checkBuild: checkStructureBuild,
+      checkUpgrade: checkStructureUpgrade,
     }),
     transports: Object.freeze({
       embark: stageTransportEmbark,
