@@ -26,6 +26,7 @@ import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { tryStartTankProduction } from "../src/simulation/Tanks";
 import { tryStartWarshipProduction } from "../src/simulation/Warships";
 import { createPopulationState } from "../src/simulation/Population";
+import { matchStateAtWar } from "../src/simulation/HostilityState";
 import { resolveTransportEndpointRouteForState } from "../src/simulation/Transports";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
@@ -985,6 +986,259 @@ describe("issue #206 territory relinquishment authoritative RED", () => {
     expect(after.ownership).toEqual(before.ownership);
     expect(after.fallout).toEqual(before.fallout);
     expect(after.structures).toEqual(before.structures);
+  });
+});
+
+describe("issue #206 strategic weapon baseline RED", () => {
+  function strategicRules(withP53 = false) {
+    if (!withP53) return emptyRules();
+    const origin = originRuleProfileInput(["P53"]);
+    return compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: origin.contributions,
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+  }
+
+  function strategicState(seed: string, ffy = 2_000_000) {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 0,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: strategicRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    return createProspectiveMatchState(base, {
+      factions: Object.freeze(
+        base.factions.map((faction) =>
+          faction.id === "alpha"
+            ? Object.freeze({ ...faction, ffy })
+            : faction,
+        ),
+      ),
+    });
+  }
+
+  function strategicSession(seed: string, ffy = 2_000_000) {
+    const state = strategicState(seed, ffy);
+    return {
+      state,
+      session: createControllerQuerySession(
+        state,
+        "alpha",
+        CONTROLLER_QUERY_LIMITS,
+        new ControllerReferenceSession(seed, state),
+      ),
+    };
+  }
+
+  function strategicRuntime(seed: string) {
+    return new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 0,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: strategicRules(true) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+  }
+
+  function advanceUntilFfy(runtime: MatchRuntime, minimum: number): void {
+    let guard = 0;
+    while (
+      (runtime.snapshot().factions.find((faction) => faction.id === "alpha")
+        ?.ffy ?? 0) < minimum
+    ) {
+      runtime.tick();
+      guard += 1;
+      if (guard > 10_000) {
+        throw new Error("strategic weapon fixture failed to accumulate FFY");
+      }
+    }
+  }
+
+  it("quotes a lawful L1 Atom launch through an opaque launcher ref with one trusted read", () => {
+    const { session } = strategicSession("issue206-weapon-check");
+    const before = session.usage();
+    const quote = (
+      session.weapons as unknown as {
+        checkLaunch(
+          launcher: { readonly cellId: number },
+          weapon: "ATOM_BOMB",
+          targetCellId: number,
+        ): Record<string, unknown>;
+      }
+    ).checkLaunch({ cellId: 0 }, "ATOM_BOMB", 1);
+
+    expect(quote).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 1_000_000,
+        ffySpent: 1_000_000,
+        populationSpent: 0,
+      },
+      weapon: "ATOM_BOMB",
+      targetCellId: 1,
+      chargeConsumed: true,
+    });
+    expect(typeof quote.launcherId).toBe("string");
+    expect(quote.launcherId).not.toBe("silo-alpha");
+    const after = session.usage();
+    expect(after.queries - before.queries).toBe(1);
+    expect(after.materializedEntityViews - before.materializedEntityViews).toBe(0);
+  });
+
+  it("matches the lawful strategic launch quote in the production isolate", async () => {
+    const { session } = strategicSession("issue206-weapon-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerCheckArtifact(
+          'context.weapons.checkLaunch({ cellId: 0 }, "ATOM_BOMB", 1)',
+        ),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        session,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const log = JSON.parse(result.output?.log ?? "{}");
+      expect(log.error).toBeUndefined();
+      expect(log.result).toMatchObject({
+        legal: true,
+        cost: {
+          ffyRequired: 1_000_000,
+          ffySpent: 1_000_000,
+          populationSpent: 0,
+        },
+        weapon: "ATOM_BOMB",
+        targetCellId: 1,
+        chargeConsumed: true,
+      });
+      expect(typeof log.result.launcherId).toBe("string");
+      expect(result.usage?.queries).toBeUndefined();
+      expect(session.usage().queries).toBe(1);
+      expect(session.usage().materializedEntityViews).toBe(0);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("commits one lawful Atom launch as FFY + charge + identity + projectile + hostility state", async () => {
+    const runtime = strategicRuntime("issue206-weapon-commit");
+    advanceUntilFfy(runtime, 1_000_000);
+    const before = runtime.snapshot();
+    const beforeFfy =
+      before.factions.find((faction) => faction.id === "alpha")?.ffy ?? 0;
+    const beforeCharge = before.structures[0]?.chargeSlots?.[0];
+    expect(beforeCharge).toEqual({ slotId: 0, state: "READY" });
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
+      accepted: true,
+    });
+
+    const accepted = runtime.acceptedInputs().at(-1)?.action as
+      | Readonly<Record<string, unknown>>
+      | undefined;
+    expect(accepted).toMatchObject({
+      type: "LAUNCH_STRATEGIC_WEAPON",
+      ownerId: "alpha",
+      launcherId: "silo-alpha",
+      weapon: "ATOM_BOMB",
+      targetCellId: 1,
+    });
+    expect(runtime.snapshot()).toEqual(before);
+
+    const commitTick = before.tick + 1;
+    const after = runtime.tick();
+    const afterAlpha =
+      after.factions.find((faction) => faction.id === "alpha");
+    expect(afterAlpha?.ffy).toBeLessThan(beforeFfy);
+    expect(after.structures[0]?.chargeSlots?.[0]).toEqual({
+      slotId: 0,
+      state: "RECHARGING",
+      readyAtTick: commitTick + 90,
+    });
+    expect(
+      (after.structures[0] as unknown as { acceptedLaunchCount?: number })
+        .acceptedLaunchCount,
+    ).toBe(1);
+    const projectiles = (
+      after as unknown as {
+        strategicProjectiles?: readonly Readonly<Record<string, unknown>>[];
+      }
+    ).strategicProjectiles;
+    expect(projectiles).toHaveLength(1);
+    expect(projectiles?.[0]).toMatchObject({
+      ownerId: "alpha",
+      launcherId: "silo-alpha",
+      weapon: "ATOM_BOMB",
+      targetCellId: 1,
+      acceptedLaunchOrdinal: 0,
+    });
+    expect(matchStateAtWar(after, "alpha", "beta")).toBe(true);
+  });
+
+  it("rejects two sibling Atom launches from one L1 ready charge atomically", async () => {
+    const runtime = strategicRuntime("issue206-weapon-charge-atomic");
+    advanceUntilFfy(runtime, 2_000_000);
+    const before = runtime.snapshot();
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
+        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted)
+      .toBe(false);
+    expect(runtime.acceptedInputs()).toEqual([]);
+    expect(runtime.snapshot()).toEqual(before);
+    expect(runtime.tick().structures[0]?.chargeSlots?.[0]).toEqual({
+      slotId: 0,
+      state: "READY",
+    });
   });
 });
 
