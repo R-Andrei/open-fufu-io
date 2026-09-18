@@ -78,6 +78,8 @@ import {
 } from "./TankTargeting";
 import {
   advanceTankProductionPhase,
+  trySetTankStrategicDestination,
+  tryStartTankProduction,
   tankCellTraversalTiming,
   tankNavigationRoute,
   tankOperatingLeashContains,
@@ -155,6 +157,20 @@ export interface PurchaseStructureUpgradeAction {
   readonly ownerId: string;
 }
 
+export interface StartTankProductionAction {
+  readonly type: "START_TANK_PRODUCTION";
+  readonly ownerId: string;
+  readonly factoryId: string;
+  readonly strategicDestinationCellId: number;
+}
+
+export interface SetUnitStrategicDestinationAction {
+  readonly type: "SET_UNIT_STRATEGIC_DESTINATION";
+  readonly ownerId: string;
+  readonly unitId: string;
+  readonly destinationCellId: number;
+}
+
 export interface EmbarkTransportAction {
   readonly type: "EMBARK_TRANSPORT";
   readonly ownerId: string;
@@ -194,6 +210,8 @@ export type SimulationAction =
   | ApplyPersistentDirectivesAction
   | PurchaseStructureBuildAction
   | PurchaseStructureUpgradeAction
+  | StartTankProductionAction
+  | SetUnitStrategicDestinationAction
   | EmbarkTransportAction
   | ReturnTransportAction
   | RelinquishTerritoryAction
@@ -1206,6 +1224,34 @@ export class TickEngine {
             factions: purchased.factions,
             structures: purchased.structures,
           });
+          break;
+        }
+        case "START_TANK_PRODUCTION": {
+          const started = tryStartTankProduction(working, {
+            ownerId: action.ownerId,
+            factoryId: action.factoryId,
+            strategicDestinationCellId: action.strategicDestinationCellId,
+          });
+          if (!started.ok) {
+            throw new Error(
+              `accepted Tank production became invalid: ${started.failure.code}`,
+            );
+          }
+          working = started.state;
+          break;
+        }
+        case "SET_UNIT_STRATEGIC_DESTINATION": {
+          const moved = trySetTankStrategicDestination(working, {
+            ownerId: action.ownerId,
+            unitId: action.unitId,
+            destinationCellId: action.destinationCellId,
+          });
+          if (!moved.ok) {
+            throw new Error(
+              `accepted Tank strategic destination became invalid: ${moved.failure.code}`,
+            );
+          }
+          working = moved.state;
           break;
         }
         case "EMBARK_TRANSPORT": {

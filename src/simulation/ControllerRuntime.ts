@@ -974,6 +974,103 @@ function evaluateProposal(
       );
       continue;
     }
+    if (staged.kind === "BUILD_UNIT") {
+      if (staged.unit !== "TANK") {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      if (
+        staged.producer === null ||
+        typeof staged.producer !== "object"
+      ) {
+        return invalid("INVALID_PRODUCER", staged.actionRef);
+      }
+      const resolvedProducerId =
+        "ref" in staged.producer
+          ? controllerReferences.resolve(
+              factionId,
+              "STRUCTURE",
+              staged.producer.ref,
+            )
+          : undefined;
+      const factory =
+        resolvedProducerId !== undefined
+          ? state.structures.find(
+              (candidate) =>
+                candidate.id === resolvedProducerId &&
+                candidate.ownerId === factionId &&
+                candidate.type === "FACTORY",
+            )
+          : "cellId" in staged.producer &&
+              state.map.isValidCellId(staged.producer.cellId)
+            ? state.structures.find(
+                (candidate) =>
+                  candidate.cellId === staged.producer.cellId &&
+                  candidate.ownerId === factionId &&
+                  candidate.type === "FACTORY",
+              )
+            : undefined;
+      if (factory === undefined) {
+        return invalid("INVALID_PRODUCER", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "START_TANK_PRODUCTION" as const,
+            ownerId: factionId,
+            factoryId: factory.id,
+            strategicDestinationCellId: staged.destination,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "MOVE_UNIT") {
+      if (staged.unit === null || typeof staged.unit !== "object") {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      const resolvedUnitId =
+        "ref" in staged.unit
+          ? controllerReferences.resolve(
+              factionId,
+              "UNIT",
+              staged.unit.ref,
+            )
+          : undefined;
+      const unit =
+        resolvedUnitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === resolvedUnitId &&
+                candidate.ownerId === factionId,
+            )
+          : "cellId" in staged.unit &&
+              state.map.isValidCellId(staged.unit.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === staged.unit.cellId &&
+                  candidate.ownerId === factionId,
+              )
+            : undefined;
+      if (unit === undefined) {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "SET_UNIT_STRATEGIC_DESTINATION" as const,
+            ownerId: factionId,
+            unitId: unit.id,
+            destinationCellId: staged.destination,
+          }),
+        }),
+      );
+      continue;
+    }
     if (staged.kind === "EMBARK_TRANSPORT") {
       actions.push(
         Object.freeze({

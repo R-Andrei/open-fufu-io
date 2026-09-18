@@ -307,6 +307,12 @@
     },
     {
       "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller Tank production and strategic-destination actions through Tank-owned authoritative transactions before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
       "to": "src/simulation/TerritoryEffects.ts",
       "classification": "ORCHESTRATION",
       "rationale": "MatchRuntime validates accepted controller relinquishment actions through the Land-owned atomic territory relinquishment primitive before TickEngine commit."

@@ -5,6 +5,7 @@ import type {
   DecisionReceipt,
 } from "../core/controller/ControllerApi";
 import {
+  controllerUnitBuildFailureCode,
   mapControllerStructureBuildFailure,
   mapControllerStructureUpgradeFailure,
   mapControllerTransportEmbarkFailure,
@@ -55,6 +56,11 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  trySetTankStrategicDestination,
+  tryStartTankProduction,
+  type TankStrategicDestinationFailureCode,
+} from "./Tanks";
 import {
   tryRelinquishTerritory,
   type TerritoryRelinquishmentFailureCode,
@@ -496,6 +502,32 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "START_TANK_PRODUCTION": {
+      const started = tryStartTankProduction(state, {
+        ownerId: action.ownerId,
+        factoryId: action.factoryId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      if (!started.ok) {
+        throw new Error(
+          `invalid Tank production start: ${started.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const moved = trySetTankStrategicDestination(state, {
+        ownerId: action.ownerId,
+        unitId: action.unitId,
+        destinationCellId: action.destinationCellId,
+      });
+      if (!moved.ok) {
+        throw new Error(
+          `invalid Tank strategic destination: ${moved.failure.code}`,
+        );
+      }
+      break;
+    }
     case "EMBARK_TRANSPORT": {
       const embarked = tryCommitTransportEmbark(state, {
         ownerId: action.ownerId,
@@ -579,6 +611,21 @@ function decisionFailure(
     code,
     ...(key === undefined ? {} : { key }),
   });
+}
+
+function mapTankStrategicDestinationFailure(
+  code: TankStrategicDestinationFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_TANK":
+    case "INVALID_DESTINATION":
+      return decisionFailure("INVALID_TARGET", key);
+  }
 }
 
 function mapTerritoryRelinquishmentFailure(
@@ -688,6 +735,32 @@ function controllerActionFailure(
             action.ownerId,
             action.structureId,
             purchased.failure.code,
+            proposed.key,
+          );
+    }
+    case "START_TANK_PRODUCTION": {
+      const started = tryStartTankProduction(state, {
+        ownerId: action.ownerId,
+        factoryId: action.factoryId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      return started.ok
+        ? undefined
+        : decisionFailure(
+            controllerUnitBuildFailureCode(started.failure.code),
+            proposed.key,
+          );
+    }
+    case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const moved = trySetTankStrategicDestination(state, {
+        ownerId: action.ownerId,
+        unitId: action.unitId,
+        destinationCellId: action.destinationCellId,
+      });
+      return moved.ok
+        ? undefined
+        : mapTankStrategicDestinationFailure(
+            moved.failure.code,
             proposed.key,
           );
     }

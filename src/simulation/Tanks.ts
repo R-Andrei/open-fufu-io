@@ -79,6 +79,32 @@ export interface StartTankProductionRequest {
   readonly strategicDestinationCellId: number;
 }
 
+export interface SetTankStrategicDestinationRequest {
+  readonly ownerId: string;
+  readonly unitId: string;
+  readonly destinationCellId: number;
+}
+
+export type TankStrategicDestinationFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_OWNER"
+  | "UNKNOWN_TANK"
+  | "NOT_OWNER"
+  | "INVALID_DESTINATION";
+
+export type SetTankStrategicDestinationResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly state: MatchState;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly failure: Readonly<{
+        readonly code: TankStrategicDestinationFailureCode;
+      }>;
+      readonly state: MatchState;
+    }>;
+
 export interface ResolveTankPopulationShotRequest {
   readonly attackerOwnerId: string;
   readonly chassisType: TankChassisType;
@@ -1020,6 +1046,93 @@ export function tryStartTankProduction(
     job,
     state: next,
   });
+}
+
+function tankStrategicDestinationFailure(
+  state: MatchState,
+  code: TankStrategicDestinationFailureCode,
+): SetTankStrategicDestinationResult {
+  return Object.freeze({
+    ok: false as const,
+    failure: Object.freeze({ code }),
+    state,
+  });
+}
+
+export function trySetTankStrategicDestination(
+  state: MatchState,
+  request: SetTankStrategicDestinationRequest,
+): SetTankStrategicDestinationResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0 ||
+    typeof request.unitId !== "string" ||
+    request.unitId.length === 0 ||
+    typeof request.destinationCellId !== "number" ||
+    !Number.isSafeInteger(request.destinationCellId) ||
+    Object.is(request.destinationCellId, -0) ||
+    !state.map.isValidCellId(request.destinationCellId)
+  ) {
+    return tankStrategicDestinationFailure(state, "INVALID_REQUEST");
+  }
+
+  const owner = state.factions.find(
+    (faction) => faction.id === request.ownerId,
+  );
+  if (owner === undefined) {
+    return tankStrategicDestinationFailure(state, "UNKNOWN_OWNER");
+  }
+
+  const unit = state.mobileUnits.find(
+    (candidate) =>
+      candidate.id === request.unitId &&
+      (candidate.type === "TANK" ||
+        candidate.type === "HEAVY_ARTILLERY"),
+  );
+  if (unit === undefined) {
+    return tankStrategicDestinationFailure(state, "UNKNOWN_TANK");
+  }
+  if (unit.ownerId !== request.ownerId) {
+    return tankStrategicDestinationFailure(state, "NOT_OWNER");
+  }
+  if (
+    tankTerrainMovementTiming(
+      state,
+      request.ownerId,
+      unit.type,
+      state.map.terrainAt(request.destinationCellId),
+    ) === undefined
+  ) {
+    return tankStrategicDestinationFailure(state, "INVALID_DESTINATION");
+  }
+
+  const alreadyArrived = unit.cellId === request.destinationCellId;
+  const updatedUnit = setMobileUnitStrategicDestination(
+    state.map,
+    unit,
+    alreadyArrived ? undefined : request.destinationCellId,
+  );
+  const next = createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((candidate) =>
+      candidate.id === updatedUnit.id ? updatedUnit : candidate,
+    ),
+    ...(alreadyArrived
+      ? {
+          tankOperationalStates: state.tankOperationalStates.map(
+            (operational) =>
+              operational.unitId === unit.id
+                ? Object.freeze({
+                    ...operational,
+                    operatingAnchorCellId: request.destinationCellId,
+                  })
+                : operational,
+          ),
+        }
+      : {}),
+  });
+  return Object.freeze({ ok: true as const, state: next });
 }
 
 function tankChassisCanTraverse(terrain: SimulationTerrain): boolean {

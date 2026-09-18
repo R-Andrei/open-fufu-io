@@ -1073,7 +1073,7 @@ function quoteCost(
   });
 }
 
-function unitBuildFailureCode(
+export function controllerUnitBuildFailureCode(
   code: TankProductionFailureCode | WarshipProductionFailureCode,
 ): DecisionFailure["code"] {
   switch (code) {
@@ -2066,7 +2066,7 @@ export function createControllerQuerySession(
       });
       if (!result.ok) {
         return Object.freeze({
-          ...unavailable(unitBuildFailureCode(result.failure.code)),
+          ...unavailable(controllerUnitBuildFailureCode(result.failure.code)),
           producerId: producerRef,
         });
       }
@@ -2099,7 +2099,7 @@ export function createControllerQuerySession(
     });
     if (!result.ok) {
       return Object.freeze({
-        ...unavailable(unitBuildFailureCode(result.failure.code)),
+        ...unavailable(controllerUnitBuildFailureCode(result.failure.code)),
         producerId: producerRef,
       });
     }
