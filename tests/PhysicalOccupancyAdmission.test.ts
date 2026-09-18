@@ -694,6 +694,33 @@ describe("physical occupancy admission", () => {
     ]);
     expect(waiting.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
 
+    const serializedWaiting = JSON.parse(
+      canonicalMatchStateSerialization(waiting),
+    ) as {
+      readonly structures: readonly {
+        readonly id: string;
+        readonly outputCellId?: number;
+      }[];
+      readonly warshipProductionJobs: readonly {
+        readonly portId: string;
+        readonly ownerId: string;
+        readonly state: string;
+      }[];
+    };
+    expect(serializedWaiting.structures).toContainEqual(
+      expect.objectContaining({
+        id: "port-a",
+        outputCellId: 0,
+      }),
+    );
+    expect(serializedWaiting.warshipProductionJobs).toEqual([
+      {
+        portId: "port-a",
+        ownerId: "alpha",
+        state: "READY_TO_DEPLOY",
+      },
+    ]);
+
     const cleared = createProspectiveMatchState(waiting, { mobileUnits: [] });
     const deployed = advanceWarshipProductionPhase(cleared);
     expect(deployed.warshipProductionJobs).toHaveLength(0);
@@ -820,21 +847,55 @@ describe("physical occupancy admission", () => {
         cellId: 5,
       },
     );
+    const secondArriving = createMobileUnit(
+      withPort.map,
+      withPort.factions.map((faction) => faction.id),
+      dockBlocker,
+      {
+        ownerId: "alpha",
+        type: "TRADE_SHIP",
+        movementClass: "NAVAL",
+        cellId: 2,
+      },
+    );
+    const thirdArriving = createMobileUnit(
+      withPort.map,
+      withPort.factions.map((faction) => faction.id),
+      secondArriving,
+      {
+        ownerId: "alpha",
+        type: "TRADE_SHIP",
+        movementClass: "NAVAL",
+        cellId: 3,
+      },
+    );
     const occupied = createProspectiveMatchState(withPort, {
-      mobileUnits: dockBlocker.mobileUnits,
-      nextMobileUnitOrdinal: dockBlocker.nextMobileUnitOrdinal,
+      mobileUnits: thirdArriving.mobileUnits,
+      nextMobileUnitOrdinal: thirdArriving.nextMobileUnitOrdinal,
     });
 
     expect(isTradeShipDeliveryCell(occupied, "port-destination", 1)).toBe(true);
+    expect(isTradeShipDeliveryCell(occupied, "port-destination", 2)).toBe(true);
+    expect(isTradeShipDeliveryCell(occupied, "port-destination", 3)).toBe(true);
     expect(isTradeShipDeliveryCell(occupied, "port-destination", 0)).toBe(false);
 
-    const completed = completeTradeShipArrival(occupied, {
-      unitId: arriving.unit.id,
-      destinationPortId: "port-destination",
-    });
-    expect(completed.ok).toBe(true);
-    if (!completed.ok) throw new Error("expected Trade Ship radius-5 completion");
-    expect(completed.state.mobileUnits).toEqual([
+    let completionState = occupied;
+    for (const unitId of [
+      arriving.unit.id,
+      secondArriving.unit.id,
+      thirdArriving.unit.id,
+    ]) {
+      const completed = completeTradeShipArrival(completionState, {
+        unitId,
+        destinationPortId: "port-destination",
+      });
+      expect(completed.ok).toBe(true);
+      if (!completed.ok) {
+        throw new Error("expected independent Trade Ship radius-5 completion");
+      }
+      completionState = completed.state;
+    }
+    expect(completionState.mobileUnits).toEqual([
       expect.objectContaining({
         id: dockBlocker.unit.id,
         type: "TRADE_SHIP",
