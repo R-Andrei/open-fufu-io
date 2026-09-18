@@ -572,7 +572,7 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
           ? tryStartTankProduction(state, {
               ownerId: "alpha",
               factoryId: producerId,
-              destinationCellId: destination,
+              strategicDestinationCellId: destination,
             })
           : tryStartWarshipProduction(state, {
               ownerId: "alpha",
