@@ -999,9 +999,9 @@ function evaluateProposal(
       continue;
     }
     if (staged.kind === "LAUNCH_WEAPON") {
-      // Baseline slice: persistent-Silo Atom execution only. Hydrogen/MIRV and
-      // mobile Warship launchers enter through later focused RED/GREEN slices.
-      if (staged.weapon !== "ATOM_BOMB") {
+      // Persistent-Silo Atom/Hydrogen execution is authoritative here.
+      // MIRV and mobile Warship launchers enter through later focused slices.
+      if (staged.weapon === "MIRV") {
         return invalid("INVALID_COMMAND", staged.actionRef);
       }
       if (
