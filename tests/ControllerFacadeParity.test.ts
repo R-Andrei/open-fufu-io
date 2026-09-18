@@ -1223,16 +1223,25 @@ describe("issue #206 strategic weapon baseline RED", () => {
     advanceUntilFfy(runtime, 2_000_000);
     const before = runtime.snapshot();
 
+    let firstActionRef: string | undefined;
+    let secondActionRef: string | undefined;
     const host = new InProcessTestControllerHost({
       alpha(context) {
-        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
-        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
+        firstActionRef = context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
+        secondActionRef = context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", 1);
         return {};
       },
     });
     const receipts = await Promise.resolve(runtime.runControllerRound(host));
-    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt.accepted)
-      .toBe(false);
+    expect(firstActionRef).toBeDefined();
+    expect(secondActionRef).toBeDefined();
+    expect(secondActionRef).not.toBe(firstActionRef);
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({
+      accepted: false,
+      failure: { key: secondActionRef },
+    });
     expect(runtime.acceptedInputs()).toEqual([]);
     expect(runtime.snapshot()).toEqual(before);
     expect(runtime.tick().structures[0]?.chargeSlots?.[0]).toEqual({
