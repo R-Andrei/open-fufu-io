@@ -1543,7 +1543,10 @@ describe("issue #206 strategic weapon baseline RED", () => {
       acceptedLaunchOrdinal: 1,
       consumedChargeSlotId: 1,
     });
-    expect(after.structures[0]?.acceptedLaunchCount).toBe(2);
+    expect(
+      after.structures.find((structure) => structure.id === "silo-alpha")
+        ?.acceptedLaunchCount,
+    ).toBe(2);
   }, 20_000);
 
   it("binds P10 warhead speed at accepted Atom launch commit", async () => {
