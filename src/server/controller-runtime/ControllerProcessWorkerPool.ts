@@ -95,6 +95,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_CHECK_UPGRADE";
       args: readonly [StructureLocator];
+    }>
+  | Readonly<{
+      operation: "TERRITORY_CHECK_RELINQUISH";
+      args: readonly [CellSelector];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -314,6 +318,8 @@ function isControllerWorkerQueryRequest(
         typeof args[0] === "string" &&
         typeof args[1] === "number"
       );
+    case "TERRITORY_CHECK_RELINQUISH":
+      return args.length === 1 && isSelectorArgument(args[0]);
     default:
       return false;
   }
@@ -382,6 +388,8 @@ async function resolveControllerWorkerQuery(
       return session.structures.checkBuild(query.args[0], query.args[1]);
     case "STRUCTURES_CHECK_UPGRADE":
       return session.structures.checkUpgrade(query.args[0]);
+    case "TERRITORY_CHECK_RELINQUISH":
+      return session.territory.checkRelinquish(query.args[0]);
   }
 }
 

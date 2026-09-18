@@ -75,7 +75,10 @@ import {
   tankStrategicNavigationRoute,
   type AdmittedTankPopulationShot,
 } from "./Tanks";
-import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
+import {
+  applyRadioactiveAttackAftershockEvents,
+  tryRelinquishTerritory,
+} from "./TerritoryEffects";
 import {
   projectTankTargetObservation,
   resolveDirectRevealsFromLandOperationEvents,
@@ -143,6 +146,12 @@ export interface PurchaseStructureUpgradeAction {
   readonly ownerId: string;
 }
 
+export interface RelinquishTerritoryAction {
+  readonly type: "RELINQUISH_TERRITORY";
+  readonly ownerId: string;
+  readonly cellIds: readonly number[];
+}
+
 export type SimulationAction =
   | SetTestMarkerAction
   | CapitulateFactionAction
@@ -152,7 +161,8 @@ export type SimulationAction =
   | TransferPopulationAction
   | ApplyPersistentDirectivesAction
   | PurchaseStructureBuildAction
-  | PurchaseStructureUpgradeAction;
+  | PurchaseStructureUpgradeAction
+  | RelinquishTerritoryAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -1142,6 +1152,22 @@ export class TickEngine {
           working = createProspectiveMatchState(working, {
             factions: purchased.factions,
             structures: purchased.structures,
+          });
+          break;
+        }
+        case "RELINQUISH_TERRITORY": {
+          const relinquished = tryRelinquishTerritory(working, {
+            ownerId: action.ownerId,
+            cellIds: action.cellIds,
+          });
+          if (!relinquished.ok) {
+            throw new Error(
+              `accepted territory relinquishment became invalid: ${relinquished.failure.code}`,
+            );
+          }
+          working = createProspectiveMatchState(working, {
+            ownership: relinquished.ownership,
+            fallout: relinquished.fallout,
           });
           break;
         }

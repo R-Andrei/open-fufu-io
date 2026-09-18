@@ -78,6 +78,12 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/TerritoryEffects.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Land-owned prospective territory-relinquishment validation against the immutable decision snapshot for lawful quotes; it does not commit ownership or Fallout."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection invokes Naval-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
@@ -279,6 +285,12 @@
       "to": "src/simulation/Structures.ts",
       "classification": "ORCHESTRATION",
       "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/TerritoryEffects.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller relinquishment actions through the Land-owned atomic territory relinquishment primitive before TickEngine commit."
     },
     {
       "from": "src/simulation/MatchSpec.ts",

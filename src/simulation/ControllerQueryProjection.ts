@@ -19,6 +19,7 @@ import type {
   PublicFactionRelation,
   PurchasableUnitType,
   QueryPage,
+  RelinquishQuote,
   SegmentId,
   SegmentView,
   StructureBuildQuote,
@@ -57,6 +58,11 @@ import {
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
 import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
+import {
+  relinquishmentAppliesFallout,
+  tryRelinquishTerritory,
+  type TerritoryRelinquishmentFailureCode,
+} from "./TerritoryEffects";
 import type { MatchFactionState, MatchState } from "./MatchState";
 import {
   tryStartTankProduction,
@@ -255,6 +261,7 @@ export interface ControllerQuerySession {
   }>;
   readonly territory: Readonly<{
     relinquish(cells: CellSelector): ActionRef;
+    checkRelinquish(cells: CellSelector): RelinquishQuote;
   }>;
   readonly team: Readonly<{
     signal(channel: string, payload: JsonValue): ActionRef;
@@ -343,7 +350,7 @@ interface ControllerQueryMobileUnitState {
   readonly strategicDestinationCellId?: CellId;
 }
 
-interface ControllerQueryReferenceSession {
+export interface ControllerQueryReferenceSession {
   issue(
     viewerFactionId: string,
     domain: "UNIT" | "STRUCTURE" | "OPERATION",
@@ -1049,6 +1056,21 @@ function unitBuildFailureCode(
   }
 }
 
+function territoryRelinquishmentFailureCode(
+  code: TerritoryRelinquishmentFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INVALID_REQUEST":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+      throw new Error("controller territory requester is missing");
+    case "CELL_NOT_OWNED":
+      return "CELL_NOT_OWNED";
+    case "PERSISTENT_STRUCTURE_PRESENT":
+      return "PERSISTENT_STRUCTURE_PRESENT";
+  }
+}
+
 function createConstructionMechanics(
   state: MatchState,
   requesterFactionId: string,
@@ -1504,6 +1526,19 @@ function incomingOperationTargetsRequester(
     return incoming?.ownerId === requesterFactionId;
   }
   return false;
+}
+
+export function resolveControllerCellSelector(
+  state: MatchState,
+  requesterFactionId: string,
+  selector: CellSelector,
+  references?: ControllerQueryReferenceSession,
+): readonly CellId[] {
+  return orderedSelectorCellIds(
+    state,
+    createStructureVisibilityContext(state, requesterFactionId, references),
+    selector,
+  );
 }
 
 export function createControllerQuerySession(
@@ -2020,6 +2055,46 @@ export function createControllerQuerySession(
       buildTicks: result.job.remainingTicks,
     });
   };
+  const checkRelinquish = (cells: CellSelector): RelinquishQuote => {
+    beginQuery();
+    const cellIds = orderedSelectorCellIds(state, visibility, cells);
+    const selectedCellCount = cellIds.length;
+    const populationBearingCellCount = cellIds.filter(
+      (cellId) =>
+        state.ownership[cellId] === requesterFactionId &&
+        effectivePopulationBearing(
+          state,
+          cellId,
+          state.map.terrainAt(cellId),
+        ),
+    ).length;
+    const base = Object.freeze({
+      cost: quoteCost(0, 0),
+      selectedCellCount,
+      populationBearingCellCount,
+      capacityDelta: -populationBearingCellCount,
+      appliesFallout: relinquishmentAppliesFallout(
+        state,
+        requesterFactionId,
+      ),
+    });
+    const result = tryRelinquishTerritory(state, {
+      ownerId: requesterFactionId,
+      cellIds,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: territoryRelinquishmentFailureCode(result.failure.code),
+        ...base,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      ...base,
+    });
+  };
+
   const consumeStagedActions = (): readonly ControllerStagedAction[] =>
     Object.freeze([...stagedActions]);
 
@@ -2360,6 +2435,7 @@ export function createControllerQuerySession(
     }),
     territory: Object.freeze({
       relinquish: stageRelinquish,
+      checkRelinquish,
     }),
     team: Object.freeze({
       signal: stageTeamSignal,

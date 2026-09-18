@@ -55,6 +55,10 @@ import {
   tryPurchaseStructureUpgrade,
 } from "./Structures";
 import {
+  tryRelinquishTerritory,
+  type TerritoryRelinquishmentFailureCode,
+} from "./TerritoryEffects";
+import {
   TickEngine,
   type AcceptedSimulationInput,
   type SimulationAction,
@@ -482,6 +486,18 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "RELINQUISH_TERRITORY": {
+      const relinquished = tryRelinquishTerritory(state, {
+        ownerId: action.ownerId,
+        cellIds: action.cellIds,
+      });
+      if (!relinquished.ok) {
+        throw new Error(
+          `invalid territory relinquishment: ${relinquished.failure.code}`,
+        );
+      }
+      break;
+    }
   }
 }
 
@@ -510,6 +526,21 @@ function decisionFailure(
     code,
     ...(key === undefined ? {} : { key }),
   });
+}
+
+function mapTerritoryRelinquishmentFailure(
+  code: TerritoryRelinquishmentFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+      return decisionFailure("INVALID_TARGET", key);
+    case "CELL_NOT_OWNED":
+      return decisionFailure("CELL_NOT_OWNED", key);
+    case "PERSISTENT_STRUCTURE_PRESENT":
+      return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
+  }
 }
 
 function controllerActionFailure(
@@ -563,6 +594,18 @@ function controllerActionFailure(
             action.ownerId,
             action.structureId,
             purchased.failure.code,
+            proposed.key,
+          );
+    }
+    case "RELINQUISH_TERRITORY": {
+      const relinquished = tryRelinquishTerritory(state, {
+        ownerId: action.ownerId,
+        cellIds: action.cellIds,
+      });
+      return relinquished.ok
+        ? undefined
+        : mapTerritoryRelinquishmentFailure(
+            relinquished.failure.code,
             proposed.key,
           );
     }

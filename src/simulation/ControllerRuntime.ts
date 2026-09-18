@@ -20,6 +20,7 @@ import {
 } from "../core/controller/ControllerOutputValidation";
 import {
   createControllerQuerySession,
+  resolveControllerCellSelector,
   type ControllerQuerySession,
   type ControllerStagedAction,
 } from "./ControllerQueryProjection";
@@ -878,6 +879,7 @@ function evaluateProposal(
   factionId: string,
   decision: ControllerDecision | void,
   stagedActions: readonly ControllerStagedAction[],
+  controllerReferences: ControllerFactionReferenceSource,
 ): ProposalEvaluation {
   if (decision === undefined) {
     return Object.freeze({ actions: Object.freeze([]) });
@@ -972,6 +974,30 @@ function evaluateProposal(
       );
       continue;
     }
+    if (staged.kind === "RELINQUISH") {
+      let cellIds: readonly number[];
+      try {
+        cellIds = resolveControllerCellSelector(
+          state,
+          factionId,
+          staged.cells,
+          controllerReferences,
+        );
+      } catch {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "RELINQUISH_TERRITORY" as const,
+            ownerId: factionId,
+            cellIds,
+          }),
+        }),
+      );
+      continue;
+    }
     return invalid("INVALID_COMMAND", staged.actionRef);
   }
 
@@ -1004,6 +1030,7 @@ function finalizeControllerRound(
   previousFaultCounts: ReadonlyMap<string, number>,
   previousConsecutiveFaultCounts: ReadonlyMap<string, number>,
   previousFaultedFactionIds: ReadonlySet<string>,
+  controllerReferences: ControllerFactionReferenceSource,
 ): ControllerRoundEvaluation {
   const proposals = new Map<string, ControllerDecision | void>();
   const stagedActionsByFaction = new Map<
@@ -1077,6 +1104,7 @@ function finalizeControllerRound(
         factionId,
         proposals.get(factionId),
         stagedActionsByFaction.get(factionId) ?? Object.freeze([]),
+        controllerReferences,
       );
       failure = evaluated.failure;
       evaluatedActions = evaluated.actions;
@@ -1219,6 +1247,7 @@ export function evaluateControllerRound(
       previousFaultCounts,
       previousConsecutiveFaultCounts,
       previousFaultedFactionIds,
+      controllerReferences,
     );
 
   if (!hasAsyncInvocation) {

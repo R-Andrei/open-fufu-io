@@ -66,6 +66,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_CHECK_UPGRADE";
       args: readonly [StructureLocator];
+    }>
+  | Readonly<{
+      operation: "TERRITORY_CHECK_RELINQUISH";
+      args: readonly [CellSelector];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -588,7 +592,9 @@ const invokeEntrypointSource = `
         })
     },
     territory: {
-      relinquish: (cells) => stageAction("RELINQUISH", { cells })
+      relinquish: (cells) => stageAction("RELINQUISH", { cells }),
+      checkRelinquish: (cells) =>
+        hostCheck("TERRITORY_CHECK_RELINQUISH", [cells])
     },
     team: {
       signal: (channel, payload) =>
@@ -757,6 +763,8 @@ function isControllerWorkerQueryRequest(
         typeof args[0] === "string" &&
         typeof args[1] === "number"
       );
+    case "TERRITORY_CHECK_RELINQUISH":
+      return args.length === 1 && isSelectorArgument(args[0]);
     default:
       return false;
   }
