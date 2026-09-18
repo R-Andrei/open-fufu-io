@@ -91,6 +91,12 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Naval-owned prospective Transport embark admission against the immutable decision snapshot for lawful checkEmbark results; it does not commit FFY, Population, unit, route, or Transport-operation state."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection invokes Naval-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
@@ -304,6 +310,12 @@
       "to": "src/simulation/TerritoryEffects.ts",
       "classification": "ORCHESTRATION",
       "rationale": "MatchRuntime validates accepted controller relinquishment actions through the Land-owned atomic territory relinquishment primitive before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller Transport embark/recall actions through Naval-owned atomic Transport transactions before TickEngine commit."
     },
     {
       "from": "src/simulation/MatchSpec.ts",
@@ -745,6 +757,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine commits accepted Transport embark/recall simulation inputs through Naval-owned atomic Transport transactions in deterministic authoritative order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
@@ -793,6 +811,18 @@
     },
     {
       "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport embark admission applies the Economy-owned canonical FFY debit primitive atomically with the accepted Naval Transport transaction."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/LandOperationsCore.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Transport admission reuses Land-owned ordinary traversability and land-sided COAST predicates as canonical terrain contracts; no lifecycle occurrence crosses the boundary."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Transport endpoint resolution/materialization and post-success landing consequences read and materialize current authoritative MatchState while applying Naval-owned Transport lifecycle semantics."
@@ -808,6 +838,12 @@
       "to": "src/simulation/Navigation.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "Transport endpoint resolution consumes the canonical navigation substrate for deterministic strategic-intent endpoint pairing and water routing."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport embark commit applies the Population-owned canonical AVAILABLE-to-TRANSPORT repartition primitive atomically with Naval Transport materialization."
     },
     {
       "from": "src/simulation/Transports.ts",
