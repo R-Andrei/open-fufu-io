@@ -2137,17 +2137,6 @@ export function createControllerQuerySession(
   ): WeaponLaunchQuote => {
     beginQuery();
 
-    if (weapon === "MIRV") {
-      return Object.freeze({
-        legal: false,
-        failureCode: "INVALID_COMMAND" as const,
-        cost: quoteCost(0, 0),
-        weapon,
-        targetCellId,
-        chargeConsumed: false,
-      });
-    }
-
     const unavailable = (
       failureCode: DecisionFailure["code"],
       ffyRequired = 0,
@@ -2231,7 +2220,7 @@ export function createControllerQuerySession(
     }
     return Object.freeze({
       legal: true,
-      cost: quoteCost(result.ffyCost, result.ffyCost),
+      cost: quoteCost(result.ffyCost, result.ffySpent),
       launcherId: launcherRef,
       weapon,
       targetCellId,
