@@ -1091,7 +1091,10 @@ export function trySetTankStrategicDestination(
       (candidate.type === "TANK" ||
         candidate.type === "HEAVY_ARTILLERY"),
   );
-  if (unit === undefined) {
+  if (
+    unit === undefined ||
+    (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+  ) {
     return tankStrategicDestinationFailure(state, "UNKNOWN_TANK");
   }
   if (unit.ownerId !== request.ownerId) {
