@@ -29,6 +29,7 @@ import { createPopulationState } from "../src/simulation/Population";
 import { matchStateAtWar } from "../src/simulation/HostilityState";
 import { resolveTransportEndpointRouteForState } from "../src/simulation/Transports";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import { strategicBlastHash32 } from "../src/simulation/StrategicWeapons";
 
 const ACTION_PROOFS = Object.freeze([
   "SDK",
@@ -1642,6 +1643,326 @@ describe("issue #206 strategic weapon baseline RED", () => {
         profileDenominator: 2,
       },
     });
+
+  it("enforces L5 MIRV access and preserves production-isolate check parity", async () => {
+    const l4 = strategicStateAtLevel(
+      "issue206-mirv-l4-check",
+      4,
+      [],
+      60_000_000,
+    );
+    const l4Session = createControllerQuerySession(
+      l4,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-mirv-l4-check", l4),
+    );
+    expect(
+      l4Session.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1),
+    ).toMatchObject({
+      legal: false,
+      chargeConsumed: false,
+    });
+
+    const l5 = strategicStateAtLevel(
+      "issue206-mirv-l5-check",
+      5,
+      [],
+      60_000_000,
+    );
+    const l5Session = createControllerQuerySession(
+      l5,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-mirv-l5-check", l5),
+    );
+    const before = l5Session.usage();
+    expect(
+      l5Session.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1),
+    ).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 50_000_000,
+        ffySpent: 50_000_000,
+        populationSpent: 0,
+      },
+      weapon: "MIRV",
+      chargeConsumed: true,
+    });
+    expect(l5Session.usage().queries - before.queries).toBe(1);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerState = strategicStateAtLevel(
+        "issue206-mirv-worker",
+        5,
+        [],
+        60_000_000,
+      );
+      const workerSession = createControllerQuerySession(
+        workerState,
+        "alpha",
+        CONTROLLER_QUERY_LIMITS,
+        new ControllerReferenceSession("issue206-mirv-worker", workerState),
+      );
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerCheckArtifact(
+          'context.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1)',
+        ),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const log = JSON.parse(result.output?.log ?? "{}");
+      expect(log.error).toBeUndefined();
+      expect(log.result).toMatchObject({
+        legal: true,
+        cost: {
+          ffyRequired: 50_000_000,
+          ffySpent: 50_000_000,
+          populationSpent: 0,
+        },
+        weapon: "MIRV",
+        chargeConsumed: true,
+      });
+      expect(workerSession.usage().queries).toBe(1);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("commits an L5 MIRV with launch-bound carrier, child payload, target snapshot, and stable child seed", async () => {
+    const seed = "issue206-mirv-commit";
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(seed, 5);
+    advanceUntilFfy(runtime, 50_000_000);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "MIRV", firstTargetCellId);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const after = runtime.tick();
+    const projectile = after.strategicProjectiles.find(
+      (entry) => entry.launcherId === "silo-alpha",
+    ) as
+      | (typeof after.strategicProjectiles[number] & {
+          readonly mirvPayload?: {
+            readonly childSpeedCellsPerSecond: number;
+            readonly distributionRadiusCells: number;
+            readonly minimumCenterSpacingCells: number;
+            readonly children: readonly {
+              readonly targetCellId: number;
+              readonly blastSeed: number;
+            }[];
+          };
+        })
+      | undefined;
+    const rootSeed = strategicBlastHash32(
+      "strategic-blast-root",
+      seed,
+      "silo-alpha",
+      0,
+      "MIRV",
+      firstTargetCellId,
+    );
+    expect(projectile).toMatchObject({
+      weapon: "MIRV",
+      targetCellId: firstTargetCellId,
+      targetFactionId: "beta",
+      acceptedLaunchOrdinal: 0,
+      consumedChargeSlotId: 0,
+      speedCellsPerSecond: 150,
+      blastProfile: {
+        profileVersion: "STRATEGIC_BLAST_V1",
+        innerNumerator: 144,
+        outerNumerator: 324,
+        profileDenominator: 1,
+      },
+      blastSeed: rootSeed,
+      mirvPayload: {
+        childSpeedCellsPerSecond: 220,
+        distributionRadiusCells: 750,
+        minimumCenterSpacingCells: 55,
+        children: [
+          {
+            targetCellId: firstTargetCellId,
+            blastSeed: strategicBlastHash32(
+              "strategic-blast-child",
+              seed,
+              rootSeed,
+              0,
+            ),
+          },
+        ],
+      },
+    });
+  }, 20_000);
+
+  it("applies P10 only to launch-bound MIRV child warheads, not the carrier", async () => {
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(
+      "issue206-p10-mirv-speed",
+      5,
+      ["P10"],
+    );
+    advanceUntilFfy(runtime, 50_000_000);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "MIRV", firstTargetCellId);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const projectile = runtime
+      .tick()
+      .strategicProjectiles.find((entry) => entry.launcherId === "silo-alpha") as
+      | (typeof runtime.snapshot().strategicProjectiles[number] & {
+          readonly mirvPayload?: {
+            readonly childSpeedCellsPerSecond: number;
+          };
+        })
+      | undefined;
+    expect(projectile).toMatchObject({
+      weapon: "MIRV",
+      speedCellsPerSecond: 150,
+      mirvPayload: {
+        childSpeedCellsPerSecond: 440,
+      },
+    });
+  }, 20_000);
+
+  it("enforces P26 ordinary MIRV affordability, zero successful spend, and one-successful-use entitlement", async () => {
+    const insufficient = strategicStateAtLevel(
+      "issue206-p26-insufficient",
+      5,
+      ["P26"],
+      49_999_999,
+    );
+    const insufficientSession = createControllerQuerySession(
+      insufficient,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-p26-insufficient", insufficient),
+    );
+    expect(
+      insufficientSession.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1),
+    ).toMatchObject({
+      legal: false,
+      failureCode: "INSUFFICIENT_FFY",
+      cost: {
+        ffyRequired: 50_000_000,
+        ffySpent: 0,
+        populationSpent: 0,
+      },
+      chargeConsumed: false,
+    });
+
+    const sufficient = strategicStateAtLevel(
+      "issue206-p26-sufficient",
+      5,
+      ["P26"],
+      50_000_000,
+    );
+    const sufficientSession = createControllerQuerySession(
+      sufficient,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-p26-sufficient", sufficient),
+    );
+    expect(
+      sufficientSession.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1),
+    ).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 50_000_000,
+        ffySpent: 0,
+        populationSpent: 0,
+      },
+      chargeConsumed: true,
+    });
+
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(
+      "issue206-p26-commit",
+      5,
+      ["P26"],
+    );
+    advanceUntilFfy(runtime, 50_000_000);
+    const beforeFfy =
+      runtime.snapshot().factions.find((faction) => faction.id === "alpha")
+        ?.ffy ?? 0;
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "MIRV", firstTargetCellId);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const after = runtime.tick();
+    const afterAlpha = after.factions.find((faction) => faction.id === "alpha") as
+      | (typeof after.factions[number] & {
+          readonly successfulMirvLaunchCount?: number;
+        })
+      | undefined;
+    expect(afterAlpha?.ffy ?? 0).toBeGreaterThanOrEqual(beforeFfy);
+    expect(afterAlpha?.successfulMirvLaunchCount).toBe(1);
+
+    const postSession = createControllerQuerySession(
+      after,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-p26-post", after),
+    );
+    expect(
+      postSession.weapons.checkLaunch(
+        { cellId: 0 },
+        "MIRV",
+        firstTargetCellId,
+      ),
+    ).toMatchObject({
+      legal: false,
+      chargeConsumed: false,
+    });
+  }, 20_000);
+
+  it("keeps P25 MIRV prohibition effective after the baseline MIRV facade exists", () => {
+    const state = strategicStateAtLevel(
+      "issue206-p25-mirv-prohibition",
+      5,
+      ["P25"],
+      100_000_000,
+    );
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-p25-mirv-prohibition", state),
+    );
+    expect(
+      session.weapons.checkLaunch({ cellId: 0 }, "MIRV", 1),
+    ).toMatchObject({
+      legal: false,
+      chargeConsumed: false,
+    });
+  });
+
   }, 20_000);
 
 });
