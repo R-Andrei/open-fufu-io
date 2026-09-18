@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
@@ -821,6 +822,169 @@ describe("issue #206 transports.checkEmbark authoritative RED", () => {
     expect(
       JSON.stringify({ factions: state.factions, units: state.mobileUnits }),
     ).toBe(fingerprint);
+  });
+});
+
+describe("issue #206 territory relinquishment authoritative RED", () => {
+  function rulesWithTraits(traits: readonly ("P35")[] = []) {
+    const origin = originRuleProfileInput(traits);
+    return compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: origin.contributions,
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+  }
+
+  function territoryFixture(
+    seed: string,
+    options: {
+      readonly p35?: boolean;
+      readonly withStructure?: boolean;
+    } = {},
+  ) {
+    const alphaRules = options.p35 ? rulesWithTraits(["P35"]) : emptyRules();
+    const spec = createMicroSimulationSpec({
+      seed,
+      width: 3,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "alpha", "beta"],
+      factions: [
+        { id: "alpha", rules: alphaRules },
+        { id: "beta", rules: emptyRules() },
+      ],
+      ...(options.withStructure
+        ? {
+            initialStructureGrants: [
+              {
+                structureId: "fort-alpha",
+                ownerId: "alpha",
+                type: "FORT" as const,
+                cellId: 1,
+                level: 1 as const,
+              },
+            ],
+          }
+        : {}),
+    });
+    const state = createInitialMatchState(spec);
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession(seed, state),
+    );
+    return { spec, state, session };
+  }
+
+  it("quotes exact selected Capacity loss and charges one read without entity materialization", () => {
+    const { session } = territoryFixture("issue206-relinquish-check");
+    const before = session.usage();
+    const quote = (
+      session.territory as unknown as {
+        checkRelinquish(cells: {
+          kind: "CELLS";
+          ids: readonly number[];
+        }): Record<string, unknown>;
+      }
+    ).checkRelinquish({ kind: "CELLS", ids: [1, 0, 1] });
+
+    expect(quote).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 0,
+        ffySpent: 0,
+        populationSpent: 0,
+      },
+      selectedCellCount: 2,
+      populationBearingCellCount: 2,
+      capacityDelta: -2,
+      appliesFallout: false,
+    });
+    const after = session.usage();
+    expect(after.queries - before.queries).toBe(1);
+    expect(
+      after.materializedEntityViews - before.materializedEntityViews,
+    ).toBe(0);
+  });
+
+  it("rejects the whole selected set when one cell contains a persistent structure", () => {
+    const { session } = territoryFixture(
+      "issue206-relinquish-structure",
+      { withStructure: true },
+    );
+    const quote = (
+      session.territory as unknown as {
+        checkRelinquish(cells: {
+          kind: "CELLS";
+          ids: readonly number[];
+        }): Record<string, unknown>;
+      }
+    ).checkRelinquish({ kind: "CELLS", ids: [0, 1] });
+
+    expect(quote).toMatchObject({
+      legal: false,
+      failureCode: "PERSISTENT_STRUCTURE_PRESENT",
+      cost: { ffySpent: 0, populationSpent: 0 },
+      selectedCellCount: 2,
+    });
+  });
+
+  it("commits lawful neutralization atomically and applies P35 Fallout only after success", async () => {
+    const { spec } = territoryFixture(
+      "issue206-relinquish-p35",
+      { p35: true },
+    );
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "issue206-relinquish-p35",
+    });
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.territory.relinquish({ kind: "CELLS", ids: [0, 1] });
+        return {};
+      },
+    });
+
+    const before = runtime.snapshot();
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
+      accepted: true,
+    });
+    expect(runtime.snapshot().ownership).toEqual(before.ownership);
+    expect(runtime.snapshot().fallout).toEqual(before.fallout);
+
+    const after = runtime.tick();
+    expect(after.ownership).toEqual([null, null, "beta"]);
+    expect(after.fallout).toEqual([true, true, false]);
+    expect(after.factions.find((faction) => faction.id === "alpha")?.population)
+      .toEqual(before.factions.find((faction) => faction.id === "alpha")?.population);
+  });
+
+  it("rejects a mixed valid/structured relinquishment atomically with no territorial mutation", async () => {
+    const { spec } = territoryFixture(
+      "issue206-relinquish-atomic",
+      { withStructure: true },
+    );
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: "issue206-relinquish-atomic",
+    });
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.territory.relinquish({ kind: "CELLS", ids: [0, 1] });
+        return {};
+      },
+    });
+
+    const before = runtime.snapshot();
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
+      accepted: false,
+      failure: { code: "PERSISTENT_STRUCTURE_PRESENT" },
+    });
+    const after = runtime.tick();
+    expect(after.ownership).toEqual(before.ownership);
+    expect(after.fallout).toEqual(before.fallout);
+    expect(after.structures).toEqual(before.structures);
   });
 });
 
