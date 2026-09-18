@@ -1,5 +1,6 @@
 import type {
   DirectiveChanges,
+  StrategicWeaponType,
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
@@ -50,7 +51,10 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
-import { tryCommitStrategicLaunch } from "./StrategicWeapons";
+import {
+  canonicalStrategicLaunchReservations,
+  tryCommitStrategicLaunch,
+} from "./StrategicWeapons";
 import {
   resolveAdmittedTankPopulationAttacks,
   resolveAdmittedTankUnitAttackEffects,
@@ -157,7 +161,7 @@ export interface LaunchStrategicWeaponAction {
   readonly type: "LAUNCH_STRATEGIC_WEAPON";
   readonly ownerId: string;
   readonly launcherId: string;
-  readonly weapon: "ATOM_BOMB";
+  readonly weapon: Exclude<StrategicWeaponType, "MIRV">;
   readonly targetCellId: number;
   readonly targetFactionId?: string;
 }
@@ -972,8 +976,6 @@ export class TickEngine {
       (left, right) => left.sequence - right.sequence,
     );
     const seenSequences = new Set<number>();
-    let working = state;
-
     for (const input of orderedInputs) {
       if (input.tick !== nextTick) {
         throw new Error(
@@ -984,7 +986,27 @@ export class TickEngine {
         throw new Error(`duplicate accepted input sequence ${input.sequence}`);
       }
       seenSequences.add(input.sequence);
+    }
 
+    const strategicReservations = canonicalStrategicLaunchReservations(
+      state,
+      orderedInputs.flatMap((input) =>
+        input.action.type === "LAUNCH_STRATEGIC_WEAPON"
+          ? [
+              Object.freeze({
+                sequence: input.sequence,
+                ownerId: input.action.ownerId,
+                launcherId: input.action.launcherId,
+                weapon: input.action.weapon,
+                targetCellId: input.action.targetCellId,
+              }),
+            ]
+          : [],
+      ),
+    );
+    let working = state;
+
+    for (const input of orderedInputs) {
       const action = input.action;
       switch (action.type) {
         case "SET_TEST_MARKER":
@@ -1183,6 +1205,12 @@ export class TickEngine {
           break;
         }
         case "LAUNCH_STRATEGIC_WEAPON": {
+          const reservation = strategicReservations.get(input.sequence);
+          if (reservation === undefined) {
+            throw new Error(
+              `accepted strategic launch ${input.sequence} is missing its canonical reservation`,
+            );
+          }
           const launched = tryCommitStrategicLaunch(
             working,
             {
@@ -1195,6 +1223,7 @@ export class TickEngine {
                 : { targetFactionId: action.targetFactionId }),
             },
             nextTick,
+            reservation,
           );
           if (!launched.ok) {
             throw new Error(
