@@ -999,11 +999,8 @@ function evaluateProposal(
       continue;
     }
     if (staged.kind === "LAUNCH_WEAPON") {
-      // Persistent-Silo Atom/Hydrogen execution is authoritative here.
-      // MIRV and mobile Warship launchers enter through later focused slices.
-      if (staged.weapon === "MIRV") {
-        return invalid("INVALID_COMMAND", staged.actionRef);
-      }
+      // Persistent-Silo strategic execution is authoritative here.
+      // Mobile Warship launchers remain a later focused slice.
       if (
         staged.launcher === null ||
         typeof staged.launcher !== "object"
