@@ -33,6 +33,7 @@ import type {
   StructureUpgradeQuote,
   StructureView,
   TerrainType,
+  UnitBuildQuote,
   UnitFindFilter,
   UnitLocator,
   UnitRef,
@@ -57,6 +58,14 @@ import {
 } from "../core/visibility/TacticalVisibility";
 import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
+import {
+  tryStartTankProduction,
+  type TankProductionFailureCode,
+} from "./Tanks";
+import {
+  tryStartWarshipProduction,
+  type WarshipProductionFailureCode,
+} from "./Warships";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -217,6 +226,11 @@ export interface ControllerQuerySession {
       destination: CellId,
     ): ActionRef;
     move(unit: UnitLocator, destination: CellId): ActionRef;
+    checkBuild(
+      type: PurchasableUnitType,
+      producer: StructureLocator,
+      destination: CellId,
+    ): UnitBuildQuote;
   }>;
   readonly structures: Readonly<{
     get(locator: StructureLocator): Promise<StructureView | undefined>;
@@ -996,12 +1010,43 @@ function quoteStructureId(state: MatchState): string {
 function quoteCost(
   ffyRequired: number,
   ffySpent: number,
+  populationSpent = 0,
 ): StructureBuildQuote["cost"] {
   return Object.freeze({
     ffyRequired,
     ffySpent,
-    populationSpent: 0,
+    populationSpent,
   });
+}
+
+function unitBuildFailureCode(
+  code: TankProductionFailureCode | WarshipProductionFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return "INSUFFICIENT_FFY";
+    case "INSUFFICIENT_POPULATION":
+      return "INSUFFICIENT_AVAILABLE_POPULATION";
+    case "BUILD_NOT_PERMITTED":
+      return "BUILD_NOT_PERMITTED";
+    case "OWNERSHIP_CAP":
+      return "OWNERSHIP_CAP";
+    case "NOT_OWNER":
+      return "NOT_OWNER";
+    case "FACTORY_CAPACITY":
+    case "PORT_CAPACITY":
+      return "COMMITMENT_LIMIT";
+    case "INVALID_REQUEST":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_FACTORY":
+    case "FACTORY_INACTIVE":
+    case "FACTORY_LEVEL_REQUIRED":
+    case "UNKNOWN_PORT":
+    case "PORT_INACTIVE":
+    case "PORT_LEVEL_REQUIRED":
+      return "INVALID_PRODUCER";
+  }
 }
 
 function createConstructionMechanics(
@@ -1852,6 +1897,129 @@ export function createControllerQuerySession(
     }
     return mechanics.structureUpgradeQuote(structure.cellId);
   };
+  const checkUnitBuild = (
+    type: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): UnitBuildQuote => {
+    beginQuery();
+
+    const unavailable = (
+      failureCode: DecisionFailure["code"] = "INVALID_PRODUCER",
+    ): UnitBuildQuote =>
+      Object.freeze({
+        legal: false,
+        failureCode,
+        cost: quoteCost(0, 0),
+        requestedUnit: type,
+      });
+
+    if (
+      references === undefined ||
+      producer === null ||
+      typeof producer !== "object"
+    ) {
+      return unavailable();
+    }
+
+    const authoritativeId =
+      "ref" in producer
+        ? references.resolve(requesterFactionId, "STRUCTURE", producer.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in producer && state.map.isValidCellId(producer.cellId)
+          ? state.structures.find((candidate) => candidate.cellId === producer.cellId)
+          : undefined;
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return unavailable();
+    }
+
+    const producerRef = references.issue(
+      requesterFactionId,
+      "STRUCTURE",
+      structure.id,
+    ) as StructureRef | undefined;
+    if (producerRef === undefined) return unavailable();
+
+    const beforeOwner = state.factions.find(
+      (faction) => faction.id === requesterFactionId,
+    );
+    if (beforeOwner === undefined) {
+      throw new Error("controller unit-build quote requester is missing");
+    }
+
+    if (type === "TANK") {
+      const result = tryStartTankProduction(state, {
+        ownerId: requesterFactionId,
+        factoryId: structure.id,
+        strategicDestinationCellId: destination,
+      });
+      if (!result.ok) {
+        return Object.freeze({
+          ...unavailable(unitBuildFailureCode(result.failure.code)),
+          producerId: producerRef,
+        });
+      }
+      if (result.job.state !== "BUILDING") {
+        throw new Error("new Tank production quote must begin in BUILDING state");
+      }
+      const afterOwner = result.state.factions.find(
+        (faction) => faction.id === requesterFactionId,
+      );
+      if (afterOwner === undefined) {
+        throw new Error("controller unit-build quote prospective owner is missing");
+      }
+      return Object.freeze({
+        legal: true,
+        cost: quoteCost(
+          result.cost,
+          result.cost,
+          beforeOwner.population.available - afterOwner.population.available,
+        ),
+        requestedUnit: type,
+        resultingUnit: result.job.chassisType,
+        producerId: producerRef,
+        buildTicks: result.job.remainingTicks,
+      });
+    }
+
+    const result = tryStartWarshipProduction(state, {
+      ownerId: requesterFactionId,
+      portId: structure.id,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        ...unavailable(unitBuildFailureCode(result.failure.code)),
+        producerId: producerRef,
+      });
+    }
+    if (result.job.state !== "BUILDING") {
+      throw new Error("new Warship production quote must begin in BUILDING state");
+    }
+    const afterOwner = result.state.factions.find(
+      (faction) => faction.id === requesterFactionId,
+    );
+    if (afterOwner === undefined) {
+      throw new Error("controller unit-build quote prospective owner is missing");
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(
+        result.cost,
+        result.cost,
+        beforeOwner.population.available - afterOwner.population.available,
+      ),
+      requestedUnit: type,
+      resultingUnit: "WARSHIP" as const,
+      producerId: producerRef,
+      buildTicks: result.job.remainingTicks,
+    });
+  };
   const consumeStagedActions = (): readonly ControllerStagedAction[] =>
     Object.freeze([...stagedActions]);
 
@@ -2172,6 +2340,7 @@ export function createControllerQuerySession(
       count: countUnits,
       build: stageUnitBuild,
       move: stageUnitMove,
+      checkBuild: checkUnitBuild,
     }),
     structures: Object.freeze({
       get: getStructure,

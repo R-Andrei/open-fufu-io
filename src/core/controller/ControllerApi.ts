@@ -680,10 +680,12 @@ export interface StructureUpgradeQuote extends ActionQuote {
 
 export interface UnitBuildQuote extends ActionQuote {
   readonly requestedUnit: PurchasableUnitType;
-  readonly resultingUnit: MobileUnitType;
-  readonly producerId: StructureRef;
-  /** Effective producer-sensitive construction duration, including Factory transformations. */
-  readonly buildTicks: number;
+  /** Present when the requested unit can be resolved without exposing unavailable producer state. */
+  readonly resultingUnit?: MobileUnitType;
+  /** Present only when the producer is lawfully observable to the requester. */
+  readonly producerId?: StructureRef;
+  /** Present when canonical producer admission establishes a construction duration. */
+  readonly buildTicks?: number;
   /** Effective hard ownership cap when this unit type is capped for the faction. */
   readonly ownershipCap?: number;
 }

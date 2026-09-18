@@ -10,6 +10,7 @@ import type {
   StructureType,
   StructureLocator,
   TerrainType,
+  PurchasableUnitType,
   UnitFindFilter,
   UnitLocator,
 } from "../../core/controller/ControllerApi";
@@ -74,6 +75,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
   | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
   | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{
+      operation: "UNITS_CHECK_BUILD";
+      args: readonly [PurchasableUnitType, StructureLocator, CellId];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -288,6 +293,13 @@ function isControllerWorkerQueryRequest(
       return args.length === 0;
     case "UNITS_GET":
       return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_CHECK_BUILD":
+      return (
+        args.length === 3 &&
+        (args[0] === "TANK" || args[0] === "WARSHIP") &&
+        isStructureLocatorArgument(args[1]) &&
+        typeof args[2] === "number"
+      );
     case "UNITS_FIND":
     case "UNITS_COUNT":
     case "STRUCTURES_FIND":
@@ -358,6 +370,8 @@ async function resolveControllerWorkerQuery(
       return session.units.find(query.args[0]);
     case "UNITS_COUNT":
       return session.units.count(query.args[0]);
+    case "UNITS_CHECK_BUILD":
+      return session.units.checkBuild(query.args[0], query.args[1], query.args[2]);
     case "STRUCTURES_GET":
       return session.structures.get(query.args[0]);
     case "STRUCTURES_FIND":

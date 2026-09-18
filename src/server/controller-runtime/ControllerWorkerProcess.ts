@@ -14,6 +14,7 @@ import type {
   StructureType,
   StructureLocator,
   TerrainType,
+  PurchasableUnitType,
   UnitFindFilter,
   UnitLocator,
 } from "../../core/controller/ControllerApi";
@@ -45,6 +46,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
   | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
   | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{
+      operation: "UNITS_CHECK_BUILD";
+      args: readonly [PurchasableUnitType, StructureLocator, CellId];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -543,7 +548,9 @@ const invokeEntrypointSource = `
             build: (unit, producer, destination) =>
               stageAction("BUILD_UNIT", { unit, producer, destination }),
             move: (unit, destination) =>
-              stageAction("MOVE_UNIT", { unit, destination })
+              stageAction("MOVE_UNIT", { unit, destination }),
+            checkBuild: (unit, producer, destination) =>
+              hostCheck("UNITS_CHECK_BUILD", [unit, producer, destination])
           },
           structures: {
             get: (locator) => hostQuery("STRUCTURES_GET", [locator]),
