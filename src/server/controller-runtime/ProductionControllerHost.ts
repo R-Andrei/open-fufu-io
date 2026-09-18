@@ -8,7 +8,10 @@ import type {
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
-import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
+import type {
+  ControllerQuerySession,
+  ControllerStagedAction,
+} from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
   CONTROLLER_MEMORY_MAX_BYTES,
@@ -85,6 +88,7 @@ export type ControllerWorkerResponse =
   | Readonly<{
       readonly ok: true;
       readonly output?: unknown;
+      readonly stagedActions?: readonly ControllerStagedAction[];
       readonly usage: ControllerResourceUsage;
     }>
   | Readonly<{
@@ -262,10 +266,19 @@ function canonicalizeJsonValue(
   }
 }
 
-function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
-  return output === undefined
-    ? Object.freeze({ ok: true as const })
-    : Object.freeze({ ok: true as const, output });
+function hostSuccess<T>(
+  output?: T,
+  stagedActions: readonly ControllerStagedAction[] = Object.freeze([]),
+): ControllerHostInvocationResult<T> {
+  const actions = Object.freeze([...stagedActions]);
+  if (output === undefined) {
+    return actions.length === 0
+      ? Object.freeze({ ok: true as const })
+      : Object.freeze({ ok: true as const, stagedActions: actions });
+  }
+  return actions.length === 0
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, stagedActions: actions });
 }
 
 function hostFault<T>(
@@ -325,7 +338,12 @@ export function isControllerWorkerResponse(
   value: unknown,
 ): value is ControllerWorkerResponse {
   if (!isPlainRecord(value)) return false;
-  if (value.ok === true) return validUsage(value.usage);
+  if (value.ok === true) {
+    return (
+      validUsage(value.usage) &&
+      (value.stagedActions === undefined || Array.isArray(value.stagedActions))
+    );
+  }
   if (value.ok === false) {
     return (
       typeof value.fault === "string" &&
@@ -630,12 +648,14 @@ export class ProductionControllerHost implements ControllerHost {
 
     const validated = validateProductionControllerOutput(hook, response.output);
     if (!validated.ok) return normalizeWorkerFault(validated.fault);
-    if (validated.output === undefined) return hostSuccess();
+    if (validated.output === undefined) {
+      return hostSuccess(undefined, response.stagedActions);
+    }
 
     if (validated.nextMemory !== undefined) {
       this.memoryByFaction.set(factionId, validated.nextMemory);
     }
 
-    return hostSuccess(validated.output as T);
+    return hostSuccess(validated.output as T, response.stagedActions);
   }
 }

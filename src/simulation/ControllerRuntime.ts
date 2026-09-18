@@ -21,6 +21,7 @@ import {
 import {
   createControllerQuerySession,
   type ControllerQuerySession,
+  type ControllerStagedAction,
 } from "./ControllerQueryProjection";
 import {
   createControllerSpatialSurface,
@@ -98,6 +99,12 @@ export interface LawfulInProcessControllerObservation extends LawfulControllerOb
   readonly segments?: ControllerSpatialSurface["segments"];
   readonly mechanics?: ControllerQuerySession["mechanics"];
   readonly structures?: ControllerQuerySession["structures"];
+  readonly units?: ControllerQuerySession["units"];
+  readonly transports?: ControllerQuerySession["transports"];
+  readonly weapons?: ControllerQuerySession["weapons"];
+  readonly territory?: ControllerQuerySession["territory"];
+  readonly team?: ControllerQuerySession["team"];
+  readonly capitulate?: ControllerQuerySession["capitulate"];
 }
 
 export interface HostedLawfulControllerObservation extends LawfulInProcessControllerObservation {
@@ -115,7 +122,11 @@ export interface ControllerHostFault {
 }
 
 export type ControllerHostInvocationResult<T> =
-  | Readonly<{ readonly ok: true; readonly output?: T }>
+  | Readonly<{
+      readonly ok: true;
+      readonly output?: T;
+      readonly stagedActions?: readonly ControllerStagedAction[];
+    }>
   | Readonly<{ readonly ok: false; readonly fault: ControllerHostFault }>;
 
 export type ControllerHostInvocation<T> =
@@ -353,6 +364,12 @@ function projectInProcessObservation(
     ...createControllerSpatialSurface(querySession),
     mechanics: querySession.mechanics,
     structures: querySession.structures,
+    units: querySession.units,
+    transports: querySession.transports,
+    weapons: querySession.weapons,
+    territory: querySession.territory,
+    team: querySession.team,
+    capitulate: querySession.capitulate,
   });
 }
 
@@ -458,10 +475,19 @@ function trustedInProcessOutputHasExpectedStructure(
   });
 }
 
-function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
-  return output === undefined
-    ? Object.freeze({ ok: true as const })
-    : Object.freeze({ ok: true as const, output });
+function hostSuccess<T>(
+  output?: T,
+  stagedActions: readonly ControllerStagedAction[] = Object.freeze([]),
+): ControllerHostInvocationResult<T> {
+  const actions = Object.freeze([...stagedActions]);
+  if (output === undefined) {
+    return actions.length === 0
+      ? Object.freeze({ ok: true as const })
+      : Object.freeze({ ok: true as const, stagedActions: actions });
+  }
+  return actions.length === 0
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, stagedActions: actions });
 }
 
 function hostFault<T>(
@@ -527,7 +553,7 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
-    const withStagedActions = (
+    const validateLegacyCommands = (
       output: ControllerDecision | void,
     ): ControllerDecision | void => {
       const rawCommands = (
@@ -544,31 +570,39 @@ export class InProcessTestControllerHost implements ControllerHost {
           "legacy raw controller commands are not accepted",
         );
       }
-      const staged = querySession?.consumeStagedCommands() ?? [];
-      if (staged.length === 0) return output;
-      return Object.freeze({
-        ...(output ?? {}),
-        commands: staged,
-      }) as unknown as ControllerDecision;
+      return output;
+    };
+    const attachStagedActions = (
+      result: ControllerHostInvocationResult<ControllerDecision>,
+    ): ControllerHostInvocationResult<ControllerDecision> => {
+      if (!result.ok) return result;
+      return hostSuccess(
+        result.output,
+        querySession?.consumeStagedActions() ?? Object.freeze([]),
+      );
     };
 
     if (typeof registration === "function") {
-      return this.executeInvocation<ControllerDecision>(
-        factionId,
-        "DECIDE",
-        () => withStagedActions(registration(inProcessObservation)),
+      return attachStagedActions(
+        this.executeInvocation<ControllerDecision>(
+          factionId,
+          "DECIDE",
+          () => validateLegacyCommands(registration(inProcessObservation)),
+        ),
       );
     }
 
-    return this.executeInvocation<ControllerDecision>(
-      factionId,
-      "DECIDE",
-      (memory) =>
-        withStagedActions(
-          registration.decide?.(
-            projectHostedContext(inProcessObservation, memory),
+    return attachStagedActions(
+      this.executeInvocation<ControllerDecision>(
+        factionId,
+        "DECIDE",
+        (memory) =>
+          validateLegacyCommands(
+            registration.decide?.(
+              projectHostedContext(inProcessObservation, memory),
+            ),
           ),
-        ),
+      ),
     );
   }
 
@@ -868,6 +902,7 @@ function evaluateProposal(
   state: MatchState,
   factionId: string,
   decision: ControllerDecision | void,
+  stagedActions: readonly ControllerStagedAction[],
 ): ProposalEvaluation {
   if (decision === undefined) {
     return Object.freeze({ actions: Object.freeze([]) });
@@ -909,6 +944,60 @@ function evaluateProposal(
         }),
       }),
     );
+  }
+
+  let hasStagedCapitulation = false;
+  for (const staged of stagedActions) {
+    if (staged.kind === "CAPITULATE") {
+      if (hasStagedCapitulation) {
+        return invalid("CONFLICTING_PROPOSAL", staged.actionRef);
+      }
+      const faction = state.factions.find(
+        (candidate) => candidate.id === factionId,
+      );
+      if (faction === undefined || faction.status !== "ACTIVE") {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      hasStagedCapitulation = true;
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "CAPITULATE_FACTION" as const,
+            factionId,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "BUILD_STRUCTURE") {
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "CONTROLLER_PURCHASE_STRUCTURE_BUILD" as const,
+            ownerId: factionId,
+            structureType: staged.structure,
+            cellId: staged.cellId,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "UPGRADE_STRUCTURE" && "cellId" in staged.structure) {
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE" as const,
+            ownerId: factionId,
+            cellId: staged.structure.cellId,
+          }),
+        }),
+      );
+      continue;
+    }
+    return invalid("INVALID_COMMAND", staged.actionRef);
   }
 
   const commands =
@@ -1012,6 +1101,10 @@ function finalizeControllerRound(
   previousFaultedFactionIds: ReadonlySet<string>,
 ): ControllerRoundEvaluation {
   const proposals = new Map<string, ControllerDecision | void>();
+  const stagedActionsByFaction = new Map<
+    string,
+    readonly ControllerStagedAction[]
+  >();
   const invocationFailures = new Map<string, DecisionFailure>();
   const faultCounts = new Map(previousFaultCounts);
   const consecutiveFaultCounts = new Map(previousConsecutiveFaultCounts);
@@ -1056,6 +1149,10 @@ function finalizeControllerRound(
 
     consecutiveFaultCounts.set(outcome.factionId, 0);
     proposals.set(outcome.factionId, invocation.output);
+    stagedActionsByFaction.set(
+      outcome.factionId,
+      invocation.stagedActions ?? Object.freeze([]),
+    );
   }
 
   const actions: SimulationAction[] = [];
@@ -1074,6 +1171,7 @@ function finalizeControllerRound(
         state,
         factionId,
         proposals.get(factionId),
+        stagedActionsByFaction.get(factionId) ?? Object.freeze([]),
       );
       failure = evaluated.failure;
       evaluatedActions = evaluated.actions;

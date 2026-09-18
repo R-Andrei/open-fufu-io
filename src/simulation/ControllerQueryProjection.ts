@@ -5,17 +5,19 @@ import type {
   CellSelector,
   ActionRef,
   CellView,
-  ControllerCommand,
   ControllerStructureFieldId,
   ControllerStructureView,
   DecisionFailure,
   FactionFindFilter,
+  FactionRef,
   FactionReadView,
+  JsonValue,
   MechanicsApi,
   MobileUnitType,
   OperationKind,
   OperationStatus,
   PublicFactionRelation,
+  PurchasableUnitType,
   QueryPage,
   SegmentId,
   SegmentView,
@@ -27,6 +29,7 @@ import type {
   StructureLocator,
   StructureRef,
   StructureType,
+  StrategicWeaponType,
   StructureUpgradeQuote,
   StructureView,
   TerrainType,
@@ -74,6 +77,67 @@ export interface ControllerQueryBudgetLimits {
   readonly materializedCellsPerDecision: number;
   readonly materializedEntityViewsPerDecision?: number;
 }
+
+export type ControllerStagedAction =
+  | Readonly<{
+      readonly kind: "BUILD_STRUCTURE";
+      readonly actionRef: ActionRef;
+      readonly structure: StructureType;
+      readonly cellId: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "UPGRADE_STRUCTURE";
+      readonly actionRef: ActionRef;
+      readonly structure: StructureLocator;
+    }>
+  | Readonly<{
+      readonly kind: "BUILD_UNIT";
+      readonly actionRef: ActionRef;
+      readonly unit: PurchasableUnitType;
+      readonly producer: StructureLocator;
+      readonly destination: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "MOVE_UNIT";
+      readonly actionRef: ActionRef;
+      readonly unit: UnitLocator;
+      readonly destination: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "EMBARK_TRANSPORT";
+      readonly actionRef: ActionRef;
+      readonly sourceCellId: CellId;
+      readonly targetCellId: CellId;
+      readonly population: number;
+    }>
+  | Readonly<{
+      readonly kind: "RETURN_TRANSPORT";
+      readonly actionRef: ActionRef;
+      readonly unit: UnitLocator;
+    }>
+  | Readonly<{
+      readonly kind: "LAUNCH_WEAPON";
+      readonly actionRef: ActionRef;
+      readonly launcher: StructureLocator | UnitLocator;
+      readonly weapon: StrategicWeaponType;
+      readonly targetCellId: CellId;
+      readonly targetFaction?: FactionRef;
+    }>
+  | Readonly<{
+      readonly kind: "RELINQUISH";
+      readonly actionRef: ActionRef;
+      readonly cells: CellSelector;
+    }>
+  | Readonly<{
+      readonly kind: "TEAM_SIGNAL";
+      readonly actionRef: ActionRef;
+      readonly channel: string;
+      readonly payload: JsonValue;
+    }>
+  | Readonly<{
+      readonly kind: "CAPITULATE";
+      readonly actionRef: ActionRef;
+    }>;
 
 export interface ControllerQueryUsage {
   readonly queries: number;
@@ -147,15 +211,41 @@ export interface ControllerQuerySession {
     get(locator: UnitLocator): Promise<UnitView | undefined>;
     find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
     count(filter?: UnitFindFilter): Promise<number>;
+    build(
+      type: PurchasableUnitType,
+      producer: StructureLocator,
+      destination: CellId,
+    ): ActionRef;
+    move(unit: UnitLocator, destination: CellId): ActionRef;
   }>;
   readonly structures: Readonly<{
     get(locator: StructureLocator): Promise<StructureView | undefined>;
     find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
     count(filter?: StructureFindFilter): Promise<number>;
     build(type: StructureType, cellId: CellId): ActionRef;
+    upgrade(locator: StructureLocator): ActionRef;
     checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
   }>;
-  consumeStagedCommands(): readonly ControllerCommand[];
+  readonly transports: Readonly<{
+    embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
+    recall(unit: UnitLocator): ActionRef;
+  }>;
+  readonly weapons: Readonly<{
+    launch(
+      launcher: StructureLocator | UnitLocator,
+      weapon: StrategicWeaponType,
+      targetCellId: CellId,
+      targetFaction?: FactionRef,
+    ): ActionRef;
+  }>;
+  readonly territory: Readonly<{
+    relinquish(cells: CellSelector): ActionRef;
+  }>;
+  readonly team: Readonly<{
+    signal(channel: string, payload: JsonValue): ActionRef;
+  }>;
+  capitulate(): ActionRef;
+  consumeStagedActions(): readonly ControllerStagedAction[];
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -1633,24 +1723,107 @@ export function createControllerQuerySession(
   };
 
   let nextActionOrdinal = 1;
-  const stagedCommands: ControllerCommand[] = [];
-  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef => {
-    const ordinal = nextActionOrdinal;
+  const stagedActions: ControllerStagedAction[] = [];
+  const nextActionRef = (): ActionRef => {
+    const actionRef = `action_${nextActionOrdinal}` as ActionRef;
     nextActionOrdinal += 1;
-    stagedCommands.push(Object.freeze({
+    return actionRef;
+  };
+  const stage = (
+    materialize: (actionRef: ActionRef) => ControllerStagedAction,
+  ): ActionRef => {
+    const actionRef = nextActionRef();
+    stagedActions.push(Object.freeze(materialize(actionRef)));
+    return actionRef;
+  };
+  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef =>
+    stage((actionRef) => ({
       kind: "BUILD_STRUCTURE" as const,
-      key: `action:${requesterFactionId}:${ordinal}`,
+      actionRef,
       structure: type,
       cellId,
     }));
-    return `action_${requesterFactionId}_${ordinal}` as ActionRef;
-  };
+  const stageStructureUpgrade = (structure: StructureLocator): ActionRef =>
+    stage((actionRef) => ({
+      kind: "UPGRADE_STRUCTURE" as const,
+      actionRef,
+      structure,
+    }));
+  const stageUnitBuild = (
+    unit: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "BUILD_UNIT" as const,
+      actionRef,
+      unit,
+      producer,
+      destination,
+    }));
+  const stageUnitMove = (unit: UnitLocator, destination: CellId): ActionRef =>
+    stage((actionRef) => ({
+      kind: "MOVE_UNIT" as const,
+      actionRef,
+      unit,
+      destination,
+    }));
+  const stageTransportEmbark = (
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "EMBARK_TRANSPORT" as const,
+      actionRef,
+      sourceCellId,
+      targetCellId,
+      population,
+    }));
+  const stageTransportRecall = (unit: UnitLocator): ActionRef =>
+    stage((actionRef) => ({
+      kind: "RETURN_TRANSPORT" as const,
+      actionRef,
+      unit,
+    }));
+  const stageWeaponLaunch = (
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "LAUNCH_WEAPON" as const,
+      actionRef,
+      launcher,
+      weapon,
+      targetCellId,
+      ...(targetFaction === undefined ? {} : { targetFaction }),
+    }));
+  const stageRelinquish = (cells: CellSelector): ActionRef =>
+    stage((actionRef) => ({
+      kind: "RELINQUISH" as const,
+      actionRef,
+      cells,
+    }));
+  const stageTeamSignal = (channel: string, payload: JsonValue): ActionRef =>
+    stage((actionRef) => ({
+      kind: "TEAM_SIGNAL" as const,
+      actionRef,
+      channel,
+      payload,
+    }));
+  const stageCapitulation = (): ActionRef =>
+    stage((actionRef) => ({
+      kind: "CAPITULATE" as const,
+      actionRef,
+    }));
   const checkStructureBuild = (type: StructureType, cellId: CellId): StructureBuildQuote => {
     beginQuery();
     return mechanics.structureBuildQuote(type, cellId);
   };
-  const consumeStagedCommands = (): readonly ControllerCommand[] =>
-    Object.freeze([...stagedCommands]);
+  const consumeStagedActions = (): readonly ControllerStagedAction[] =>
+    Object.freeze([...stagedActions]);
 
   const publicFactionEntries = Object.freeze(
     state.factions.flatMap((faction) => {
@@ -1967,15 +2140,32 @@ export function createControllerQuerySession(
       get: getUnit,
       find: findUnits,
       count: countUnits,
+      build: stageUnitBuild,
+      move: stageUnitMove,
     }),
     structures: Object.freeze({
       get: getStructure,
       find: findStructures,
       count: countStructures,
       build: stageStructureBuild,
+      upgrade: stageStructureUpgrade,
       checkBuild: checkStructureBuild,
     }),
-    consumeStagedCommands,
+    transports: Object.freeze({
+      embark: stageTransportEmbark,
+      recall: stageTransportRecall,
+    }),
+    weapons: Object.freeze({
+      launch: stageWeaponLaunch,
+    }),
+    territory: Object.freeze({
+      relinquish: stageRelinquish,
+    }),
+    team: Object.freeze({
+      signal: stageTeamSignal,
+    }),
+    capitulate: stageCapitulation,
+    consumeStagedActions,
     cells: Object.freeze({
       get,
       query,

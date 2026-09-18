@@ -374,6 +374,20 @@ const invokeEntrypointSource = `
     }
   };
 
+  let nextActionOrdinal = 1;
+  const stagedActions = [];
+  const stageAction = (kind, payload = {}) => {
+    const actionRef = "action_" + nextActionOrdinal;
+    nextActionOrdinal += 1;
+    const action = deepFreeze({
+      kind,
+      actionRef,
+      ...materialize(payload)
+    });
+    stagedActions.push(action);
+    return actionRef;
+  };
+
   let queryCount = 0;
   const consumeQuery = () => {
     if (queryCount >= $5) throw new Error("controller query budget exhausted");
@@ -503,7 +517,11 @@ const invokeEntrypointSource = `
             count: (filter) =>
               filter === undefined
                 ? hostQuery("UNITS_COUNT", [])
-                : hostQuery("UNITS_COUNT", [filter])
+                : hostQuery("UNITS_COUNT", [filter]),
+            build: (unit, producer, destination) =>
+              stageAction("BUILD_UNIT", { unit, producer, destination }),
+            move: (unit, destination) =>
+              stageAction("MOVE_UNIT", { unit, destination })
           },
           structures: {
             get: (locator) => hostQuery("STRUCTURES_GET", [locator]),
@@ -514,10 +532,36 @@ const invokeEntrypointSource = `
             count: (filter) =>
               filter === undefined
                 ? hostQuery("STRUCTURES_COUNT", [])
-                : hostQuery("STRUCTURES_COUNT", [filter])
+                : hostQuery("STRUCTURES_COUNT", [filter]),
+            build: (structure, cellId) =>
+              stageAction("BUILD_STRUCTURE", { structure, cellId }),
+            upgrade: (structure) =>
+              stageAction("UPGRADE_STRUCTURE", { structure })
           }
         }
-      : {})
+      : {}),
+    transports: {
+      embark: (sourceCellId, targetCellId, population) =>
+        stageAction("EMBARK_TRANSPORT", { sourceCellId, targetCellId, population }),
+      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit })
+    },
+    weapons: {
+      launch: (launcher, weapon, targetCellId, targetFaction) =>
+        stageAction("LAUNCH_WEAPON", {
+          launcher,
+          weapon,
+          targetCellId,
+          ...(targetFaction === undefined ? {} : { targetFaction })
+        })
+    },
+    territory: {
+      relinquish: (cells) => stageAction("RELINQUISH", { cells })
+    },
+    team: {
+      signal: (channel, payload) =>
+        stageAction("TEAM_SIGNAL", { channel, payload })
+    },
+    capitulate: () => stageAction("CAPITULATE")
   });
 
   return (async () => {
@@ -528,9 +572,20 @@ const invokeEntrypointSource = `
       return { status: "RUNTIME_ERROR", queries: queryCount };
     }
 
-    if (output === undefined) return { status: "OK", queries: queryCount };
+    if (output === undefined) {
+      return {
+        status: "OK",
+        queries: queryCount,
+        stagedActions: materialize(stagedActions)
+      };
+    }
     try {
-      return { status: "OK", queries: queryCount, output: materialize(output) };
+      return {
+        status: "OK",
+        queries: queryCount,
+        stagedActions: materialize(stagedActions),
+        output: materialize(output)
+      };
     } catch {
       return { status: "INVALID_OUTPUT", queries: queryCount };
     }
@@ -1483,6 +1538,11 @@ async function executeRequest(
       return workerFault("RUNTIME_ERROR");
     }
 
+    const stagedActions = invocationRecord.stagedActions;
+    if (!Array.isArray(stagedActions)) {
+      return workerFault("RUNTIME_ERROR");
+    }
+
     const validated = validateProductionControllerOutput(
       request.hook,
       invocationRecord.output,
@@ -1494,6 +1554,7 @@ async function executeRequest(
     return Object.freeze({
       ok: true as const,
       output: validated.output,
+      stagedActions: Object.freeze(stagedActions),
       usage: Object.freeze({
         queries: queryCount as number,
         materializedCells: 0,
