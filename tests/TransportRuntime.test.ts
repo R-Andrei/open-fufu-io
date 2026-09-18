@@ -241,6 +241,7 @@ describe("Transport endpoint stability with physical occupancy", () => {
     if (resolved.status !== "FOUND") {
       throw new Error("expected stable Transport endpoint route");
     }
+    expect(resolved.route.objectiveWeight).toBe(6);
 
     expect(
       tryMaterializeTransportAtResolvedRoute(blockedState, {
