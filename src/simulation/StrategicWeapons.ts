@@ -4,10 +4,12 @@ import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
   reducePermissionRule,
   selectRuleContributionsForScope,
+  type RuleConditions,
   type RuleScope,
 } from "../core/rules/RuleComposition";
 import {
   materializeCompiledScalarRule,
+  materializeCompiledScalarScaleFactor,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
 import { tryDebitFfy } from "./Economy";
@@ -31,7 +33,26 @@ const BASE_WEAPON_FFY_COST = Object.freeze({
   MIRV: 50_000_000,
 } satisfies Readonly<Record<StrategicWeaponType, number>>);
 
-const BASE_ATOM_PROJECTILE_SPEED = 100;
+const BASE_PROJECTILE_SPEED = Object.freeze({
+  ATOM_BOMB: 100,
+  HYDROGEN_BOMB: 100,
+  MIRV: 150,
+} satisfies Readonly<Record<StrategicWeaponType, number>>);
+
+const BASE_WARHEAD_BLAST_RADIUS = Object.freeze({
+  ATOM_BOMB: Object.freeze({ inner: 12, outer: 30 }),
+  HYDROGEN_BOMB: Object.freeze({ inner: 80, outer: 100 }),
+} satisfies Readonly<
+  Record<"ATOM_BOMB" | "HYDROGEN_BOMB", Readonly<{ inner: number; outer: number }>>
+>);
+
+const CANONICAL_WEAPON_ORDER = Object.freeze({
+  ATOM_BOMB: 0,
+  HYDROGEN_BOMB: 1,
+  MIRV: 2,
+} satisfies Readonly<Record<StrategicWeaponType, number>>);
+
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 export interface StrategicLaunchRequest {
   readonly ownerId: string;
@@ -44,9 +65,22 @@ export interface StrategicLaunchRequest {
 export interface StrategicLaunchCommitRequest {
   readonly ownerId: string;
   readonly launcherId: string;
-  readonly weapon: "ATOM_BOMB";
+  readonly weapon: "ATOM_BOMB" | "HYDROGEN_BOMB";
   readonly targetCellId: number;
   readonly targetFactionId?: string;
+}
+
+export interface StrategicLaunchReservation {
+  readonly chargeSlotId: number;
+  readonly acceptedLaunchOrdinal: number;
+}
+
+export interface StrategicLaunchReservationCandidate {
+  readonly sequence: number;
+  readonly ownerId: string;
+  readonly launcherId: string;
+  readonly weapon: StrategicWeaponType;
+  readonly targetCellId: number;
 }
 
 export type StrategicLaunchFailureCode =
@@ -132,12 +166,75 @@ export function strategicBlastHash32(
   ]);
 }
 
-function baselineAtomBlastProfile(): StrategicBlastProfileState {
+function strategicRuleConditionsApplyToWarhead(
+  conditions: RuleConditions,
+): boolean {
+  return conditions.every(
+    (condition) => condition.kind === "PROJECTILE_IS_WARHEAD",
+  );
+}
+
+function exactPositiveSafeNumber(value: bigint, label: string): number {
+  if (value <= 0n || value > MAX_SAFE_BIGINT) {
+    throw new Error(`${label} must be a positive safe integer`);
+  }
+  return Number(value);
+}
+
+function effectiveWarheadProjectileSpeed(
+  state: MatchState,
+  ownerId: string,
+  weapon: "ATOM_BOMB" | "HYDROGEN_BOMB",
+): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const effective = materializeCompiledScalarRule(
+    BASE_PROJECTILE_SPEED[weapon],
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "WEAPON_PROJECTILE_SPEED",
+    { kind: "WEAPON", weapon },
+    ruleDynamicState(state, ownerId),
+    strategicRuleConditionsApplyToWarhead,
+  );
+  if (!Number.isFinite(effective) || effective <= 0) {
+    throw new Error("strategic warhead projectile speed must resolve positive");
+  }
+  return effective;
+}
+
+function effectiveWarheadBlastProfile(
+  state: MatchState,
+  ownerId: string,
+  weapon: "ATOM_BOMB" | "HYDROGEN_BOMB",
+): StrategicBlastProfileState {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scale = materializeCompiledScalarScaleFactor(
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "WEAPON_BLAST_AREA",
+    { kind: "WEAPON", weapon },
+    ruleDynamicState(state, ownerId),
+  );
+  if (scale.numerator <= 0n || scale.denominator <= 0n) {
+    throw new Error("strategic blast-area scale must resolve positive");
+  }
+  const baseline = BASE_WARHEAD_BLAST_RADIUS[weapon];
   return Object.freeze({
     profileVersion: "STRATEGIC_BLAST_V1" as const,
-    innerNumerator: 12 * 12,
-    outerNumerator: 30 * 30,
-    profileDenominator: 1,
+    innerNumerator: exactPositiveSafeNumber(
+      BigInt(baseline.inner * baseline.inner) * scale.numerator,
+      "strategic blast inner numerator",
+    ),
+    outerNumerator: exactPositiveSafeNumber(
+      BigInt(baseline.outer * baseline.outer) * scale.numerator,
+      "strategic blast outer numerator",
+    ),
+    profileDenominator: exactPositiveSafeNumber(
+      scale.denominator,
+      "strategic blast profile denominator",
+    ),
   });
 }
 
@@ -260,6 +357,84 @@ function lowestReadyCharge(
     .sort((left, right) => left.slotId - right.slotId)[0];
 }
 
+export function canonicalStrategicLaunchReservations(
+  state: MatchState,
+  candidates: readonly StrategicLaunchReservationCandidate[],
+): ReadonlyMap<number, StrategicLaunchReservation> {
+  const byLauncher = new Map<string, StrategicLaunchReservationCandidate[]>();
+  const seenSequences = new Set<number>();
+
+  for (const candidate of candidates) {
+    if (
+      !Number.isSafeInteger(candidate.sequence) ||
+      candidate.sequence < 0 ||
+      Object.is(candidate.sequence, -0) ||
+      seenSequences.has(candidate.sequence)
+    ) {
+      throw new Error("strategic reservation candidates require unique non-negative sequences");
+    }
+    seenSequences.add(candidate.sequence);
+    const launcher = state.structures.find(
+      (structure) => structure.id === candidate.launcherId,
+    );
+    if (
+      launcher === undefined ||
+      launcher.type !== "MISSILE_SILO" ||
+      launcher.ownerId !== candidate.ownerId
+    ) {
+      throw new Error(
+        `accepted strategic reservation lost launcher ${candidate.launcherId}`,
+      );
+    }
+    const group = byLauncher.get(candidate.launcherId);
+    if (group === undefined) {
+      byLauncher.set(candidate.launcherId, [candidate]);
+    } else {
+      group.push(candidate);
+    }
+  }
+
+  const reservations = new Map<number, StrategicLaunchReservation>();
+  for (const [launcherId, group] of byLauncher) {
+    const launcher = state.structures.find(
+      (structure) => structure.id === launcherId,
+    );
+    if (launcher === undefined) {
+      throw new Error(`strategic reservation lost launcher ${launcherId}`);
+    }
+    const readySlots = [...(launcher.chargeSlots ?? [])]
+      .filter((slot) => slot.state === "READY")
+      .sort((left, right) => left.slotId - right.slotId);
+    if (group.length > readySlots.length) {
+      throw new Error(
+        `accepted strategic launch batch oversubscribed launcher ${launcherId}`,
+      );
+    }
+    const canonical = [...group].sort((left, right) => {
+      const weaponOrder =
+        CANONICAL_WEAPON_ORDER[left.weapon] - CANONICAL_WEAPON_ORDER[right.weapon];
+      if (weaponOrder !== 0) return weaponOrder;
+      if (left.targetCellId !== right.targetCellId) {
+        return left.targetCellId - right.targetCellId;
+      }
+      return left.sequence - right.sequence;
+    });
+    const baseOrdinal = launcher.acceptedLaunchCount ?? 0;
+    for (let index = 0; index < canonical.length; index += 1) {
+      const candidate = canonical[index]!;
+      const charge = readySlots[index]!;
+      reservations.set(
+        candidate.sequence,
+        Object.freeze({
+          chargeSlotId: charge.slotId,
+          acceptedLaunchOrdinal: baseOrdinal + index,
+        }),
+      );
+    }
+  }
+  return reservations;
+}
+
 export function quoteStrategicLaunch(
   state: MatchState,
   request: StrategicLaunchRequest,
@@ -339,6 +514,7 @@ export function tryCommitStrategicLaunch(
   state: MatchState,
   request: StrategicLaunchCommitRequest,
   transitionTick: number,
+  reservation?: StrategicLaunchReservation,
 ): StrategicLaunchCommitResult {
   if (
     !Number.isSafeInteger(transitionTick) ||
@@ -365,6 +541,40 @@ export function tryCommitStrategicLaunch(
     throw new Error("strategic launch quote/commit state diverged");
   }
 
+  const chargeSlotId = reservation?.chargeSlotId ?? quote.chargeSlotId;
+  const acceptedLaunchOrdinal =
+    reservation?.acceptedLaunchOrdinal ?? quote.acceptedLaunchOrdinal;
+  if (
+    !Number.isSafeInteger(chargeSlotId) ||
+    chargeSlotId < 0 ||
+    Object.is(chargeSlotId, -0) ||
+    !Number.isSafeInteger(acceptedLaunchOrdinal) ||
+    acceptedLaunchOrdinal < 0 ||
+    Object.is(acceptedLaunchOrdinal, -0)
+  ) {
+    throw new Error("strategic launch reservation must contain exact non-negative integers");
+  }
+  const reservedCharge = (launcher.chargeSlots ?? []).find(
+    (slot) => slot.slotId === chargeSlotId,
+  );
+  if (reservedCharge === undefined || reservedCharge.state !== "READY") {
+    return Object.freeze({
+      ok: false as const,
+      state,
+      ffyCost: quote.ffyCost,
+      failure: Object.freeze({ code: "NO_READY_CHARGE" as const }),
+    });
+  }
+  if (
+    state.strategicProjectiles.some(
+      (projectile) =>
+        projectile.launcherId === launcher.id &&
+        projectile.acceptedLaunchOrdinal === acceptedLaunchOrdinal,
+    )
+  ) {
+    throw new Error("strategic launch reservation reused an accepted launch identity");
+  }
+
   const debit = tryDebitFfy(owner.ffy, {
     numerator: BigInt(quote.ffyCost),
     denominator: 1n,
@@ -379,7 +589,7 @@ export function tryCommitStrategicLaunch(
   );
   const chargeSlots = Object.freeze(
     (launcher.chargeSlots ?? []).map((slot) =>
-      slot.slotId === quote.chargeSlotId
+      slot.slotId === chargeSlotId
         ? Object.freeze({
             slotId: slot.slotId,
             state: "RECHARGING" as const,
@@ -388,7 +598,10 @@ export function tryCommitStrategicLaunch(
         : slot,
     ),
   );
-  const acceptedLaunchCount = quote.acceptedLaunchOrdinal + 1;
+  const acceptedLaunchCount = Math.max(
+    launcher.acceptedLaunchCount ?? 0,
+    acceptedLaunchOrdinal + 1,
+  );
   const structures = materializePersistentStructures(
     state.structures.map((structure) =>
       structure.id === launcher.id
@@ -402,7 +615,7 @@ export function tryCommitStrategicLaunch(
   );
 
   const projectile: StrategicProjectileState = Object.freeze({
-    id: `strategic:${launcher.id}:${quote.acceptedLaunchOrdinal}`,
+    id: `strategic:${launcher.id}:${acceptedLaunchOrdinal}`,
     ownerId: request.ownerId,
     launcherId: launcher.id,
     weapon: request.weapon,
@@ -411,16 +624,24 @@ export function tryCommitStrategicLaunch(
     ...(quote.targetFactionId === undefined
       ? {}
       : { targetFactionId: quote.targetFactionId }),
-    acceptedLaunchOrdinal: quote.acceptedLaunchOrdinal,
-    consumedChargeSlotId: quote.chargeSlotId,
+    acceptedLaunchOrdinal,
+    consumedChargeSlotId: chargeSlotId,
     launchedAtTick: transitionTick,
-    speedCellsPerSecond: BASE_ATOM_PROJECTILE_SPEED,
-    blastProfile: baselineAtomBlastProfile(),
+    speedCellsPerSecond: effectiveWarheadProjectileSpeed(
+      state,
+      request.ownerId,
+      request.weapon,
+    ),
+    blastProfile: effectiveWarheadBlastProfile(
+      state,
+      request.ownerId,
+      request.weapon,
+    ),
     blastSeed: strategicBlastHash32(
       "strategic-blast-root",
       state.seed,
       launcher.id,
-      quote.acceptedLaunchOrdinal,
+      acceptedLaunchOrdinal,
       request.weapon,
       request.targetCellId,
     ),
