@@ -1643,6 +1643,7 @@ describe("issue #206 strategic weapon baseline RED", () => {
         profileDenominator: 2,
       },
     });
+  }, 20_000);
 
   it("enforces L5 MIRV access and preserves production-isolate check parity", async () => {
     const l4 = strategicStateAtLevel(
@@ -1963,8 +1964,6 @@ describe("issue #206 strategic weapon baseline RED", () => {
       chargeConsumed: false,
     });
   });
-
-  }, 20_000);
 
 });
 
