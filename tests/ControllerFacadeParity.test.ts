@@ -24,6 +24,8 @@ import {
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { tryStartTankProduction } from "../src/simulation/Tanks";
 import { tryStartWarshipProduction } from "../src/simulation/Warships";
+import { createPopulationState } from "../src/simulation/Population";
+import { resolveTransportEndpointRouteForState } from "../src/simulation/Transports";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
 const ACTION_PROOFS = Object.freeze([
@@ -647,6 +649,178 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
     expect(
       after.materializedEntityViews - before.materializedEntityViews,
     ).toBe(0);
+  });
+});
+
+describe("issue #206 transports.checkEmbark authoritative RED", () => {
+  function transportFixture(seed: string) {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 5,
+        height: 1,
+        terrain: [
+          "PLAINS",
+          "SHALLOW_WATER",
+          "SHALLOW_WATER",
+          "SHALLOW_WATER",
+          "PLAINS",
+        ],
+        initialOwners: ["alpha", null, null, null, "beta"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const state = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha"
+          ? {
+              ...faction,
+              ffy: 1_000_000,
+              population: createPopulationState({
+                total: 1_000,
+                available: 1_000,
+                committedOffensive: 0,
+                committedCounterResponse: 0,
+                aboardTransports: 0,
+                peakTotal: 1_000,
+                neutralSettlementHalfResidual: 0,
+              }),
+            }
+          : faction,
+      ),
+    });
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession(seed, state),
+    );
+    return { state, session };
+  }
+
+  it("matches canonical endpoint resolution for a lawful baseline embark and charges one read", () => {
+    const { state, session } = transportFixture("issue206-transport-check");
+    const canonical = resolveTransportEndpointRouteForState(state, {
+      sourceCellId: 0,
+      targetCellId: 4,
+      embarkCoastCellIds: [0],
+      landingCoastCellIds: [4],
+    });
+    expect(canonical.status).toBe("FOUND");
+
+    const before = session.usage();
+    const quote = (
+      session.transports as unknown as {
+        checkEmbark(
+          sourceCellId: number,
+          targetCellId: number,
+          population: number,
+        ): Record<string, unknown>;
+      }
+    ).checkEmbark(0, 4, 100);
+
+    expect(quote).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 0,
+        ffySpent: 0,
+        populationSpent: 0,
+      },
+      sourceCellId: 0,
+      targetCellId: 4,
+      populationCommitted: 100,
+      resultingUnit: "TRANSPORT_SHIP",
+    });
+    const after = session.usage();
+    expect(after.queries - before.queries).toBe(1);
+    expect(
+      after.materializedEntityViews - before.materializedEntityViews,
+    ).toBe(0);
+  });
+
+  it("rejects unavailable Population and disconnected endpoint geometry without mutation", () => {
+    const { state, session } = transportFixture(
+      "issue206-transport-check-rejections",
+    );
+    const fingerprint = JSON.stringify({
+      factions: state.factions,
+      units: state.mobileUnits,
+    });
+    const insufficient = (
+      session.transports as unknown as {
+        checkEmbark(
+          sourceCellId: number,
+          targetCellId: number,
+          population: number,
+        ): Record<string, unknown>;
+      }
+    ).checkEmbark(0, 4, 1_001);
+    expect(insufficient).toMatchObject({
+      legal: false,
+      failureCode: "INSUFFICIENT_AVAILABLE_POPULATION",
+      cost: { ffySpent: 0, populationSpent: 0 },
+    });
+
+    const disconnectedBase = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "issue206-transport-disconnected",
+        width: 5,
+        height: 1,
+        terrain: ["PLAINS", "SHALLOW_WATER", "PLAINS", "SHALLOW_WATER", "PLAINS"],
+        initialOwners: ["alpha", null, null, null, "beta"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const disconnectedState = createProspectiveMatchState(disconnectedBase, {
+      factions: disconnectedBase.factions.map((faction) =>
+        faction.id === "alpha"
+          ? {
+              ...faction,
+              population: createPopulationState({
+                total: 100,
+                available: 100,
+                committedOffensive: 0,
+                committedCounterResponse: 0,
+                aboardTransports: 0,
+                peakTotal: 100,
+                neutralSettlementHalfResidual: 0,
+              }),
+            }
+          : faction,
+      ),
+    });
+    const disconnectedSession = createControllerQuerySession(
+      disconnectedState,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession(
+        "issue206-transport-disconnected",
+        disconnectedState,
+      ),
+    );
+    const disconnected = (
+      disconnectedSession.transports as unknown as {
+        checkEmbark(
+          sourceCellId: number,
+          targetCellId: number,
+          population: number,
+        ): Record<string, unknown>;
+      }
+    ).checkEmbark(0, 4, 10);
+    expect(disconnected).toMatchObject({
+      legal: false,
+      cost: { ffySpent: 0, populationSpent: 0 },
+    });
+    expect(
+      JSON.stringify({ factions: state.factions, units: state.mobileUnits }),
+    ).toBe(fingerprint);
   });
 });
 
