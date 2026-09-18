@@ -736,6 +736,13 @@ function isControllerWorkerQueryRequest(
       return args.length === 0;
     case "UNITS_GET":
       return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_CHECK_BUILD":
+      return (
+        args.length === 3 &&
+        (args[0] === "TANK" || args[0] === "WARSHIP") &&
+        isStructureLocatorArgument(args[1]) &&
+        typeof args[2] === "number"
+      );
     case "UNITS_FIND":
     case "UNITS_COUNT":
     case "STRUCTURES_FIND":

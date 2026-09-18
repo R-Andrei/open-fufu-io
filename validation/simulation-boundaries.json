@@ -71,6 +71,18 @@
       "rationale": "Controller query projection reads current Structure state/mechanics for lawful quotes and views; it does not convey an occurrence."
     },
     {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Tank-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Naval-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
+    },
+    {
       "from": "src/simulation/ControllerReferenceSession.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
