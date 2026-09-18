@@ -304,10 +304,14 @@ function workerCheckArtifact(expression: string): ControllerRuntimeArtifact {
   return Object.freeze({
     moduleSource:
       "export function decide(context) {" +
+      " try {" +
       " const result = " +
       expression +
       ";" +
       ' return { log: JSON.stringify({ result }) };' +
+      " } catch (error) {" +
+      ' return { log: JSON.stringify({ error: String(error?.message ?? error) }) };' +
+      " }" +
       " }",
     entrypoints: Object.freeze({ decide: "decide" }),
   });
@@ -541,6 +545,7 @@ describe("issue #206 check* parity and shared-budget RED", () => {
         expect.soft(result.ok, row.name + " invocation").toBe(true);
         if (result.ok) {
           const log = JSON.parse(result.output?.log ?? "{}");
+          expect.soft(log.error, row.name + " bridge error").toBeUndefined();
           expect.soft(log.result, row.name + " result").toBeDefined();
         }
         expect.soft(
