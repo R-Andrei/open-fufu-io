@@ -1,6 +1,19 @@
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
-import { materializeCompiledCapRule } from "../core/rules/RuleMaterialization";
-import { tryDebitFfy } from "./Economy";
+import {
+  reducePermissionRule,
+  reducedRational,
+  selectRuleContributionsForScope,
+  type RuleScope,
+} from "../core/rules/RuleComposition";
+import {
+  conditionEligibleRuleTerms,
+  materializeCompiledCapRule,
+  materializeCompiledScalarRule,
+  materializeScalarScaleFactorTerms,
+  resolvedRuleTermsForScope,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
+import { tryDebitFfy, type ExactFfyValue } from "./Economy";
 import {
   createProspectiveMatchState,
   type MatchState,
@@ -9,6 +22,7 @@ import {
   createMobileUnit,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
+import { removePopulation } from "./Population";
 import type { PersistentStructureState } from "./Structures";
 
 export type WarshipProductionJobState =
@@ -36,9 +50,11 @@ export type WarshipProductionFailureCode =
   | "NOT_OWNER"
   | "PORT_INACTIVE"
   | "PORT_LEVEL_REQUIRED"
+  | "BUILD_NOT_PERMITTED"
   | "OWNERSHIP_CAP"
   | "PORT_CAPACITY"
-  | "INSUFFICIENT_FFY";
+  | "INSUFFICIENT_FFY"
+  | "INSUFFICIENT_POPULATION";
 
 export type StartWarshipProductionResult =
   | {
@@ -103,6 +119,43 @@ function territorialContactCount(state: MatchState, ownerId: string): number {
   return contacts.size;
 }
 
+function ruleDynamicState(state: MatchState, ownerId: string): RuleDynamicState {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  return Object.freeze({
+    ownedPersistentStructureCount: state.structures.filter(
+      (structure) => structure.ownerId === ownerId,
+    ).length,
+    territorialContactCount: territorialContactCount(state, ownerId),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
+function warshipBuildPermitted(state: MatchState, ownerId: string): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const contributions = selectRuleContributionsForScope(
+    "UNIT_BUILD_PERMISSION",
+    scope,
+    owner.rules.contributions,
+  );
+  if (
+    contributions.some(
+      (entry) => entry.conditions !== undefined && entry.conditions.length > 0,
+    )
+  ) {
+    throw new Error(
+      "conditioned Warship build permission requires an explicit Warship admission context",
+    );
+  }
+  return reducePermissionRule(
+    true,
+    RULE_AXIS_REGISTRY.UNIT_BUILD_PERMISSION,
+    contributions,
+  );
+}
+
 function effectiveWarshipOwnershipCap(state: MatchState, ownerId: string): number {
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
@@ -112,14 +165,76 @@ function effectiveWarshipOwnershipCap(state: MatchState, ownerId: string): numbe
     RULE_AXIS_REGISTRY,
     "UNIT_OWNERSHIP_CAP",
     { kind: "UNIT", unit: "WARSHIP" },
-    Object.freeze({
-      ownedPersistentStructureCount: state.structures.filter(
-        (structure) => structure.ownerId === ownerId,
-      ).length,
-      territorialContactCount: territorialContactCount(state, ownerId),
-      peakTotalPopulation: owner.population.peakTotal,
-    }),
+    ruleDynamicState(state, ownerId),
   );
+}
+
+function exactMultiply(
+  left: ExactFfyValue,
+  numerator: bigint,
+  denominator: bigint,
+): ExactFfyValue {
+  const reduced = reducedRational(
+    left.numerator * numerator,
+    left.denominator * denominator,
+  );
+  return Object.freeze({
+    numerator: reduced.numerator,
+    denominator: reduced.denominator,
+  });
+}
+
+function effectiveWarshipFfyCost(
+  state: MatchState,
+  ownerId: string,
+): ExactFfyValue {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_PURCHASE_FFY_COST",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+
+  const baseline: ExactFfyValue = Object.freeze({
+    numerator: BigInt(warshipPurchaseCost(activeWarshipCount(state, ownerId))),
+    denominator: 1n,
+  });
+  if (terms.some((term) => term.stage === "TERMINAL")) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_PURCHASE_FFY_COST,
+    terms,
+  );
+  return exactMultiply(baseline, scale.numerator, scale.denominator);
+}
+
+function effectiveWarshipPopulationCost(
+  state: MatchState,
+  ownerId: string,
+): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const cost = materializeCompiledScalarRule(
+    0,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_PURCHASE_POPULATION_COST",
+    { kind: "UNIT", unit: "WARSHIP" },
+    ruleDynamicState(state, ownerId),
+  );
+  if (!Number.isSafeInteger(cost) || cost < 0 || Object.is(cost, -0)) {
+    throw new Error(
+      "Warship Population purchase cost must resolve to a non-negative safe integer",
+    );
+  }
+  return cost;
 }
 
 export function warshipPurchaseCost(activeWarships: number): number {
@@ -162,6 +277,9 @@ export function tryStartWarshipProduction(
   if (state.warshipProductionJobs.some((job) => job.portId === request.portId)) {
     return failure(state, "PORT_CAPACITY");
   }
+  if (!warshipBuildPermitted(state, request.ownerId)) {
+    return failure(state, "BUILD_NOT_PERMITTED");
+  }
 
   const occupiedWarshipSlots =
     activeWarshipCount(state, request.ownerId) +
@@ -173,16 +291,23 @@ export function tryStartWarshipProduction(
     return failure(state, "OWNERSHIP_CAP");
   }
 
+  const populationCost = effectiveWarshipPopulationCost(
+    state,
+    request.ownerId,
+  );
+  if (owner.population.available < populationCost) {
+    return failure(state, "INSUFFICIENT_POPULATION");
+  }
   const debit = tryDebitFfy(
     owner.ffy,
-    Object.freeze({
-      numerator: BigInt(
-        warshipPurchaseCost(activeWarshipCount(state, request.ownerId)),
-      ),
-      denominator: 1n,
-    }),
+    effectiveWarshipFfyCost(state, request.ownerId),
   );
   if (!debit.ok) return failure(state, "INSUFFICIENT_FFY");
+  const population = removePopulation(
+    owner.population,
+    "AVAILABLE",
+    populationCost,
+  );
 
   const job: WarshipProductionJobState = Object.freeze({
     portId: port.id,
@@ -192,7 +317,11 @@ export function tryStartWarshipProduction(
   });
   const factions = state.factions.map((faction) =>
     faction.id === request.ownerId
-      ? Object.freeze({ ...faction, ffy: debit.balance })
+      ? Object.freeze({
+          ...faction,
+          ffy: debit.balance,
+          population,
+        })
       : faction,
   );
   const jobs = Object.freeze(
