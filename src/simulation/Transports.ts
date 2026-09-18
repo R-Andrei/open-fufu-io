@@ -1,12 +1,4 @@
 import type { CellId } from "../core/controller/ControllerApi";
-import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
-import {
-  conditionEligibleRuleTerms,
-  materializeCompiledCapRule,
-  materializeCompiledScalarRule,
-  resolvedRuleTermsForScope,
-  type RuleDynamicState,
-} from "../core/rules/RuleMaterialization";
 import {
   assignMobileUnitRoute,
   createMobileUnit,
@@ -15,7 +7,6 @@ import {
   type MobileUnitCollectionState,
   type MobileUnitState,
 } from "./MobileUnits";
-import { isLandSideCoastTerrain } from "./LandOperations";
 import {
   createProspectiveMatchState,
   type MatchState,
@@ -53,39 +44,6 @@ export interface TransportEndpointRoute {
 export type TransportEndpointRouteResult =
   | Readonly<{ readonly status: "FOUND"; readonly route: TransportEndpointRoute }>
   | Readonly<{ readonly status: "UNREACHABLE" }>;
-
-export interface TransportEmbarkAdmissionRequest {
-  readonly ownerId: string;
-  readonly sourceCellId: CellId;
-  readonly targetCellId: CellId;
-  readonly population: number;
-}
-
-export type TransportEmbarkAdmissionFailureCode =
-  | "INVALID_REQUEST"
-  | "UNKNOWN_OWNER"
-  | "INVALID_SOURCE"
-  | "INVALID_TARGET"
-  | "UNREACHABLE"
-  | "OWNERSHIP_CAP"
-  | "INSUFFICIENT_FFY"
-  | "INSUFFICIENT_POPULATION";
-
-export type TransportEmbarkAdmissionResult =
-  | Readonly<{
-      readonly ok: true;
-      readonly route: TransportEndpointRoute;
-      readonly ffyCost: number;
-      readonly ownershipCap: number;
-    }>
-  | Readonly<{
-      readonly ok: false;
-      readonly ffyCost: number;
-      readonly ownershipCap: number;
-      readonly failure: Readonly<{
-        readonly code: TransportEmbarkAdmissionFailureCode;
-      }>;
-    }>;
 
 export interface TransportMaterializationState extends MobileUnitCollectionState {
   readonly map: SimulationMap;
@@ -131,179 +89,10 @@ export type SuccessfulTransportLandingConsequencesResult =
       readonly grantFailure: Readonly<{ readonly code: string }>;
     }>;
 
-const BASELINE_ACTIVE_TRANSPORT_CAP = 3;
-
-function transportTerritorialContactCount(
-  state: MatchState,
-  ownerId: string,
-): number {
-  const active = new Set(
-    state.factions
-      .filter((faction) => faction.status === "ACTIVE")
-      .map((faction) => faction.id),
-  );
-  const contacts = new Set<string>();
-  for (let cellId = 0; cellId < state.ownership.length; cellId += 1) {
-    if (state.ownership[cellId] !== ownerId) continue;
-    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
-      const neighborOwner = state.ownership[neighbor] ?? null;
-      if (
-        neighborOwner !== null &&
-        neighborOwner !== ownerId &&
-        active.has(neighborOwner)
-      ) {
-        contacts.add(neighborOwner);
-      }
-    }
-  }
-  return contacts.size;
-}
-
-function transportRuleDynamicState(
-  state: MatchState,
-  ownerId: string,
-): RuleDynamicState {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
-  return Object.freeze({
-    ownedPersistentStructureCount: state.structures.filter(
-      (structure) => structure.ownerId === ownerId,
-    ).length,
-    territorialContactCount: transportTerritorialContactCount(state, ownerId),
-    peakTotalPopulation: owner.population.peakTotal,
-  });
-}
-
-function effectiveTransportOwnershipCap(
-  state: MatchState,
-  ownerId: string,
-): number {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
-  const cap = materializeCompiledCapRule(
-    BASELINE_ACTIVE_TRANSPORT_CAP,
-    owner.rules,
-    RULE_AXIS_REGISTRY,
-    "UNIT_OWNERSHIP_CAP",
-    { kind: "UNIT", unit: "TRANSPORT_SHIP" },
-    transportRuleDynamicState(state, ownerId),
-  );
-  if (!Number.isSafeInteger(cap) || cap < 0 || Object.is(cap, -0)) {
-    throw new Error("Transport ownership cap must resolve to a non-negative safe integer");
-  }
-  return cap;
-}
-
-function effectiveTransportEmbarkCost(
-  state: MatchState,
-  ownerId: string,
-): number {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
-  const cost = materializeCompiledScalarRule(
-    0,
-    owner.rules,
-    RULE_AXIS_REGISTRY,
-    "TRANSPORT_EMBARK_COST",
-    { kind: "GLOBAL" },
-    transportRuleDynamicState(state, ownerId),
-  );
-  if (!Number.isSafeInteger(cost) || cost < 0 || Object.is(cost, -0)) {
-    throw new Error("Transport embark FFY cost must resolve to a non-negative safe integer");
-  }
-  return cost;
-}
-
-function transportRequiresActivePortSource(
-  state: MatchState,
-  ownerId: string,
-): boolean {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
-  const terms = conditionEligibleRuleTerms(
-    resolvedRuleTermsForScope(
-      owner.rules,
-      RULE_AXIS_REGISTRY,
-      "UNIT_CHASSIS_PROFILE",
-      { kind: "UNIT", unit: "TRANSPORT_SHIP" },
-      transportRuleDynamicState(state, ownerId),
-    ),
-  );
-  if (terms.length === 0) return false;
-  if (terms.length !== 1) {
-    throw new Error("Transport chassis profile must resolve to at most one transform");
-  }
-  const value = terms[0]?.value;
-  if (value?.kind !== "SINGLETON" || value.value !== "ARMORED_PORT_TRANSPORT") {
-    throw new Error("Transport chassis profile resolved to an unsupported profile");
-  }
-  return true;
-}
-
 function isTransportWater(map: SimulationMap, cellId: CellId): boolean {
   const terrain = map.terrainAt(cellId);
   return terrain === "SHALLOW_WATER" || terrain === "DEEP_WATER";
 }
-
-function isTransportCoast(state: MatchState, cellId: CellId): boolean {
-  return isLandSideCoastTerrain(
-    state.map.terrainAt(cellId),
-    state.map
-      .cardinalNeighbors(cellId)
-      .map((neighbor) => state.map.terrainAt(neighbor)),
-  );
-}
-
-function transportEmbarkCoastCandidates(
-  state: MatchState,
-  ownerId: string,
-): readonly CellId[] {
-  const requiresPort = transportRequiresActivePortSource(state, ownerId);
-  const activePortCells = requiresPort
-    ? new Set(
-        state.structures
-          .filter(
-            (structure) =>
-              structure.ownerId === ownerId &&
-              structure.type === "PORT" &&
-              structure.active &&
-              structure.completedLevel !== undefined,
-          )
-          .map((structure) => structure.cellId),
-      )
-    : undefined;
-  const candidates: CellId[] = [];
-  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
-    if (state.ownership[cellId] !== ownerId || !isTransportCoast(state, cellId)) {
-      continue;
-    }
-    if (activePortCells !== undefined && !activePortCells.has(cellId)) continue;
-    candidates.push(cellId);
-  }
-  return Object.freeze(candidates);
-}
-
-function transportLandingCoastCandidates(state: MatchState): readonly CellId[] {
-  const candidates: CellId[] = [];
-  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
-    if (isTransportCoast(state, cellId)) candidates.push(cellId);
-  }
-  return Object.freeze(candidates);
-}
-
-function transportAdmissionFailure(
-  ffyCost: number,
-  ownershipCap: number,
-  code: TransportEmbarkAdmissionFailureCode,
-): TransportEmbarkAdmissionResult {
-  return Object.freeze({
-    ok: false as const,
-    ffyCost,
-    ownershipCap,
-    failure: Object.freeze({ code }),
-  });
-}
-
 
 function assertCellId(map: SimulationMap, cellId: CellId, label: string): void {
   if (!map.isValidCellId(cellId)) {
@@ -399,85 +188,6 @@ function assertResolvedTransportRoute(
   if (route.path.totalWeight !== expectedWeight) {
     throw new Error("resolved Transport path weight is inconsistent");
   }
-}
-
-export function resolveTransportEmbarkAdmission(
-  state: MatchState,
-  request: TransportEmbarkAdmissionRequest,
-): TransportEmbarkAdmissionResult {
-  if (
-    request === null ||
-    typeof request !== "object" ||
-    typeof request.ownerId !== "string" ||
-    request.ownerId.length === 0 ||
-    !Number.isSafeInteger(request.sourceCellId) ||
-    !Number.isSafeInteger(request.targetCellId) ||
-    !Number.isSafeInteger(request.population) ||
-    request.population < 0 ||
-    Object.is(request.population, -0)
-  ) {
-    return transportAdmissionFailure(0, BASELINE_ACTIVE_TRANSPORT_CAP, "INVALID_REQUEST");
-  }
-
-  const owner = state.factions.find((faction) => faction.id === request.ownerId);
-  if (owner === undefined) {
-    return transportAdmissionFailure(0, BASELINE_ACTIVE_TRANSPORT_CAP, "UNKNOWN_OWNER");
-  }
-
-  const ownershipCap = effectiveTransportOwnershipCap(state, request.ownerId);
-  const ffyCost = effectiveTransportEmbarkCost(state, request.ownerId);
-  if (
-    !state.map.isValidCellId(request.sourceCellId)
-  ) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "INVALID_SOURCE");
-  }
-  if (!state.map.isValidCellId(request.targetCellId)) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "INVALID_TARGET");
-  }
-
-  const embarkCoastCellIds = transportEmbarkCoastCandidates(state, request.ownerId);
-  if (embarkCoastCellIds.length === 0) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "INVALID_SOURCE");
-  }
-  const landingCoastCellIds = transportLandingCoastCandidates(state);
-  if (landingCoastCellIds.length === 0) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "INVALID_TARGET");
-  }
-
-  const resolved = resolveTransportEndpointRouteForState(state, {
-    sourceCellId: request.sourceCellId,
-    targetCellId: request.targetCellId,
-    embarkCoastCellIds,
-    landingCoastCellIds,
-  });
-  if (resolved.status !== "FOUND") {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "UNREACHABLE");
-  }
-
-  const activeCount = state.mobileUnits.filter(
-    (unit) =>
-      unit.ownerId === request.ownerId && unit.type === "TRANSPORT_SHIP",
-  ).length;
-  if (activeCount + 1 > ownershipCap) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "OWNERSHIP_CAP");
-  }
-  if (owner.ffy < ffyCost) {
-    return transportAdmissionFailure(ffyCost, ownershipCap, "INSUFFICIENT_FFY");
-  }
-  if (owner.population.available < request.population) {
-    return transportAdmissionFailure(
-      ffyCost,
-      ownershipCap,
-      "INSUFFICIENT_POPULATION",
-    );
-  }
-
-  return Object.freeze({
-    ok: true as const,
-    route: resolved.route,
-    ffyCost,
-    ownershipCap,
-  });
 }
 
 export function resolveTransportEndpointRoute(
