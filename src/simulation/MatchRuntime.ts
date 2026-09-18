@@ -191,7 +191,7 @@ function resolvingControllerHost(
   ): ControllerHostInvocationResult<ControllerDecision> => {
     if (!result.ok || result.output === undefined) return result;
     return Object.freeze({
-      ok: true as const,
+      ...result,
       output: resolveCounterResponseOperationRefs(
         state,
         factionId,

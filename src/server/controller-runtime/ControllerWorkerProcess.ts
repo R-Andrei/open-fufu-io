@@ -1554,7 +1554,9 @@ async function executeRequest(
     return Object.freeze({
       ok: true as const,
       output: validated.output,
-      stagedActions: Object.freeze(stagedActions),
+      ...(stagedActions.length === 0
+        ? {}
+        : { stagedActions: Object.freeze(stagedActions) }),
       usage: Object.freeze({
         queries: queryCount as number,
         materializedCells: 0,
