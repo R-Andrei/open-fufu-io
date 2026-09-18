@@ -792,6 +792,12 @@
     },
     {
       "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship production admission invokes the Population-owned permanent Available-Population debit for effective alternate purchase payment."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Warship production and deployment read current Port structure state and its persisted designated dock."
