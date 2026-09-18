@@ -78,6 +78,12 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Naval-owned prospective Transport embark admission against the immutable decision snapshot for lawful checkEmbark results; it does not commit Transport state or convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection invokes Naval-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
@@ -735,6 +741,12 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Train service reads current persistent-Structure station state while resolving station eligibility and current event context."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/LandOperations.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Naval-owned Transport admission reuses the Land-owned canonical land-traversability classification when deriving lawful land-side coast candidates; it does not mutate Land state or convey an occurrence."
     },
     {
       "from": "src/simulation/Transports.ts",

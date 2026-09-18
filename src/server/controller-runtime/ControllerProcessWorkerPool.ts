@@ -79,6 +79,10 @@ type ControllerWorkerQueryRequest =
       operation: "UNITS_CHECK_BUILD";
       args: readonly [PurchasableUnitType, StructureLocator, CellId];
     }>
+  | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -300,6 +304,13 @@ function isControllerWorkerQueryRequest(
         isStructureLocatorArgument(args[1]) &&
         typeof args[2] === "number"
       );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
+        typeof args[2] === "number"
+      );
     case "UNITS_FIND":
     case "UNITS_COUNT":
     case "STRUCTURES_FIND":
@@ -372,6 +383,12 @@ async function resolveControllerWorkerQuery(
       return session.units.count(query.args[0]);
     case "UNITS_CHECK_BUILD":
       return session.units.checkBuild(query.args[0], query.args[1], query.args[2]);
+    case "TRANSPORTS_CHECK_EMBARK":
+      return session.transports.checkEmbark(
+        query.args[0],
+        query.args[1],
+        query.args[2],
+      );
     case "STRUCTURES_GET":
       return session.structures.get(query.args[0]);
     case "STRUCTURES_FIND":

@@ -33,6 +33,7 @@ import type {
   StructureUpgradeQuote,
   StructureView,
   TerrainType,
+  TransportEmbarkQuote,
   UnitBuildQuote,
   UnitFindFilter,
   UnitLocator,
@@ -66,6 +67,10 @@ import {
   tryStartWarshipProduction,
   type WarshipProductionFailureCode,
 } from "./Warships";
+import {
+  resolveTransportEmbarkAdmission,
+  type TransportEmbarkAdmissionFailureCode,
+} from "./Transports";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -244,6 +249,11 @@ export interface ControllerQuerySession {
   readonly transports: Readonly<{
     embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
     recall(unit: UnitLocator): ActionRef;
+    checkEmbark(
+      sourceCellId: CellId,
+      targetCellId: CellId,
+      population: number,
+    ): TransportEmbarkQuote;
   }>;
   readonly weapons: Readonly<{
     launch(
@@ -1048,6 +1058,28 @@ function unitBuildFailureCode(
       return "INVALID_PRODUCER";
   }
 }
+
+function transportEmbarkFailureCode(
+  code: TransportEmbarkAdmissionFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+    case "UNREACHABLE":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+      throw new Error("controller Transport embark requester is missing");
+    case "INVALID_SOURCE":
+      return "INVALID_SOURCE";
+    case "OWNERSHIP_CAP":
+      return "OWNERSHIP_CAP";
+    case "INSUFFICIENT_FFY":
+      return "INSUFFICIENT_FFY";
+    case "INSUFFICIENT_POPULATION":
+      return "INSUFFICIENT_AVAILABLE_POPULATION";
+  }
+}
+
 
 function createConstructionMechanics(
   state: MatchState,
@@ -2020,6 +2052,39 @@ export function createControllerQuerySession(
       buildTicks: result.job.remainingTicks,
     });
   };
+  const checkTransportEmbark = (
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): TransportEmbarkQuote => {
+    beginQuery();
+    const result = resolveTransportEmbarkAdmission(state, {
+      ownerId: requesterFactionId,
+      sourceCellId,
+      targetCellId,
+      population,
+    });
+    const base = {
+      sourceCellId,
+      targetCellId,
+      populationCommitted: population,
+      resultingUnit: "TRANSPORT_SHIP" as const,
+    };
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: transportEmbarkFailureCode(result.failure.code),
+        cost: quoteCost(result.ffyCost, 0),
+        ...base,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(result.ffyCost, result.ffyCost),
+      ...base,
+    });
+  };
+
   const consumeStagedActions = (): readonly ControllerStagedAction[] =>
     Object.freeze([...stagedActions]);
 
@@ -2354,6 +2419,7 @@ export function createControllerQuerySession(
     transports: Object.freeze({
       embark: stageTransportEmbark,
       recall: stageTransportRecall,
+      checkEmbark: checkTransportEmbark,
     }),
     weapons: Object.freeze({
       launch: stageWeaponLaunch,

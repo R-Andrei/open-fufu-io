@@ -50,6 +50,10 @@ type ControllerWorkerQueryRequest =
       operation: "UNITS_CHECK_BUILD";
       args: readonly [PurchasableUnitType, StructureLocator, CellId];
     }>
+  | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -576,7 +580,13 @@ const invokeEntrypointSource = `
     transports: {
       embark: (sourceCellId, targetCellId, population) =>
         stageAction("EMBARK_TRANSPORT", { sourceCellId, targetCellId, population }),
-      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit })
+      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit }),
+      checkEmbark: (sourceCellId, targetCellId, population) =>
+        hostCheck("TRANSPORTS_CHECK_EMBARK", [
+          sourceCellId,
+          targetCellId,
+          population
+        ])
     },
     weapons: {
       launch: (launcher, weapon, targetCellId, targetFaction) =>
@@ -741,6 +751,13 @@ function isControllerWorkerQueryRequest(
         args.length === 3 &&
         (args[0] === "TANK" || args[0] === "WARSHIP") &&
         isStructureLocatorArgument(args[1]) &&
+        typeof args[2] === "number"
+      );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
         typeof args[2] === "number"
       );
     case "UNITS_FIND":
