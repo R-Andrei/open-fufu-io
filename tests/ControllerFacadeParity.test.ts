@@ -1257,6 +1257,389 @@ describe("issue #206 strategic weapon baseline RED", () => {
       state: "READY",
     });
   });
+
+  function compiledStrategicOriginRules(
+    traits: Parameters<typeof originRuleProfileInput>[0],
+  ) {
+    const origin = originRuleProfileInput(traits);
+    return compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: origin.contributions,
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+  }
+
+  function strategicStateAtLevel(
+    seed: string,
+    level: 1 | 2 | 3 | 4 | 5,
+    traits: Parameters<typeof originRuleProfileInput>[0] = [],
+    ffy = 20_000_000,
+  ) {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 0,
+            level,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: compiledStrategicOriginRules(traits) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    return createProspectiveMatchState(base, {
+      factions: Object.freeze(
+        base.factions.map((faction) =>
+          faction.id === "alpha"
+            ? Object.freeze({ ...faction, ffy })
+            : faction,
+        ),
+      ),
+    });
+  }
+
+  function fundedStrategicRuntime(
+    seed: string,
+    level: 1 | 2 | 3 | 4 | 5,
+    traits: Parameters<typeof originRuleProfileInput>[0] = [],
+  ) {
+    const fundingSiloCount = 8;
+    const firstTargetCellId = fundingSiloCount + 1;
+    const secondTargetCellId = fundingSiloCount + 2;
+    const width = secondTargetCellId + 1;
+    const uniqueTraits = Object.freeze([
+      ...new Set<Parameters<typeof originRuleProfileInput>[0][number]>([
+        "P53",
+        ...traits,
+      ]),
+    ]);
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width,
+        height: 1,
+        terrain: Array.from({ length: width }, () => "PLAINS"),
+        initialOwners: Array.from({ length: width }, (_, cellId) =>
+          cellId < firstTargetCellId ? "alpha" : "beta",
+        ),
+        initialStructureGrants: [
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 0,
+            level,
+          },
+          ...Array.from({ length: fundingSiloCount }, (_, index) => ({
+            structureId: "funding-silo-" + index,
+            ownerId: "alpha",
+            type: "MISSILE_SILO" as const,
+            cellId: index + 1,
+            level: 5 as const,
+          })),
+        ],
+        factions: [
+          { id: "alpha", rules: compiledStrategicOriginRules(uniqueTraits) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    return { runtime, firstTargetCellId, secondTargetCellId };
+  }
+
+  it("enforces the L3 Hydrogen access boundary and preserves production-isolate check parity", async () => {
+    const l2 = strategicStateAtLevel(
+      "issue206-hydrogen-l2-check",
+      2,
+      [],
+      20_000_000,
+    );
+    const l2Session = createControllerQuerySession(
+      l2,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-hydrogen-l2-check", l2),
+    );
+    expect(
+      l2Session.weapons.checkLaunch(
+        { cellId: 0 },
+        "HYDROGEN_BOMB",
+        1,
+      ),
+    ).toMatchObject({
+      legal: false,
+      chargeConsumed: false,
+    });
+
+    const l3 = strategicStateAtLevel(
+      "issue206-hydrogen-l3-check",
+      3,
+      [],
+      20_000_000,
+    );
+    const l3Session = createControllerQuerySession(
+      l3,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-hydrogen-l3-check", l3),
+    );
+    const before = l3Session.usage();
+    expect(
+      l3Session.weapons.checkLaunch(
+        { cellId: 0 },
+        "HYDROGEN_BOMB",
+        1,
+      ),
+    ).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 10_000_000,
+        ffySpent: 10_000_000,
+        populationSpent: 0,
+      },
+      weapon: "HYDROGEN_BOMB",
+      chargeConsumed: true,
+    });
+    expect(l3Session.usage().queries - before.queries).toBe(1);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerState = strategicStateAtLevel(
+        "issue206-hydrogen-worker",
+        3,
+        [],
+        20_000_000,
+      );
+      const workerSession = createControllerQuerySession(
+        workerState,
+        "alpha",
+        CONTROLLER_QUERY_LIMITS,
+        new ControllerReferenceSession("issue206-hydrogen-worker", workerState),
+      );
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerCheckArtifact(
+          'context.weapons.checkLaunch({ cellId: 0 }, "HYDROGEN_BOMB", 1)',
+        ),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const log = JSON.parse(result.output?.log ?? "{}");
+      expect(log.error).toBeUndefined();
+      expect(log.result).toMatchObject({
+        legal: true,
+        cost: {
+          ffyRequired: 10_000_000,
+          ffySpent: 10_000_000,
+          populationSpent: 0,
+        },
+        weapon: "HYDROGEN_BOMB",
+        chargeConsumed: true,
+      });
+      expect(workerSession.usage().queries).toBe(1);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("commits an L3 Hydrogen launch with its launch-bound baseline motion and blast profile", async () => {
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(
+      "issue206-hydrogen-commit",
+      3,
+    );
+    advanceUntilFfy(runtime, 10_000_000);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch(
+          { cellId: 0 },
+          "HYDROGEN_BOMB",
+          firstTargetCellId,
+        );
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const after = runtime.tick();
+    const projectile = after.strategicProjectiles.find(
+      (entry) => entry.launcherId === "silo-alpha",
+    );
+    expect(projectile).toMatchObject({
+      weapon: "HYDROGEN_BOMB",
+      targetCellId: firstTargetCellId,
+      acceptedLaunchOrdinal: 0,
+      consumedChargeSlotId: 0,
+      speedCellsPerSecond: 100,
+      blastProfile: {
+        profileVersion: "STRATEGIC_BLAST_V1",
+        innerNumerator: 6_400,
+        outerNumerator: 10_000,
+        profileDenominator: 1,
+      },
+    });
+  }, 20_000);
+
+  it("canonicalizes multi-charge sibling Atom launch identity independently of source order", async () => {
+    const { runtime, firstTargetCellId, secondTargetCellId } =
+      fundedStrategicRuntime("issue206-weapon-canonical-order", 3);
+    advanceUntilFfy(runtime, 2_000_000);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch(
+          { cellId: 0 },
+          "ATOM_BOMB",
+          secondTargetCellId,
+        );
+        context.weapons.launch(
+          { cellId: 0 },
+          "ATOM_BOMB",
+          firstTargetCellId,
+        );
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const after = runtime.tick();
+    const first = after.strategicProjectiles.find(
+      (entry) =>
+        entry.launcherId === "silo-alpha" &&
+        entry.targetCellId === firstTargetCellId,
+    );
+    const second = after.strategicProjectiles.find(
+      (entry) =>
+        entry.launcherId === "silo-alpha" &&
+        entry.targetCellId === secondTargetCellId,
+    );
+    expect(first).toMatchObject({
+      acceptedLaunchOrdinal: 0,
+      consumedChargeSlotId: 0,
+    });
+    expect(second).toMatchObject({
+      acceptedLaunchOrdinal: 1,
+      consumedChargeSlotId: 1,
+    });
+    expect(after.structures[0]?.acceptedLaunchCount).toBe(2);
+  }, 20_000);
+
+  it("binds P10 warhead speed at accepted Atom launch commit", async () => {
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(
+      "issue206-p10-atom-speed",
+      1,
+      ["P10"],
+    );
+    advanceUntilFfy(runtime, 1_000_000);
+
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch({ cellId: 0 }, "ATOM_BOMB", firstTargetCellId);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const projectile = runtime
+      .tick()
+      .strategicProjectiles.find((entry) => entry.launcherId === "silo-alpha");
+    expect(projectile).toMatchObject({
+      weapon: "ATOM_BOMB",
+      speedCellsPerSecond: 200,
+    });
+  }, 20_000);
+
+  it("applies P25 Hydrogen-only permission, cost, and exact 3/2 blast-area binding", async () => {
+    const state = strategicStateAtLevel(
+      "issue206-p25-check",
+      3,
+      ["P25"],
+      20_000_000,
+    );
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-p25-check", state),
+    );
+    expect(
+      session.weapons.checkLaunch({ cellId: 0 }, "ATOM_BOMB", 1),
+    ).toMatchObject({
+      legal: false,
+      chargeConsumed: false,
+    });
+    expect(
+      session.weapons.checkLaunch({ cellId: 0 }, "HYDROGEN_BOMB", 1),
+    ).toMatchObject({
+      legal: true,
+      cost: {
+        ffyRequired: 15_000_000,
+        ffySpent: 15_000_000,
+        populationSpent: 0,
+      },
+      chargeConsumed: true,
+    });
+
+    const { runtime, firstTargetCellId } = fundedStrategicRuntime(
+      "issue206-p25-hydrogen-profile",
+      3,
+      ["P25"],
+    );
+    advanceUntilFfy(runtime, 15_000_000);
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.weapons.launch(
+          { cellId: 0 },
+          "HYDROGEN_BOMB",
+          firstTargetCellId,
+        );
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+
+    const projectile = runtime
+      .tick()
+      .strategicProjectiles.find((entry) => entry.launcherId === "silo-alpha");
+    expect(projectile).toMatchObject({
+      weapon: "HYDROGEN_BOMB",
+      speedCellsPerSecond: 100,
+      blastProfile: {
+        profileVersion: "STRATEGIC_BLAST_V1",
+        innerNumerator: 19_200,
+        outerNumerator: 30_000,
+        profileDenominator: 2,
+      },
+    });
+  }, 20_000);
+
 });
 
 describe("issue #206 check* parity and shared-budget RED", () => {
