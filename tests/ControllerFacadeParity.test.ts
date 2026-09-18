@@ -1847,7 +1847,7 @@ describe("issue #206 strategic weapon baseline RED", () => {
     });
   }, 20_000);
 
-  it("enforces P26 ordinary MIRV affordability, zero successful spend, and one-successful-use entitlement", async () => {
+  it("quotes P26 MIRV with ordinary affordability and zero successful spend", () => {
     const insufficient = strategicStateAtLevel(
       "issue206-p26-insufficient",
       5,
@@ -1896,7 +1896,9 @@ describe("issue #206 strategic weapon baseline RED", () => {
       },
       chargeConsumed: true,
     });
+  });
 
+  it("consumes P26 only on a successful MIRV commit and rejects later use", async () => {
     const { runtime, firstTargetCellId } = fundedStrategicRuntime(
       "issue206-p26-commit",
       5,
