@@ -7,6 +7,7 @@ import {
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
+import { grantPopulation } from "../src/simulation/Population";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { resolvePersistentStructureLifecycleTick } from "../src/simulation/Structures";
 import {
@@ -495,6 +496,137 @@ describe("physical occupancy admission", () => {
     });
     expect(rejected.state).toBe(withWarship);
     expect(rejected.state.factions[0]?.ffy).toEqual(beforeFfy);
+    expect(rejected.state.warshipProductionJobs).toHaveLength(0);
+  });
+
+  it("N12 rejects Warship production before any resource or reservation mutation", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["N12"]),
+    );
+    const initial = warshipCapFixture(rules, 250_000);
+    const beforeFfy = initial.factions[0]?.ffy;
+    const beforePopulation = initial.factions[0]?.population;
+
+    const rejected = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "BUILD_NOT_PERMITTED" },
+    });
+    expect(rejected.state).toBe(initial);
+    expect(rejected.state.factions[0]?.ffy).toEqual(beforeFfy);
+    expect(rejected.state.factions[0]?.population).toEqual(beforePopulation);
+    expect(rejected.state.warshipProductionJobs).toHaveLength(0);
+  });
+
+  it("N12 prohibition still wins when P42 replaces the Warship payment", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["N12", "P42"]),
+    );
+    const base = warshipCapFixture(rules, 0);
+    const initial = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha"
+          ? {
+              ...faction,
+              population: grantPopulation(faction.population, 2_000),
+            }
+          : faction,
+      ),
+    });
+
+    const rejected = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "BUILD_NOT_PERMITTED" },
+    });
+    expect(rejected.state).toBe(initial);
+    expect(rejected.state.factions[0]?.ffy).toBe(0);
+    expect(rejected.state.factions[0]?.population.available).toBe(2_000);
+    expect(rejected.state.warshipProductionJobs).toHaveLength(0);
+  });
+
+  it("P42 atomically replaces Warship FFY payment with 2000 Available Population", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["P42"]),
+    );
+    const base = warshipCapFixture(rules, 0);
+    const initial = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha"
+          ? {
+              ...faction,
+              population: grantPopulation(faction.population, 2_000),
+            }
+          : faction,
+      ),
+    });
+
+    const accepted = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected P42 Warship admission");
+    expect(accepted.cost).toBe(0);
+    expect(accepted.state.factions[0]?.ffy).toBe(0);
+    expect(accepted.state.factions[0]?.population).toMatchObject({
+      total: 0,
+      available: 0,
+      peakTotal: 2_000,
+    });
+    expect(accepted.state.warshipProductionJobs).toEqual([
+      expect.objectContaining({
+        portId: "port-a",
+        ownerId: "alpha",
+        state: "BUILDING",
+        remainingTicks: 50,
+      }),
+    ]);
+  });
+
+  it("P42 rejects insufficient Available Population without partial payment or reservation", () => {
+    const rules = compileRuleProfile(
+      RULE_AXIS_REGISTRY,
+      originRuleProfileInput(["P42"]),
+    );
+    const base = warshipCapFixture(rules, 1_000_000);
+    const initial = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha"
+          ? {
+              ...faction,
+              population: grantPopulation(faction.population, 1_999),
+            }
+          : faction,
+      ),
+    });
+    const beforeFfy = initial.factions[0]?.ffy;
+    const beforePopulation = initial.factions[0]?.population;
+
+    const rejected = tryStartWarshipProduction(initial, {
+      ownerId: "alpha",
+      portId: "port-a",
+    });
+
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "INSUFFICIENT_POPULATION" },
+    });
+    expect(rejected.state).toBe(initial);
+    expect(rejected.state.factions[0]?.ffy).toEqual(beforeFfy);
+    expect(rejected.state.factions[0]?.population).toEqual(beforePopulation);
     expect(rejected.state.warshipProductionJobs).toHaveLength(0);
   });
 
