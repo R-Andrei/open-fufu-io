@@ -197,19 +197,25 @@ function quoteForAlpha<T>(
   return quote;
 }
 
-function buildHost(cellId: number, _key: string) {
+function buildHost(
+  cellId: number,
+  onActionRef: (actionRef: string) => void = () => {},
+) {
   return new InProcessTestControllerHost({
     alpha(context) {
-      context.structures!.build("FORT", cellId);
+      onActionRef(context.structures!.build("FORT", cellId));
       return {};
     },
   });
 }
 
-function upgradeHost(cellId: number, _key: string) {
+function upgradeHost(
+  cellId: number,
+  onActionRef: (actionRef: string) => void = () => {},
+) {
   return new InProcessTestControllerHost({
     alpha(context) {
-      context.structures!.upgrade({ cellId });
+      onActionRef(context.structures!.upgrade({ cellId }));
       return {};
     },
   });
@@ -433,7 +439,7 @@ void ticksOptional;
     const match = structureRuntime("controller-construction-in-progress-red");
     for (let tick = 0; tick < 250; tick += 1) match.tick();
     expect(
-      alphaReceipt(syncReceipts(match.runControllerRound(buildHost(0, "build-fort")))),
+      alphaReceipt(syncReceipts(match.runControllerRound(buildHost(0)))),
     ).toMatchObject({ accepted: true });
     match.tick();
 
@@ -447,14 +453,21 @@ void ticksOptional;
     });
 
     match.tick();
+    let upgradeActionRef: string | undefined;
     const receipt = alphaReceipt(
-      syncReceipts(match.runControllerRound(upgradeHost(0, "upgrade-building"))),
+      syncReceipts(
+        match.runControllerRound(
+          upgradeHost(0, (actionRef) => {
+            upgradeActionRef = actionRef;
+          }),
+        ),
+      ),
     );
     expect(receipt).toMatchObject({
       accepted: false,
       failure: {
         code: "CONSTRUCTION_IN_PROGRESS",
-        key: "upgrade-building",
+        key: upgradeActionRef,
       },
     });
   });
@@ -462,32 +475,42 @@ void ticksOptional;
   it("preserves precise public build and visible-foreign upgrade failures at admission", () => {
     const buildMatch = structureRuntime("controller-cell-not-owned-red");
     for (let tick = 0; tick < 250; tick += 1) buildMatch.tick();
+    let buildActionRef: string | undefined;
     const buildReceipt = alphaReceipt(
       syncReceipts(
-        buildMatch.runControllerRound(buildHost(1, "build-on-foreign-cell")),
+        buildMatch.runControllerRound(
+          buildHost(1, (actionRef) => {
+            buildActionRef = actionRef;
+          }),
+        ),
       ),
     );
     expect(buildReceipt).toMatchObject({
       accepted: false,
       failure: {
         code: "CELL_NOT_OWNED",
-        key: "build-on-foreign-cell",
+        key: buildActionRef,
       },
     });
 
     const upgradeMatch = observedForeignFortRuntime(
       "controller-visible-not-owner-red",
     );
+    let foreignUpgradeActionRef: string | undefined;
     const upgradeReceipt = alphaReceipt(
       syncReceipts(
-        upgradeMatch.runControllerRound(upgradeHost(10, "upgrade-visible-foreign")),
+        upgradeMatch.runControllerRound(
+          upgradeHost(10, (actionRef) => {
+            foreignUpgradeActionRef = actionRef;
+          }),
+        ),
       ),
     );
     expect(upgradeReceipt).toMatchObject({
       accepted: false,
       failure: {
         code: "NOT_OWNER",
-        key: "upgrade-visible-foreign",
+        key: foreignUpgradeActionRef,
       },
     });
   });
@@ -496,14 +519,14 @@ void ticksOptional;
     const hiddenReceipt = alphaReceipt(
       syncReceipts(
         hiddenForeignFortRuntime("controller-hidden-admission-red").runControllerRound(
-          upgradeHost(1, "hidden-target"),
+          upgradeHost(1),
         ),
       ),
     );
     const emptyReceipt = alphaReceipt(
       syncReceipts(
         structureRuntime("controller-empty-admission-red").runControllerRound(
-          upgradeHost(1, "empty-target"),
+          upgradeHost(1),
         ),
       ),
     );

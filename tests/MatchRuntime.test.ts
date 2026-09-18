@@ -255,11 +255,12 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
   it("rejects an illegal mixed proposal atomically without recording partial authoritative input", () => {
     const runtime = twoFactionRuntime();
+    let invalidBuildActionRef: string | undefined;
     const receipts = runtime.runControllerRound(
       new InProcessTestControllerHost({
         alpha(context) {
           context.capitulate!();
-          context.structures!.build("CITY", 0);
+          invalidBuildActionRef = context.structures!.build("CITY", 0);
           return {};
         },
       }),
@@ -268,7 +269,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "CELL_NOT_OWNED" },
+      failure: { code: "CELL_NOT_OWNED", key: invalidBuildActionRef },
       faultCount: 0,
       faulted: false,
     });
@@ -310,10 +311,11 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
   it("surfaces the previous decision receipt on the next eligible controller observation", () => {
     const runtime = twoFactionRuntime();
+    let rejectedBuildActionRef: string | undefined;
     runtime.runControllerRound(
       new InProcessTestControllerHost({
         alpha(context) {
-          context.structures!.build("CITY", 0);
+          rejectedBuildActionRef = context.structures!.build("CITY", 0);
           return {};
         },
       }),
@@ -332,7 +334,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(seen?.lastDecision).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "CELL_NOT_OWNED" },
+      failure: { code: "CELL_NOT_OWNED", key: rejectedBuildActionRef },
       faultCount: 0,
       faulted: false,
     });

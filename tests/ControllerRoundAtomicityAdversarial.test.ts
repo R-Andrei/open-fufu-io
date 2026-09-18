@@ -138,7 +138,7 @@ function receiptFor(
 }
 
 function buildFortHost(key: string) {
-  return hostFor(() =>
+  return hostWithInvoke(() =>
     Object.freeze({
       ok: true as const,
       output: Object.freeze({}),
@@ -155,7 +155,7 @@ function buildFortHost(key: string) {
 }
 
 function upgradeFortHost(key: string) {
-  return hostFor(() =>
+  return hostWithInvoke(() =>
     Object.freeze({
       ok: true as const,
       output: Object.freeze({}),
@@ -403,7 +403,7 @@ describe("controller-round transaction adversarial behavior", () => {
   it("rolls back an entire proposal when an earlier affordable build consumes FFY needed by a later build", () => {
     const match = twoBuildRuntime("controller-two-build-aggregate-red");
     for (let tick = 0; tick < 250; tick += 1) match.tick();
-    const host = hostFor(() =>
+    const host = hostWithInvoke(() =>
       Object.freeze({
         ok: true as const,
         output: Object.freeze({}),
@@ -427,7 +427,7 @@ describe("controller-round transaction adversarial behavior", () => {
   it("does not address a structure built earlier in the same proposal and rolls the proposal back", () => {
     const match = structureRuntime("controller-build-then-upgrade-proof");
     for (let tick = 0; tick < 1_250; tick += 1) match.tick();
-    const host = hostFor(() =>
+    const host = hostWithInvoke(() =>
       Object.freeze({
         ok: true as const,
         output: Object.freeze({}),

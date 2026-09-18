@@ -240,7 +240,6 @@ const fixtureUnitOrder: PersistentDirective = {
   key: "u",
   unitId: "x",
 };
-void fixturePatrol;
 void fixtureUnitOrder;
 
 // Compile-time fixture for #107. Strategic Phase 1 must expose every player's

@@ -36,16 +36,18 @@ describe("controller structure-field projection", () => {
       "utf8",
     );
 
-    const upgradeCommandStart = source.indexOf(
-      "export interface UpgradeStructureCommand",
+    const structuresApiStart = source.indexOf(
+      "export interface StructuresApi",
     );
-    const upgradeCommandEnd = source.indexOf(
-      "export interface BuildUnitCommand",
-      upgradeCommandStart,
+    const structuresApiEnd = source.indexOf(
+      "export interface UnitsApi",
+      structuresApiStart,
     );
-    const upgradeCommand = source.slice(upgradeCommandStart, upgradeCommandEnd);
-    expect(upgradeCommand).toContain("readonly cellId: CellId;");
-    expect(upgradeCommand).not.toContain("structureId");
+    const structuresApi = source.slice(structuresApiStart, structuresApiEnd);
+    expect(structuresApi).toContain(
+      "upgrade(locator: StructureLocator): ActionRef;",
+    );
+    expect(structuresApi).not.toContain("structureId");
 
     const buildQuoteStart = source.indexOf("structureBuildQuote(");
     const buildQuoteEnd = source.indexOf(
