@@ -1,8 +1,12 @@
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import {
+  createInitialMatchState,
+} from "../src/simulation/MatchState";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import type { PersistentStructureState } from "../src/simulation/Structures";
+import { tryMaterializeStructureGrant } from "../src/simulation/StructuresCore";
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
@@ -16,7 +20,7 @@ type SiloWithChargeSlots = PersistentStructureState & {
   }[];
 };
 
-describe("persistent Silo grant lifecycle", () => {
+describe("persistent structure grant lifecycle", () => {
   it("starts a granted L1 Missile Silo with deterministic READY slot 0 and fingerprints it", () => {
     const rules = emptyRules();
     const spec = createMicroSimulationSpec({
@@ -56,5 +60,28 @@ describe("persistent Silo grant lifecycle", () => {
     const regenerated = MatchRuntime.regenerate(spec, [], 0, dependencies);
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
+  });
+
+  it("rejects a Factory grant when its only non-water output candidate is Mountain", () => {
+    const rules = emptyRules();
+    const state = createInitialMatchState(createMicroSimulationSpec({
+      seed: "factory-output-mountain-red",
+      width: 3,
+      height: 1,
+      terrain: ["MOUNTAIN", "PLAINS", "DEEP_WATER"],
+      initialOwners: ["alpha", "alpha", null],
+      factions: [{ id: "alpha", rules }],
+    }));
+
+    expect(tryMaterializeStructureGrant(state, {
+      structureId: "factory-mountain-output",
+      ownerId: "alpha",
+      type: "FACTORY",
+      cellId: 1,
+      level: 1,
+    })).toEqual({
+      ok: false,
+      failure: { code: "PLACEMENT_GEOMETRY_UNAVAILABLE" },
+    });
   });
 });
