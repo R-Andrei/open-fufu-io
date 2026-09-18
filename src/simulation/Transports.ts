@@ -124,7 +124,6 @@ function waterSideCandidates(
   strategicIntentCellId: CellId,
   coastCellIds: readonly CellId[],
   label: string,
-  blockedCellIds: ReadonlySet<CellId>,
 ): readonly NavigationCandidate[] {
   if (!Array.isArray(coastCellIds)) {
     throw new Error(`${label} coast candidates must be an array`);
@@ -139,7 +138,7 @@ function waterSideCandidates(
     assertCellId(map, coastCellId, `${label} coast`);
 
     for (const neighbor of map.cardinalNeighbors(coastCellId)) {
-      if (!isTransportWater(map, neighbor) || blockedCellIds.has(neighbor)) continue;
+      if (!isTransportWater(map, neighbor)) continue;
       candidates.push({
         cellId: neighbor,
         intentWeight: manhattanDistance(map, strategicIntentCellId, neighbor),
@@ -191,10 +190,9 @@ function assertResolvedTransportRoute(
   }
 }
 
-function resolveTransportEndpointRouteWithBlockedCells(
+export function resolveTransportEndpointRoute(
   map: SimulationMap,
   request: TransportEndpointRouteRequest,
-  blockedCellIds: ReadonlySet<CellId>,
 ): TransportEndpointRouteResult {
   assertCellId(map, request.sourceCellId, "Transport source intent");
   assertCellId(map, request.targetCellId, "Transport target intent");
@@ -204,14 +202,12 @@ function resolveTransportEndpointRouteWithBlockedCells(
     request.sourceCellId,
     request.embarkCoastCellIds,
     "embark",
-    blockedCellIds,
   );
   const landingCandidates = waterSideCandidates(
     map,
     request.targetCellId,
     request.landingCoastCellIds,
     "landing",
-    blockedCellIds,
   );
 
   const navigation = createNavigation(map);
@@ -220,10 +216,7 @@ function resolveTransportEndpointRouteWithBlockedCells(
     landingCandidates,
     {
       traversalWeight(from, to) {
-        return isTransportWater(map, from) &&
-          isTransportWater(map, to) &&
-          !blockedCellIds.has(from) &&
-          !blockedCellIds.has(to)
+        return isTransportWater(map, from) && isTransportWater(map, to)
           ? 1
           : undefined;
       },
@@ -250,22 +243,57 @@ function resolveTransportEndpointRouteWithBlockedCells(
   });
 }
 
-export function resolveTransportEndpointRoute(
-  map: SimulationMap,
-  request: TransportEndpointRouteRequest,
-): TransportEndpointRouteResult {
-  return resolveTransportEndpointRouteWithBlockedCells(map, request, new Set<CellId>());
+function routeAroundTransientOccupancy(
+  state: TransportMaterializationState,
+  route: TransportEndpointRoute,
+): TransportEndpointRoute {
+  const blockedCellIds = physicalOccupancyCellIds(state);
+  if (blockedCellIds.size === 0) return route;
+
+  const navigation = createNavigation(state.map);
+  const replanned = navigation.path(
+    route.embarkCellId,
+    route.landingCellId,
+    {
+      traversalWeight(from, to) {
+        if (!isTransportWater(state.map, from) || !isTransportWater(state.map, to)) {
+          return undefined;
+        }
+        const blocksFrom =
+          blockedCellIds.has(from) &&
+          from !== route.embarkCellId &&
+          from !== route.landingCellId;
+        const blocksTo =
+          blockedCellIds.has(to) &&
+          to !== route.embarkCellId &&
+          to !== route.landingCellId;
+        return blocksFrom || blocksTo ? undefined : 1;
+      },
+    },
+  );
+
+  if (replanned.status !== "FOUND") {
+    // Endpoint identity is stable. If occupancy currently blocks every path,
+    // retain the selected route and let ordinary movement/materialization wait.
+    return route;
+  }
+
+  return Object.freeze({
+    ...route,
+    path: replanned.path,
+  });
 }
 
 export function resolveTransportEndpointRouteForState(
   state: TransportMaterializationState,
   request: TransportEndpointRouteRequest,
 ): TransportEndpointRouteResult {
-  return resolveTransportEndpointRouteWithBlockedCells(
-    state.map,
-    request,
-    physicalOccupancyCellIds(state),
-  );
+  const resolved = resolveTransportEndpointRoute(state.map, request);
+  if (resolved.status !== "FOUND") return resolved;
+  return Object.freeze({
+    status: "FOUND" as const,
+    route: routeAroundTransientOccupancy(state, resolved.route),
+  });
 }
 
 export function tryMaterializeTransportAtResolvedRoute<
