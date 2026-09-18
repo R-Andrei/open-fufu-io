@@ -17,13 +17,16 @@ import { ControllerReferenceSession } from "../src/simulation/ControllerReferenc
 import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
+  evaluateControllerRound,
 } from "../src/simulation/ControllerRuntime";
 import {
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { tryStartTankProduction } from "../src/simulation/Tanks";
+import { TickEngine } from "../src/simulation/TickEngine";
 import { tryStartWarshipProduction } from "../src/simulation/Warships";
 import { createPopulationState } from "../src/simulation/Population";
 import { matchStateAtWar } from "../src/simulation/HostilityState";
@@ -653,6 +656,417 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
       after.materializedEntityViews - before.materializedEntityViews,
     ).toBe(0);
   });
+});
+
+
+describe("issue #206 Tank build and strategic-move authoritative RED", () => {
+  function tankBuildState(seed: string) {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 5,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "DEEP_WATER"],
+        initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha"],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-factory",
+            ownerId: "alpha",
+            type: "FACTORY",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    return createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 250_000 } : faction,
+      ),
+    });
+  }
+
+  function manualTankState(seed: string) {
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 4,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "DEEP_WATER"],
+        initialOwners: ["alpha", "alpha", "alpha", "alpha"],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const created = createMobileUnit(
+      base.map,
+      base.factions.map((faction) => faction.id),
+      {
+        mobileUnits: base.mobileUnits,
+        nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: 0,
+      },
+    );
+    return createProspectiveMatchState(base, {
+      mobileUnits: created.mobileUnits,
+      nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      tankOperationalStates: [
+        {
+          unitId: created.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: 0,
+          eligibleFromTick: 0,
+          attackReadyAtTick: 1_000,
+        },
+      ],
+    });
+  }
+
+  function tankRuntime(seed: string) {
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 5,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "DEEP_WATER"],
+        initialOwners: ["alpha", "alpha", "alpha", "alpha", "alpha"],
+        initialStructureGrants: [
+          {
+            structureId: "alpha-factory",
+            ownerId: "alpha",
+            type: "FACTORY",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    for (let tick = 0; tick < 2_250; tick += 1) runtime.tick();
+    return runtime;
+  }
+
+  async function evaluateSingleAlphaAction(
+    state: ReturnType<typeof tankBuildState>,
+    seed: string,
+    host: InProcessTestControllerHost | ProductionControllerHost,
+  ) {
+    const references = new ControllerReferenceSession(seed, state);
+    return await Promise.resolve(
+      evaluateControllerRound(
+        state,
+        host,
+        0,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Set(),
+        references,
+      ),
+    );
+  }
+
+  it("converts Tank build to one trusted production action and the accepted-input executor commits the canonical job", async () => {
+    const state = tankBuildState("issue206-tank-build-conversion");
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.build("TANK", { cellId: 1 }, 3);
+        return {};
+      },
+    });
+    const evaluated = await evaluateSingleAlphaAction(
+      state,
+      "issue206-tank-build-conversion",
+      host,
+    );
+    expect(
+      evaluated.receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    const proposed = evaluated.proposals.find(
+      (entry) => entry.factionId === "alpha",
+    )?.actions;
+    expect(proposed).toEqual([
+      {
+        key: "action_1",
+        action: {
+          type: "START_TANK_PRODUCTION",
+          ownerId: "alpha",
+          factoryId: "alpha-factory",
+          strategicDestinationCellId: 3,
+        },
+      },
+    ]);
+
+    const executed = new TickEngine().applyAcceptedInputs(state, [
+      {
+        tick: state.tick + 1,
+        sequence: 0,
+        action: {
+          type: "START_TANK_PRODUCTION",
+          ownerId: "alpha",
+          factoryId: "alpha-factory",
+          strategicDestinationCellId: 3,
+        } as never,
+      },
+    ]);
+    expect(executed.tankProductionJobs).toEqual([
+      expect.objectContaining({
+        factoryId: "alpha-factory",
+        ownerId: "alpha",
+        chassisType: "TANK",
+        strategicDestinationCellId: 3,
+        state: "BUILDING",
+        remainingTicks: 50,
+      }),
+    ]);
+    expect(
+      executed.factions.find((faction) => faction.id === "alpha")?.ffy,
+    ).toBe(0);
+  });
+
+  it("accepts Tank build end-to-end, advances work on the commit tick, and rejects same-Factory sibling overcommit atomically", async () => {
+    const runtime = tankRuntime("issue206-tank-build-runtime");
+    const before = runtime.snapshot();
+    const beforeInputs = runtime.acceptedInputs().length;
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.build("TANK", { cellId: 1 }, 3);
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.snapshot()).toEqual(before);
+    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 1);
+    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
+      type: "START_TANK_PRODUCTION",
+      ownerId: "alpha",
+      factoryId: "structure:grant:alpha-factory",
+      strategicDestinationCellId: 3,
+    });
+    const after = runtime.tick();
+    expect(after.tankProductionJobs).toEqual([
+      expect.objectContaining({
+        ownerId: "alpha",
+        strategicDestinationCellId: 3,
+        state: "BUILDING",
+        remainingTicks: 49,
+      }),
+    ]);
+
+    const rejected = tankRuntime("issue206-tank-build-atomic");
+    const rejectedBefore = rejected.snapshot();
+    const rejectedInputs = rejected.acceptedInputs().length;
+    const siblingHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.build("TANK", { cellId: 1 }, 2);
+        context.units.build("TANK", { cellId: 1 }, 3);
+        return {};
+      },
+    });
+    const rejectedReceipts = await Promise.resolve(
+      rejected.runControllerRound(siblingHost),
+    );
+    expect(
+      rejectedReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({
+      accepted: false,
+      failure: { code: "COMMITMENT_LIMIT", key: "action_2" },
+    });
+    expect(rejected.acceptedInputs()).toHaveLength(rejectedInputs);
+    expect(rejected.snapshot()).toEqual(rejectedBefore);
+    expect(rejected.tick().tankProductionJobs).toEqual([]);
+  });
+
+  it("commits the same Tank build through the production isolate", async () => {
+    const runtime = tankRuntime("issue206-tank-build-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerArtifact(
+          'context.units.build("TANK", { cellId: 1 }, 3)',
+        ),
+      });
+      const receipts = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true });
+      expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
+        type: "START_TANK_PRODUCTION",
+        ownerId: "alpha",
+        strategicDestinationCellId: 3,
+      });
+      expect(runtime.tick().tankProductionJobs).toEqual([
+        expect.objectContaining({
+          ownerId: "alpha",
+          strategicDestinationCellId: 3,
+          remainingTicks: 49,
+        }),
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("converts Tank move independently and the accepted-input executor retains the requested destination while rejecting intrinsically blocked terrain", async () => {
+    const state = manualTankState("issue206-tank-move-conversion");
+    const unit = state.mobileUnits[0]!;
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.move({ cellId: 0 }, 2);
+        return {};
+      },
+    });
+    const evaluated = await evaluateSingleAlphaAction(
+      state,
+      "issue206-tank-move-conversion",
+      host,
+    );
+    expect(
+      evaluated.receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(
+      evaluated.proposals.find((entry) => entry.factionId === "alpha")?.actions,
+    ).toEqual([
+      {
+        key: "action_1",
+        action: {
+          type: "SET_UNIT_STRATEGIC_DESTINATION",
+          ownerId: "alpha",
+          unitId: unit.id,
+          destinationCellId: 2,
+        },
+      },
+    ]);
+
+    const executed = new TickEngine().applyAcceptedInputs(state, [
+      {
+        tick: state.tick + 1,
+        sequence: 0,
+        action: {
+          type: "SET_UNIT_STRATEGIC_DESTINATION",
+          ownerId: "alpha",
+          unitId: unit.id,
+          destinationCellId: 2,
+        } as never,
+      },
+    ]);
+    expect(
+      executed.mobileUnits.find((candidate) => candidate.id === unit.id),
+    ).toMatchObject({ strategicDestinationCellId: 2 });
+
+    const invalidExecuted = new TickEngine().applyAcceptedInputs(state, [
+      {
+        tick: state.tick + 1,
+        sequence: 0,
+        action: {
+          type: "SET_UNIT_STRATEGIC_DESTINATION",
+          ownerId: "alpha",
+          unitId: unit.id,
+          destinationCellId: 3,
+        } as never,
+      },
+    ]);
+    expect(
+      invalidExecuted.mobileUnits.find((candidate) => candidate.id === unit.id),
+    ).toEqual(unit);
+  });
+
+  it("replaces a deployed Tank destination end-to-end and preserves production-worker parity for move staging", async () => {
+    const runtime = tankRuntime("issue206-tank-move-runtime");
+    const buildHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.build("TANK", { cellId: 1 }, 3);
+        return {};
+      },
+    });
+    const buildReceipts = await Promise.resolve(
+      runtime.runControllerRound(buildHost),
+    );
+    expect(
+      buildReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    runtime.tick();
+    for (let tick = 0; tick < 49; tick += 1) runtime.tick();
+
+    const deployed = runtime.snapshot().mobileUnits.find(
+      (unit) => unit.ownerId === "alpha" && unit.type === "TANK",
+    );
+    expect(deployed).toBeDefined();
+    if (deployed === undefined) throw new Error("expected deployed Tank");
+    expect(deployed.strategicDestinationCellId).toBe(3);
+
+    const beforeMoveInputs = runtime.acceptedInputs().length;
+    const moveHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.units.move({ cellId: deployed.cellId }, 2);
+        return {};
+      },
+    });
+    const moveReceipts = await Promise.resolve(runtime.runControllerRound(moveHost));
+    expect(
+      moveReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.acceptedInputs()).toHaveLength(beforeMoveInputs + 1);
+    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
+      type: "SET_UNIT_STRATEGIC_DESTINATION",
+      ownerId: "alpha",
+      unitId: deployed.id,
+      destinationCellId: 2,
+    });
+    const moved = runtime.tick().mobileUnits.find(
+      (unit) => unit.id === deployed.id,
+    );
+    expect(moved?.strategicDestinationCellId).toBe(2);
+
+    const workerState = manualTankState("issue206-tank-move-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerHost = new ProductionControllerHost(pool, {
+        alpha: workerArtifact("context.units.move({ cellId: 0 }, 2)"),
+      });
+      const evaluated = await evaluateSingleAlphaAction(
+        workerState,
+        "issue206-tank-move-worker",
+        workerHost,
+      );
+      expect(
+        evaluated.receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true });
+      expect(
+        evaluated.proposals.find((entry) => entry.factionId === "alpha")?.actions,
+      ).toEqual([
+        {
+          key: "action_1",
+          action: {
+            type: "SET_UNIT_STRATEGIC_DESTINATION",
+            ownerId: "alpha",
+            unitId: workerState.mobileUnits[0]!.id,
+            destinationCellId: 2,
+          },
+        },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
 });
 
 describe("issue #206 Transport facade authoritative RED", () => {
