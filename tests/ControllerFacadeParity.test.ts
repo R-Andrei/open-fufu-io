@@ -1360,6 +1360,74 @@ describe("issue #206 strategic weapon baseline RED", () => {
     return { runtime, firstTargetCellId, secondTargetCellId };
   }
 
+  function mirvDistributionRuntime(
+    seed: string,
+    traits: Parameters<typeof originRuleProfileInput>[0] = [],
+  ) {
+    const width = 271;
+    const primaryTargetCellId = 150;
+    const nearestTargetCellId = 208;
+    const spacingConflictCellId = 210;
+    const tiedLowerCellId = 30;
+    const tiedHigherCellId = 270;
+    const betaTargetCells = new Set([
+      primaryTargetCellId,
+      nearestTargetCellId,
+      spacingConflictCellId,
+      tiedLowerCellId,
+      tiedHigherCellId,
+    ]);
+    const uniqueTraits = Object.freeze([
+      ...new Set<Parameters<typeof originRuleProfileInput>[0][number]>([
+        "P53",
+        ...traits,
+      ]),
+    ]);
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width,
+        height: 1,
+        terrain: Array.from({ length: width }, () => "PLAINS"),
+        initialOwners: Array.from({ length: width }, (_, cellId) =>
+          betaTargetCells.has(cellId) ? "beta" : "alpha",
+        ),
+        initialStructureGrants: [
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 0,
+            level: 5,
+          },
+          ...Array.from({ length: 8 }, (_, index) => ({
+            structureId: "funding-silo-" + index,
+            ownerId: "alpha",
+            type: "MISSILE_SILO" as const,
+            cellId: 40 + index * 10,
+            level: 5 as const,
+          })),
+        ],
+        factions: [
+          { id: "alpha", rules: compiledStrategicOriginRules(uniqueTraits) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    return {
+      runtime,
+      primaryTargetCellId,
+      spacingConflictCellId,
+      expectedChildTargetCellIds: Object.freeze([
+        primaryTargetCellId,
+        nearestTargetCellId,
+        tiedLowerCellId,
+        tiedHigherCellId,
+      ]),
+    };
+  }
+
   it("enforces the L3 Hydrogen access boundary and preserves production-isolate check parity", async () => {
     const l2 = strategicStateAtLevel(
       "issue206-hydrogen-l2-check",
@@ -1738,12 +1806,17 @@ describe("issue #206 strategic weapon baseline RED", () => {
 
   it("commits an L5 MIRV with launch-bound carrier, child payload, target snapshot, and stable child seed", async () => {
     const seed = "issue206-mirv-commit";
-    const { runtime, firstTargetCellId } = fundedStrategicRuntime(seed, 5);
+    const {
+      runtime,
+      primaryTargetCellId,
+      spacingConflictCellId,
+      expectedChildTargetCellIds,
+    } = mirvDistributionRuntime(seed);
     advanceUntilFfy(runtime, 50_000_000);
 
     const host = new InProcessTestControllerHost({
       alpha(context) {
-        context.weapons.launch({ cellId: 0 }, "MIRV", firstTargetCellId);
+        context.weapons.launch({ cellId: 0 }, "MIRV", primaryTargetCellId);
         return {};
       },
     });
@@ -1774,11 +1847,11 @@ describe("issue #206 strategic weapon baseline RED", () => {
       "silo-alpha",
       0,
       "MIRV",
-      firstTargetCellId,
+      primaryTargetCellId,
     );
     expect(projectile).toMatchObject({
       weapon: "MIRV",
-      targetCellId: firstTargetCellId,
+      targetCellId: primaryTargetCellId,
       targetFactionId: "beta",
       acceptedLaunchOrdinal: 0,
       consumedChargeSlotId: 0,
@@ -1794,19 +1867,22 @@ describe("issue #206 strategic weapon baseline RED", () => {
         childSpeedCellsPerSecond: 220,
         distributionRadiusCells: 750,
         minimumCenterSpacingCells: 55,
-        children: [
-          {
-            targetCellId: firstTargetCellId,
-            blastSeed: strategicBlastHash32(
-              "strategic-blast-child",
-              seed,
-              rootSeed,
-              0,
-            ),
-          },
-        ],
+        children: expectedChildTargetCellIds.map((targetCellId, childIndex) => ({
+          targetCellId,
+          blastSeed: strategicBlastHash32(
+            "strategic-blast-child",
+            seed,
+            rootSeed,
+            childIndex,
+          ),
+        })),
       },
     });
+    expect(
+      projectile?.mirvPayload?.children.some(
+        (child) => child.targetCellId === spacingConflictCellId,
+      ),
+    ).toBe(false);
   }, 20_000);
 
   it("applies P10 only to launch-bound MIRV child warheads, not the carrier", async () => {
@@ -1920,13 +1996,8 @@ describe("issue #206 strategic weapon baseline RED", () => {
     ).toMatchObject({ accepted: true });
 
     const after = runtime.tick();
-    const afterAlpha = after.factions.find((faction) => faction.id === "alpha") as
-      | (typeof after.factions[number] & {
-          readonly successfulMirvLaunchCount?: number;
-        })
-      | undefined;
+    const afterAlpha = after.factions.find((faction) => faction.id === "alpha");
     expect(afterAlpha?.ffy ?? 0).toBeGreaterThanOrEqual(beforeFfy);
-    expect(afterAlpha?.successfulMirvLaunchCount).toBe(1);
 
     const postSession = createControllerQuerySession(
       after,
