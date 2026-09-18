@@ -17,7 +17,13 @@ import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
 } from "../src/simulation/ControllerRuntime";
+import {
+  createInitialMatchState,
+  createProspectiveMatchState,
+} from "../src/simulation/MatchState";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
+import { tryStartTankProduction } from "../src/simulation/Tanks";
+import { tryStartWarshipProduction } from "../src/simulation/Warships";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 
 const ACTION_PROOFS = Object.freeze([
@@ -503,6 +509,145 @@ describe("issue #206 trusted action staging parity RED", () => {
       await pool.close();
     }
   }, 20_000);
+});
+
+describe("issue #206 units.checkBuild authoritative RED", () => {
+  function producerFixture(seed: string, unit: "TANK" | "WARSHIP") {
+    const rules = emptyRules();
+    const isWarship = unit === "WARSHIP";
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 3,
+        height: 1,
+        terrain: isWarship
+          ? ["DEEP_WATER", "PLAINS", "DEEP_WATER"]
+          : ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: isWarship
+          ? [null, "alpha", null]
+          : ["alpha", "alpha", "alpha"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const producerId = isWarship ? "port-alpha" : "factory-alpha";
+    const state = createProspectiveMatchState(base, {
+      factions: base.factions.map((faction) =>
+        faction.id === "alpha" ? { ...faction, ffy: 1_000_000 } : faction,
+      ),
+      structures: [
+        {
+          id: producerId,
+          ownerId: "alpha",
+          type: isWarship ? "PORT" : "FACTORY",
+          cellId: 1,
+          outputCellId: 0,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+    });
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession(seed, state),
+    );
+    return { state, session, producerId };
+  }
+
+  it.each(["TANK", "WARSHIP"] as const)(
+    "matches canonical %s admission and charges one read without entity materialization",
+    (requestedUnit) => {
+      const { state, session, producerId } = producerFixture(
+        "issue206-unit-check-" + requestedUnit,
+        requestedUnit,
+      );
+      const destination = 2;
+      const canonical =
+        requestedUnit === "TANK"
+          ? tryStartTankProduction(state, {
+              ownerId: "alpha",
+              factoryId: producerId,
+              destinationCellId: destination,
+            })
+          : tryStartWarshipProduction(state, {
+              ownerId: "alpha",
+              portId: producerId,
+            });
+      expect(canonical.ok).toBe(true);
+      if (!canonical.ok) throw new Error("expected canonical unit admission");
+
+      const before = session.usage();
+      const quote = (
+        session.units as unknown as {
+          checkBuild(
+            type: "TANK" | "WARSHIP",
+            producer: { cellId: number },
+            destination: number,
+          ): Record<string, unknown>;
+        }
+      ).checkBuild(requestedUnit, { cellId: 1 }, destination);
+
+      expect(quote).toMatchObject({
+        legal: true,
+        cost: {
+          ffyRequired: canonical.cost,
+          ffySpent: canonical.cost,
+          populationSpent: 0,
+        },
+        requestedUnit,
+        resultingUnit:
+          requestedUnit === "TANK" ? canonical.job.chassisType : "WARSHIP",
+        buildTicks:
+          requestedUnit === "TANK"
+            ? canonical.job.remainingTicks
+            : canonical.job.remainingTicks,
+      });
+      expect(typeof quote.producerId).toBe("string");
+      const after = session.usage();
+      expect(after.queries - before.queries).toBe(1);
+      expect(
+        after.materializedEntityViews - before.materializedEntityViews,
+      ).toBe(0);
+    },
+  );
+
+  it("does not fabricate producer identity or timing when the producer is unavailable", () => {
+    const { session } = producerFixture(
+      "issue206-unit-check-unavailable",
+      "TANK",
+    );
+    const before = session.usage();
+    const quote = (
+      session.units as unknown as {
+        checkBuild(
+          type: "TANK",
+          producer: { cellId: number },
+          destination: number,
+        ): Record<string, unknown>;
+      }
+    ).checkBuild("TANK", { cellId: 2 }, 0);
+
+    expect(quote).toMatchObject({
+      legal: false,
+      requestedUnit: "TANK",
+      cost: {
+        ffySpent: 0,
+        populationSpent: 0,
+      },
+    });
+    expect(Object.prototype.hasOwnProperty.call(quote, "producerId")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(quote, "buildTicks")).toBe(false);
+    const after = session.usage();
+    expect(after.queries - before.queries).toBe(1);
+    expect(
+      after.materializedEntityViews - before.materializedEntityViews,
+    ).toBe(0);
+  });
 });
 
 describe("issue #206 check* parity and shared-budget RED", () => {
