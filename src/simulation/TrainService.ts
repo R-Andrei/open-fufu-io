@@ -23,7 +23,10 @@ import {
   type MobileUnitState,
 } from "./MobileUnits";
 import { grantPopulation, type PopulationState } from "./Population";
-import type { UnitDestroyedEvent } from "./SimulationEvents";
+import type {
+  UnitAttackDestructionCause,
+  UnitDestroyedEvent,
+} from "./SimulationEvents";
 import type { PersistentStructureState } from "./Structures";
 
 export const TRAIN_RAIL_EDGE_WORK = 2 as const;
@@ -563,7 +566,7 @@ export function resolveTrainDestroyedEconomicOutcome(
   if (service === undefined) return null;
 
   let creditedCause = destructionEvent.payload.causes.find(
-    (cause) =>
+    (cause): cause is UnitAttackDestructionCause =>
       cause.kind === "UNIT_ATTACK" && cause.attacker.unitType === "TANK",
   );
   if (creditedCause === undefined) return null;
