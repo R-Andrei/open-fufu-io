@@ -253,7 +253,16 @@ describe("Warship post-movement gunfire decisions", () => {
       type: "WARSHIP",
       cellId: 0,
     });
-    state = source.state;
+    const travellingSource = setMobileUnitStrategicDestination(
+      source.state.map,
+      source.unit,
+      157,
+    );
+    state = createProspectiveMatchState(source.state, {
+      mobileUnits: source.state.mobileUnits.map((unit) =>
+        unit.id === travellingSource.id ? travellingSource : unit,
+      ),
+    });
     const target = addNavalUnit(state, {
       ownerId: "beta",
       type: "TRANSPORT_SHIP",
