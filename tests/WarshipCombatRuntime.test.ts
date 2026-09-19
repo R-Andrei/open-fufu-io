@@ -211,17 +211,21 @@ describe("Warship post-movement gunfire decisions", () => {
       cellId: 0,
     });
     state = source.state;
-    addNavalUnit(state, {
-      ownerId: "beta",
-      type: "TRANSPORT_SHIP",
-      cellId: 140,
-    });
     const target = addNavalUnit(state, {
       ownerId: "beta",
       type: "TRANSPORT_SHIP",
       cellId: 140,
     });
-    state = target.state;
+    state = createProspectiveMatchState(target.state, {
+      directReveals: [
+        {
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT",
+          sourceId: target.unit.id,
+          expiryExclusiveTick: state.tick + 10,
+        },
+      ],
+    });
 
     const resolved = resolveWarshipGunfireDecisions(state);
     expect(
