@@ -266,6 +266,71 @@ describe("Warship strategic movement lifecycle", () => {
     ).toThrow(/Warship strategic destination.*Deep-Water/i);
   });
 
+  it("rejects restored deployed Warship state outside Deep Water", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const warship = completed.mobileUnits[0]!;
+
+    expect(() =>
+      createProspectiveMatchState(completed, {
+        structures: [],
+        mobileUnits: [
+          {
+            ...warship,
+            cellId: 1,
+          },
+        ],
+      }),
+    ).toThrow(/Warship current cell.*Deep-Water/i);
+  });
+
+  it("rejects restored deployed Warship state with a non-NAVAL movement class", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const warship = completed.mobileUnits[0]!;
+
+    expect(() =>
+      createProspectiveMatchState(completed, {
+        mobileUnits: [
+          {
+            ...warship,
+            movementClass: "TANK" as const,
+          },
+        ],
+      }),
+    ).toThrow(/Warship movement class.*NAVAL/i);
+  });
+
+  it("rejects restored active Warship routes that traverse non-Deep-Water cells", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const warship = completed.mobileUnits[0]!;
+
+    expect(() =>
+      createProspectiveMatchState(completed, {
+        mobileUnits: [
+          {
+            ...warship,
+            route: {
+              destinationCellId: 2,
+              cells: [0, 1, 2],
+              edgeWeights: [10, 10],
+              nextCellIndex: 1,
+              edgeProgress: 0,
+            },
+          },
+        ],
+      }),
+    ).toThrow(/Warship route.*Deep-Water/i);
+  });
+
+  it("rejects restored deployed Warships that are missing keyed operational state", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+
+    expect(() =>
+      createProspectiveMatchState(completed, {
+        warshipOperationalStates: [],
+      }),
+    ).toThrow(/deployed Warship.*operational state/i);
+  });
+
   it("uses Deep Water only and exact effective Warship speed composition", () => {
     expectExactWarshipSpeed(
       warshipTerrainMovementTiming(
