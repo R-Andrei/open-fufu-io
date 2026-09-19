@@ -28,6 +28,11 @@ import { removePopulation } from "./Population";
 import type { SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
+export interface WarshipOperationalState {
+  readonly unitId: string;
+  readonly operatingAnchorCellId: number;
+}
+
 export type WarshipProductionJobState =
   | {
       readonly portId: string;
@@ -532,6 +537,9 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
     mobileUnits: state.mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
   });
+  const operationalStates: WarshipOperationalState[] = [
+    ...state.warshipOperationalStates,
+  ];
   const nextJobs: WarshipProductionJobState[] = [];
   const ownerIds = state.factions.map((faction) => faction.id);
   const jobs = [...state.warshipProductionJobs].sort((left, right) =>
@@ -584,6 +592,12 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
         ),
         nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
       });
+      operationalStates.push(
+        Object.freeze({
+          unitId: deployedUnit.id,
+          operatingAnchorCellId: cellId,
+        }),
+      );
       return true;
     };
 
@@ -612,5 +626,6 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
     mobileUnits: units.mobileUnits,
     nextMobileUnitOrdinal: units.nextMobileUnitOrdinal,
     warshipProductionJobs: nextJobs,
+    warshipOperationalStates: operationalStates,
   });
 }
