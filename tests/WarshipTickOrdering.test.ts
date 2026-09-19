@@ -54,6 +54,7 @@ function addWarship(
     cellId: number;
     health?: bigint;
     strategicDestinationCellId?: number;
+    nextProjectileOrdinal?: number;
   }>,
 ): Readonly<{ state: MatchState; unit: MobileUnitState }> {
   const created = createMobileUnit(
@@ -93,7 +94,7 @@ function addWarship(
         }),
         operatingAnchorCellId: input.cellId,
         attackReadyAtTick: state.tick,
-        nextProjectileOrdinal: 0,
+        nextProjectileOrdinal: input.nextProjectileOrdinal ?? 0,
         roamingOrdinal: 0,
       }),
     ],
@@ -191,11 +192,12 @@ describe("TickEngine Warship combat/projectile ordering", () => {
     const beta = addWarship(state, {
       ownerId: "beta",
       cellId: 10,
+      nextProjectileOrdinal: 8,
     });
     state = beta.state;
 
     const oldShot = createHomingCombatProjectile({
-      sourceUnitId: "older-beta-shot",
+      sourceUnitId: beta.unit.id,
       sourceOwnerId: "beta",
       targetUnitId: alpha.unit.id,
       projectileOrdinal: 7,
@@ -222,7 +224,7 @@ describe("TickEngine Warship combat/projectile ordering", () => {
     expect(
       advanced.combatProjectiles.some(
         (projectile) =>
-          projectile.sourceUnitId === "older-beta-shot" &&
+          projectile.sourceUnitId === beta.unit.id &&
           projectile.projectileOrdinal === 7,
       ),
     ).toBe(false);
@@ -240,6 +242,12 @@ describe("TickEngine Warship combat/projectile ordering", () => {
       profileId: "WARSHIP_NAVAL_GUN",
       position: { x: 0, y: 0 },
       createdTick: 1,
+    });
+    expect(advanced.directReveals).toContainEqual({
+      viewerFactionId: "alpha",
+      sourceKind: "UNIT",
+      sourceId: beta.unit.id,
+      expiryExclusiveTick: 151,
     });
   });
 });
