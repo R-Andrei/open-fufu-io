@@ -949,6 +949,36 @@ function freezeTankHealth(
   });
 }
 
+function freezeWarshipHealth(
+  health: WarshipOperationalState["health"],
+): WarshipOperationalState["health"] {
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator < 0n ||
+    health.denominator <= 0n
+  ) {
+    throw new Error("Warship health must be a non-negative exact ratio");
+  }
+  if (health.numerator === 0n) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
+  }
+  return Object.freeze({
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
+  });
+}
+
 function assertNonNegativeSafeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
@@ -1121,9 +1151,22 @@ function freezeWarshipOperationalStates(
     ) {
       throw new Error("Warship operating anchor must be a Deep-Water map cell");
     }
+    assertNonNegativeSafeInteger(
+      entry.attackReadyAtTick,
+      "Warship attackReadyAtTick",
+    );
+    assertNonNegativeSafeInteger(
+      entry.nextProjectileOrdinal,
+      "Warship nextProjectileOrdinal",
+    );
+    assertNonNegativeSafeInteger(entry.roamingOrdinal, "Warship roamingOrdinal");
     return Object.freeze({
       unitId: entry.unitId,
+      health: freezeWarshipHealth(entry.health),
       operatingAnchorCellId: entry.operatingAnchorCellId,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      nextProjectileOrdinal: entry.nextProjectileOrdinal,
+      roamingOrdinal: entry.roamingOrdinal,
     });
   });
   for (const unit of mobileUnits) {
@@ -1666,7 +1709,14 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     .sort((left, right) => compareIds(left.unitId, right.unitId))
     .map((entry) => ({
       unitId: entry.unitId,
+      health: {
+        numerator: entry.health.numerator.toString(),
+        denominator: entry.health.denominator.toString(),
+      },
       operatingAnchorCellId: entry.operatingAnchorCellId,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      nextProjectileOrdinal: entry.nextProjectileOrdinal,
+      roamingOrdinal: entry.roamingOrdinal,
     }));
 
   const directReveals = state.directReveals.map((entry) => ({
