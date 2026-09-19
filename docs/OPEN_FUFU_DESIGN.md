@@ -690,9 +690,9 @@ At terminal match completion, live war-state queries are no longer gameplay-rele
 
 Team communication available to controllers is a bounded deterministic event channel, not an unrestricted side channel.
 
-A successfully committed controller team signal is addressed only to the sender's fixed team. The sender must have a non-null fixed-team identity. Delivery recipients are exactly the **other** factions that share that fixed-team identity and are `ACTIVE` when the signal commits. The sender never receives its own signal.
+A successfully committed controller team signal is addressed only to the sender's fixed team. When the sender has a non-null fixed-team identity, delivery recipients are exactly the **other** factions that share that identity and are `ACTIVE` when the signal commits. The sender never receives its own signal.
 
-If the sender has no eligible active teammate, the signal remains a lawful successful action and delivers nothing.
+If the sender has no eligible active teammate — including when the sender has no fixed-team identity — the signal remains a lawful successful action and delivers nothing.
 
 Each eligible recipient receives one `TEAM_SIGNAL_RECEIVED` controller event carrying the sender's lawful public faction reference, submitted channel, and submitted JSON payload. The event becomes visible on that recipient's **next controller decision** after the accepted signal commits. After it has been exposed through `events.sinceLastDecision` for that decision, it is consumed and does not appear again merely because later decisions occur.
 
