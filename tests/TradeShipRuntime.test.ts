@@ -269,17 +269,13 @@ describe("authoritative Trade Ship voyage state", () => {
       createMicroSimulationSpec({
         seed: "trade-destination-history",
         width: 23,
-        height: 1,
+        height: 2,
         terrain: [
-          "PLAINS",
-          ...Array.from({ length: 9 }, () => "DEEP_WATER" as const),
-          "PLAINS",
-          ...Array.from({ length: 10 }, () => "DEEP_WATER" as const),
-          "PLAINS",
-          "DEEP_WATER",
+          ...Array.from({ length: 23 }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: 23 }, () => "PLAINS" as const),
         ],
-        initialOwners: Array.from({ length: 23 }, (_, cellId) =>
-          cellId === 0 ? "alpha" : cellId === 10 ? "beta" : cellId === 21 ? "gamma" : null,
+        initialOwners: Array.from({ length: 46 }, (_, cellId) =>
+          cellId === 23 ? "alpha" : cellId === 33 ? "beta" : cellId === 44 ? "gamma" : null,
         ),
         factions: [
           { id: "alpha", rules },
@@ -290,9 +286,9 @@ describe("authoritative Trade Ship voyage state", () => {
     );
     const previous = createProspectiveMatchState(base, {
       structures: [
-        port("port-alpha", "alpha", 0, 1),
-        port("port-beta", "beta", 10, 9),
-        port("port-gamma", "gamma", 21, 22),
+        port("port-alpha", "alpha", 23, 0),
+        port("port-beta", "beta", 33, 10),
+        port("port-gamma", "gamma", 44, 21),
       ],
     });
     const current = createAdvancedMatchState(previous, {
