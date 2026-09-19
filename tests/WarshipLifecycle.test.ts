@@ -451,6 +451,31 @@ describe("Warship strategic movement lifecycle", () => {
         }
       ).warshipOperationalStates,
     ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+
+    const unblocked = createProspectiveMatchState(frontier, {
+      structures: frontier.structures.filter(
+        (structure) => structure.id !== "blocker",
+      ),
+    });
+    const resumed = engine.advance(unblocked, []);
+    const resumedUnit = resumed.mobileUnits.find(
+      (entry) => entry.id === unitId,
+    )!;
+    expect(resumedUnit.cellId).toBe(5);
+    expect(resumedUnit.strategicDestinationCellId).toBe(2);
+    expect(resumed.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 0 },
+    ]);
+
+    const arrived = engine.advance(resumed, []);
+    const arrivedUnit = arrived.mobileUnits.find(
+      (entry) => entry.id === unitId,
+    )!;
+    expect(arrivedUnit.cellId).toBe(2);
+    expect(arrivedUnit.strategicDestinationCellId).toBeUndefined();
+    expect(arrived.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 2 },
+    ]);
   });
 
 
