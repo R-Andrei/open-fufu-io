@@ -247,7 +247,7 @@ describe("Warship post-movement gunfire decisions", () => {
   });
 
   it("applies P23 effective range and damage to the firing-time projectile snapshot", () => {
-    let state = fixture(202, ["P23"]);
+    let state = fixture(158, ["P23"]);
     const source = addNavalUnit(state, {
       ownerId: "alpha",
       type: "WARSHIP",
@@ -257,7 +257,7 @@ describe("Warship post-movement gunfire decisions", () => {
     const target = addNavalUnit(state, {
       ownerId: "beta",
       type: "TRANSPORT_SHIP",
-      cellId: 200,
+      cellId: 156,
     });
     state = target.state;
 
@@ -266,7 +266,7 @@ describe("Warship post-movement gunfire decisions", () => {
       (projectile) => projectile.sourceUnitId === source.unit.id,
     );
     expect(shot?.targetUnitId).toBe(target.unit.id);
-    expect(shot?.damage).toEqual({ numerator: 500n, denominator: 1n });
+    expect(shot?.damage).toEqual({ numerator: 300n, denominator: 1n });
   });
 
   it("respects P30 naval-gunfire removal while leaving the Warship ready", () => {
