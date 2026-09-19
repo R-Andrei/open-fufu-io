@@ -96,6 +96,82 @@ import {
 
 const DEFAULT_MATERIALIZED_ENTITY_VIEWS_PER_DECISION = 512;
 const MAX_ENTITY_FIND_RESULTS = 128;
+export const CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES = 1_024;
+const teamSignalUtf8Encoder = new TextEncoder();
+
+function materializeTeamSignalJsonValue(
+  value: unknown,
+  ancestors: Set<object>,
+): JsonValue {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new TypeError("team signal payload numbers must be finite");
+    }
+    return Object.is(value, -0) ? 0 : value;
+  }
+  if (typeof value !== "object") {
+    throw new TypeError("team signal payload must be JSON-shaped");
+  }
+  if (ancestors.has(value)) {
+    throw new TypeError("team signal payload must be acyclic");
+  }
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const copy: JsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          throw new TypeError("team signal payload arrays must not be sparse");
+        }
+        copy.push(materializeTeamSignalJsonValue(value[index], ancestors));
+      }
+      return Object.freeze(copy);
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Object.getOwnPropertySymbols(value).length !== 0
+    ) {
+      throw new TypeError("team signal payload objects must be plain records");
+    }
+    const copy: Record<string, JsonValue> = {};
+    for (const key of Object.keys(value).sort()) {
+      copy[key] = materializeTeamSignalJsonValue(
+        (value as Record<string, unknown>)[key],
+        ancestors,
+      );
+    }
+    return Object.freeze(copy);
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+export function materializeControllerTeamSignalPayload(
+  value: unknown,
+): JsonValue {
+  const payload = materializeTeamSignalJsonValue(value, new Set<object>());
+  const serialized = JSON.stringify(payload);
+  if (
+    teamSignalUtf8Encoder.encode(serialized).byteLength >
+    CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES
+  ) {
+    throw new RangeError("team signal payload exceeds byte limit");
+  }
+  return payload;
+}
+
+export function controllerTeamSignalPayloadIsValid(value: unknown): boolean {
+  try {
+    materializeControllerTeamSignalPayload(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface ControllerQueryBudgetLimits {
   readonly queriesPerDecision: number;
@@ -1957,13 +2033,15 @@ export function createControllerQuerySession(
       actionRef,
       cells,
     }));
-  const stageTeamSignal = (channel: string, payload: JsonValue): ActionRef =>
-    stage((actionRef) => ({
+  const stageTeamSignal = (channel: string, payload: JsonValue): ActionRef => {
+    const materializedPayload = materializeControllerTeamSignalPayload(payload);
+    return stage((actionRef) => ({
       kind: "TEAM_SIGNAL" as const,
       actionRef,
       channel,
-      payload,
+      payload: materializedPayload,
     }));
+  };
   const stageCapitulation = (): ActionRef =>
     stage((actionRef) => ({
       kind: "CAPITULATE" as const,

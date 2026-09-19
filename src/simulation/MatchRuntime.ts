@@ -1,12 +1,15 @@
 import type {
   ControllerDecision,
   CounterResponseDirective,
+  JsonValue,
   DecisionFailure,
   DecisionReceipt,
 } from "../core/controller/ControllerApi";
 import {
+  controllerTeamSignalPayloadIsValid,
   controllerUnitBuildFailureCode,
   mapControllerStructureBuildFailure,
+  materializeControllerTeamSignalPayload,
   mapControllerStructureUpgradeFailure,
   mapControllerTransportEmbarkFailure,
 } from "./ControllerQueryProjection";
@@ -17,6 +20,7 @@ import {
   type ControllerHostInvocationResult,
   type ControllerProposedAction,
   type ControllerRoundEvaluation,
+  type PendingTeamSignalObservation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
@@ -424,6 +428,16 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "TEAM_SIGNAL": {
+      faction(state, action.senderFactionId);
+      if (
+        typeof action.channel !== "string" ||
+        !controllerTeamSignalPayloadIsValid(action.payload)
+      ) {
+        throw new Error("invalid team signal");
+      }
+      break;
+    }
     case "CAPITULATE_FACTION": {
       const target = faction(state, action.factionId);
       if (target.status !== "ACTIVE") {
@@ -595,7 +609,12 @@ function freezeAcceptedInput(
           ...input.action,
           changes: materializeDirectiveChanges(input.action.changes),
         })
-      : Object.freeze({ ...input.action });
+      : input.action.type === "TEAM_SIGNAL"
+        ? Object.freeze({
+            ...input.action,
+            payload: materializeControllerTeamSignalPayload(input.action.payload),
+          })
+        : Object.freeze({ ...input.action });
   return Object.freeze({
     tick: input.tick,
     sequence: input.sequence,
@@ -826,6 +845,64 @@ function controllerActionFailure(
   }
 }
 
+function resolvePendingTeamSignalDeliveries(
+  state: MatchState,
+  inputs: readonly AcceptedSimulationInput[],
+): ReadonlyMap<string, readonly PendingTeamSignalObservation[]> {
+  const factionsById = new Map(state.factions.map((entry) => [entry.id, entry]));
+  const activeById = new Map(
+    state.factions.map((entry) => [entry.id, entry.status === "ACTIVE"]),
+  );
+  const deliveries = new Map<string, PendingTeamSignalObservation[]>();
+
+  for (const input of [...inputs].sort(
+    (left, right) => left.sequence - right.sequence,
+  )) {
+    if (input.action.type === "CAPITULATE_FACTION") {
+      activeById.set(input.action.factionId, false);
+      continue;
+    }
+    if (input.action.type !== "TEAM_SIGNAL") continue;
+
+    const sender = factionsById.get(input.action.senderFactionId);
+    if (sender === undefined) {
+      throw new Error(
+        `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
+      );
+    }
+    const fixedTeamId = sender.fixedTeamId;
+    if (fixedTeamId === undefined) continue;
+
+    const signal = Object.freeze({
+      senderFactionId: sender.id,
+      channel: input.action.channel,
+      payload: input.action.payload,
+    });
+    for (const recipient of state.factions) {
+      if (
+        recipient.id === sender.id ||
+        recipient.fixedTeamId !== fixedTeamId ||
+        activeById.get(recipient.id) !== true
+      ) {
+        continue;
+      }
+      const existing = deliveries.get(recipient.id);
+      if (existing === undefined) {
+        deliveries.set(recipient.id, [signal]);
+      } else {
+        existing.push(signal);
+      }
+    }
+  }
+
+  return new Map(
+    [...deliveries].map(([factionId, signals]) => [
+      factionId,
+      Object.freeze([...signals]),
+    ]),
+  );
+}
+
 export class MatchRuntime {
   private readonly engine = new TickEngine();
   private state: MatchState;
@@ -839,6 +916,10 @@ export class MatchRuntime {
   private controllerFaultCounts = new Map<string, number>();
   private controllerConsecutiveFaultCounts = new Map<string, number>();
   private controllerFaultedFactionIds = new Set<string>();
+  private readonly pendingTeamSignalsByFaction = new Map<
+    string,
+    readonly PendingTeamSignalObservation[]
+  >();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
   private readonly controllerReferences?: ControllerReferenceSession;
@@ -1016,6 +1097,11 @@ export class MatchRuntime {
     for (const entry of frozenReceipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
+    for (const faction of this.state.factions) {
+      if (!this.controllerFaultedFactionIds.has(faction.id)) {
+        this.pendingTeamSignalsByFaction.delete(faction.id);
+      }
+    }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
     this.controllerConsecutiveFaultCounts = new Map(
       evaluated.consecutiveFaultCounts,
@@ -1054,6 +1140,7 @@ export class MatchRuntime {
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
         this.controllerReferences,
+        this.pendingTeamSignalsByFaction,
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
@@ -1089,6 +1176,10 @@ export class MatchRuntime {
     this.pendingInputs = this.pendingInputs.filter(
       (input) => input.tick !== nextTick,
     );
+    const teamSignalDeliveries = resolvePendingTeamSignalDeliveries(
+      this.state,
+      executing,
+    );
     const nextState = this.engine.advance(this.state, executing);
     if (this.controllerReferences !== undefined) {
       for (const input of [...executing].sort(
@@ -1114,6 +1205,15 @@ export class MatchRuntime {
       this.controllerReferences.reconcile(nextState);
     }
     this.state = nextState;
+    for (const [factionId, signals] of teamSignalDeliveries) {
+      const existing = this.pendingTeamSignalsByFaction.get(factionId);
+      this.pendingTeamSignalsByFaction.set(
+        factionId,
+        existing === undefined
+          ? signals
+          : Object.freeze([...existing, ...signals]),
+      );
+    }
     return this.state;
   }
 

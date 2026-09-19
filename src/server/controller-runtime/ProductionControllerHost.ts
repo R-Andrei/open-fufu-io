@@ -8,9 +8,11 @@ import type {
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
-import type {
-  ControllerQuerySession,
-  ControllerStagedAction,
+import {
+  CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
+  controllerTeamSignalPayloadIsValid,
+  type ControllerQuerySession,
+  type ControllerStagedAction,
 } from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
@@ -40,7 +42,7 @@ export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
   debugItemsPerDecision: 256,
   logBytesPerDecision: 8 * 1024,
   eventsPerDecision: 512,
-  teamSignalPayloadBytes: 1024,
+  teamSignalPayloadBytes: CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
 });
 
 export interface ControllerRuntimeArtifact {
@@ -211,61 +213,6 @@ function cloneWorkerContext(context: object): Readonly<Record<string, unknown>> 
   return Object.freeze(clone);
 }
 
-function canonicalizeJsonValue(
-  value: unknown,
-  ancestors: Set<object>,
-): string {
-  if (value === null) return "null";
-
-  switch (typeof value) {
-    case "boolean":
-      return value ? "true" : "false";
-    case "number":
-      if (!Number.isFinite(value)) {
-        throw new InvalidTransportValueError("JSON number must be finite");
-      }
-      return JSON.stringify(Object.is(value, -0) ? 0 : value);
-    case "string":
-      return JSON.stringify(value);
-    case "object":
-      break;
-    default:
-      throw new InvalidTransportValueError("value is not JSON-shaped");
-  }
-
-  if (ancestors.has(value)) {
-    throw new InvalidTransportValueError("JSON value must be acyclic");
-  }
-  ancestors.add(value);
-
-  try {
-    if (Array.isArray(value)) {
-      const entries: string[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw new InvalidTransportValueError("JSON arrays must not be sparse");
-        }
-        entries.push(canonicalizeJsonValue(value[index], ancestors));
-      }
-      return `[${entries.join(",")}]`;
-    }
-
-    if (!isPlainRecord(value)) {
-      throw new InvalidTransportValueError("JSON objects must be plain records");
-    }
-
-    const entries = Object.keys(value)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalizeJsonValue(value[key], ancestors)}`,
-      );
-    return `{${entries.join(",")}}`;
-  } finally {
-    ancestors.delete(value);
-  }
-}
-
 function hostSuccess<T>(
   output?: T,
   stagedActions: readonly ControllerStagedAction[] = Object.freeze([]),
@@ -374,18 +321,7 @@ function directivePolicyRuleCount(value: unknown): number {
 
 function teamSignalPayloadWithinLimit(command: unknown): boolean {
   if (!isPlainRecord(command) || command.kind !== "TEAM_SIGNAL") return true;
-  try {
-    const canonicalPayload = canonicalizeJsonValue(
-      command.payload,
-      new Set<object>(),
-    );
-    return (
-      utf8Encoder.encode(canonicalPayload).byteLength <=
-      PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes
-    );
-  } catch {
-    return false;
-  }
+  return controllerTeamSignalPayloadIsValid(command.payload);
 }
 
 function stagedActionsWithinResourceCeilings(

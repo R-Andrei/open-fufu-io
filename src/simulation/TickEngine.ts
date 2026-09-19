@@ -1,5 +1,6 @@
 import type {
   DirectiveChanges,
+  JsonValue,
   StrategicWeaponType,
   StructureType,
 } from "../core/controller/ControllerApi";
@@ -185,6 +186,13 @@ export interface ReturnTransportAction {
   readonly transportId: string;
 }
 
+export interface TeamSignalAction {
+  readonly type: "TEAM_SIGNAL";
+  readonly senderFactionId: string;
+  readonly channel: string;
+  readonly payload: JsonValue;
+}
+
 export interface RelinquishTerritoryAction {
   readonly type: "RELINQUISH_TERRITORY";
   readonly ownerId: string;
@@ -214,6 +222,7 @@ export type SimulationAction =
   | SetUnitStrategicDestinationAction
   | EmbarkTransportAction
   | ReturnTransportAction
+  | TeamSignalAction
   | RelinquishTerritoryAction
   | LaunchStrategicWeaponAction;
 
@@ -1282,6 +1291,9 @@ export class TickEngine {
           working = recalled.state;
           break;
         }
+        case "TEAM_SIGNAL":
+          // Controller-event delivery is transient MatchRuntime state, not MatchState.
+          break;
         case "RELINQUISH_TERRITORY": {
           const relinquished = tryRelinquishTerritory(working, {
             ownerId: action.ownerId,

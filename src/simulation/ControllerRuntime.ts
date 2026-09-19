@@ -1,11 +1,14 @@
 import type {
   ControllerDecision,
+  ControllerEvent,
   ControllerMemory,
   DecisionFailure,
   DecisionReceipt,
   EconomyView,
+  EventsApi,
   FactionRef,
   FactionStatus,
+  JsonValue,
   PopulationView,
   SpawnInfluenceContext,
   SpawnInfluenceDecision,
@@ -19,7 +22,9 @@ import {
   type ControllerOutputKind,
 } from "../core/controller/ControllerOutputValidation";
 import {
+  controllerTeamSignalPayloadIsValid,
   createControllerQuerySession,
+  materializeControllerTeamSignalPayload,
   resolveControllerCellSelector,
   type ControllerQuerySession,
   type ControllerStagedAction,
@@ -85,12 +90,19 @@ export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
   readonly ffy: number;
 }
 
+export interface PendingTeamSignalObservation {
+  readonly senderFactionId: string;
+  readonly channel: string;
+  readonly payload: JsonValue;
+}
+
 export interface LawfulControllerObservation {
   readonly tick: number;
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
   readonly economy: Readonly<EconomyView>;
+  readonly events: Readonly<EventsApi>;
   readonly lastDecision?: DecisionReceipt;
 }
 
@@ -823,6 +835,7 @@ export function projectLawfulControllerObservation(
   decisionNumber: number,
   lastDecision: DecisionReceipt | undefined,
   controllerReferences: ControllerFactionReferenceSource,
+  pendingTeamSignals: readonly PendingTeamSignalObservation[] = Object.freeze([]),
 ): LawfulControllerObservation {
   const me = state.factions.find((faction) => faction.id === factionId);
   if (me === undefined) {
@@ -848,6 +861,21 @@ export function projectLawfulControllerObservation(
     ffy: me.ffy,
     passiveFfyPerSecond,
   });
+  const sinceLastDecision = Object.freeze(
+    pendingTeamSignals.map(
+      (signal): ControllerEvent =>
+        Object.freeze({
+          type: "TEAM_SIGNAL_RECEIVED" as const,
+          fromFactionId: requireFactionRef(
+            controllerReferences,
+            signal.senderFactionId,
+          ),
+          channel: signal.channel,
+          payload: cloneLegalValue(signal.payload),
+        }),
+    ),
+  );
+  const events = Object.freeze({ sinceLastDecision });
 
   return Object.freeze({
     tick: state.tick,
@@ -860,6 +888,7 @@ export function projectLawfulControllerObservation(
     ),
     factions,
     economy,
+    events,
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
@@ -925,6 +954,26 @@ function evaluateProposal(
 
   let hasStagedCapitulation = false;
   for (const staged of stagedActions) {
+    if (staged.kind === "TEAM_SIGNAL") {
+      if (
+        typeof staged.channel !== "string" ||
+        !controllerTeamSignalPayloadIsValid(staged.payload)
+      ) {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "TEAM_SIGNAL" as const,
+            senderFactionId: factionId,
+            channel: staged.channel,
+            payload: materializeControllerTeamSignalPayload(staged.payload),
+          }),
+        }),
+      );
+      continue;
+    }
     if (staged.kind === "CAPITULATE") {
       if (hasStagedCapitulation) {
         return invalid("CONFLICTING_PROPOSAL", staged.actionRef);
@@ -1395,6 +1444,10 @@ export function evaluateControllerRound(
   previousConsecutiveFaultCounts: ReadonlyMap<string, number> = new Map(),
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
   controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
+  pendingTeamSignalsByFaction: ReadonlyMap<
+    string,
+    readonly PendingTeamSignalObservation[]
+  > = new Map(),
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
   if (controllerReferences === undefined) {
     throw new Error("controller reference session is required for controller round");
@@ -1430,6 +1483,7 @@ export function evaluateControllerRound(
       decisionNumber,
       previousReceipts.get(factionId),
       controllerReferences,
+      pendingTeamSignalsByFaction.get(factionId) ?? Object.freeze([]),
     );
     const querySession = createControllerQuerySession(
       state,
