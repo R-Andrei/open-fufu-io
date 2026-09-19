@@ -81,6 +81,10 @@ import {
   resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
+import {
+  prepareTradeShipRuntimePhase,
+  tradeShipMovementWorkByUnitId,
+} from "./TradeShips";
 import { advanceWarshipProductionPhase } from "./Warships";
 
 export interface SetTestMarkerAction {
@@ -1219,7 +1223,11 @@ export class TickEngine {
       advanced,
       factoryTrainUpdate,
     );
-    const repairIntended = advanceTankRepairIntentPhase(trainPrepared);
+    const tradePrepared = createProspectiveMatchState(
+      trainPrepared,
+      prepareTradeShipRuntimePhase(trainPrepared, postLandState),
+    );
+    const repairIntended = advanceTankRepairIntentPhase(tradePrepared);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const tankPreparation = prepareTankMovementPhase(
       targetIntended,
@@ -1228,6 +1236,7 @@ export class TickEngine {
     const movementPrepared = tankPreparation.state;
     const movementWorkByUnitId: Record<string, number> = {
       ...factoryTrainMovementWorkByUnitId(movementPrepared, nextTick),
+      ...tradeShipMovementWorkByUnitId(movementPrepared),
       ...tankPreparation.movementWorkByUnitId,
     };
     const structureCells = new Set(

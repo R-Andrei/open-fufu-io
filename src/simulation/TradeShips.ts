@@ -1,3 +1,5 @@
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
+import { materializeCompiledScalarScaleFactor } from "../core/rules/RuleMaterialization";
 import { resolveFfyEconomicStage } from "./Economy";
 import {
   createProspectiveMatchState,
@@ -9,6 +11,11 @@ import {
   removeMobileUnit,
 } from "./MobileUnits";
 import { createNavigation } from "./Navigation";
+
+const TRADE_DISPATCH_MIN_TICKS = 200;
+const TRADE_DISPATCH_MAX_TICKS = 300;
+const UINT32_RANGE = 0x1_0000_0000;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 export interface LaunchTradeShipRequest {
   readonly ownerId: string;
@@ -177,6 +184,114 @@ function tradeRuleDynamicState(state: MatchState, ownerId: string) {
   });
 }
 
+function stableTradeHash32(domain: string, ...fields: readonly (string | number)[]): number {
+  const text = JSON.stringify([domain, ...fields.map((field) => String(field))]);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    hash ^= code & 0xff;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+    hash ^= code >>> 8;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function stableUniformInclusive(
+  min: number,
+  max: number,
+  domain: string,
+  ...fields: readonly (string | number)[]
+): number {
+  if (
+    !Number.isSafeInteger(min) ||
+    !Number.isSafeInteger(max) ||
+    min < 0 ||
+    max < min
+  ) {
+    throw new Error("Trade deterministic integer range is invalid");
+  }
+  const range = max - min + 1;
+  const acceptanceLimit = Math.floor(UINT32_RANGE / range) * range;
+  for (let retry = 0; ; retry += 1) {
+    const sample = stableTradeHash32(domain, ...fields, retry);
+    if (sample < acceptanceLimit) return min + (sample % range);
+    if (retry === Number.MAX_SAFE_INTEGER) {
+      throw new Error("Trade deterministic integer rejection sampling exhausted");
+    }
+  }
+}
+
+function nextTradeDispatchDelay(
+  state: MatchState,
+  portId: string,
+  attemptOrdinal: number,
+): number {
+  return stableUniformInclusive(
+    TRADE_DISPATCH_MIN_TICKS,
+    TRADE_DISPATCH_MAX_TICKS,
+    "TRADE_DISPATCH_DELAY_V1",
+    state.seed,
+    portId,
+    attemptOrdinal,
+  );
+}
+
+function compareSeededDestinationTie(
+  state: MatchState,
+  sourcePortId: string,
+  leftDestinationPortId: string,
+  rightDestinationPortId: string,
+): number {
+  const left = stableTradeHash32(
+    "TRADE_DESTINATION_TIE_V1",
+    state.seed,
+    sourcePortId,
+    leftDestinationPortId,
+  );
+  const right = stableTradeHash32(
+    "TRADE_DESTINATION_TIE_V1",
+    state.seed,
+    sourcePortId,
+    rightDestinationPortId,
+  );
+  return left - right ||
+    (leftDestinationPortId < rightDestinationPortId
+      ? -1
+      : leftDestinationPortId > rightDestinationPortId
+        ? 1
+        : 0);
+}
+
+function tradeMovementTiming(state: MatchState, ownerId: string): Readonly<{
+  movementWorkPerTick: number;
+  edgeWeight: number;
+}> {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`Trade movement references unknown owner ${ownerId}`);
+  }
+  const scale = materializeCompiledScalarScaleFactor(
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_MOVEMENT_SPEED",
+    { kind: "UNIT", unit: "TRADE_SHIP" },
+    tradeRuleDynamicState(state, ownerId),
+  );
+  if (
+    scale.numerator <= 0n ||
+    scale.denominator <= 0n ||
+    scale.numerator > MAX_SAFE_BIGINT ||
+    scale.denominator > MAX_SAFE_BIGINT
+  ) {
+    throw new Error("Trade Ship movement speed must resolve to a positive safe ratio");
+  }
+  return Object.freeze({
+    movementWorkPerTick: Number(scale.numerator),
+    edgeWeight: Number(scale.denominator),
+  });
+}
+
 function lawfulDeliveryCells(
   state: MatchState,
   destinationPortId: string,
@@ -208,6 +323,123 @@ function lawfulDeliveryCells(
     }
   }
   return Object.freeze(cells);
+}
+
+type TradeDestinationRoute = Readonly<{
+  destinationPortId: string;
+  route: Readonly<{ cells: readonly number[]; totalWeight: number }>;
+}>;
+
+function routeToTradeDestination(
+  state: MatchState,
+  startCellId: number,
+  destinationPortId: string,
+): TradeDestinationRoute | null {
+  const targets = lawfulDeliveryCells(state, destinationPortId).map(
+    (cellId) => Object.freeze({ cellId, intentWeight: 0 }),
+  );
+  if (targets.length === 0) return null;
+  const result = createNavigation(state.map).pathBetweenCandidates(
+    Object.freeze([{ cellId: startCellId, intentWeight: 0 }]),
+    Object.freeze(targets),
+    {
+      traversalWeight(from, to) {
+        return state.map.terrainAt(from) === "DEEP_WATER" &&
+          state.map.terrainAt(to) === "DEEP_WATER"
+          ? 1
+          : undefined;
+      },
+    },
+  );
+  if (result.status === "UNREACHABLE") return null;
+  if (result.status === "LIMIT_REACHED") {
+    throw new Error("unbounded Trade voyage route resolution reached a work limit");
+  }
+  return Object.freeze({
+    destinationPortId,
+    route: Object.freeze({
+      cells: Object.freeze([...result.route.path.cells]),
+      totalWeight: result.route.path.totalWeight,
+    }),
+  });
+}
+
+function reachableForeignTradeDestinations(
+  state: MatchState,
+  ownerId: string,
+  sourcePortId: string,
+  sourceCellId: number,
+): readonly TradeDestinationRoute[] {
+  const destinations = state.structures
+    .filter(
+      (structure) =>
+        structure.type === "PORT" &&
+        structure.id !== sourcePortId &&
+        structure.ownerId !== ownerId &&
+        structure.active &&
+        structure.completedLevel !== undefined &&
+        structure.completedLevel >= 1,
+    )
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+  const reachable: TradeDestinationRoute[] = [];
+  for (const destination of destinations) {
+    const route = routeToTradeDestination(state, sourceCellId, destination.id);
+    if (route !== null) reachable.push(route);
+  }
+  return Object.freeze(reachable);
+}
+
+function selectLeastRecentTradeDestination(
+  state: MatchState,
+  sourcePortId: string,
+  destinations: readonly TradeDestinationRoute[],
+  history: readonly MatchState["tradePortSchedulers"][number]["destinationHistory"],
+): TradeDestinationRoute | null {
+  if (destinations.length === 0) return null;
+  const lastSelected = new Map(
+    history.map((entry) => [entry.destinationPortId, entry.lastSelectedOrdinal]),
+  );
+  return [...destinations].sort((left, right) => {
+    const leftOrdinal = lastSelected.get(left.destinationPortId);
+    const rightOrdinal = lastSelected.get(right.destinationPortId);
+    if (leftOrdinal === undefined && rightOrdinal !== undefined) return -1;
+    if (leftOrdinal !== undefined && rightOrdinal === undefined) return 1;
+    if (
+      leftOrdinal !== undefined &&
+      rightOrdinal !== undefined &&
+      leftOrdinal !== rightOrdinal
+    ) {
+      return leftOrdinal - rightOrdinal;
+    }
+    return compareSeededDestinationTie(
+      state,
+      sourcePortId,
+      left.destinationPortId,
+      right.destinationPortId,
+    );
+  })[0]!;
+}
+
+function scheduleNextTradeAttempt(
+  state: MatchState,
+  scheduler: MatchState["tradePortSchedulers"][number],
+  baseTick: number,
+): MatchState["tradePortSchedulers"][number] {
+  const delay = nextTradeDispatchDelay(
+    state,
+    scheduler.portId,
+    scheduler.nextAttemptOrdinal,
+  );
+  if (baseTick > Number.MAX_SAFE_INTEGER - delay) {
+    throw new Error("Trade dispatch tick exceeds the safe-integer range");
+  }
+  return Object.freeze({
+    ...scheduler,
+    nextAttemptOrdinal: scheduler.nextAttemptOrdinal + 1,
+    nextAttemptTick: baseTick + delay,
+  });
 }
 
 export function tryLaunchTradeShipAtPortDock(
@@ -315,31 +547,13 @@ export function tryLaunchTradeVoyage(
     return voyageLaunchFailure(state, "DESTINATION_UNAVAILABLE");
   }
 
-  const targets = lawfulDeliveryCells(state, request.destinationPortId).map(
-    (cellId) => Object.freeze({ cellId, intentWeight: 0 }),
+  const destinationRoute = routeToTradeDestination(
+    state,
+    dockCellId,
+    request.destinationPortId,
   );
-  if (targets.length === 0) {
+  if (destinationRoute === null) {
     return voyageLaunchFailure(state, "ROUTE_UNREACHABLE");
-  }
-
-  const navigation = createNavigation(state.map);
-  const route = navigation.pathBetweenCandidates(
-    Object.freeze([{ cellId: dockCellId, intentWeight: 0 }]),
-    Object.freeze(targets),
-    {
-      traversalWeight(from, to) {
-        return state.map.terrainAt(from) === "DEEP_WATER" &&
-          state.map.terrainAt(to) === "DEEP_WATER"
-          ? 1
-          : undefined;
-      },
-    },
-  );
-  if (route.status === "UNREACHABLE") {
-    return voyageLaunchFailure(state, "ROUTE_UNREACHABLE");
-  }
-  if (route.status === "LIMIT_REACHED") {
-    throw new Error("unbounded Trade voyage route resolution reached a work limit");
   }
 
   const physical = tryLaunchTradeShipAtPortDock(state, request);
@@ -347,7 +561,7 @@ export function tryLaunchTradeVoyage(
     return voyageLaunchFailure(state, physical.failure.code);
   }
 
-  const plannedRouteLengthCells = route.route.path.totalWeight;
+  const plannedRouteLengthCells = destinationRoute.route.totalWeight;
   if (
     !Number.isSafeInteger(plannedRouteLengthCells) ||
     plannedRouteLengthCells < 0 ||
@@ -377,11 +591,12 @@ export function tryLaunchTradeVoyage(
     throw new Error("Trade voyage Vowner preview produced no positive event");
   }
 
+  const movementTiming = tradeMovementTiming(state, request.ownerId);
   const routed = assignMobileUnitRoute(state.map, physical.unit, {
-    cells: route.route.path.cells,
+    cells: destinationRoute.route.cells,
     edgeWeights: Array.from(
-      { length: Math.max(0, route.route.path.cells.length - 1) },
-      () => 1,
+      { length: Math.max(0, destinationRoute.route.cells.length - 1) },
+      () => movementTiming.edgeWeight,
     ),
   });
   const mobileUnits = Object.freeze(
@@ -412,6 +627,172 @@ export function tryLaunchTradeVoyage(
     unit: routed,
     state: next,
   });
+}
+
+export type TradeShipRuntimeUpdate = Readonly<
+  Pick<
+    MatchState,
+    "mobileUnits" | "nextMobileUnitOrdinal" | "tradeVoyages" | "tradePortSchedulers"
+  >
+>;
+
+export function prepareTradeShipRuntimePhase(
+  state: MatchState,
+  previousState: MatchState,
+): TradeShipRuntimeUpdate {
+  const priorSchedulers = new Map(
+    state.tradePortSchedulers.map((entry) => [entry.portId, entry]),
+  );
+  let working = state;
+  const schedulers: MatchState["tradePortSchedulers"][number][] = [];
+  const ports = state.structures
+    .filter((structure) => structure.type === "PORT")
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+
+  for (const port of ports) {
+    const prior = priorSchedulers.get(port.id);
+    const sameOwner = prior !== undefined && prior.ownerId === port.ownerId;
+    let scheduler: MatchState["tradePortSchedulers"][number] = sameOwner
+      ? prior
+      : Object.freeze({
+          portId: port.id,
+          ownerId: port.ownerId,
+          nextAttemptOrdinal: 0,
+          nextAttemptTick: null,
+          nextDestinationSelectionOrdinal: 0,
+          destinationHistory: Object.freeze([]),
+        });
+
+    const operational =
+      port.active &&
+      port.completedLevel !== undefined &&
+      port.completedLevel >= 1;
+    const dockCellId = operational
+      ? tradeShipDockCell(working, port.ownerId, port.id)
+      : undefined;
+
+    if (!operational || dockCellId === undefined) {
+      schedulers.push(
+        Object.freeze({
+          ...scheduler,
+          nextAttemptTick: null,
+        }),
+      );
+      continue;
+    }
+
+    const destinations = reachableForeignTradeDestinations(
+      working,
+      port.ownerId,
+      port.id,
+      dockCellId,
+    );
+
+    if (scheduler.nextAttemptTick === null) {
+      if (destinations.length === 0) {
+        schedulers.push(scheduler);
+        continue;
+      }
+      const previousPort = previousState.structures.find(
+        (structure) => structure.id === port.id && structure.type === "PORT",
+      );
+      const existedAsSameActiveEpoch =
+        !sameOwner &&
+        prior === undefined &&
+        previousPort !== undefined &&
+        previousPort.ownerId === port.ownerId &&
+        previousPort.active &&
+        previousPort.completedLevel !== undefined &&
+        previousPort.completedLevel >= 1;
+      scheduler = scheduleNextTradeAttempt(
+        working,
+        scheduler,
+        existedAsSameActiveEpoch ? previousState.tick : state.tick,
+      );
+      schedulers.push(scheduler);
+      continue;
+    }
+
+    if (scheduler.nextAttemptTick > state.tick) {
+      schedulers.push(scheduler);
+      continue;
+    }
+
+    const selected = selectLeastRecentTradeDestination(
+      working,
+      port.id,
+      destinations,
+      scheduler.destinationHistory,
+    );
+    if (selected !== null) {
+      const launched = tryLaunchTradeVoyage(working, {
+        ownerId: port.ownerId,
+        sourcePortId: port.id,
+        destinationPortId: selected.destinationPortId,
+      });
+      if (launched.ok) {
+        working = launched.state;
+        const selectedOrdinal = scheduler.nextDestinationSelectionOrdinal;
+        const nextHistory = scheduler.destinationHistory
+          .filter(
+            (entry) =>
+              entry.destinationPortId !== selected.destinationPortId,
+          )
+          .concat(
+            Object.freeze({
+              destinationPortId: selected.destinationPortId,
+              lastSelectedOrdinal: selectedOrdinal,
+            }),
+          )
+          .sort((left, right) =>
+            left.destinationPortId < right.destinationPortId
+              ? -1
+              : left.destinationPortId > right.destinationPortId
+                ? 1
+                : 0,
+          );
+        scheduler = Object.freeze({
+          ...scheduler,
+          nextDestinationSelectionOrdinal: selectedOrdinal + 1,
+          destinationHistory: Object.freeze(nextHistory),
+        });
+      }
+    }
+
+    scheduler = scheduleNextTradeAttempt(working, scheduler, state.tick);
+    schedulers.push(scheduler);
+  }
+
+  return Object.freeze({
+    mobileUnits: working.mobileUnits,
+    nextMobileUnitOrdinal: working.nextMobileUnitOrdinal,
+    tradeVoyages: working.tradeVoyages,
+    tradePortSchedulers: Object.freeze(schedulers),
+  });
+}
+
+export function tradeShipMovementWorkByUnitId(
+  state: MatchState,
+): Readonly<Record<string, number>> {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  const movementWork: Record<string, number> = {};
+  for (const voyage of state.tradeVoyages) {
+    const unit = unitsById.get(voyage.unitId);
+    if (
+      unit === undefined ||
+      unit.type !== "TRADE_SHIP" ||
+      unit.route === undefined
+    ) {
+      continue;
+    }
+    movementWork[unit.id] = tradeMovementTiming(
+      state,
+      unit.ownerId,
+    ).movementWorkPerTick;
+  }
+  return Object.freeze(movementWork);
 }
 
 export function isTradeShipDeliveryCell(
