@@ -486,6 +486,12 @@ describe("physical occupancy admission", () => {
     const withWarship = createProspectiveMatchState(initial, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: created.unit.id,
+          operatingAnchorCellId: created.unit.cellId,
+        },
+      ],
     });
     const beforeFfy = withWarship.factions[0]?.ffy;
 
