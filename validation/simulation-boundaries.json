@@ -819,12 +819,6 @@
     },
     {
       "from": "src/simulation/WarshipCombat.ts",
-      "to": "src/simulation/Transports.ts",
-      "classification": "ORCHESTRATION",
-      "rationale": "Naval projectile impact orchestration delegates Transport-owned damage, carried-Population loss, and immutable destruction-result transitions instead of duplicating Transport lifecycle state."
-    },
-    {
-      "from": "src/simulation/WarshipCombat.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
       "rationale": "Warship gunfire reacquisition consumes Visibility-owned requester-relative lawful observation at each ready firing decision."

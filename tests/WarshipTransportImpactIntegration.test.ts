@@ -137,13 +137,14 @@ function impact(
   sourceOwnerId: string,
   targetUnitId: string,
   projectileOrdinal: number,
+  profileId = "WARSHIP_NAVAL_GUN",
 ): HomingCombatProjectileImpact {
   return Object.freeze({
     sourceUnitId,
     sourceOwnerId,
     targetUnitId,
     projectileOrdinal,
-    profileId: "WARSHIP_NAVAL_GUN",
+    profileId,
     damage: Object.freeze({ numerator: 250n, denominator: 1n }),
   });
 }
@@ -309,4 +310,27 @@ describe("Warship naval projectile impact integration", () => {
       forward.state.mobileUnits.some((unit) => unit.id === warship.unitId),
     ).toBe(false);
   });
+
+  it("leaves non-Warship projectile profiles unresolved for their future generic owner", () => {
+    const warship = addWarship(
+      fixture("warship-foreign-projectile-profile-red"),
+      "beta",
+      7,
+      250n,
+    );
+    const foreign = impact(
+      "future-tank",
+      "alpha",
+      warship.unitId,
+      0,
+      "TANK_ANTI_ARMOR",
+    );
+
+    const resolved = resolve(warship.state, [foreign]);
+
+    expect(resolved.state).toBe(warship.state);
+    expect(resolved.events).toEqual([]);
+    expect(resolved.unresolvedImpacts).toEqual([foreign]);
+  });
+
 });
