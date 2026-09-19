@@ -1,5 +1,6 @@
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
+  reduceCapabilitySetRule,
   reducePermissionRule,
   reducedRational,
   selectRuleContributionsForScope,
@@ -29,6 +30,11 @@ import type { SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
 export interface WarshipExactHealth {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface WarshipExactRange {
   readonly numerator: bigint;
   readonly denominator: bigint;
 }
@@ -135,6 +141,7 @@ export type WarshipStrategicNavigationRouteResult =
 
 const BASE_WARSHIP_BUILD_TICKS = 50;
 const BASE_WARSHIP_MAX_HEALTH = 1_000n;
+const BASE_WARSHIP_ATTACK_RANGE_CELLS = 130n;
 const BASE_WARSHIP_SPEED_CELLS_PER_SECOND = 10n;
 const WARSHIP_MOVEMENT_TICKS_PER_SECOND = 10n;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -210,6 +217,67 @@ function ruleDynamicState(state: MatchState, ownerId: string): RuleDynamicState 
     territorialContactCount: territorialContactCount(state, ownerId),
     peakTotalPopulation: owner.population.peakTotal,
   });
+}
+
+export function warshipEffectiveGunRange(
+  state: MatchState,
+  ownerId: string,
+): WarshipExactRange {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_ATTACK_RANGE",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_ATTACK_RANGE,
+    terms,
+  );
+  const range = reducedRational(
+    BASE_WARSHIP_ATTACK_RANGE_CELLS * scale.numerator,
+    scale.denominator,
+  );
+  if (range.numerator < 0n || range.denominator <= 0n) {
+    throw new Error("Warship attack range must resolve to a non-negative value");
+  }
+  return Object.freeze({
+    numerator: range.numerator,
+    denominator: range.denominator,
+  });
+}
+
+export function warshipNavalGunfireEnabled(
+  state: MatchState,
+  ownerId: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const contributions = selectRuleContributionsForScope(
+    "UNIT_ATTACK_CAPABILITIES",
+    scope,
+    owner.rules.contributions,
+  );
+  if (
+    contributions.some(
+      (entry) => entry.conditions !== undefined && entry.conditions.length > 0,
+    )
+  ) {
+    throw new Error(
+      "conditioned Warship attack capabilities require an explicit combat context",
+    );
+  }
+  return reduceCapabilitySetRule(
+    ["NAVAL_GUNFIRE_AGAINST_SHIPS"],
+    RULE_AXIS_REGISTRY.UNIT_ATTACK_CAPABILITIES,
+    contributions,
+  ).includes("NAVAL_GUNFIRE_AGAINST_SHIPS");
 }
 
 function warshipBuildPermitted(state: MatchState, ownerId: string): boolean {

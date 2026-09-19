@@ -44,6 +44,7 @@
     "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
+    "src/simulation/WarshipTargeting.ts": "NAVAL",
     "src/simulation/Warships.ts": "NAVAL"
   },
   "crossOwnerImports": [
@@ -784,6 +785,30 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Visibility reads current Observation Post structure state and fields for ordinary observation/blackout projection."
+    },
+    {
+      "from": "src/simulation/VisibilityState.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Visibility consumes the Naval-owned exact effective Warship gun-range contract to project Warship-local observation without reimplementing Origin range composition."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship targeting derives lawful autonomous target and pursuit choices from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Warship targeting consumes the canonical deterministic navigation substrate for least-time Deep-Water engagement routing."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/TradeShips.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship targeting probes the Economy-owned authoritative Trade Ship capture transition to determine legal capturability without duplicating voyage/cargo rules."
     },
     {
       "from": "src/simulation/Warships.ts",
