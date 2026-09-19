@@ -84,6 +84,59 @@ export interface MatchFactionState {
   readonly fixedTeamId?: string;
 }
 
+export interface TradeVoyageEconomicSnapshotV1 {
+  readonly originalOwnerId: string;
+  readonly sourcePortId: string;
+  readonly launchDestinationPortId: string;
+  readonly valuationCellId: number;
+  readonly plannedRouteLengthCells: number;
+  readonly rawCargoFfy: number;
+  readonly ownerSuccessValueFfy: number;
+}
+
+export type TradeVoyageRoutingMode =
+  | "ORDINARY"
+  | "OWNED_RETURN"
+  | "CAPTURED";
+
+export interface TradeVoyageState {
+  readonly unitId: string;
+  readonly economicSnapshot: TradeVoyageEconomicSnapshotV1;
+  readonly sourcePortOwnershipEpochOrdinal: number;
+  readonly routingMode: TradeVoyageRoutingMode;
+  readonly destinationPortId: string | null;
+  readonly firstHostileCaptureResolved: boolean;
+}
+
+export interface TradeDestinationHistoryState {
+  readonly destinationPortId: string;
+  readonly lastSelectedOrdinal: number;
+}
+
+export interface TradePortSchedulerState {
+  readonly portId: string;
+  readonly ownerId: string;
+  readonly ownershipEpochOrdinal: number;
+  readonly nextAttemptOrdinal: number;
+  readonly nextAttemptTick: number | null;
+  readonly nextDestinationSelectionOrdinal: number;
+  readonly destinationHistory: readonly TradeDestinationHistoryState[];
+}
+
+export interface TradeRetiredPortEpochState {
+  readonly portId: string;
+  readonly ownerId: string;
+  readonly ownershipEpochOrdinal: number;
+  readonly nextDestinationSelectionOrdinal: number;
+  readonly destinationHistory: readonly TradeDestinationHistoryState[];
+}
+
+export interface TradePendingSignedFactState {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly componentsFfy: readonly number[];
+}
+
 export interface MatchState extends FactoryTrainState {
   readonly seed: string;
   readonly tick: number;
@@ -94,6 +147,10 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly tradeVoyages: readonly TradeVoyageState[];
+  readonly tradePortSchedulers: readonly TradePortSchedulerState[];
+  readonly tradeRetiredPortEpochs: readonly TradeRetiredPortEpochState[];
+  readonly tradePendingSignedFacts: readonly TradePendingSignedFactState[];
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
@@ -112,6 +169,10 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly tradeVoyages?: readonly TradeVoyageState[];
+  readonly tradePortSchedulers?: readonly TradePortSchedulerState[];
+  readonly tradeRetiredPortEpochs?: readonly TradeRetiredPortEpochState[];
+  readonly tradePendingSignedFacts?: readonly TradePendingSignedFactState[];
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
@@ -218,6 +279,377 @@ function freezeFactions(
       });
     }),
   );
+}
+
+function freezeTradeVoyages(
+  entries: readonly TradeVoyageState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+  factions: readonly MatchFactionState[],
+): readonly TradeVoyageState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tradeVoyages must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const voyages = [...entries]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error("Trade voyage state must be an object");
+      }
+      if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+        throw new Error("Trade voyage unitId must be a non-empty string");
+      }
+      if (seen.has(entry.unitId)) {
+        throw new Error(`duplicate Trade voyage: ${entry.unitId}`);
+      }
+      seen.add(entry.unitId);
+      const unit = unitsById.get(entry.unitId);
+      if (
+        unit === undefined ||
+        unit.type !== "TRADE_SHIP" ||
+        unit.movementClass !== "NAVAL"
+      ) {
+        throw new Error(
+          `Trade voyage ${entry.unitId} requires a physical NAVAL Trade Ship`,
+        );
+      }
+      const snapshot = entry.economicSnapshot;
+      if (
+        snapshot === null ||
+        typeof snapshot !== "object" ||
+        Array.isArray(snapshot)
+      ) {
+        throw new Error("Trade voyage economic snapshot must be an object");
+      }
+      for (const [label, value] of [
+        ["originalOwnerId", snapshot.originalOwnerId],
+        ["sourcePortId", snapshot.sourcePortId],
+        ["launchDestinationPortId", snapshot.launchDestinationPortId],
+      ] as const) {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new Error(`Trade voyage ${label} must be a non-empty string`);
+        }
+      }
+      if (!factionIds.has(snapshot.originalOwnerId)) {
+        throw new Error("Trade voyage original owner must be a known faction");
+      }
+      if (!map.isValidCellId(snapshot.valuationCellId)) {
+        throw new Error("Trade voyage valuation cell must be a valid map cell");
+      }
+      assertNonNegativeSafeInteger(
+        snapshot.plannedRouteLengthCells,
+        "Trade voyage plannedRouteLengthCells",
+      );
+      assertNonNegativeSafeInteger(snapshot.rawCargoFfy, "Trade voyage rawCargoFfy");
+      assertNonNegativeSafeInteger(
+        snapshot.ownerSuccessValueFfy,
+        "Trade voyage ownerSuccessValueFfy",
+      );
+      if (
+        snapshot.plannedRouteLengthCells >
+          Math.floor(Number.MAX_SAFE_INTEGER / 150) ||
+        snapshot.rawCargoFfy !== snapshot.plannedRouteLengthCells * 150
+      ) {
+        throw new Error("Trade voyage raw cargo must equal 150 FFY per planned route edge");
+      }
+      assertNonNegativeSafeInteger(
+        entry.sourcePortOwnershipEpochOrdinal,
+        "Trade voyage sourcePortOwnershipEpochOrdinal",
+      );
+      if (
+        entry.routingMode !== "ORDINARY" &&
+        entry.routingMode !== "OWNED_RETURN" &&
+        entry.routingMode !== "CAPTURED"
+      ) {
+        throw new Error("Trade voyage routingMode is invalid");
+      }
+      if (
+        entry.destinationPortId !== null &&
+        (typeof entry.destinationPortId !== "string" ||
+          entry.destinationPortId.length === 0)
+      ) {
+        throw new Error("Trade voyage destinationPortId must be null or non-empty");
+      }
+      if (typeof entry.firstHostileCaptureResolved !== "boolean") {
+        throw new Error("Trade voyage first-hostile-capture state must be boolean");
+      }
+      if (
+        entry.firstHostileCaptureResolved !== (entry.routingMode === "CAPTURED")
+      ) {
+        throw new Error(
+          "Trade voyage capture flag must agree with CAPTURED routing mode",
+        );
+      }
+      if (
+        !entry.firstHostileCaptureResolved &&
+        unit.ownerId !== snapshot.originalOwnerId
+      ) {
+        throw new Error(
+          "uncaptured Trade voyage physical owner must match original owner",
+        );
+      }
+      return Object.freeze({
+        unitId: entry.unitId,
+        economicSnapshot: Object.freeze({
+          originalOwnerId: snapshot.originalOwnerId,
+          sourcePortId: snapshot.sourcePortId,
+          launchDestinationPortId: snapshot.launchDestinationPortId,
+          valuationCellId: snapshot.valuationCellId,
+          plannedRouteLengthCells: snapshot.plannedRouteLengthCells,
+          rawCargoFfy: snapshot.rawCargoFfy,
+          ownerSuccessValueFfy: snapshot.ownerSuccessValueFfy,
+        }),
+        sourcePortOwnershipEpochOrdinal: entry.sourcePortOwnershipEpochOrdinal,
+        routingMode: entry.routingMode,
+        destinationPortId: entry.destinationPortId,
+        firstHostileCaptureResolved: entry.firstHostileCaptureResolved,
+      });
+    });
+  return Object.freeze(voyages);
+}
+
+function freezeTradePortSchedulers(
+  entries: readonly TradePortSchedulerState[],
+  factions: readonly MatchFactionState[],
+): readonly TradePortSchedulerState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tradePortSchedulers must be an array");
+  }
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seenPorts = new Set<string>();
+  const schedulers = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Trade Port scheduler state must be an object");
+    }
+    if (typeof entry.portId !== "string" || entry.portId.length === 0) {
+      throw new Error("Trade Port scheduler portId must be a non-empty string");
+    }
+    if (seenPorts.has(entry.portId)) {
+      throw new Error(`duplicate Trade Port scheduler: ${entry.portId}`);
+    }
+    seenPorts.add(entry.portId);
+    if (typeof entry.ownerId !== "string" || !factionIds.has(entry.ownerId)) {
+      throw new Error("Trade Port scheduler owner must be a known faction");
+    }
+    assertNonNegativeSafeInteger(
+      entry.ownershipEpochOrdinal,
+      "Trade Port ownershipEpochOrdinal",
+    );
+    assertNonNegativeSafeInteger(
+      entry.nextAttemptOrdinal,
+      "Trade Port nextAttemptOrdinal",
+    );
+    if (entry.nextAttemptTick !== null) {
+      assertNonNegativeSafeInteger(
+        entry.nextAttemptTick,
+        "Trade Port nextAttemptTick",
+      );
+    }
+    assertNonNegativeSafeInteger(
+      entry.nextDestinationSelectionOrdinal,
+      "Trade Port nextDestinationSelectionOrdinal",
+    );
+    if (!Array.isArray(entry.destinationHistory)) {
+      throw new Error("Trade Port destination history must be an array");
+    }
+    const seenDestinations = new Set<string>();
+    const destinationHistory: TradeDestinationHistoryState[] =
+      entry.destinationHistory.map((history: TradeDestinationHistoryState) => {
+      if (
+        history === null ||
+        typeof history !== "object" ||
+        Array.isArray(history) ||
+        typeof history.destinationPortId !== "string" ||
+        history.destinationPortId.length === 0
+      ) {
+        throw new Error("Trade destination history entry is invalid");
+      }
+      if (seenDestinations.has(history.destinationPortId)) {
+        throw new Error(
+          `duplicate Trade destination history: ${history.destinationPortId}`,
+        );
+      }
+      seenDestinations.add(history.destinationPortId);
+      assertNonNegativeSafeInteger(
+        history.lastSelectedOrdinal,
+        "Trade destination lastSelectedOrdinal",
+      );
+      if (
+        history.lastSelectedOrdinal >= entry.nextDestinationSelectionOrdinal
+      ) {
+        throw new Error(
+          "Trade destination history ordinal must precede the next selection ordinal",
+        );
+      }
+      return Object.freeze({
+        destinationPortId: history.destinationPortId,
+        lastSelectedOrdinal: history.lastSelectedOrdinal,
+      });
+    });
+    destinationHistory.sort(
+      (
+        left: TradeDestinationHistoryState,
+        right: TradeDestinationHistoryState,
+      ) => compareIds(left.destinationPortId, right.destinationPortId),
+    );
+    return Object.freeze({
+      portId: entry.portId,
+      ownerId: entry.ownerId,
+      ownershipEpochOrdinal: entry.ownershipEpochOrdinal,
+      nextAttemptOrdinal: entry.nextAttemptOrdinal,
+      nextAttemptTick: entry.nextAttemptTick,
+      nextDestinationSelectionOrdinal: entry.nextDestinationSelectionOrdinal,
+      destinationHistory: Object.freeze(destinationHistory),
+    });
+  });
+  schedulers.sort((left, right) => compareIds(left.portId, right.portId));
+  return Object.freeze(schedulers);
+}
+
+function freezeTradeRetiredPortEpochs(
+  entries: readonly TradeRetiredPortEpochState[],
+  factions: readonly MatchFactionState[],
+): readonly TradeRetiredPortEpochState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tradeRetiredPortEpochs must be an array");
+  }
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const materialized = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Trade retired Port epoch must be an object");
+    }
+    if (typeof entry.portId !== "string" || entry.portId.length === 0) {
+      throw new Error("Trade retired Port epoch portId must be non-empty");
+    }
+    if (typeof entry.ownerId !== "string" || !factionIds.has(entry.ownerId)) {
+      throw new Error("Trade retired Port epoch owner must be a known faction");
+    }
+    assertNonNegativeSafeInteger(
+      entry.ownershipEpochOrdinal,
+      "Trade retired Port ownershipEpochOrdinal",
+    );
+    assertNonNegativeSafeInteger(
+      entry.nextDestinationSelectionOrdinal,
+      "Trade retired Port nextDestinationSelectionOrdinal",
+    );
+    const key = JSON.stringify([
+      entry.portId,
+      entry.ownerId,
+      entry.ownershipEpochOrdinal,
+    ]);
+    if (seen.has(key)) throw new Error(`duplicate Trade retired Port epoch: ${key}`);
+    seen.add(key);
+    if (!Array.isArray(entry.destinationHistory)) {
+      throw new Error("Trade retired Port destination history must be an array");
+    }
+    const seenDestinations = new Set<string>();
+    const destinationHistory: TradeDestinationHistoryState[] =
+      entry.destinationHistory.map((history: TradeDestinationHistoryState) => {
+      if (
+        history === null ||
+        typeof history !== "object" ||
+        Array.isArray(history) ||
+        typeof history.destinationPortId !== "string" ||
+        history.destinationPortId.length === 0
+      ) {
+        throw new Error("Trade retired destination history entry is invalid");
+      }
+      if (seenDestinations.has(history.destinationPortId)) {
+        throw new Error(
+          `duplicate Trade retired destination history: ${history.destinationPortId}`,
+        );
+      }
+      seenDestinations.add(history.destinationPortId);
+      assertNonNegativeSafeInteger(
+        history.lastSelectedOrdinal,
+        "Trade retired destination lastSelectedOrdinal",
+      );
+      if (history.lastSelectedOrdinal >= entry.nextDestinationSelectionOrdinal) {
+        throw new Error(
+          "Trade retired destination history ordinal must precede next selection ordinal",
+        );
+      }
+      return Object.freeze({
+        destinationPortId: history.destinationPortId,
+        lastSelectedOrdinal: history.lastSelectedOrdinal,
+      });
+    });
+    destinationHistory.sort(
+      (
+        left: TradeDestinationHistoryState,
+        right: TradeDestinationHistoryState,
+      ) => compareIds(left.destinationPortId, right.destinationPortId),
+    );
+    return Object.freeze({
+      portId: entry.portId,
+      ownerId: entry.ownerId,
+      ownershipEpochOrdinal: entry.ownershipEpochOrdinal,
+      nextDestinationSelectionOrdinal: entry.nextDestinationSelectionOrdinal,
+      destinationHistory: Object.freeze(destinationHistory),
+    });
+  });
+  materialized.sort(
+    (left, right) =>
+      compareIds(left.portId, right.portId) ||
+      left.ownershipEpochOrdinal - right.ownershipEpochOrdinal ||
+      compareIds(left.ownerId, right.ownerId),
+  );
+  return Object.freeze(materialized);
+}
+
+function freezeTradePendingSignedFacts(
+  entries: readonly TradePendingSignedFactState[],
+  factions: readonly MatchFactionState[],
+): readonly TradePendingSignedFactState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tradePendingSignedFacts must be an array");
+  }
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const materialized = entries.map((entry) => {
+    if (
+      entry === null ||
+      typeof entry !== "object" ||
+      Array.isArray(entry) ||
+      typeof entry.id !== "string" ||
+      entry.id.length === 0
+    ) {
+      throw new Error("Trade pending signed fact is invalid");
+    }
+    if (seen.has(entry.id)) {
+      throw new Error(`duplicate Trade pending signed fact: ${entry.id}`);
+    }
+    seen.add(entry.id);
+    if (typeof entry.ownerId !== "string" || !factionIds.has(entry.ownerId)) {
+      throw new Error("Trade pending signed fact owner must be a known faction");
+    }
+    if (
+      !Array.isArray(entry.componentsFfy) ||
+      entry.componentsFfy.length === 0 ||
+      entry.componentsFfy.some(
+        (component: number) =>
+          !Number.isSafeInteger(component) || Object.is(component, -0),
+      )
+    ) {
+      throw new Error(
+        "Trade pending signed fact components must be non-empty safe integers",
+      );
+    }
+    return Object.freeze({
+      id: entry.id,
+      ownerId: entry.ownerId,
+      componentsFfy: Object.freeze([...entry.componentsFfy]),
+    });
+  });
+  materialized.sort(
+    (left, right) =>
+      compareIds(left.ownerId, right.ownerId) || compareIds(left.id, right.id),
+  );
+  return Object.freeze(materialized);
 }
 
 function compareIds(left: string, right: string): number {
@@ -669,6 +1101,24 @@ function createState(
     update.structures ?? previous.structures,
   );
   assertExclusivePhysicalOccupancy(structures, mobileUnits.mobileUnits);
+  const tradeVoyages = freezeTradeVoyages(
+    update.tradeVoyages ?? previous.tradeVoyages ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+    factions,
+  );
+  const tradePortSchedulers = freezeTradePortSchedulers(
+    update.tradePortSchedulers ?? previous.tradePortSchedulers ?? [],
+    factions,
+  );
+  const tradeRetiredPortEpochs = freezeTradeRetiredPortEpochs(
+    update.tradeRetiredPortEpochs ?? previous.tradeRetiredPortEpochs ?? [],
+    factions,
+  );
+  const tradePendingSignedFacts = freezeTradePendingSignedFacts(
+    update.tradePendingSignedFacts ?? previous.tradePendingSignedFacts ?? [],
+    factions,
+  );
   const factoryTrains = materializeFactoryTrainState(
     previous,
     update,
@@ -690,6 +1140,10 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    tradeVoyages,
+    tradePortSchedulers,
+    tradeRetiredPortEpochs,
+    tradePendingSignedFacts,
     ...factoryTrains,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
@@ -787,6 +1241,10 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    tradeVoyages: Object.freeze([]),
+    tradePortSchedulers: Object.freeze([]),
+    tradeRetiredPortEpochs: Object.freeze([]),
+    tradePendingSignedFacts: Object.freeze([]),
     factoryRailLoops: Object.freeze([]),
     factoryTrainEpochs: Object.freeze([]),
     trainServices: Object.freeze([]),
@@ -984,6 +1442,49 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const tradePortSchedulers = state.tradePortSchedulers.map((scheduler) => ({
+    portId: scheduler.portId,
+    ownerId: scheduler.ownerId,
+    ownershipEpochOrdinal: scheduler.ownershipEpochOrdinal,
+    nextAttemptOrdinal: scheduler.nextAttemptOrdinal,
+    nextAttemptTick: scheduler.nextAttemptTick,
+    nextDestinationSelectionOrdinal: scheduler.nextDestinationSelectionOrdinal,
+    destinationHistory: scheduler.destinationHistory.map((entry) => ({
+      destinationPortId: entry.destinationPortId,
+      lastSelectedOrdinal: entry.lastSelectedOrdinal,
+    })),
+  }));
+  const tradeVoyages = state.tradeVoyages.map((voyage) => ({
+    unitId: voyage.unitId,
+    economicSnapshot: {
+      originalOwnerId: voyage.economicSnapshot.originalOwnerId,
+      sourcePortId: voyage.economicSnapshot.sourcePortId,
+      launchDestinationPortId: voyage.economicSnapshot.launchDestinationPortId,
+      valuationCellId: voyage.economicSnapshot.valuationCellId,
+      plannedRouteLengthCells: voyage.economicSnapshot.plannedRouteLengthCells,
+      rawCargoFfy: voyage.economicSnapshot.rawCargoFfy,
+      ownerSuccessValueFfy: voyage.economicSnapshot.ownerSuccessValueFfy,
+    },
+    sourcePortOwnershipEpochOrdinal: voyage.sourcePortOwnershipEpochOrdinal,
+    routingMode: voyage.routingMode,
+    destinationPortId: voyage.destinationPortId,
+    firstHostileCaptureResolved: voyage.firstHostileCaptureResolved,
+  }));
+  const tradeRetiredPortEpochs = state.tradeRetiredPortEpochs.map((entry) => ({
+    portId: entry.portId,
+    ownerId: entry.ownerId,
+    ownershipEpochOrdinal: entry.ownershipEpochOrdinal,
+    nextDestinationSelectionOrdinal: entry.nextDestinationSelectionOrdinal,
+    destinationHistory: entry.destinationHistory.map((history) => ({
+      destinationPortId: history.destinationPortId,
+      lastSelectedOrdinal: history.lastSelectedOrdinal,
+    })),
+  }));
+  const tradePendingSignedFacts = state.tradePendingSignedFacts.map((entry) => ({
+    id: entry.id,
+    ownerId: entry.ownerId,
+    componentsFfy: [...entry.componentsFfy],
+  }));
   const factoryTrains = serializeFactoryTrainState(state);
 
   const tankProductionJobs = [...state.tankProductionJobs]
@@ -1135,6 +1636,10 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    tradePortSchedulers,
+    tradeRetiredPortEpochs,
+    tradePendingSignedFacts,
+    tradeVoyages,
     factoryRailLoops: factoryTrains.factoryRailLoops,
     factoryTrainEpochs: factoryTrains.factoryTrainEpochs,
     trainServices: factoryTrains.trainServices,

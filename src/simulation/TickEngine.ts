@@ -81,6 +81,12 @@ import {
   resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
+import {
+  prepareTradeShipRuntimePhase,
+  settleTradeShipRuntimePhase,
+  settleTradeShipSignedFactsPhase,
+  tradeShipMovementWorkByUnitId,
+} from "./TradeShips";
 import { advanceWarshipProductionPhase } from "./Warships";
 
 export interface SetTestMarkerAction {
@@ -1219,7 +1225,11 @@ export class TickEngine {
       advanced,
       factoryTrainUpdate,
     );
-    const repairIntended = advanceTankRepairIntentPhase(trainPrepared);
+    const tradePrepared = createProspectiveMatchState(
+      trainPrepared,
+      prepareTradeShipRuntimePhase(trainPrepared, postLandState),
+    );
+    const repairIntended = advanceTankRepairIntentPhase(tradePrepared);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const tankPreparation = prepareTankMovementPhase(
       targetIntended,
@@ -1228,6 +1238,7 @@ export class TickEngine {
     const movementPrepared = tankPreparation.state;
     const movementWorkByUnitId: Record<string, number> = {
       ...factoryTrainMovementWorkByUnitId(movementPrepared, nextTick),
+      ...tradeShipMovementWorkByUnitId(movementPrepared),
       ...tankPreparation.movementWorkByUnitId,
     };
     const structureCells = new Set(
@@ -1257,7 +1268,17 @@ export class TickEngine {
       strategicSettled,
     );
     const combatResolved = advanceTankUnitCombatPhase(repairSettled);
-    const repaired = advanceTankRepairPhase(combatResolved.state);
+    const tradeSettled = settleTradeShipRuntimePhase(
+      combatResolved.state,
+      (tradeOwnerId, destinationOwnerId) =>
+        matchStateAtWar(
+          combatResolved.state,
+          tradeOwnerId,
+          destinationOwnerId,
+        ),
+      "DEFER",
+    );
+    const repaired = advanceTankRepairPhase(tradeSettled);
     const tanksProduced = advanceTankProductionPhase(repaired);
     const produced = advanceWarshipProductionPhase(tanksProduced);
     const trainEconomicUpdate = settleFactoryTrainEconomicEvents(
@@ -1267,8 +1288,10 @@ export class TickEngine {
       (trainOwnerId, stationOwnerId) =>
         matchStateAtWar(produced, trainOwnerId, stationOwnerId),
     );
-    return trainEconomicUpdate === null
-      ? produced
-      : createProspectiveMatchState(produced, trainEconomicUpdate);
+    const trainEconomicSettled =
+      trainEconomicUpdate === null
+        ? produced
+        : createProspectiveMatchState(produced, trainEconomicUpdate);
+    return settleTradeShipSignedFactsPhase(trainEconomicSettled);
   }
 }
