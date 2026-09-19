@@ -689,7 +689,13 @@
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
+      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat and authoritative projectile impacts."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipCombat.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Naval-owned frozen-snapshot Warship firing and ordered Warship-gun impact resolution after shared movement and before service/production phases."
     },
     {
       "from": "src/simulation/TickEngine.ts",

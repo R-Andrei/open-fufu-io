@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
+import { advanceHomingCombatProjectiles } from "./CombatProjectiles";
 import {
   applyFactoryTrainDestructionLifecycleEvents,
   factoryTrainMovementWorkByUnitId,
@@ -79,6 +80,7 @@ import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
 import {
   projectTankTargetObservation,
   resolveDirectRevealsFromLandOperationEvents,
+  resolveDirectRevealsFromPhysicalEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
 import {
@@ -87,6 +89,11 @@ import {
   settleTradeShipSignedFactsPhase,
   tradeShipMovementWorkByUnitId,
 } from "./TradeShips";
+import {
+  resolveWarshipGunfireDecisions,
+  resolveWarshipNavalProjectileImpacts,
+  WARSHIP_NAVAL_GUN_PROFILE_ID,
+} from "./WarshipCombat";
 import {
   advanceWarshipProductionPhase,
   warshipStrategicNavigationRoute,
@@ -1088,6 +1095,118 @@ function advanceTankUnitCombatPhase(state: MatchState) {
   });
 }
 
+const V1_COMBAT_PROJECTILE_TICKS_PER_SECOND = 10 as const;
+
+function combatProjectileIdentityKey(
+  projectile: Readonly<{
+    readonly sourceUnitId: string;
+    readonly projectileOrdinal: number;
+  }>,
+): string {
+  return JSON.stringify([
+    projectile.sourceUnitId,
+    projectile.projectileOrdinal,
+  ]);
+}
+
+/**
+ * Applies Warship firing decisions admitted from the frozen post-movement
+ * snapshot, then advances only Warship-gun projectiles that pre-existed that
+ * combat phase. Tank-owned immediate effects are already committed in
+ * postTankCombatState, but cannot retroactively revoke a shot admitted from
+ * combatSnapshot.
+ */
+function advanceWarshipGunfireAndProjectilePhase(
+  combatSnapshot: MatchState,
+  postTankCombatState: MatchState,
+): MatchState {
+  const firingSnapshot = resolveWarshipGunfireDecisions(combatSnapshot);
+  const preExistingKeys = new Set(
+    combatSnapshot.combatProjectiles.map(combatProjectileIdentityKey),
+  );
+  const spawnedProjectiles = firingSnapshot.combatProjectiles.filter(
+    (projectile) => !preExistingKeys.has(combatProjectileIdentityKey(projectile)),
+  );
+  const firingOperationalByUnitId = new Map(
+    firingSnapshot.warshipOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
+  );
+
+  const immediateState = createProspectiveMatchState(postTankCombatState, {
+    combatProjectiles: Object.freeze([
+      ...postTankCombatState.combatProjectiles,
+      ...spawnedProjectiles,
+    ]),
+    warshipOperationalStates: postTankCombatState.warshipOperationalStates.map(
+      (operational) => {
+        const firing = firingOperationalByUnitId.get(operational.unitId);
+        if (firing === undefined) return operational;
+        return Object.freeze({
+          ...operational,
+          attackReadyAtTick: firing.attackReadyAtTick,
+          nextProjectileOrdinal: firing.nextProjectileOrdinal,
+        });
+      },
+    ),
+  });
+
+  const preExistingWarshipProjectiles =
+    combatSnapshot.combatProjectiles.filter(
+      (projectile) =>
+        projectile.profileId === WARSHIP_NAVAL_GUN_PROFILE_ID,
+    );
+  if (preExistingWarshipProjectiles.length === 0) {
+    return immediateState;
+  }
+
+  const advancingKeys = new Set(
+    preExistingWarshipProjectiles.map(combatProjectileIdentityKey),
+  );
+  const advanced = advanceHomingCombatProjectiles(
+    preExistingWarshipProjectiles,
+    {
+      tick: combatSnapshot.tick,
+      ticksPerSecond: V1_COMBAT_PROJECTILE_TICKS_PER_SECOND,
+      targetPosition(unitId) {
+        const target = immediateState.mobileUnits.find(
+          (unit) => unit.id === unitId,
+        );
+        if (target === undefined) return undefined;
+        const position = immediateState.map.positionOf(target.cellId);
+        return Object.freeze({ x: position.x, y: position.y });
+      },
+    },
+  );
+  const projectileTravelState = createProspectiveMatchState(immediateState, {
+    combatProjectiles: Object.freeze([
+      ...immediateState.combatProjectiles.filter(
+        (projectile) =>
+          !advancingKeys.has(combatProjectileIdentityKey(projectile)),
+      ),
+      ...advanced.projectiles,
+    ]),
+  });
+  const impacts = resolveWarshipNavalProjectileImpacts(
+    projectileTravelState,
+    advanced.impacts,
+  );
+  if (impacts.unresolvedImpacts.length > 0) {
+    throw new Error(
+      "Warship naval projectile impact resolved to an unsupported target owner",
+    );
+  }
+  if (impacts.events.length === 0) return impacts.state;
+
+  const directReveals = resolveDirectRevealsFromPhysicalEvents(
+    impacts.state,
+    impacts.events,
+    combatSnapshot.tick,
+  );
+  return createProspectiveMatchState(impacts.state, { directReveals });
+}
+
 export class TickEngine {
   applyAcceptedInputs(
     state: MatchState,
@@ -1417,12 +1536,17 @@ export class TickEngine {
       movementPrepared,
       strategicSettled,
     );
-    const combatResolved = advanceTankUnitCombatPhase(repairSettled);
-    const tradeSettled = settleTradeShipRuntimePhase(
+    const combatSnapshot = repairSettled;
+    const combatResolved = advanceTankUnitCombatPhase(combatSnapshot);
+    const warshipCombatResolved = advanceWarshipGunfireAndProjectilePhase(
+      combatSnapshot,
       combatResolved.state,
+    );
+    const tradeSettled = settleTradeShipRuntimePhase(
+      warshipCombatResolved,
       (tradeOwnerId, destinationOwnerId) =>
         matchStateAtWar(
-          combatResolved.state,
+          warshipCombatResolved,
           tradeOwnerId,
           destinationOwnerId,
         ),

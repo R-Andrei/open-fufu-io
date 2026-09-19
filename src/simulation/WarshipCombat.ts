@@ -25,7 +25,7 @@ import {
 
 const WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND = 75;
 const WARSHIP_GUN_COOLDOWN_TICKS = 20;
-const WARSHIP_GUN_PROFILE_ID = "WARSHIP_NAVAL_GUN";
+export const WARSHIP_NAVAL_GUN_PROFILE_ID = "WARSHIP_NAVAL_GUN" as const;
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -113,7 +113,7 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
         sourceOwnerId: source.ownerId,
         targetUnitId: target.id,
         projectileOrdinal: operational.nextProjectileOrdinal,
-        profileId: WARSHIP_GUN_PROFILE_ID,
+        profileId: WARSHIP_NAVAL_GUN_PROFILE_ID,
         position: Object.freeze({
           x: sourcePosition.x,
           y: sourcePosition.y,
@@ -318,7 +318,7 @@ export function resolveWarshipNavalProjectileImpacts(
   const unresolvedImpacts: HomingCombatProjectileImpact[] = [];
 
   for (const impact of [...impacts].sort(compareProjectileImpacts)) {
-    if (impact.profileId !== WARSHIP_GUN_PROFILE_ID) {
+    if (impact.profileId !== WARSHIP_NAVAL_GUN_PROFILE_ID) {
       unresolvedImpacts.push(impact);
       continue;
     }
