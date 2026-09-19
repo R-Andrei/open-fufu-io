@@ -318,6 +318,10 @@ export function resolveWarshipNavalProjectileImpacts(
   const unresolvedImpacts: HomingCombatProjectileImpact[] = [];
 
   for (const impact of [...impacts].sort(compareProjectileImpacts)) {
+    if (impact.profileId !== WARSHIP_GUN_PROFILE_ID) {
+      unresolvedImpacts.push(impact);
+      continue;
+    }
     const target = current.mobileUnits.find(
       (unit) => unit.id === impact.targetUnitId,
     );
