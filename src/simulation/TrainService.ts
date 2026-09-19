@@ -9,11 +9,14 @@ import {
   type RuleCondition,
 } from "../core/rules/RuleComposition";
 import {
-  materializeCompiledScalarRule,
   materializeCompiledScalarScaleFactor,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
-import type { ExactFfyValue, PositiveFfyEventInput } from "./Economy";
+import {
+  resolveExternalWartimeTradeMultiplier,
+  type ExactFfyValue,
+  type PositiveFfyEventInput,
+} from "./Economy";
 import {
   advanceMobileUnit,
   type MobileUnitRouteInput,
@@ -38,8 +41,6 @@ const FACTORY_TRAIN_EVENT_BASE_FFY = Object.freeze({
   5: 15_000,
 } as const);
 const EXACT_ONE = Object.freeze({ numerator: 1n, denominator: 1n });
-const EXACT_HALF = Object.freeze({ numerator: 1n, denominator: 2n });
-const GLOBAL_RULE_SCOPE = Object.freeze({ kind: "GLOBAL" as const });
 const FACTORY_RULE_SCOPE = Object.freeze({
   kind: "STRUCTURE" as const,
   structure: "FACTORY" as const,
@@ -271,20 +272,10 @@ export function resolveTrainExternalWartimeMultiplier(
   ruleDynamicState: RuleDynamicState,
   currentlyAtWar: boolean,
 ): ExactFfyValue {
-  if (!currentlyAtWar) return EXACT_ONE;
-
-  const resolved = materializeCompiledScalarRule(
-    0.5,
+  return resolveExternalWartimeTradeMultiplier(
     trainOwnerRules,
-    RULE_AXIS_REGISTRY,
-    "EXTERNAL_TRADE_WARTIME_MULTIPLIER",
-    GLOBAL_RULE_SCOPE,
     ruleDynamicState,
-  );
-  if (resolved === 0.5) return EXACT_HALF;
-  if (resolved === 1) return EXACT_ONE;
-  throw new Error(
-    "Train external wartime multiplier must resolve to canonical 0.5 or 1.0",
+    currentlyAtWar,
   );
 }
 
