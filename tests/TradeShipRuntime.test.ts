@@ -10,6 +10,7 @@ import {
 import { advanceMobileUnits } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { TickEngine } from "../src/simulation/TickEngine";
+import * as TradeShipsModule from "../src/simulation/TradeShips";
 import {
   prepareTradeShipRuntimePhase,
   tradeShipMovementWorkByUnitId,
@@ -51,6 +52,99 @@ function advanceTickCount<T extends { readonly tick: number }>(
   let current = state;
   for (let index = 0; index < count; index += 1) current = advance(current);
   return current;
+}
+
+
+type TestMatchState = ReturnType<typeof createInitialMatchState>;
+
+function requiredTradeFunction<T extends (...args: any[]) => any>(name: string): T {
+  const value = (TradeShipsModule as unknown as Record<string, unknown>)[name];
+  if (typeof value !== "function") throw new TypeError(`${name} is not a function`);
+  return value as T;
+}
+
+function threePortState(
+  seed: string,
+  options: Readonly<{
+    alphaTraits?: readonly OriginTraitId[];
+    betaTraits?: readonly OriginTraitId[];
+    gammaTraits?: readonly OriginTraitId[];
+    betaActive?: boolean;
+    betaPortTerrain?: "PLAINS" | "DESERT";
+    includeAlphaFort?: boolean;
+  }> = {},
+): TestMatchState {
+  const width = 31;
+  const terrain = [
+    ...Array.from({ length: width }, () => "DEEP_WATER" as const),
+    ...Array.from({ length: width }, (_, x) =>
+      x === 20 && options.betaPortTerrain === "DESERT"
+        ? ("DESERT" as const)
+        : ("PLAINS" as const),
+    ),
+  ];
+  const ownership = Array.from({ length: width * 2 }, () => null as string | null);
+  ownership[31] = "alpha";
+  ownership[51] = "beta";
+  ownership[61] = "gamma";
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed,
+      width,
+      height: 2,
+      terrain,
+      initialOwners: ownership,
+      factions: [
+        { id: "alpha", rules: rulesWith(options.alphaTraits ?? []) },
+        { id: "beta", rules: rulesWith(options.betaTraits ?? []) },
+        { id: "gamma", rules: rulesWith(options.gammaTraits ?? []) },
+      ],
+    }),
+  );
+  return createProspectiveMatchState(base, {
+    structures: [
+      port("port-alpha", "alpha", 31, 0),
+      ...(options.includeAlphaFort
+        ? [
+            {
+              id: "fort-alpha",
+              ownerId: "alpha",
+              type: "FORT" as const,
+              cellId: 41,
+              completedLevel: 1 as const,
+              active: true,
+              acquisitionPath: "GRANT" as const,
+            },
+          ]
+        : []),
+      port("port-beta", "beta", 51, 20, options.betaActive ?? true),
+      port("port-gamma", "gamma", 61, 30),
+    ],
+  });
+}
+
+function withFactionFfy(
+  state: TestMatchState,
+  factionId: string,
+  ffy: number,
+): TestMatchState {
+  return createProspectiveMatchState(state, {
+    factions: state.factions.map((faction) =>
+      faction.id === factionId ? { ...faction, ffy } : faction,
+    ),
+  });
+}
+
+function moveTradeUnitToRouteEnd(
+  state: TestMatchState,
+  unitId: string,
+): TestMatchState {
+  return createProspectiveMatchState(state, {
+    mobileUnits: advanceMobileUnits(
+      state.mobileUnits,
+      Object.freeze({ [unitId]: 100_000 }),
+    ),
+  });
 }
 
 describe("authoritative Trade Ship voyage state", () => {
@@ -151,6 +245,9 @@ describe("authoritative Trade Ship voyage state", () => {
           rawCargoFfy: 300,
           ownerSuccessValueFfy: 300,
         },
+        sourcePortOwnershipEpochOrdinal: 0,
+        routingMode: "ORDINARY",
+        destinationPortId: "port-beta",
         firstHostileCaptureResolved: false,
       },
     ]);
@@ -167,6 +264,9 @@ describe("authoritative Trade Ship voyage state", () => {
           rawCargoFfy: 300,
           ownerSuccessValueFfy: 300,
         },
+        sourcePortOwnershipEpochOrdinal: 0,
+        routingMode: "ORDINARY",
+        destinationPortId: "port-beta",
         firstHostileCaptureResolved: false,
       },
     ]);
@@ -228,6 +328,7 @@ describe("authoritative Trade Ship voyage state", () => {
       {
         portId: "port-alpha",
         ownerId: "alpha",
+        ownershipEpochOrdinal: 0,
         nextAttemptOrdinal: 0,
         nextAttemptTick: null,
         nextDestinationSelectionOrdinal: 0,
@@ -296,6 +397,7 @@ describe("authoritative Trade Ship voyage state", () => {
         {
           portId: "port-alpha",
           ownerId: "alpha",
+          ownershipEpochOrdinal: 4,
           nextAttemptOrdinal: 7,
           nextAttemptTick: 1,
           nextDestinationSelectionOrdinal: 4,
@@ -344,6 +446,7 @@ describe("authoritative Trade Ship voyage state", () => {
     ).toMatchObject({
       portId: "port-alpha",
       ownerId: "beta",
+      ownershipEpochOrdinal: 5,
       nextAttemptOrdinal: 1,
       nextDestinationSelectionOrdinal: 0,
       destinationHistory: [],
@@ -451,6 +554,497 @@ describe("authoritative Trade Ship voyage state", () => {
       advanced.tradePortSchedulers.find((entry) => entry.portId === "port-alpha")
         ?.nextAttemptTick,
     ).toEqual(expect.any(Number));
+  });
+
+
+  it("includes launch-time terrain and owned-field event conditions in Vowner without applying piracy or wartime stages", () => {
+    const state = threePortState("trade-vowner-context", {
+      alphaTraits: ["P14", "P24"],
+      betaPortTerrain: "DESERT",
+      includeAlphaFort: true,
+    });
+    const launched = tryLaunchTradeVoyage(state, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const snapshot = launched.state.tradeVoyages[0]?.economicSnapshot;
+    expect(snapshot?.plannedRouteLengthCells).toBe(16);
+    expect(snapshot?.rawCargoFfy).toBe(2_400);
+    expect(snapshot?.ownerSuccessValueFfy).toBe(3_672);
+  });
+
+  it("retains the launching ownership epoch across source-Port transfer and updates only that retired history on ordinary reroute", () => {
+    const width = 41;
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-retired-source-epoch",
+        width,
+        height: 2,
+        terrain: [
+          ...Array.from({ length: width }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        initialOwners: Array.from({ length: width * 2 }, (_, cellId) =>
+          cellId === 41
+            ? "alpha"
+            : cellId === 55
+              ? "beta"
+              : cellId === 68
+                ? "gamma"
+                : cellId === 81
+                  ? "delta"
+                  : null,
+        ),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+          { id: "gamma", rules },
+          { id: "delta", rules },
+        ],
+      }),
+    );
+    const before = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 41, 0),
+        port("port-beta", "beta", 55, 14),
+        port("port-gamma", "gamma", 68, 27),
+        port("port-delta", "delta", 81, 40),
+      ],
+      tradePortSchedulers: [
+        {
+          portId: "port-alpha",
+          ownerId: "alpha",
+          ownershipEpochOrdinal: 4,
+          nextAttemptOrdinal: 8,
+          nextAttemptTick: 999,
+          nextDestinationSelectionOrdinal: 6,
+          destinationHistory: [
+            { destinationPortId: "port-beta", lastSelectedOrdinal: 0 },
+            { destinationPortId: "port-delta", lastSelectedOrdinal: 2 },
+            { destinationPortId: "port-gamma", lastSelectedOrdinal: 5 },
+          ],
+        },
+      ],
+    } as never);
+    const launched = tryLaunchTradeVoyage(before, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+    expect((launched.state.tradeVoyages[0] as any)?.sourcePortOwnershipEpochOrdinal).toBe(4);
+
+    const transferred = createAdvancedMatchState(launched.state, {
+      structures: launched.state.structures.map((structure) => {
+        if (structure.id === "port-alpha") return { ...structure, ownerId: "beta" };
+        if (structure.id === "port-beta") return { ...structure, active: false };
+        return structure;
+      }),
+    });
+    const reconciled = createProspectiveMatchState(
+      transferred,
+      prepareTradeShipRuntimePhase(transferred, launched.state),
+    );
+    const voyage = (reconciled.tradeVoyages[0] as any);
+    expect(voyage.routingMode).toBe("ORDINARY");
+    expect(voyage.destinationPortId).toBe("port-delta");
+
+    const retired = (reconciled as any).tradeRetiredPortEpochs;
+    expect(retired).toEqual([
+      {
+        portId: "port-alpha",
+        ownerId: "alpha",
+        ownershipEpochOrdinal: 4,
+        nextDestinationSelectionOrdinal: 7,
+        destinationHistory: [
+          { destinationPortId: "port-beta", lastSelectedOrdinal: 0 },
+          { destinationPortId: "port-delta", lastSelectedOrdinal: 6 },
+          { destinationPortId: "port-gamma", lastSelectedOrdinal: 5 },
+        ],
+      },
+    ]);
+    expect(
+      reconciled.tradePortSchedulers.find((entry) => entry.portId === "port-alpha"),
+    ).toMatchObject({
+      ownerId: "beta",
+      ownershipEpochOrdinal: 5,
+      nextDestinationSelectionOrdinal: 0,
+      destinationHistory: [],
+    });
+  });
+
+  it("settles ordinary Trade at current wartime conditions and lets P08 replace the 0.5 wartime multiplier", () => {
+    const settle = requiredTradeFunction<
+      (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
+    >("settleTradeShipRuntimePhase");
+
+    function completed(traits: readonly OriginTraitId[]) {
+      const state = threePortState(`trade-wartime-${traits.join("-") || "baseline"}`, {
+        alphaTraits: traits,
+      });
+      const launched = tryLaunchTradeVoyage(state, {
+        ownerId: "alpha",
+        sourcePortId: "port-alpha",
+        destinationPortId: "port-beta",
+      });
+      expect(launched.ok).toBe(true);
+      if (!launched.ok) throw new Error("expected Trade voyage launch");
+      return moveTradeUnitToRouteEnd(launched.state, launched.unit.id);
+    }
+
+    const baseline = completed([]);
+    const baselineAlpha = baseline.factions.find((faction) => faction.id === "alpha")!;
+    const baselineSettled = settle(baseline, () => true);
+    expect(
+      baselineSettled.factions.find((faction) => faction.id === "alpha")!.ffy -
+        baselineAlpha.ffy,
+    ).toBe(1_200);
+    expect(baselineSettled.tradeVoyages).toHaveLength(0);
+    expect(baselineSettled.mobileUnits).toHaveLength(0);
+
+    const p08 = completed(["P08"]);
+    const p08Alpha = p08.factions.find((faction) => faction.id === "alpha")!;
+    const p08Settled = settle(p08, () => true);
+    expect(
+      p08Settled.factions.find((faction) => faction.id === "alpha")!.ffy -
+        p08Alpha.ffy,
+    ).toBe(2_400);
+  });
+
+  it("replaces N16 uncaptured success with signed -Vowner and aggregates it with another same-tick signed Trade fact before the balance floor", () => {
+    const settle = requiredTradeFunction<
+      (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
+    >("settleTradeShipRuntimePhase");
+    let state = withFactionFfy(
+      threePortState("trade-n16-same-tick", { alphaTraits: ["N16"] }),
+      "alpha",
+      100,
+    );
+    const launched = tryLaunchTradeVoyage(state, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+    state = moveTradeUnitToRouteEnd(launched.state, launched.unit.id);
+    state = createProspectiveMatchState(state, {
+      tradePendingSignedFacts: [
+        {
+          id: "trade:first-capture:other-voyage",
+          ownerId: "alpha",
+          componentsFfy: [2_400],
+        },
+      ],
+    } as never);
+
+    const settled = settle(state, () => false);
+    expect(settled.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(100);
+    expect(settled.tradeVoyages).toHaveLength(0);
+    expect((settled as any).tradePendingSignedFacts).toEqual([]);
+  });
+
+  it("nets N14 and N16 on one first-capture fact, exposes stable capture identity, and never repeats the first-capture adjustment on recapture", () => {
+    const capture = requiredTradeFunction<
+      (
+        state: TestMatchState,
+        request: { unitId: string; capturingFactionId: string },
+      ) => any
+    >("tryCaptureTradeShip");
+    const settle = requiredTradeFunction<
+      (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
+    >("settleTradeShipRuntimePhase");
+
+    const state = threePortState("trade-capture-net", {
+      alphaTraits: ["N14", "N16"],
+    });
+    const launched = tryLaunchTradeVoyage(state, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const first = capture(launched.state, {
+      unitId: launched.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(first.ok).toBe(true);
+    expect(first.capture).toEqual({
+      unitId: launched.unit.id,
+      originalOwnerId: "alpha",
+      previousHolderId: "alpha",
+      nextHolderId: "beta",
+      firstHostileCapture: true,
+    });
+    expect(first.state.factions.find((faction: any) => faction.id === "alpha").ffy).toBe(25_000);
+    expect(first.state.factions.find((faction: any) => faction.id === "beta").ffy).toBe(25_000);
+
+    const second = capture(first.state, {
+      unitId: launched.unit.id,
+      capturingFactionId: "gamma",
+    });
+    expect(second.ok).toBe(true);
+    expect(second.capture).toMatchObject({
+      unitId: launched.unit.id,
+      previousHolderId: "beta",
+      nextHolderId: "gamma",
+      firstHostileCapture: false,
+    });
+    expect((second.state.tradeVoyages[0] as any).firstHostileCaptureResolved).toBe(true);
+    expect((second.state as any).tradePendingSignedFacts).toHaveLength(1);
+
+    const settled = settle(second.state, () => false);
+    expect(settled.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(25_000);
+    expect((settled as any).tradePendingSignedFacts).toEqual([]);
+    expect(settled.tradeVoyages).toHaveLength(1);
+  });
+
+  it("rejects capture without a reachable holder Port, then keeps captured cargo physically in play through temporary no-Port state and resumes routing when service returns", () => {
+    const capture = requiredTradeFunction<
+      (
+        state: TestMatchState,
+        request: { unitId: string; capturingFactionId: string },
+      ) => any
+    >("tryCaptureTradeShip");
+
+    const initial = threePortState("trade-capture-no-port", { betaActive: false });
+    const launched = tryLaunchTradeVoyage(initial, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const rejected = capture(launched.state, {
+      unitId: launched.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(rejected).toMatchObject({
+      ok: false,
+      failure: { code: "NO_REACHABLE_DELIVERY_PORT" },
+    });
+    expect(rejected.state).toBe(launched.state);
+
+    const enabled = createAdvancedMatchState(launched.state, {
+      structures: launched.state.structures.map((structure) =>
+        structure.id === "port-beta" ? { ...structure, active: true } : structure,
+      ),
+    });
+    const captured = capture(enabled, {
+      unitId: launched.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(captured.ok).toBe(true);
+
+    const disabled = createAdvancedMatchState(captured.state, {
+      structures: captured.state.structures.map((structure: any) =>
+        structure.id === "port-beta" ? { ...structure, active: false } : structure,
+      ),
+    });
+    const stalled = createProspectiveMatchState(
+      disabled,
+      prepareTradeShipRuntimePhase(disabled, captured.state),
+    );
+    const stalledUnit = stalled.mobileUnits.find((unit) => unit.id === launched.unit.id)!;
+    expect(stalledUnit.ownerId).toBe("beta");
+    expect(stalledUnit.route).toBeUndefined();
+    expect((stalled.tradeVoyages[0] as any).destinationPortId).toBeNull();
+    expect(stalled.tradeVoyages).toHaveLength(1);
+
+    const reenabled = createAdvancedMatchState(stalled, {
+      structures: stalled.structures.map((structure) =>
+        structure.id === "port-beta" ? { ...structure, active: true } : structure,
+      ),
+    });
+    const rerouted = createProspectiveMatchState(
+      reenabled,
+      prepareTradeShipRuntimePhase(reenabled, stalled),
+    );
+    expect((rerouted.tradeVoyages[0] as any).destinationPortId).toBe("port-beta");
+    expect(
+      rerouted.mobileUnits.find((unit) => unit.id === launched.unit.id)?.route,
+    ).toBeDefined();
+  });
+
+  it("settles captured cargo exactly once from original rawCargo with P30 piracy and supports original-owner recovery", () => {
+    const capture = requiredTradeFunction<
+      (
+        state: TestMatchState,
+        request: { unitId: string; capturingFactionId: string },
+      ) => any
+    >("tryCaptureTradeShip");
+    const settle = requiredTradeFunction<
+      (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
+    >("settleTradeShipRuntimePhase");
+
+    const pirateState = threePortState("trade-piracy-terminal", {
+      betaTraits: ["P30"],
+    });
+    const pirateLaunch = tryLaunchTradeVoyage(pirateState, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(pirateLaunch.ok).toBe(true);
+    if (!pirateLaunch.ok) throw new Error("expected Trade voyage launch");
+    const rawCargo = pirateLaunch.state.tradeVoyages[0]!.economicSnapshot.rawCargoFfy;
+    expect(rawCargo).toBe(3_900);
+
+    const captured = capture(pirateLaunch.state, {
+      unitId: pirateLaunch.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(captured.ok).toBe(true);
+    const betaBefore = captured.state.factions.find((faction: any) => faction.id === "beta").ffy;
+    const delivered = moveTradeUnitToRouteEnd(captured.state, pirateLaunch.unit.id);
+    const paid = settle(delivered, () => false);
+    expect(
+      paid.factions.find((faction) => faction.id === "beta")!.ffy - betaBefore,
+    ).toBe(rawCargo * 3);
+    expect(paid.tradeVoyages).toHaveLength(0);
+    expect(paid.mobileUnits).toHaveLength(0);
+    const paidAgain = settle(paid, () => false);
+    expect(paidAgain.factions.find((faction) => faction.id === "beta")!.ffy).toBe(
+      paid.factions.find((faction) => faction.id === "beta")!.ffy,
+    );
+
+    const recoveryState = threePortState("trade-recovery-terminal");
+    const recoveryLaunch = tryLaunchTradeVoyage(recoveryState, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(recoveryLaunch.ok).toBe(true);
+    if (!recoveryLaunch.ok) throw new Error("expected Trade voyage launch");
+    const stolen = capture(recoveryLaunch.state, {
+      unitId: recoveryLaunch.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(stolen.ok).toBe(true);
+    const stolenMoved = createProspectiveMatchState(stolen.state, {
+      mobileUnits: advanceMobileUnits(
+        stolen.state.mobileUnits,
+        Object.freeze({ [recoveryLaunch.unit.id]: 5 }),
+      ),
+    });
+    const recovered = capture(stolenMoved, {
+      unitId: recoveryLaunch.unit.id,
+      capturingFactionId: "alpha",
+    });
+    expect(recovered.ok).toBe(true);
+    const alphaBefore = recovered.state.factions.find((faction: any) => faction.id === "alpha").ffy;
+    const returned = moveTradeUnitToRouteEnd(recovered.state, recoveryLaunch.unit.id);
+    const recoveryPaid = settle(returned, () => false);
+    expect(
+      recoveryPaid.factions.find((faction) => faction.id === "alpha")!.ffy -
+        alphaBefore,
+    ).toBe(recoveryLaunch.state.tradeVoyages[0]!.economicSnapshot.rawCargoFfy);
+  });
+
+  it("terminal destruction removes the physical cargo and blocks later payout without erasing an already-created first-capture signed fact", () => {
+    const capture = requiredTradeFunction<
+      (
+        state: TestMatchState,
+        request: { unitId: string; capturingFactionId: string },
+      ) => any
+    >("tryCaptureTradeShip");
+    const destroy = requiredTradeFunction<
+      (state: TestMatchState, request: { unitId: string }) => any
+    >("terminateTradeShipAsDestroyed");
+    const settle = requiredTradeFunction<
+      (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
+    >("settleTradeShipRuntimePhase");
+
+    const state = threePortState("trade-destruction-terminal", {
+      alphaTraits: ["N14"],
+    });
+    const launched = tryLaunchTradeVoyage(state, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+    const raw = launched.state.tradeVoyages[0]!.economicSnapshot.rawCargoFfy;
+
+    const captured = capture(launched.state, {
+      unitId: launched.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(captured.ok).toBe(true);
+    const betaBefore = captured.state.factions.find((faction: any) => faction.id === "beta").ffy;
+    const destroyed = destroy(captured.state, { unitId: launched.unit.id });
+    expect(destroyed.ok).toBe(true);
+    expect(destroyed.state.tradeVoyages).toHaveLength(0);
+    expect(
+      destroyed.state.mobileUnits.some((unit: any) => unit.id === launched.unit.id),
+    ).toBe(false);
+
+    const settled = settle(destroyed.state, () => false);
+    expect(settled.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(
+      25_000 - raw,
+    );
+    expect(settled.factions.find((faction) => faction.id === "beta")?.ffy).toBe(
+      betaBefore,
+    );
+  });
+
+  it("settles ordinary Trade post-movement inside TickEngine and removes the completed voyage exactly once", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-tick-engine-terminal",
+        width: 16,
+        height: 1,
+        terrain: [
+          "PLAINS",
+          ...Array.from({ length: 14 }, () => "DEEP_WATER" as const),
+          "PLAINS",
+        ],
+        initialOwners: Array.from({ length: 16 }, (_, cellId) =>
+          cellId === 0 ? "alpha" : cellId === 15 ? "beta" : null,
+        ),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const withPorts = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 0, 1),
+        port("port-beta", "beta", 15, 14),
+      ],
+    });
+    const launched = tryLaunchTradeVoyage(withPorts, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const terminal = advanceTickCount(
+      launched.state,
+      9,
+      (state) => new TickEngine().advance(state, []),
+    );
+    expect(terminal.tradeVoyages).toHaveLength(0);
+    expect(
+      terminal.mobileUnits.some((unit) => unit.id === launched.unit.id),
+    ).toBe(false);
+    expect(terminal.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(
+      27_250,
+    );
   });
 
 });
