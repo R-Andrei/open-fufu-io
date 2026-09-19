@@ -496,6 +496,39 @@ export function trySetWarshipStrategicDestination(
   });
 }
 
+
+
+export function removeWarshipUnits(
+  state: MatchState,
+  unitIds: readonly string[],
+): MatchState {
+  if (!Array.isArray(unitIds)) {
+    throw new Error("Warship removal unitIds must be an array");
+  }
+  const removedIds = new Set<string>();
+  for (const unitId of unitIds) {
+    if (typeof unitId !== "string" || unitId.length === 0) {
+      throw new Error("Warship removal unitId must be a non-empty string");
+    }
+    if (removedIds.has(unitId)) {
+      throw new Error(`duplicate Warship removal unitId: ${unitId}`);
+    }
+    const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
+    if (unit === undefined || unit.type !== "WARSHIP") {
+      throw new Error(`Warship removal requires a deployed Warship: ${unitId}`);
+    }
+    removedIds.add(unitId);
+  }
+  if (removedIds.size === 0) return state;
+
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.filter((unit) => !removedIds.has(unit.id)),
+    warshipOperationalStates: state.warshipOperationalStates.filter(
+      (operational) => !removedIds.has(operational.unitId),
+    ),
+  });
+}
+
 export function warshipPurchaseCost(activeWarships: number): number {
   if (
     !Number.isSafeInteger(activeWarships) ||
