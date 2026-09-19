@@ -1,10 +1,7 @@
 import type {
   ControllerStructureFieldId,
-  PurchasableUnitType,
-  StrategicWeaponType,
   StructureFieldAffiliation,
   StructureFieldId,
-  StructureType,
   TerrainType,
 } from "./ControllerApi";
 
@@ -26,28 +23,6 @@ const TERRAIN_TYPES = {
   DEEP_WATER: true,
   IMPASSABLE: true,
 } as const satisfies Readonly<Record<TerrainType, true>>;
-
-const STRUCTURE_TYPES = {
-  CITY: true,
-  FORT: true,
-  PORT: true,
-  FACTORY: true,
-  MISSILE_SILO: true,
-  SAM_LAUNCHER: true,
-  OBSERVATION_POST: true,
-  COMMAND_POST: true,
-} as const satisfies Readonly<Record<StructureType, true>>;
-
-const PURCHASABLE_UNIT_TYPES = {
-  TANK: true,
-  WARSHIP: true,
-} as const satisfies Readonly<Record<PurchasableUnitType, true>>;
-
-const STRATEGIC_WEAPON_TYPES = {
-  ATOM_BOMB: true,
-  HYDROGEN_BOMB: true,
-  MIRV: true,
-} as const satisfies Readonly<Record<StrategicWeaponType, true>>;
 
 const CONTROLLER_STRUCTURE_FIELD_IDS = {
   FORT: true,
@@ -252,52 +227,6 @@ function isDebugItem(value: unknown): boolean {
   }
 }
 
-function isControllerCommand(value: unknown): boolean {
-  if (!isPlainRecord(value) || typeof value.kind !== "string" || typeof value.key !== "string") {
-    return false;
-  }
-
-  switch (value.kind) {
-    case "BUILD_STRUCTURE":
-      return (
-        isVocabularyValue(STRUCTURE_TYPES, value.structure) &&
-        isCellId(value.cellId)
-      );
-    case "UPGRADE_STRUCTURE":
-      return isCellId(value.cellId);
-    case "BUILD_UNIT":
-      return (
-        isVocabularyValue(PURCHASABLE_UNIT_TYPES, value.unit) &&
-        typeof value.producerId === "string"
-      );
-    case "MOVE_UNIT":
-      return typeof value.unitId === "string" && isFiniteNumber(value.destination);
-    case "EMBARK_TRANSPORT":
-      return (
-        isFiniteNumber(value.sourceCellId) &&
-        isFiniteNumber(value.targetCellId) &&
-        isFiniteNumber(value.population)
-      );
-    case "RETURN_TRANSPORT":
-      return typeof value.unitId === "string";
-    case "LAUNCH_WEAPON":
-      return (
-        typeof value.launcherId === "string" &&
-        isVocabularyValue(STRATEGIC_WEAPON_TYPES, value.weapon) &&
-        isFiniteNumber(value.targetCellId) &&
-        hasOptionalString(value, "targetFactionId")
-      );
-    case "RELINQUISH":
-      return isCellSelector(value.cells);
-    case "TEAM_SIGNAL":
-      return typeof value.channel === "string" && isJsonValue(value.payload);
-    case "CAPITULATE":
-      return true;
-    default:
-      return false;
-  }
-}
-
 function hasValidDiagnostics(output: Record<string, unknown>): boolean {
   if (output.debug !== undefined) {
     if (!Array.isArray(output.debug) || !output.debug.every(isDebugItem)) return false;
@@ -325,9 +254,8 @@ export function controllerOutputHasExpectedStructure(
   switch (kind) {
     case "DECIDE":
       return (
-        hasValidDirectiveChanges(output) &&
-        (output.commands === undefined ||
-          (Array.isArray(output.commands) && output.commands.every(isControllerCommand)))
+        !Object.prototype.hasOwnProperty.call(output, "commands") &&
+        hasValidDirectiveChanges(output)
       );
     case "CHOOSE_INFLUENCE":
     case "RECONSIDER_INFLUENCE":

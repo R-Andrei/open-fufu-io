@@ -179,16 +179,11 @@ describe("controller local public spatial runtime", () => {
               JSON.stringify(context.segments.cellIds(0)) === "[0,1,2,3,4,5]",
               context.segments.cellIds(1) === undefined,
             ];
-            return checks.every(Boolean)
-              ? {
-                  commands: [
-                    { kind: "CAPITULATE", key: "local-public-spatial-ok" },
-                  ],
-                }
-              : { commands: [] };
+            if (checks.every(Boolean)) context.capitulate();
+            return {};
           }
         `),
-        beta: artifact("export function decide() { return { commands: [] }; }"),
+        beta: artifact("export function decide() { return {}; }"),
       });
 
       const evaluated = await Promise.resolve(
@@ -239,16 +234,11 @@ describe("controller local public spatial runtime", () => {
               enemy?.isMinorFaction === true &&
               !Object.prototype.hasOwnProperty.call(enemy, "score") &&
               !Object.prototype.hasOwnProperty.call(enemy, "origin");
-            return valid
-              ? {
-                  commands: [
-                    { kind: "CAPITULATE", key: "faction-metadata-worker-ok" },
-                  ],
-                }
-              : { commands: [] };
+            if (valid) context.capitulate();
+            return {};
           }
         `),
-        beta: artifact("export function decide() { return { commands: [] }; }"),
+        beta: artifact("export function decide() { return {}; }"),
       });
 
       const evaluated = await Promise.resolve(
@@ -284,14 +274,11 @@ describe("controller local public spatial runtime", () => {
         alpha: artifact(`
           export async function decide(context) {
             await context.cells.connectedComponents({ kind: "CELLS", ids: [0] });
-            return {
-              commands: [
-                { kind: "CAPITULATE", key: "removed-components-capability" },
-              ],
-            };
+            context.capitulate();
+            return {};
           }
         `),
-        beta: artifact("export function decide() { return { commands: [] }; }"),
+        beta: artifact("export function decide() { return {}; }"),
       });
 
       const evaluated = await Promise.resolve(
@@ -405,7 +392,7 @@ describe("controller local public spatial runtime", () => {
               structuresGet: typeof context.structures?.get,
             };
             if (Object.values(surfaceTypes).some((value) => value !== "function")) {
-              return { commands: [], log: JSON.stringify({ surfaceTypes }) };
+              return { log: JSON.stringify({ surfaceTypes }) };
             }
 
             const factions = context.factions.find({ relation: "ENEMY" });
@@ -435,7 +422,6 @@ describe("controller local public spatial runtime", () => {
               structureMutationBlocked = true;
             }
             return {
-              commands: [],
               log: JSON.stringify({
                 surfaceTypes,
                 factionRef: factions[0].ref,
@@ -515,16 +501,11 @@ describe("controller local public spatial runtime", () => {
               enemy.ref !== "beta" &&
               context.cells.owner(1) === self.ref &&
               context.cells.owner(2) === enemy.ref;
-            return valid
-              ? {
-                  commands: [
-                    { kind: "CAPITULATE", key: "faction-ref-ownership-ok" },
-                  ],
-                }
-              : { commands: [] };
+            if (valid) context.capitulate();
+            return {};
           }
         `),
-        beta: artifact("export function decide() { return { commands: [] }; }"),
+        beta: artifact("export function decide() { return {}; }"),
       });
 
       const evaluated = await Promise.resolve(
@@ -634,7 +615,6 @@ describe("controller local public spatial runtime", () => {
     const request = workerRequest(`
       export function decide(context) {
         return {
-          commands: [],
           log: [
             context.map.cellCount,
             context.map.terrainAt(0),
@@ -652,7 +632,6 @@ describe("controller local public spatial runtime", () => {
       expect(first).toEqual({
         ok: true,
         output: {
-          commands: [],
           log: `4800000:PLAINS:${alphaRef}:${alphaRef}:${alphaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },
@@ -682,7 +661,6 @@ describe("controller local public spatial runtime", () => {
       expect(replaced).toEqual({
         ok: true,
         output: {
-          commands: [],
           log: `4800000:PLAINS:${betaRef}:${betaRef}:${betaRef}`,
         },
         usage: { queries: 0, materializedCells: 0 },

@@ -1,5 +1,7 @@
 import type {
   DirectiveChanges,
+  JsonValue,
+  StrategicWeaponType,
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
@@ -46,10 +48,18 @@ import {
   type UnitDestroyedEvent,
 } from "./SimulationEvents";
 import {
+  tryCommitTransportEmbark,
+  tryStartTransportRecall,
+} from "./Transports";
+import {
   resolvePersistentStructureLifecycleTickWithEvents,
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  canonicalStrategicLaunchReservations,
+  tryCommitStrategicLaunch,
+} from "./StrategicWeapons";
 import {
   resolveAdmittedTankPopulationAttacks,
   resolveAdmittedTankUnitAttackEffects,
@@ -69,13 +79,18 @@ import {
 } from "./TankTargeting";
 import {
   advanceTankProductionPhase,
+  trySetTankStrategicDestination,
+  tryStartTankProduction,
   tankCellTraversalTiming,
   tankNavigationRoute,
   tankOperatingLeashContains,
   tankStrategicNavigationRoute,
   type AdmittedTankPopulationShot,
 } from "./Tanks";
-import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
+import {
+  applyRadioactiveAttackAftershockEvents,
+  tryRelinquishTerritory,
+} from "./TerritoryEffects";
 import {
   projectTankTargetObservation,
   resolveDirectRevealsFromLandOperationEvents,
@@ -143,6 +158,56 @@ export interface PurchaseStructureUpgradeAction {
   readonly ownerId: string;
 }
 
+export interface StartTankProductionAction {
+  readonly type: "START_TANK_PRODUCTION";
+  readonly ownerId: string;
+  readonly factoryId: string;
+  readonly strategicDestinationCellId: number;
+}
+
+export interface SetUnitStrategicDestinationAction {
+  readonly type: "SET_UNIT_STRATEGIC_DESTINATION";
+  readonly ownerId: string;
+  readonly unitId: string;
+  readonly destinationCellId: number;
+}
+
+export interface EmbarkTransportAction {
+  readonly type: "EMBARK_TRANSPORT";
+  readonly ownerId: string;
+  readonly sourceCellId: number;
+  readonly targetCellId: number;
+  readonly population: number;
+}
+
+export interface ReturnTransportAction {
+  readonly type: "RETURN_TRANSPORT";
+  readonly ownerId: string;
+  readonly transportId: string;
+}
+
+export interface TeamSignalAction {
+  readonly type: "TEAM_SIGNAL";
+  readonly senderFactionId: string;
+  readonly channel: string;
+  readonly payload: JsonValue;
+}
+
+export interface RelinquishTerritoryAction {
+  readonly type: "RELINQUISH_TERRITORY";
+  readonly ownerId: string;
+  readonly cellIds: readonly number[];
+}
+
+export interface LaunchStrategicWeaponAction {
+  readonly type: "LAUNCH_STRATEGIC_WEAPON";
+  readonly ownerId: string;
+  readonly launcherId: string;
+  readonly weapon: StrategicWeaponType;
+  readonly targetCellId: number;
+  readonly targetFactionId?: string;
+}
+
 export type SimulationAction =
   | SetTestMarkerAction
   | CapitulateFactionAction
@@ -152,7 +217,14 @@ export type SimulationAction =
   | TransferPopulationAction
   | ApplyPersistentDirectivesAction
   | PurchaseStructureBuildAction
-  | PurchaseStructureUpgradeAction;
+  | PurchaseStructureUpgradeAction
+  | StartTankProductionAction
+  | SetUnitStrategicDestinationAction
+  | EmbarkTransportAction
+  | ReturnTransportAction
+  | TeamSignalAction
+  | RelinquishTerritoryAction
+  | LaunchStrategicWeaponAction;
 
 export interface AcceptedSimulationInput {
   readonly tick: number;
@@ -951,8 +1023,6 @@ export class TickEngine {
       (left, right) => left.sequence - right.sequence,
     );
     const seenSequences = new Set<number>();
-    let working = state;
-
     for (const input of orderedInputs) {
       if (input.tick !== nextTick) {
         throw new Error(
@@ -963,7 +1033,27 @@ export class TickEngine {
         throw new Error(`duplicate accepted input sequence ${input.sequence}`);
       }
       seenSequences.add(input.sequence);
+    }
 
+    const strategicReservations = canonicalStrategicLaunchReservations(
+      state,
+      orderedInputs.flatMap((input) =>
+        input.action.type === "LAUNCH_STRATEGIC_WEAPON"
+          ? [
+              Object.freeze({
+                sequence: input.sequence,
+                ownerId: input.action.ownerId,
+                launcherId: input.action.launcherId,
+                weapon: input.action.weapon,
+                targetCellId: input.action.targetCellId,
+              }),
+            ]
+          : [],
+      ),
+    );
+    let working = state;
+
+    for (const input of orderedInputs) {
       const action = input.action;
       switch (action.type) {
         case "SET_TEST_MARKER":
@@ -1143,6 +1233,110 @@ export class TickEngine {
             factions: purchased.factions,
             structures: purchased.structures,
           });
+          break;
+        }
+        case "START_TANK_PRODUCTION": {
+          const started = tryStartTankProduction(working, {
+            ownerId: action.ownerId,
+            factoryId: action.factoryId,
+            strategicDestinationCellId: action.strategicDestinationCellId,
+          });
+          if (!started.ok) {
+            throw new Error(
+              `accepted Tank production became invalid: ${started.failure.code}`,
+            );
+          }
+          working = started.state;
+          break;
+        }
+        case "SET_UNIT_STRATEGIC_DESTINATION": {
+          const moved = trySetTankStrategicDestination(working, {
+            ownerId: action.ownerId,
+            unitId: action.unitId,
+            destinationCellId: action.destinationCellId,
+          });
+          if (!moved.ok) {
+            throw new Error(
+              `accepted Tank strategic destination became invalid: ${moved.failure.code}`,
+            );
+          }
+          working = moved.state;
+          break;
+        }
+        case "EMBARK_TRANSPORT": {
+          const embarked = tryCommitTransportEmbark(working, {
+            ownerId: action.ownerId,
+            sourceCellId: action.sourceCellId,
+            targetCellId: action.targetCellId,
+            population: action.population,
+          });
+          if (!embarked.ok) {
+            throw new Error(
+              `accepted Transport embark became invalid: ${embarked.failure.code}`,
+            );
+          }
+          working = embarked.state;
+          break;
+        }
+        case "RETURN_TRANSPORT": {
+          const recalled = tryStartTransportRecall(working, {
+            ownerId: action.ownerId,
+            transportId: action.transportId,
+          });
+          if (!recalled.ok) {
+            throw new Error(
+              `accepted Transport recall became invalid: ${recalled.failure.code}`,
+            );
+          }
+          working = recalled.state;
+          break;
+        }
+        case "TEAM_SIGNAL":
+          // Controller-event delivery is transient MatchRuntime state, not MatchState.
+          break;
+        case "RELINQUISH_TERRITORY": {
+          const relinquished = tryRelinquishTerritory(working, {
+            ownerId: action.ownerId,
+            cellIds: action.cellIds,
+          });
+          if (!relinquished.ok) {
+            throw new Error(
+              `accepted territory relinquishment became invalid: ${relinquished.failure.code}`,
+            );
+          }
+          working = createProspectiveMatchState(working, {
+            ownership: relinquished.ownership,
+            fallout: relinquished.fallout,
+          });
+          break;
+        }
+        case "LAUNCH_STRATEGIC_WEAPON": {
+          const reservation = strategicReservations.get(input.sequence);
+          if (reservation === undefined) {
+            throw new Error(
+              `accepted strategic launch ${input.sequence} is missing its canonical reservation`,
+            );
+          }
+          const launched = tryCommitStrategicLaunch(
+            working,
+            {
+              ownerId: action.ownerId,
+              launcherId: action.launcherId,
+              weapon: action.weapon,
+              targetCellId: action.targetCellId,
+              ...(action.targetFactionId === undefined
+                ? {}
+                : { targetFactionId: action.targetFactionId }),
+            },
+            nextTick,
+            reservation,
+          );
+          if (!launched.ok) {
+            throw new Error(
+              `accepted strategic launch became invalid: ${launched.failure.code}`,
+            );
+          }
+          working = launched.state;
           break;
         }
       }

@@ -429,14 +429,12 @@ describe("OperationRef manifestation and lawful read vertical", () => {
               throw new Error("raw operation id crossed worker boundary");
             }
             return {
-              commands: [],
               memory: { operationRef: incoming[0].ref },
               log: JSON.stringify({ phase: "stored", refs: incoming.map((view) => view.ref) }),
             };
           }
           const view = context.operations.get(context.memory.operationRef);
           return {
-            commands: [],
             memory: context.memory,
             log: JSON.stringify({
               phase: "resolved",
@@ -655,23 +653,20 @@ void hostileRevealType;
     const legacy = actionFacadeRuntime("issue178-command-array-rejected-red");
     const before = legacy.stateFingerprint();
     const legacyReceipts = legacy.runControllerRound(
-      new InProcessTestControllerHost(
-        {
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "legacy-command",
-                  structure: "FORT" as const,
-                  cellId: 0,
-                },
-              ],
-            } as unknown as never;
-          },
+      new InProcessTestControllerHost({
+        alpha() {
+          return {
+            commands: [
+              {
+                kind: "BUILD_STRUCTURE" as const,
+                key: "legacy-command",
+                structure: "FORT" as const,
+                cellId: 0,
+              },
+            ],
+          } as unknown as never;
         },
-        { allowLegacyCommands: false },
-      ),
+      }),
     );
     expect(legacyReceipts).not.toBeInstanceOf(Promise);
     const legacyReceipt = (

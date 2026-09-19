@@ -53,6 +53,7 @@ const ALLOWED_BOUNDARY_OWNERS = new Set([
   "SPAWN",
   "STRUCTURES",
   "TANK",
+  "STRATEGIC_WEAPONS",
   "VISIBILITY",
 ]);
 
@@ -562,8 +563,8 @@ describe("simulation dependency firewall", () => {
     const policy = loadSimulationBoundaryPolicy();
 
     expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
-    expect(graph.modules).toHaveLength(42);
-    expect(graph.edges).toHaveLength(153);
+    expect(graph.modules).toHaveLength(43);
+    expect(graph.edges).toHaveLength(171);
   });
 
   it("rejects unclassified, stale, duplicate, and misclassified architecture policy", () => {

@@ -1,11 +1,14 @@
 import type {
   ControllerDecision,
+  ControllerEvent,
   ControllerMemory,
   DecisionFailure,
   DecisionReceipt,
   EconomyView,
+  EventsApi,
   FactionRef,
   FactionStatus,
+  JsonValue,
   PopulationView,
   SpawnInfluenceContext,
   SpawnInfluenceDecision,
@@ -19,8 +22,12 @@ import {
   type ControllerOutputKind,
 } from "../core/controller/ControllerOutputValidation";
 import {
+  controllerTeamSignalPayloadIsValid,
   createControllerQuerySession,
+  materializeControllerTeamSignalPayload,
+  resolveControllerCellSelector,
   type ControllerQuerySession,
+  type ControllerStagedAction,
 } from "./ControllerQueryProjection";
 import {
   createControllerSpatialSurface,
@@ -83,12 +90,19 @@ export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
   readonly ffy: number;
 }
 
+export interface PendingTeamSignalObservation {
+  readonly senderFactionId: string;
+  readonly channel: string;
+  readonly payload: JsonValue;
+}
+
 export interface LawfulControllerObservation {
   readonly tick: number;
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
   readonly economy: Readonly<EconomyView>;
+  readonly events: Readonly<EventsApi>;
   readonly lastDecision?: DecisionReceipt;
 }
 
@@ -98,6 +112,12 @@ export interface LawfulInProcessControllerObservation extends LawfulControllerOb
   readonly segments?: ControllerSpatialSurface["segments"];
   readonly mechanics?: ControllerQuerySession["mechanics"];
   readonly structures?: ControllerQuerySession["structures"];
+  readonly units?: ControllerQuerySession["units"];
+  readonly transports?: ControllerQuerySession["transports"];
+  readonly weapons?: ControllerQuerySession["weapons"];
+  readonly territory?: ControllerQuerySession["territory"];
+  readonly team?: ControllerQuerySession["team"];
+  readonly capitulate?: ControllerQuerySession["capitulate"];
 }
 
 export interface HostedLawfulControllerObservation extends LawfulInProcessControllerObservation {
@@ -115,7 +135,11 @@ export interface ControllerHostFault {
 }
 
 export type ControllerHostInvocationResult<T> =
-  | Readonly<{ readonly ok: true; readonly output?: T }>
+  | Readonly<{
+      readonly ok: true;
+      readonly output?: T;
+      readonly stagedActions?: readonly ControllerStagedAction[];
+    }>
   | Readonly<{ readonly ok: false; readonly fault: ControllerHostFault }>;
 
 export type ControllerHostInvocation<T> =
@@ -353,6 +377,12 @@ function projectInProcessObservation(
     ...createControllerSpatialSurface(querySession),
     mechanics: querySession.mechanics,
     structures: querySession.structures,
+    units: querySession.units,
+    transports: querySession.transports,
+    weapons: querySession.weapons,
+    territory: querySession.territory,
+    team: querySession.team,
+    capitulate: querySession.capitulate,
   });
 }
 
@@ -458,10 +488,19 @@ function trustedInProcessOutputHasExpectedStructure(
   });
 }
 
-function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
-  return output === undefined
-    ? Object.freeze({ ok: true as const })
-    : Object.freeze({ ok: true as const, output });
+function hostSuccess<T>(
+  output?: T,
+  stagedActions: readonly ControllerStagedAction[] = Object.freeze([]),
+): ControllerHostInvocationResult<T> {
+  const actions = Object.freeze([...stagedActions]);
+  if (output === undefined) {
+    return actions.length === 0
+      ? Object.freeze({ ok: true as const })
+      : Object.freeze({ ok: true as const, stagedActions: actions });
+  }
+  return actions.length === 0
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, stagedActions: actions });
 }
 
 function hostFault<T>(
@@ -498,13 +537,9 @@ export class InProcessTestControllerHost implements ControllerHost {
     Record<string, InProcessTestControllerRegistration>
   >;
   private readonly memoryByFaction = new Map<string, string>();
-  private readonly allowLegacyCommands: boolean;
-
   constructor(
     controllers: Readonly<Record<string, InProcessTestControllerRegistration>>,
-    options: Readonly<{ readonly allowLegacyCommands?: boolean }> = {},
   ) {
-    this.allowLegacyCommands = options.allowLegacyCommands ?? true;
     this.controllers = Object.freeze(
       Object.fromEntries(
         Object.entries(controllers).map(([factionId, registration]) => [
@@ -527,48 +562,35 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
-    const withStagedActions = (
-      output: ControllerDecision | void,
-    ): ControllerDecision | void => {
-      const rawCommands = (
-        output as unknown as
-          | { readonly commands?: readonly unknown[] }
-          | undefined
-      )?.commands;
-      if (
-        !this.allowLegacyCommands &&
-        rawCommands !== undefined &&
-        rawCommands.length > 0
-      ) {
-        throw new InvalidControllerValueError(
-          "legacy raw controller commands are not accepted",
-        );
-      }
-      const staged = querySession?.consumeStagedCommands() ?? [];
-      if (staged.length === 0) return output;
-      return Object.freeze({
-        ...(output ?? {}),
-        commands: staged,
-      }) as unknown as ControllerDecision;
+    const attachStagedActions = (
+      result: ControllerHostInvocationResult<ControllerDecision>,
+    ): ControllerHostInvocationResult<ControllerDecision> => {
+      if (!result.ok) return result;
+      return hostSuccess(
+        result.output,
+        querySession?.consumeStagedActions() ?? Object.freeze([]),
+      );
     };
 
     if (typeof registration === "function") {
-      return this.executeInvocation<ControllerDecision>(
-        factionId,
-        "DECIDE",
-        () => withStagedActions(registration(inProcessObservation)),
+      return attachStagedActions(
+        this.executeInvocation<ControllerDecision>(
+          factionId,
+          "DECIDE",
+          () => registration(inProcessObservation),
+        ),
       );
     }
 
-    return this.executeInvocation<ControllerDecision>(
-      factionId,
-      "DECIDE",
-      (memory) =>
-        withStagedActions(
+    return attachStagedActions(
+      this.executeInvocation<ControllerDecision>(
+        factionId,
+        "DECIDE",
+        (memory) =>
           registration.decide?.(
             projectHostedContext(inProcessObservation, memory),
           ),
-        ),
+      ),
     );
   }
 
@@ -813,6 +835,7 @@ export function projectLawfulControllerObservation(
   decisionNumber: number,
   lastDecision: DecisionReceipt | undefined,
   controllerReferences: ControllerFactionReferenceSource,
+  pendingTeamSignals: readonly PendingTeamSignalObservation[] = Object.freeze([]),
 ): LawfulControllerObservation {
   const me = state.factions.find((faction) => faction.id === factionId);
   if (me === undefined) {
@@ -838,6 +861,21 @@ export function projectLawfulControllerObservation(
     ffy: me.ffy,
     passiveFfyPerSecond,
   });
+  const sinceLastDecision = Object.freeze(
+    pendingTeamSignals.map(
+      (signal): ControllerEvent =>
+        Object.freeze({
+          type: "TEAM_SIGNAL_RECEIVED" as const,
+          fromFactionId: requireFactionRef(
+            controllerReferences,
+            signal.senderFactionId,
+          ),
+          channel: signal.channel,
+          payload: cloneLegalValue(signal.payload),
+        }),
+    ),
+  );
+  const events = Object.freeze({ sinceLastDecision });
 
   return Object.freeze({
     tick: state.tick,
@@ -850,6 +888,7 @@ export function projectLawfulControllerObservation(
     ),
     factions,
     economy,
+    events,
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
@@ -868,6 +907,8 @@ function evaluateProposal(
   state: MatchState,
   factionId: string,
   decision: ControllerDecision | void,
+  stagedActions: readonly ControllerStagedAction[],
+  controllerReferences: ControllerFactionReferenceSource,
 ): ProposalEvaluation {
   if (decision === undefined) {
     return Object.freeze({ actions: Object.freeze([]) });
@@ -911,35 +952,42 @@ function evaluateProposal(
     );
   }
 
-  const commands =
-    (
-      decision as unknown as {
-        readonly commands?: readonly import("../core/controller/ControllerApi").ControllerCommand[];
+  let hasStagedCapitulation = false;
+  for (const staged of stagedActions) {
+    if (staged.kind === "TEAM_SIGNAL") {
+      if (
+        typeof staged.channel !== "string" ||
+        !controllerTeamSignalPayloadIsValid(staged.payload)
+      ) {
+        return invalid("INVALID_COMMAND", staged.actionRef);
       }
-    ).commands ?? [];
-  const seenKeys = new Set<string>();
-  let hasCapitulation = false;
-
-  for (const command of commands) {
-    if (seenKeys.has(command.key)) {
-      return invalid("CONFLICTING_PROPOSAL", command.key);
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "TEAM_SIGNAL" as const,
+            senderFactionId: factionId,
+            channel: staged.channel,
+            payload: materializeControllerTeamSignalPayload(staged.payload),
+          }),
+        }),
+      );
+      continue;
     }
-    seenKeys.add(command.key);
-
-    if (command.kind === "CAPITULATE") {
-      if (hasCapitulation) {
-        return invalid("CONFLICTING_PROPOSAL", command.key);
+    if (staged.kind === "CAPITULATE") {
+      if (hasStagedCapitulation) {
+        return invalid("CONFLICTING_PROPOSAL", staged.actionRef);
       }
       const faction = state.factions.find(
         (candidate) => candidate.id === factionId,
       );
       if (faction === undefined || faction.status !== "ACTIVE") {
-        return invalid("INVALID_TARGET", command.key);
+        return invalid("INVALID_TARGET", staged.actionRef);
       }
-      hasCapitulation = true;
+      hasStagedCapitulation = true;
       actions.push(
         Object.freeze({
-          key: command.key,
+          key: staged.actionRef,
           action: Object.freeze({
             type: "CAPITULATE_FACTION" as const,
             factionId,
@@ -948,37 +996,277 @@ function evaluateProposal(
       );
       continue;
     }
-
-    if (command.kind === "BUILD_STRUCTURE") {
+    if (staged.kind === "BUILD_STRUCTURE") {
       actions.push(
         Object.freeze({
-          key: command.key,
+          key: staged.actionRef,
           action: Object.freeze({
             type: "CONTROLLER_PURCHASE_STRUCTURE_BUILD" as const,
             ownerId: factionId,
-            structureType: command.structure,
-            cellId: command.cellId,
+            structureType: staged.structure,
+            cellId: staged.cellId,
           }),
         }),
       );
       continue;
     }
-
-    if (command.kind === "UPGRADE_STRUCTURE") {
+    if (staged.kind === "UPGRADE_STRUCTURE" && "cellId" in staged.structure) {
       actions.push(
         Object.freeze({
-          key: command.key,
+          key: staged.actionRef,
           action: Object.freeze({
             type: "CONTROLLER_PURCHASE_STRUCTURE_UPGRADE" as const,
             ownerId: factionId,
-            cellId: command.cellId,
+            cellId: staged.structure.cellId,
           }),
         }),
       );
       continue;
     }
+    if (staged.kind === "BUILD_UNIT") {
+      if (staged.unit !== "TANK") {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      if (
+        staged.producer === null ||
+        typeof staged.producer !== "object"
+      ) {
+        return invalid("INVALID_PRODUCER", staged.actionRef);
+      }
+      const resolvedProducerId =
+        "ref" in staged.producer
+          ? controllerReferences.resolve(
+              factionId,
+              "STRUCTURE",
+              staged.producer.ref,
+            )
+          : undefined;
+      const factory =
+        resolvedProducerId !== undefined
+          ? state.structures.find(
+              (candidate) =>
+                candidate.id === resolvedProducerId &&
+                candidate.ownerId === factionId &&
+                candidate.type === "FACTORY",
+            )
+          : "cellId" in staged.producer &&
+              state.map.isValidCellId(staged.producer.cellId)
+            ? state.structures.find(
+                (candidate) =>
+                  candidate.cellId === staged.producer.cellId &&
+                  candidate.ownerId === factionId &&
+                  candidate.type === "FACTORY",
+              )
+            : undefined;
+      if (factory === undefined) {
+        return invalid("INVALID_PRODUCER", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "START_TANK_PRODUCTION" as const,
+            ownerId: factionId,
+            factoryId: factory.id,
+            strategicDestinationCellId: staged.destination,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "MOVE_UNIT") {
+      if (staged.unit === null || typeof staged.unit !== "object") {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      const resolvedUnitId =
+        "ref" in staged.unit
+          ? controllerReferences.resolve(
+              factionId,
+              "UNIT",
+              staged.unit.ref,
+            )
+          : undefined;
+      const unit =
+        resolvedUnitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === resolvedUnitId &&
+                candidate.ownerId === factionId,
+            )
+          : "cellId" in staged.unit &&
+              state.map.isValidCellId(staged.unit.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === staged.unit.cellId &&
+                  candidate.ownerId === factionId,
+              )
+            : undefined;
+      if (unit === undefined) {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+        return invalid("INVALID_COMMAND", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "SET_UNIT_STRATEGIC_DESTINATION" as const,
+            ownerId: factionId,
+            unitId: unit.id,
+            destinationCellId: staged.destination,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "EMBARK_TRANSPORT") {
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "EMBARK_TRANSPORT" as const,
+            ownerId: factionId,
+            sourceCellId: staged.sourceCellId,
+            targetCellId: staged.targetCellId,
+            population: staged.population,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "RETURN_TRANSPORT") {
+      if (staged.unit === null || typeof staged.unit !== "object") {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      const resolvedUnitId =
+        "ref" in staged.unit
+          ? controllerReferences.resolve(
+              factionId,
+              "UNIT",
+              staged.unit.ref,
+            )
+          : undefined;
+      const transport =
+        resolvedUnitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === resolvedUnitId &&
+                candidate.ownerId === factionId &&
+                candidate.type === "TRANSPORT_SHIP",
+            )
+          : "cellId" in staged.unit &&
+              state.map.isValidCellId(staged.unit.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === staged.unit.cellId &&
+                  candidate.ownerId === factionId &&
+                  candidate.type === "TRANSPORT_SHIP",
+              )
+            : undefined;
+      if (transport === undefined) {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "RETURN_TRANSPORT" as const,
+            ownerId: factionId,
+            transportId: transport.id,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "RELINQUISH") {
+      let cellIds: readonly number[];
+      try {
+        cellIds = resolveControllerCellSelector(
+          state,
+          factionId,
+          staged.cells,
+          controllerReferences,
+        );
+      } catch {
+        return invalid("INVALID_TARGET", staged.actionRef);
+      }
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "RELINQUISH_TERRITORY" as const,
+            ownerId: factionId,
+            cellIds,
+          }),
+        }),
+      );
+      continue;
+    }
+    if (staged.kind === "LAUNCH_WEAPON") {
+      // Persistent-Silo strategic execution is authoritative here.
+      // Mobile Warship launchers remain a later focused slice.
+      if (
+        staged.launcher === null ||
+        typeof staged.launcher !== "object"
+      ) {
+        return invalid("INVALID_LAUNCHER", staged.actionRef);
+      }
+      const resolvedLauncherId =
+        "ref" in staged.launcher
+          ? controllerReferences.resolve(
+              factionId,
+              "STRUCTURE",
+              staged.launcher.ref,
+            )
+          : undefined;
+      const launcher =
+        resolvedLauncherId !== undefined
+          ? state.structures.find(
+              (candidate) =>
+                candidate.id === resolvedLauncherId &&
+                candidate.ownerId === factionId,
+            )
+          : "cellId" in staged.launcher &&
+              state.map.isValidCellId(staged.launcher.cellId)
+            ? state.structures.find(
+                (candidate) =>
+                  candidate.cellId === staged.launcher.cellId &&
+                  candidate.ownerId === factionId,
+              )
+            : undefined;
+      if (launcher === undefined) {
+        return invalid("INVALID_LAUNCHER", staged.actionRef);
+      }
 
-    return invalid("INVALID_COMMAND", command.key);
+      let targetFactionId: string | undefined;
+      if (staged.targetFaction !== undefined) {
+        targetFactionId = controllerReferences.resolveFaction(
+          staged.targetFaction,
+        );
+        if (targetFactionId === undefined) {
+          return invalid("INVALID_TARGET", staged.actionRef);
+        }
+      }
+
+      actions.push(
+        Object.freeze({
+          key: staged.actionRef,
+          action: Object.freeze({
+            type: "LAUNCH_STRATEGIC_WEAPON" as const,
+            ownerId: factionId,
+            launcherId: launcher.id,
+            weapon: staged.weapon,
+            targetCellId: staged.targetCellId,
+            ...(targetFactionId === undefined
+              ? {}
+              : { targetFactionId }),
+          }),
+        }),
+      );
+      continue;
+    }
+    return invalid("INVALID_COMMAND", staged.actionRef);
   }
 
   return Object.freeze({ actions: Object.freeze(actions) });
@@ -1010,8 +1298,13 @@ function finalizeControllerRound(
   previousFaultCounts: ReadonlyMap<string, number>,
   previousConsecutiveFaultCounts: ReadonlyMap<string, number>,
   previousFaultedFactionIds: ReadonlySet<string>,
+  controllerReferences: ControllerFactionReferenceSource,
 ): ControllerRoundEvaluation {
   const proposals = new Map<string, ControllerDecision | void>();
+  const stagedActionsByFaction = new Map<
+    string,
+    readonly ControllerStagedAction[]
+  >();
   const invocationFailures = new Map<string, DecisionFailure>();
   const faultCounts = new Map(previousFaultCounts);
   const consecutiveFaultCounts = new Map(previousConsecutiveFaultCounts);
@@ -1056,6 +1349,10 @@ function finalizeControllerRound(
 
     consecutiveFaultCounts.set(outcome.factionId, 0);
     proposals.set(outcome.factionId, invocation.output);
+    stagedActionsByFaction.set(
+      outcome.factionId,
+      invocation.stagedActions ?? Object.freeze([]),
+    );
   }
 
   const actions: SimulationAction[] = [];
@@ -1074,6 +1371,8 @@ function finalizeControllerRound(
         state,
         factionId,
         proposals.get(factionId),
+        stagedActionsByFaction.get(factionId) ?? Object.freeze([]),
+        controllerReferences,
       );
       failure = evaluated.failure;
       evaluatedActions = evaluated.actions;
@@ -1145,6 +1444,10 @@ export function evaluateControllerRound(
   previousConsecutiveFaultCounts: ReadonlyMap<string, number> = new Map(),
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
   controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
+  pendingTeamSignalsByFaction: ReadonlyMap<
+    string,
+    readonly PendingTeamSignalObservation[]
+  > = new Map(),
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
   if (controllerReferences === undefined) {
     throw new Error("controller reference session is required for controller round");
@@ -1180,6 +1483,7 @@ export function evaluateControllerRound(
       decisionNumber,
       previousReceipts.get(factionId),
       controllerReferences,
+      pendingTeamSignalsByFaction.get(factionId) ?? Object.freeze([]),
     );
     const querySession = createControllerQuerySession(
       state,
@@ -1216,6 +1520,7 @@ export function evaluateControllerRound(
       previousFaultCounts,
       previousConsecutiveFaultCounts,
       previousFaultedFactionIds,
+      controllerReferences,
     );
 
   if (!hasAsyncInvocation) {

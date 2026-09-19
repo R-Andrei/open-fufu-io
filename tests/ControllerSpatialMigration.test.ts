@@ -132,7 +132,7 @@ describe("controller spatial API migration", () => {
             expect(context.cells.owner(2)).toBeUndefined();
             expect(context.segments.cellIds(0)).toBeUndefined();
             spatialSurfaceSeen = true;
-            return { commands: [] };
+            return {};
           },
         },
       }),

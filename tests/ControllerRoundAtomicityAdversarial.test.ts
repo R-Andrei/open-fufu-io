@@ -109,12 +109,14 @@ function hostWithInvoke(
 function capitulate(key: string): ControllerHostInvocationResult<ControllerDecision> {
   return Object.freeze({
     ok: true as const,
-    output: Object.freeze({
-      commands: Object.freeze([
-        Object.freeze({ kind: "CAPITULATE" as const, key }),
-      ]),
-    }),
-  });
+    output: Object.freeze({}),
+    stagedActions: Object.freeze([
+      Object.freeze({
+        kind: "CAPITULATE" as const,
+        actionRef: key,
+      }),
+    ]),
+  }) as unknown as ControllerHostInvocationResult<ControllerDecision>;
 }
 
 function syncReceipts(
@@ -136,46 +138,46 @@ function receiptFor(
 }
 
 function buildFortHost(key: string) {
-  return new InProcessTestControllerHost({
-    alpha() {
-      return {
-        commands: [
-          {
-            kind: "BUILD_STRUCTURE" as const,
-            key,
-            structure: "FORT" as const,
-            cellId: 0,
-          },
-        ],
-      };
-    },
-  });
+  return hostWithInvoke(() =>
+    Object.freeze({
+      ok: true as const,
+      output: Object.freeze({}),
+      stagedActions: Object.freeze([
+        Object.freeze({
+          kind: "BUILD_STRUCTURE" as const,
+          actionRef: key,
+          structure: "FORT" as const,
+          cellId: 0,
+        }),
+      ]),
+    }) as unknown as ControllerHostInvocationResult<ControllerDecision>,
+  );
 }
 
 function upgradeFortHost(key: string) {
-  return new InProcessTestControllerHost({
-    alpha() {
-      return {
-        commands: [
-          {
-            kind: "UPGRADE_STRUCTURE",
-            key,
-            cellId: 0,
-          },
-        ],
-      } as unknown as ControllerDecision;
-    },
-  });
+  return hostWithInvoke(() =>
+    Object.freeze({
+      ok: true as const,
+      output: Object.freeze({}),
+      stagedActions: Object.freeze([
+        Object.freeze({
+          kind: "UPGRADE_STRUCTURE" as const,
+          actionRef: key,
+          structure: Object.freeze({ cellId: 0 }),
+        }),
+      ]),
+    }) as unknown as ControllerHostInvocationResult<ControllerDecision>,
+  );
 }
 
-function legacyUpgradeHost(key: string) {
+function legacyUpgradeHost(_key: string) {
   return new InProcessTestControllerHost({
     alpha() {
       return {
         commands: [
           {
             kind: "UPGRADE_STRUCTURE",
-            key,
+            key: "legacy-id-upgrade",
             structureId: "fort-alpha-internal",
           },
         ],
@@ -401,26 +403,16 @@ describe("controller-round transaction adversarial behavior", () => {
   it("rolls back an entire proposal when an earlier affordable build consumes FFY needed by a later build", () => {
     const match = twoBuildRuntime("controller-two-build-aggregate-red");
     for (let tick = 0; tick < 250; tick += 1) match.tick();
-    const host = new InProcessTestControllerHost({
-      alpha() {
-        return {
-          commands: [
-            {
-              kind: "BUILD_STRUCTURE" as const,
-              key: "first-fort",
-              structure: "FORT" as const,
-              cellId: 0,
-            },
-            {
-              kind: "BUILD_STRUCTURE" as const,
-              key: "second-fort",
-              structure: "FORT" as const,
-              cellId: 10,
-            },
-          ],
-        };
-      },
-    });
+    const host = hostWithInvoke(() =>
+      Object.freeze({
+        ok: true as const,
+        output: Object.freeze({}),
+        stagedActions: Object.freeze([
+          Object.freeze({ kind: "BUILD_STRUCTURE" as const, actionRef: "first-fort", structure: "FORT" as const, cellId: 0 }),
+          Object.freeze({ kind: "BUILD_STRUCTURE" as const, actionRef: "second-fort", structure: "FORT" as const, cellId: 10 }),
+        ]),
+      }) as unknown as ControllerHostInvocationResult<ControllerDecision>,
+    );
 
     const receipts = syncReceipts(match.runControllerRound(host));
 
@@ -435,25 +427,16 @@ describe("controller-round transaction adversarial behavior", () => {
   it("does not address a structure built earlier in the same proposal and rolls the proposal back", () => {
     const match = structureRuntime("controller-build-then-upgrade-proof");
     for (let tick = 0; tick < 1_250; tick += 1) match.tick();
-    const host = new InProcessTestControllerHost({
-      alpha() {
-        return {
-          commands: [
-            {
-              kind: "BUILD_STRUCTURE" as const,
-              key: "build-new-fort",
-              structure: "FORT" as const,
-              cellId: 0,
-            },
-            {
-              kind: "UPGRADE_STRUCTURE" as const,
-              key: "upgrade-new-fort",
-              cellId: 0,
-            },
-          ],
-        };
-      },
-    });
+    const host = hostWithInvoke(() =>
+      Object.freeze({
+        ok: true as const,
+        output: Object.freeze({}),
+        stagedActions: Object.freeze([
+          Object.freeze({ kind: "BUILD_STRUCTURE" as const, actionRef: "build-new-fort", structure: "FORT" as const, cellId: 0 }),
+          Object.freeze({ kind: "UPGRADE_STRUCTURE" as const, actionRef: "upgrade-new-fort", structure: Object.freeze({ cellId: 0 }) }),
+        ]),
+      }) as unknown as ControllerHostInvocationResult<ControllerDecision>,
+    );
 
     const receipts = syncReceipts(match.runControllerRound(host));
 
@@ -471,24 +454,15 @@ describe("controller-round transaction adversarial behavior", () => {
     const buildReceipts = syncReceipts(
       buildMatch.runControllerRound(
         new InProcessTestControllerHost({
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "out-of-range-build",
-                  structure: "FORT" as const,
-                  cellId: outOfRangeCell,
-                },
-              ],
-            };
+          alpha(context) {
+            context.structures!.build("FORT", outOfRangeCell);
+            return {};
           },
         }),
       ),
     );
     const buildReceipt = receiptFor(buildReceipts, "alpha");
     expect(buildReceipt.accepted).toBe(false);
-    expect(buildReceipt.failure?.key).toBe("out-of-range-build");
     expect(buildReceipt.failure?.code).not.toBe("RUNTIME_ERROR");
     expect(buildMatch.acceptedInputs()).toEqual([]);
     expect(buildMatch.snapshot().structures).toEqual([]);
@@ -497,23 +471,15 @@ describe("controller-round transaction adversarial behavior", () => {
     const upgradeReceipts = syncReceipts(
       upgradeMatch.runControllerRound(
         new InProcessTestControllerHost({
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "UPGRADE_STRUCTURE" as const,
-                  key: "out-of-range-upgrade",
-                  cellId: outOfRangeCell,
-                },
-              ],
-            };
+          alpha(context) {
+            context.structures!.upgrade({ cellId: outOfRangeCell });
+            return {};
           },
         }),
       ),
     );
     const upgradeReceipt = receiptFor(upgradeReceipts, "alpha");
     expect(upgradeReceipt.accepted).toBe(false);
-    expect(upgradeReceipt.failure?.key).toBe("out-of-range-upgrade");
     expect(upgradeReceipt.failure?.code).not.toBe("RUNTIME_ERROR");
     expect(upgradeMatch.acceptedInputs()).toEqual([]);
     expect(upgradeMatch.snapshot().structures).toEqual([]);

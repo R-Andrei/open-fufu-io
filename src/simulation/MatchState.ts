@@ -1,4 +1,5 @@
 import type {
+  CellId,
   FactionStatus,
   OriginView,
   StructureType,
@@ -69,6 +70,54 @@ const STRUCTURE_TYPES = new Set<StructureType>([
 type MatchTankOperationalState = TankOperationalState &
   Readonly<{ roamingOrdinal?: number }>;
 
+export interface StrategicBlastProfileState {
+  readonly profileVersion: "STRATEGIC_BLAST_V1";
+  readonly innerNumerator: number;
+  readonly outerNumerator: number;
+  readonly profileDenominator: number;
+}
+
+export interface MirvPayloadChildState {
+  readonly targetCellId: number;
+  readonly blastSeed: number;
+}
+
+export interface MirvPayloadState {
+  readonly childSpeedCellsPerSecond: number;
+  readonly distributionRadiusCells: number;
+  readonly minimumCenterSpacingCells: number;
+  readonly children: readonly MirvPayloadChildState[];
+}
+
+export interface StrategicProjectileState {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly launcherId: string;
+  readonly weapon: import("../core/controller/ControllerApi").StrategicWeaponType;
+  readonly launchCellId: number;
+  readonly targetCellId: number;
+  readonly targetFactionId?: string;
+  readonly acceptedLaunchOrdinal: number;
+  readonly consumedChargeSlotId: number;
+  readonly launchedAtTick: number;
+  readonly speedCellsPerSecond: number;
+  readonly blastProfile: StrategicBlastProfileState;
+  readonly blastSeed: number;
+  readonly mirvPayload?: MirvPayloadState;
+}
+
+export interface TransportOperationState {
+  readonly unitId: string;
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly embarkCellId: CellId;
+  readonly landingCellId: CellId;
+  readonly carriedPopulation: number;
+  readonly phase: "OUTBOUND" | "RETURNING";
+  readonly returnWaterCellId?: CellId;
+  readonly returnCoastCellId?: CellId;
+}
+
 export interface MatchFactionState {
   readonly id: string;
   readonly displayName: string;
@@ -80,6 +129,7 @@ export interface MatchFactionState {
   readonly ffy: number;
   readonly lifetimeGrossPositiveFfyEarned: number;
   readonly successfulStructurePurchaseTypes: readonly StructureType[];
+  readonly mirvUseEntitlementConsumed?: true;
   readonly testMarker: number;
   readonly fixedTeamId?: string;
 }
@@ -94,9 +144,11 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly transportOperations?: readonly TransportOperationState[];
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
+  readonly strategicProjectiles: readonly StrategicProjectileState[];
   readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -112,9 +164,11 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly transportOperations?: readonly TransportOperationState[];
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
+  readonly strategicProjectiles?: readonly StrategicProjectileState[];
   readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
@@ -196,6 +250,12 @@ function freezeFactions(
         faction.lifetimeGrossPositiveFfyEarned,
         "lifetimeGrossPositiveFfyEarned",
       );
+      if (
+        faction.mirvUseEntitlementConsumed !== undefined &&
+        faction.mirvUseEntitlementConsumed !== true
+      ) {
+        throw new Error("mirvUseEntitlementConsumed may only be true when present");
+      }
       const origin = freezeOrigin(faction.origin);
       return Object.freeze({
         id: faction.id,
@@ -211,6 +271,9 @@ function freezeFactions(
           freezeSuccessfulStructurePurchaseTypes(
             faction.successfulStructurePurchaseTypes ?? [],
           ),
+        ...(faction.mirvUseEntitlementConsumed === true
+          ? { mirvUseEntitlementConsumed: true as const }
+          : {}),
         testMarker: faction.testMarker,
         ...(faction.fixedTeamId === undefined
           ? {}
@@ -291,6 +354,251 @@ function freezeHostilityGrace(
           ),
       ),
   );
+}
+
+function freezeTransportOperations(
+  entries: readonly TransportOperationState[],
+  map: SimulationMap,
+): readonly TransportOperationState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("transportOperations must be an array");
+  }
+  const seen = new Set<string>();
+  const frozen = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Transport operation must be an object");
+    }
+    if (
+      typeof entry.unitId !== "string" ||
+      entry.unitId.length === 0 ||
+      seen.has(entry.unitId)
+    ) {
+      throw new Error("Transport operation unitId must be unique and non-empty");
+    }
+    seen.add(entry.unitId);
+    for (const [label, cellId] of [
+      ["sourceCellId", entry.sourceCellId],
+      ["targetCellId", entry.targetCellId],
+      ["embarkCellId", entry.embarkCellId],
+      ["landingCellId", entry.landingCellId],
+    ] as const) {
+      if (!map.isValidCellId(cellId)) {
+        throw new Error(`Transport operation ${label} must be a valid map cell`);
+      }
+    }
+    if (
+      !Number.isSafeInteger(entry.carriedPopulation) ||
+      entry.carriedPopulation <= 0
+    ) {
+      throw new Error("Transport operation carriedPopulation must be a positive safe integer");
+    }
+    if (entry.phase !== "OUTBOUND" && entry.phase !== "RETURNING") {
+      throw new Error("Transport operation phase is invalid");
+    }
+    if (entry.phase === "OUTBOUND") {
+      if (
+        entry.returnWaterCellId !== undefined ||
+        entry.returnCoastCellId !== undefined
+      ) {
+        throw new Error("OUTBOUND Transport operation cannot carry return endpoint state");
+      }
+      return Object.freeze({
+        unitId: entry.unitId,
+        sourceCellId: entry.sourceCellId,
+        targetCellId: entry.targetCellId,
+        embarkCellId: entry.embarkCellId,
+        landingCellId: entry.landingCellId,
+        carriedPopulation: entry.carriedPopulation,
+        phase: entry.phase,
+      });
+    }
+    if (
+      entry.returnWaterCellId === undefined ||
+      entry.returnCoastCellId === undefined ||
+      !map.isValidCellId(entry.returnWaterCellId) ||
+      !map.isValidCellId(entry.returnCoastCellId)
+    ) {
+      throw new Error("RETURNING Transport operation requires valid return endpoints");
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      sourceCellId: entry.sourceCellId,
+      targetCellId: entry.targetCellId,
+      embarkCellId: entry.embarkCellId,
+      landingCellId: entry.landingCellId,
+      carriedPopulation: entry.carriedPopulation,
+      phase: entry.phase,
+      returnWaterCellId: entry.returnWaterCellId,
+      returnCoastCellId: entry.returnCoastCellId,
+    });
+  });
+  frozen.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(frozen);
+}
+
+function freezeStrategicProjectiles(
+  entries: readonly StrategicProjectileState[],
+  map: SimulationMap,
+): readonly StrategicProjectileState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("strategicProjectiles must be an array");
+  }
+  const seen = new Set<string>();
+  const frozen = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("strategic projectile must be an object");
+    }
+    if (
+      typeof entry.id !== "string" ||
+      entry.id.length === 0 ||
+      seen.has(entry.id)
+    ) {
+      throw new Error("strategic projectile id must be unique and non-empty");
+    }
+    seen.add(entry.id);
+    if (
+      typeof entry.ownerId !== "string" ||
+      entry.ownerId.length === 0 ||
+      typeof entry.launcherId !== "string" ||
+      entry.launcherId.length === 0
+    ) {
+      throw new Error("strategic projectile owner/launcher identity is invalid");
+    }
+    if (
+      entry.weapon !== "ATOM_BOMB" &&
+      entry.weapon !== "HYDROGEN_BOMB" &&
+      entry.weapon !== "MIRV"
+    ) {
+      throw new Error("strategic projectile weapon is invalid");
+    }
+    if (
+      !map.isValidCellId(entry.launchCellId) ||
+      !map.isValidCellId(entry.targetCellId)
+    ) {
+      throw new Error("strategic projectile cells must be valid map cells");
+    }
+    assertNonNegativeSafeInteger(
+      entry.acceptedLaunchOrdinal,
+      "strategic projectile acceptedLaunchOrdinal",
+    );
+    assertNonNegativeSafeInteger(
+      entry.consumedChargeSlotId,
+      "strategic projectile consumedChargeSlotId",
+    );
+    assertNonNegativeSafeInteger(
+      entry.launchedAtTick,
+      "strategic projectile launchedAtTick",
+    );
+    if (
+      !Number.isFinite(entry.speedCellsPerSecond) ||
+      entry.speedCellsPerSecond <= 0
+    ) {
+      throw new Error("strategic projectile speed must be finite and positive");
+    }
+    if (
+      entry.blastProfile === null ||
+      typeof entry.blastProfile !== "object" ||
+      entry.blastProfile.profileVersion !== "STRATEGIC_BLAST_V1" ||
+      !Number.isSafeInteger(entry.blastProfile.innerNumerator) ||
+      entry.blastProfile.innerNumerator < 0 ||
+      !Number.isSafeInteger(entry.blastProfile.outerNumerator) ||
+      entry.blastProfile.outerNumerator < entry.blastProfile.innerNumerator ||
+      !Number.isSafeInteger(entry.blastProfile.profileDenominator) ||
+      entry.blastProfile.profileDenominator <= 0
+    ) {
+      throw new Error("strategic projectile blast profile is invalid");
+    }
+    if (
+      !Number.isSafeInteger(entry.blastSeed) ||
+      entry.blastSeed < 0 ||
+      entry.blastSeed > 0xffff_ffff
+    ) {
+      throw new Error("strategic projectile blastSeed must be uint32");
+    }
+
+    let mirvPayload: MirvPayloadState | undefined;
+    if (entry.weapon === "MIRV") {
+      const payload = entry.mirvPayload;
+      if (payload === undefined || payload === null || typeof payload !== "object") {
+        throw new Error("MIRV strategic projectile requires a payload");
+      }
+      if (
+        !Number.isFinite(payload.childSpeedCellsPerSecond) ||
+        payload.childSpeedCellsPerSecond <= 0 ||
+        !Number.isSafeInteger(payload.distributionRadiusCells) ||
+        payload.distributionRadiusCells <= 0 ||
+        !Number.isSafeInteger(payload.minimumCenterSpacingCells) ||
+        payload.minimumCenterSpacingCells <= 0 ||
+        !Array.isArray(payload.children) ||
+        payload.children.length < 1 ||
+        payload.children.length > 250
+      ) {
+        throw new Error("MIRV payload profile is invalid");
+      }
+      const seenTargets = new Set<number>();
+      const children = payload.children.map(
+        (child: MirvPayloadChildState, childIndex: number) => {
+        if (
+          child === null ||
+          typeof child !== "object" ||
+          !map.isValidCellId(child.targetCellId) ||
+          seenTargets.has(child.targetCellId) ||
+          !Number.isSafeInteger(child.blastSeed) ||
+          child.blastSeed < 0 ||
+          child.blastSeed > 0xffff_ffff
+        ) {
+          throw new Error("MIRV payload child is invalid");
+        }
+        if (childIndex === 0 && child.targetCellId !== entry.targetCellId) {
+          throw new Error("MIRV payload child 0 must target the primary cell");
+        }
+        seenTargets.add(child.targetCellId);
+          return Object.freeze({
+            targetCellId: child.targetCellId,
+            blastSeed: child.blastSeed,
+          });
+        },
+      );
+      mirvPayload = Object.freeze({
+        childSpeedCellsPerSecond: payload.childSpeedCellsPerSecond,
+        distributionRadiusCells: payload.distributionRadiusCells,
+        minimumCenterSpacingCells: payload.minimumCenterSpacingCells,
+        children: Object.freeze(children),
+      });
+    } else if (entry.mirvPayload !== undefined) {
+      throw new Error("non-MIRV strategic projectile cannot carry a MIRV payload");
+    }
+    return Object.freeze({
+      id: entry.id,
+      ownerId: entry.ownerId,
+      launcherId: entry.launcherId,
+      weapon: entry.weapon,
+      launchCellId: entry.launchCellId,
+      targetCellId: entry.targetCellId,
+      ...(entry.targetFactionId === undefined
+        ? {}
+        : { targetFactionId: entry.targetFactionId }),
+      acceptedLaunchOrdinal: entry.acceptedLaunchOrdinal,
+      consumedChargeSlotId: entry.consumedChargeSlotId,
+      launchedAtTick: entry.launchedAtTick,
+      speedCellsPerSecond: entry.speedCellsPerSecond,
+      blastProfile: Object.freeze({
+        profileVersion: "STRATEGIC_BLAST_V1" as const,
+        innerNumerator: entry.blastProfile.innerNumerator,
+        outerNumerator: entry.blastProfile.outerNumerator,
+        profileDenominator: entry.blastProfile.profileDenominator,
+      }),
+      blastSeed: entry.blastSeed,
+      ...(mirvPayload === undefined ? {} : { mirvPayload }),
+    });
+  });
+  frozen.sort(
+    (left, right) =>
+      compareIds(left.launcherId, right.launcherId) ||
+      left.acceptedLaunchOrdinal - right.acceptedLaunchOrdinal ||
+      compareIds(left.id, right.id),
+  );
+  return Object.freeze(frozen);
 }
 
 function freezeDirectReveals(
@@ -680,6 +988,10 @@ function createState(
     mobileUnits.mobileUnits,
     previous.map,
   );
+  const transportOperations = freezeTransportOperations(
+    update.transportOperations ?? previous.transportOperations ?? [],
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -690,6 +1002,7 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    ...(transportOperations.length === 0 ? {} : { transportOperations }),
     ...factoryTrains,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
@@ -699,6 +1012,10 @@ function createState(
       update.warshipProductionJobs ?? previous.warshipProductionJobs ?? [],
     ),
     tankOperationalStates,
+    strategicProjectiles: freezeStrategicProjectiles(
+      update.strategicProjectiles ?? previous.strategicProjectiles ?? [],
+      previous.map,
+    ),
     directReveals: freezeDirectReveals(
       update.directReveals ?? previous.directReveals ?? [],
     ),
@@ -793,6 +1110,7 @@ function createEmptyInitialMatchState(
     tankProductionJobs: Object.freeze([]),
     warshipProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
+    strategicProjectiles: Object.freeze([]),
     directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
@@ -910,6 +1228,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       successfulStructurePurchaseTypes: [
         ...(faction.successfulStructurePurchaseTypes ?? []),
       ],
+      ...(faction.mirvUseEntitlementConsumed === true
+        ? { mirvUseEntitlementConsumed: true }
+        : {}),
       testMarker: faction.testMarker,
       rules: {
         version: faction.rules.version,
@@ -957,6 +1278,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
                   },
             ),
           }),
+      ...(structure.acceptedLaunchCount === undefined
+        ? {}
+        : { acceptedLaunchCount: structure.acceptedLaunchCount }),
       acquisitionPath: structure.acquisitionPath,
     }));
 
@@ -982,6 +1306,24 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
               edgeProgress: unit.route.edgeProgress,
             },
           }),
+    }));
+
+  const transportOperations = [...(state.transportOperations ?? [])]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      sourceCellId: entry.sourceCellId,
+      targetCellId: entry.targetCellId,
+      embarkCellId: entry.embarkCellId,
+      landingCellId: entry.landingCellId,
+      carriedPopulation: entry.carriedPopulation,
+      phase: entry.phase,
+      ...(entry.returnWaterCellId === undefined
+        ? {}
+        : { returnWaterCellId: entry.returnWaterCellId }),
+      ...(entry.returnCoastCellId === undefined
+        ? {}
+        : { returnCoastCellId: entry.returnCoastCellId }),
     }));
 
   const factoryTrains = serializeFactoryTrainState(state);
@@ -1066,6 +1408,50 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const strategicProjectiles = [...state.strategicProjectiles]
+    .sort(
+      (left, right) =>
+        compareIds(left.launcherId, right.launcherId) ||
+        left.acceptedLaunchOrdinal - right.acceptedLaunchOrdinal ||
+        compareIds(left.id, right.id),
+    )
+    .map((entry) => ({
+      id: entry.id,
+      ownerId: entry.ownerId,
+      launcherId: entry.launcherId,
+      weapon: entry.weapon,
+      launchCellId: entry.launchCellId,
+      targetCellId: entry.targetCellId,
+      ...(entry.targetFactionId === undefined
+        ? {}
+        : { targetFactionId: entry.targetFactionId }),
+      acceptedLaunchOrdinal: entry.acceptedLaunchOrdinal,
+      consumedChargeSlotId: entry.consumedChargeSlotId,
+      launchedAtTick: entry.launchedAtTick,
+      speedCellsPerSecond: entry.speedCellsPerSecond,
+      blastProfile: {
+        profileVersion: entry.blastProfile.profileVersion,
+        innerNumerator: entry.blastProfile.innerNumerator,
+        outerNumerator: entry.blastProfile.outerNumerator,
+        profileDenominator: entry.blastProfile.profileDenominator,
+      },
+      blastSeed: entry.blastSeed,
+      ...(entry.mirvPayload === undefined
+        ? {}
+        : {
+            mirvPayload: {
+              childSpeedCellsPerSecond: entry.mirvPayload.childSpeedCellsPerSecond,
+              distributionRadiusCells: entry.mirvPayload.distributionRadiusCells,
+              minimumCenterSpacingCells:
+                entry.mirvPayload.minimumCenterSpacingCells,
+              children: entry.mirvPayload.children.map((child) => ({
+                targetCellId: child.targetCellId,
+                blastSeed: child.blastSeed,
+              })),
+            },
+          }),
+    }));
+
   const directReveals = state.directReveals.map((entry) => ({
     viewerFactionId: entry.viewerFactionId,
     sourceKind: entry.sourceKind,
@@ -1135,12 +1521,14 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    ...(transportOperations.length === 0 ? {} : { transportOperations }),
     factoryRailLoops: factoryTrains.factoryRailLoops,
     factoryTrainEpochs: factoryTrains.factoryTrainEpochs,
     trainServices: factoryTrains.trainServices,
     tankProductionJobs,
     warshipProductionJobs,
     tankOperationalStates,
+    strategicProjectiles,
     directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]

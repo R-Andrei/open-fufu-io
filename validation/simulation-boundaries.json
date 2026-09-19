@@ -43,7 +43,8 @@
     "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
-    "src/simulation/Warships.ts": "NAVAL"
+    "src/simulation/Warships.ts": "NAVAL",
+    "src/simulation/StrategicWeapons.ts": "STRATEGIC_WEAPONS"
   },
   "crossOwnerImports": [
     {
@@ -66,9 +67,39 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Strategic-Weapons-owned prospective launch admission against the immutable decision snapshot for lawful checkLaunch results; it does not commit launcher/resource/projectile state."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection reads current Structure state/mechanics for lawful quotes and views; it does not convey an occurrence."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Tank-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/TerritoryEffects.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Land-owned prospective territory-relinquishment validation against the immutable decision snapshot for lawful quotes; it does not commit ownership or Fallout."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Naval-owned prospective Transport embark admission against the immutable decision snapshot for lawful checkEmbark results; it does not commit FFY, Population, unit, route, or Transport-operation state."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller query projection invokes Naval-owned prospective production admission against the immutable decision snapshot for lawful unit-build checks; the returned prospective state is not committed and no occurrence channel is created."
     },
     {
       "from": "src/simulation/ControllerReferenceSession.ts",
@@ -264,9 +295,33 @@
     },
     {
       "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller strategic-launch actions through the Strategic-Weapons-owned atomic launch transaction before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "ORCHESTRATION",
       "rationale": "MatchRuntime explicitly composes this subsystem boundary in deterministic authoritative runtime order; it is not listener-style occurrence delivery."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Tanks.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller Tank production and strategic-destination actions through Tank-owned authoritative transactions before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/TerritoryEffects.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller relinquishment actions through the Land-owned atomic territory relinquishment primitive before TickEngine commit."
+    },
+    {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller Transport embark/recall actions through Naval-owned atomic Transport transactions before TickEngine commit."
     },
     {
       "from": "src/simulation/MatchSpec.ts",
@@ -441,6 +496,30 @@
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Strategic Spawn reads current or prospective MatchState while evaluating legal deterministic choices."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Strategic launch transaction uses the Economy-owned canonical FFY debit primitive for atomic effective weapon payment."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "A committed strategic launch delegates one-shot directed-hostility grace mutation to the Hostility owner when its intended target resolves to an opposing side."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Strategic weapon launch admission/commit consumes and materializes the canonical MatchState contract, including replay-stable projectile state."
+    },
+    {
+      "from": "src/simulation/StrategicWeapons.ts",
+      "to": "src/simulation/Structures.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Strategic launch transaction consumes the Structures-owned Silo charge bank/effective recharge contract and materializes the updated physical launcher state."
     },
     {
       "from": "src/simulation/Structures.ts",
@@ -642,6 +721,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/StrategicWeapons.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine commits accepted strategic-launch simulation inputs through the Strategic-Weapons-owned atomic launch transaction."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
@@ -675,6 +760,12 @@
       "to": "src/simulation/TerritoryEffects.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine delivers canonical radioactive-aftershock facts to the Land-owned territorial-effects consumer in deterministic Tank-stage order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/Transports.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine commits accepted Transport embark/recall simulation inputs through Naval-owned atomic Transport transactions in deterministic authoritative order."
     },
     {
       "from": "src/simulation/TickEngine.ts",
@@ -726,6 +817,18 @@
     },
     {
       "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Economy.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport embark admission applies the Economy-owned canonical FFY debit primitive atomically with the accepted Naval Transport transaction."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/LandOperationsCore.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Transport admission reuses Land-owned ordinary traversability and land-sided COAST predicates as canonical terrain contracts; no lifecycle occurrence crosses the boundary."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Transport endpoint resolution/materialization and post-success landing consequences read and materialize current authoritative MatchState while applying Naval-owned Transport lifecycle semantics."
@@ -741,6 +844,12 @@
       "to": "src/simulation/Navigation.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "Transport endpoint resolution consumes the canonical navigation substrate for deterministic strategic-intent endpoint pairing and water routing."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport embark commit applies the Population-owned canonical AVAILABLE-to-TRANSPORT repartition primitive atomically with Naval Transport materialization."
     },
     {
       "from": "src/simulation/Transports.ts",

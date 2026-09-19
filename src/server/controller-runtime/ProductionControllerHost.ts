@@ -8,7 +8,12 @@ import type {
   SpawnReconsiderContext,
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
-import type { ControllerQuerySession } from "../../simulation/ControllerQueryProjection";
+import {
+  CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
+  controllerTeamSignalPayloadIsValid,
+  type ControllerQuerySession,
+  type ControllerStagedAction,
+} from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
   CONTROLLER_MEMORY_MAX_BYTES,
@@ -32,12 +37,12 @@ export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
   materializedCellsPerDecision:
     CONTROLLER_QUERY_LIMITS.materializedCellsPerDecision,
   directiveUpdatesPerDecision: 128,
-  commandsPerDecision: 64,
+  actionsPerDecision: 64,
   policyRulesPerDecision: 256,
   debugItemsPerDecision: 256,
   logBytesPerDecision: 8 * 1024,
   eventsPerDecision: 512,
-  teamSignalPayloadBytes: 1024,
+  teamSignalPayloadBytes: CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
 });
 
 export interface ControllerRuntimeArtifact {
@@ -85,6 +90,7 @@ export type ControllerWorkerResponse =
   | Readonly<{
       readonly ok: true;
       readonly output?: unknown;
+      readonly stagedActions?: readonly ControllerStagedAction[];
       readonly usage: ControllerResourceUsage;
     }>
   | Readonly<{
@@ -207,65 +213,19 @@ function cloneWorkerContext(context: object): Readonly<Record<string, unknown>> 
   return Object.freeze(clone);
 }
 
-function canonicalizeJsonValue(
-  value: unknown,
-  ancestors: Set<object>,
-): string {
-  if (value === null) return "null";
-
-  switch (typeof value) {
-    case "boolean":
-      return value ? "true" : "false";
-    case "number":
-      if (!Number.isFinite(value)) {
-        throw new InvalidTransportValueError("JSON number must be finite");
-      }
-      return JSON.stringify(Object.is(value, -0) ? 0 : value);
-    case "string":
-      return JSON.stringify(value);
-    case "object":
-      break;
-    default:
-      throw new InvalidTransportValueError("value is not JSON-shaped");
+function hostSuccess<T>(
+  output?: T,
+  stagedActions: readonly ControllerStagedAction[] = Object.freeze([]),
+): ControllerHostInvocationResult<T> {
+  const actions = Object.freeze([...stagedActions]);
+  if (output === undefined) {
+    return actions.length === 0
+      ? Object.freeze({ ok: true as const })
+      : Object.freeze({ ok: true as const, stagedActions: actions });
   }
-
-  if (ancestors.has(value)) {
-    throw new InvalidTransportValueError("JSON value must be acyclic");
-  }
-  ancestors.add(value);
-
-  try {
-    if (Array.isArray(value)) {
-      const entries: string[] = [];
-      for (let index = 0; index < value.length; index += 1) {
-        if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw new InvalidTransportValueError("JSON arrays must not be sparse");
-        }
-        entries.push(canonicalizeJsonValue(value[index], ancestors));
-      }
-      return `[${entries.join(",")}]`;
-    }
-
-    if (!isPlainRecord(value)) {
-      throw new InvalidTransportValueError("JSON objects must be plain records");
-    }
-
-    const entries = Object.keys(value)
-      .sort()
-      .map(
-        (key) =>
-          `${JSON.stringify(key)}:${canonicalizeJsonValue(value[key], ancestors)}`,
-      );
-    return `{${entries.join(",")}}`;
-  } finally {
-    ancestors.delete(value);
-  }
-}
-
-function hostSuccess<T>(output?: T): ControllerHostInvocationResult<T> {
-  return output === undefined
-    ? Object.freeze({ ok: true as const })
-    : Object.freeze({ ok: true as const, output });
+  return actions.length === 0
+    ? Object.freeze({ ok: true as const, output })
+    : Object.freeze({ ok: true as const, output, stagedActions: actions });
 }
 
 function hostFault<T>(
@@ -325,7 +285,12 @@ export function isControllerWorkerResponse(
   value: unknown,
 ): value is ControllerWorkerResponse {
   if (!isPlainRecord(value)) return false;
-  if (value.ok === true) return validUsage(value.usage);
+  if (value.ok === true) {
+    return (
+      validUsage(value.usage) &&
+      (value.stagedActions === undefined || Array.isArray(value.stagedActions))
+    );
+  }
   if (value.ok === false) {
     return (
       typeof value.fault === "string" &&
@@ -356,29 +321,17 @@ function directivePolicyRuleCount(value: unknown): number {
 
 function teamSignalPayloadWithinLimit(command: unknown): boolean {
   if (!isPlainRecord(command) || command.kind !== "TEAM_SIGNAL") return true;
-  try {
-    const canonicalPayload = canonicalizeJsonValue(
-      command.payload,
-      new Set<object>(),
-    );
-    return (
-      utf8Encoder.encode(canonicalPayload).byteLength <=
-      PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes
-    );
-  } catch {
-    return false;
-  }
+  return controllerTeamSignalPayloadIsValid(command.payload);
+}
+
+function stagedActionsWithinResourceCeilings(
+  actions: readonly ControllerStagedAction[],
+): boolean {
+  if (actions.length > PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision) return false;
+  return actions.every(teamSignalPayloadWithinLimit);
 }
 
 function outputWithinResourceCeilings(output: OutputRecord): boolean {
-  if (Object.prototype.hasOwnProperty.call(output, "commands")) {
-    if (!Array.isArray(output.commands)) return false;
-    if (output.commands.length > PRODUCTION_CONTROLLER_LIMITS.commandsPerDecision) {
-      return false;
-    }
-    if (!output.commands.every(teamSignalPayloadWithinLimit)) return false;
-  }
-
   if (Object.prototype.hasOwnProperty.call(output, "directives")) {
     if (!isPlainRecord(output.directives)) return false;
     const set = output.directives.set;
@@ -628,14 +581,20 @@ export class ProductionControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
+    if (!stagedActionsWithinResourceCeilings(response.stagedActions ?? [])) {
+      return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+    }
+
     const validated = validateProductionControllerOutput(hook, response.output);
     if (!validated.ok) return normalizeWorkerFault(validated.fault);
-    if (validated.output === undefined) return hostSuccess();
+    if (validated.output === undefined) {
+      return hostSuccess(undefined, response.stagedActions);
+    }
 
     if (validated.nextMemory !== undefined) {
       this.memoryByFaction.set(factionId, validated.nextMemory);
     }
 
-    return hostSuccess(validated.output as T);
+    return hostSuccess(validated.output as T, response.stagedActions);
   }
 }

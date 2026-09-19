@@ -192,7 +192,7 @@ describe("#107 Strategic Spawn certification regressions", () => {
         decide(observation) {
           normalDecideCalls += 1;
           expect(observation.memory).toEqual({ phase: "origin" });
-          return { commands: [] };
+          return {};
         },
       },
     });
@@ -210,7 +210,7 @@ describe("#107 Strategic Spawn certification regressions", () => {
           references,
         ),
       ),
-    ).toEqual({ ok: true, output: { commands: [] } });
+    ).toEqual({ ok: true, output: {} });
     expect(normalDecideCalls).toBe(1);
   });
 

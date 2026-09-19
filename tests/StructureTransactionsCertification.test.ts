@@ -160,67 +160,39 @@ describe("structure transaction certification", () => {
     ).toEqual(malformed.map(() => false));
   });
 
-  it("rejects duplicate construction command keys atomically before authoritative admission", () => {
-    const match = controllerConstructionRuntime("controller-duplicate-key-cert");
+  it("generates distinct opaque ActionRefs for multiple construction actions", () => {
+    const match = controllerConstructionRuntime("controller-action-ref-uniqueness-cert");
     for (let tick = 0; tick < 750; tick += 1) match.tick();
 
+    const actionRefs: string[] = [];
     const receipts = syncReceipts(
       match.runControllerRound(
         new InProcessTestControllerHost({
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "duplicate-key",
-                  structure: "FORT" as const,
-                  cellId: 0,
-                },
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "duplicate-key",
-                  structure: "FORT" as const,
-                  cellId: 1,
-                },
-              ],
-            };
+          alpha(context) {
+            actionRefs.push(context.structures!.build("FORT", 0));
+            actionRefs.push(context.structures!.build("FORT", 1));
+            return {};
           },
         }),
       ),
     );
 
-    expect(alphaReceipt(receipts)).toMatchObject({
-      accepted: false,
-      failure: { code: "CONFLICTING_PROPOSAL", key: "duplicate-key" },
-    });
-    expect(match.acceptedInputs()).toEqual([]);
-    expect(match.snapshot().structures).toEqual([]);
+    expect(actionRefs).toHaveLength(2);
+    expect(actionRefs[0]).not.toBe(actionRefs[1]);
   });
 
   it("rolls back a multi-build proposal when the first build exhausts the N07 ownership cap", () => {
     const match = controllerConstructionRuntime("controller-cap-conflict-cert", ["N07"]);
     for (let tick = 0; tick < 750; tick += 1) match.tick();
 
+    let secondActionRef: string | undefined;
     const receipts = syncReceipts(
       match.runControllerRound(
         new InProcessTestControllerHost({
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "first-fort",
-                  structure: "FORT" as const,
-                  cellId: 0,
-                },
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "second-fort",
-                  structure: "FORT" as const,
-                  cellId: 1,
-                },
-              ],
-            };
+          alpha(context) {
+            context.structures!.build("FORT", 0);
+            secondActionRef = context.structures!.build("FORT", 1);
+            return {};
           },
         }),
       ),
@@ -228,7 +200,7 @@ describe("structure transaction certification", () => {
 
     expect(alphaReceipt(receipts)).toMatchObject({
       accepted: false,
-      failure: { code: "OWNERSHIP_CAP", key: "second-fort" },
+      failure: { code: "OWNERSHIP_CAP", key: secondActionRef },
     });
     expect(match.acceptedInputs()).toEqual([]);
     expect(match.snapshot().structures).toEqual([]);
@@ -238,26 +210,14 @@ describe("structure transaction certification", () => {
     const match = controllerConstructionRuntime("controller-site-conflict-cert");
     for (let tick = 0; tick < 750; tick += 1) match.tick();
 
+    let secondActionRef: string | undefined;
     const receipts = syncReceipts(
       match.runControllerRound(
         new InProcessTestControllerHost({
-          alpha() {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "first-site-build",
-                  structure: "FORT" as const,
-                  cellId: 0,
-                },
-                {
-                  kind: "BUILD_STRUCTURE" as const,
-                  key: "second-site-build",
-                  structure: "FORT" as const,
-                  cellId: 0,
-                },
-              ],
-            };
+          alpha(context) {
+            context.structures!.build("FORT", 0);
+            secondActionRef = context.structures!.build("FORT", 0);
+            return {};
           },
         }),
       ),
@@ -265,13 +225,13 @@ describe("structure transaction certification", () => {
 
     expect(alphaReceipt(receipts)).toMatchObject({
       accepted: false,
-      failure: { code: "CELL_OCCUPIED", key: "second-site-build" },
+      failure: { code: "CELL_OCCUPIED", key: secondActionRef },
     });
     expect(match.acceptedInputs()).toEqual([]);
     expect(match.snapshot().structures).toEqual([]);
   });
 
-  it("ignores hostile extra construction fields rather than allowing authority or identity injection", () => {
+  it("rejects player-authored construction records with hostile authority or identity fields", () => {
     const match = controllerConstructionRuntime("controller-extra-field-cert");
     for (let tick = 0; tick < 250; tick += 1) match.tick();
 
@@ -296,17 +256,12 @@ describe("structure transaction certification", () => {
       ),
     );
 
-    expect(alphaReceipt(receipts)).toMatchObject({ accepted: true });
-    const accepted = match.acceptedInputs()[0]?.action;
-    expect(accepted).toMatchObject({
-      type: "PURCHASE_STRUCTURE_BUILD",
-      ownerId: "alpha",
-      structureType: "FORT",
-      cellId: 0,
+    expect(alphaReceipt(receipts)).toMatchObject({
+      accepted: false,
+      failure: { code: "RUNTIME_ERROR" },
     });
-    if (accepted?.type !== "PURCHASE_STRUCTURE_BUILD") {
-      throw new Error("missing accepted controller build action");
-    }
-    expect(accepted.structureId).not.toBe("controller-forged-id");
+    expect(match.acceptedInputs()).toEqual([]);
+    expect(match.snapshot().structures).toEqual([]);
   });
+
 });

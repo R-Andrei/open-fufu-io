@@ -124,6 +124,8 @@ export interface PersistentStructureState {
   readonly active: boolean;
   readonly construction?: StructureConstructionState;
   readonly chargeSlots?: readonly StructureChargeSlotState[];
+  /** Strategic-launch ordinal counter owned by this physical launcher incarnation. */
+  readonly acceptedLaunchCount?: number;
   readonly acquisitionPath: StructureAcquisitionPath;
 }
 
@@ -315,6 +317,15 @@ function assertPersistentStructureState(structure: PersistentStructureState): vo
     throw new Error("structure acquisitionPath is invalid");
   }
 
+  if (
+    structure.acceptedLaunchCount !== undefined &&
+    (!Number.isSafeInteger(structure.acceptedLaunchCount) ||
+      structure.acceptedLaunchCount < 0 ||
+      Object.is(structure.acceptedLaunchCount, -0))
+  ) {
+    throw new Error("structure acceptedLaunchCount must be a non-negative safe integer");
+  }
+
   const slotIds = new Set<number>();
   for (const slot of structure.chargeSlots ?? []) {
     if (!Number.isSafeInteger(slot.slotId) || slot.slotId < 0) {
@@ -405,6 +416,9 @@ export function materializePersistentStructureState(
     ...(structure.chargeSlots === undefined
       ? {}
       : { chargeSlots: freezeChargeSlots(structure.chargeSlots) }),
+    ...(structure.acceptedLaunchCount === undefined
+      ? {}
+      : { acceptedLaunchCount: structure.acceptedLaunchCount }),
     acquisitionPath: structure.acquisitionPath,
   });
 }
@@ -804,6 +818,7 @@ export function tryMaterializeStructureGrant(
     completedLevel: grant.level,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),
+    ...(grant.type === "MISSILE_SILO" ? { acceptedLaunchCount: 0 } : {}),
     acquisitionPath: "GRANT",
   });
   return Object.freeze({
@@ -1290,6 +1305,11 @@ function progressStructure(
     completedLevel: targetLevel,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),
+    ...(current.type === "MISSILE_SILO"
+      ? { acceptedLaunchCount: current.acceptedLaunchCount ?? 0 }
+      : current.acceptedLaunchCount === undefined
+        ? {}
+        : { acceptedLaunchCount: current.acceptedLaunchCount }),
     acquisitionPath: current.acquisitionPath,
   });
 }

@@ -686,7 +686,21 @@ Defeat/capitulation of one fixed-team member does not clear the team's relations
 
 At terminal match completion, live war-state queries are no longer gameplay-relevant; replay reconstruction reproduces all prior transitions from the accepted controller actions, deterministic operation lifecycle, ticks, and bound ruleset.
 
-Team communication available to controllers must be bounded, deterministic, and rules-visible rather than an unrestricted side channel.
+## 12.8 Fixed-team controller signals
+
+Team communication available to controllers is a bounded deterministic event channel, not an unrestricted side channel.
+
+A successfully committed controller team signal is addressed only to the sender's fixed team. When the sender has a non-null fixed-team identity, delivery recipients are exactly the **other** factions that share that identity and are `ACTIVE` when the signal commits. The sender never receives its own signal.
+
+If the sender has no eligible active teammate — including when the sender has no fixed-team identity — the signal remains a lawful successful action and delivers nothing.
+
+Each eligible recipient receives one `TEAM_SIGNAL_RECEIVED` controller event carrying the sender's lawful public faction reference, submitted channel, and submitted JSON payload. The event becomes visible on that recipient's **next controller decision** after the accepted signal commits. After it has been exposed through `events.sinceLastDecision` for that decision, it is consumed and does not appear again merely because later decisions occur.
+
+When multiple accepted signals are pending for the same recipient, their public event order is the authoritative accepted-input order. Source collection order, worker scheduling, and recipient enumeration do not alter that ordering.
+
+Signal payloads use the existing controller-runtime `teamSignalPayloadBytes` bound and JSON-value contract. A payload that exceeds that bound is not a lawful committed signal.
+
+Team signals are transient controller-event state rather than persistent gameplay entities. Replay reconstructs their delivery deterministically from accepted simulation inputs; historical replay does not require a separate persistent message object.
 
 ---
 
