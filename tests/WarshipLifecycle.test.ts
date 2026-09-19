@@ -367,6 +367,24 @@ describe("Warship strategic movement lifecycle", () => {
       15n,
       1n,
     );
+    expectExactWarshipSpeed(
+      warshipTerrainMovementTiming(
+        movementFixture(["DEEP_WATER"], 1, 1, ["P23", "P30"]),
+        "alpha",
+        "DEEP_WATER",
+      ),
+      17n,
+      1n,
+    );
+    expectExactWarshipSpeed(
+      warshipTerrainMovementTiming(
+        movementFixture(["DEEP_WATER"], 1, 1, ["P30", "P23"]),
+        "alpha",
+        "DEEP_WATER",
+      ),
+      17n,
+      1n,
+    );
   });
 
   it("routes reachable destinations deterministically around Shallow Water", () => {
