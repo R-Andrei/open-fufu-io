@@ -83,6 +83,7 @@ import {
 } from "./VisibilityState";
 import {
   prepareTradeShipRuntimePhase,
+  settleTradeShipRuntimePhase,
   tradeShipMovementWorkByUnitId,
 } from "./TradeShips";
 import { advanceWarshipProductionPhase } from "./Warships";
@@ -1266,7 +1267,16 @@ export class TickEngine {
       strategicSettled,
     );
     const combatResolved = advanceTankUnitCombatPhase(repairSettled);
-    const repaired = advanceTankRepairPhase(combatResolved.state);
+    const tradeSettled = settleTradeShipRuntimePhase(
+      combatResolved.state,
+      (tradeOwnerId, destinationOwnerId) =>
+        matchStateAtWar(
+          combatResolved.state,
+          tradeOwnerId,
+          destinationOwnerId,
+        ),
+    );
+    const repaired = advanceTankRepairPhase(tradeSettled);
     const tanksProduced = advanceTankProductionPhase(repaired);
     const produced = advanceWarshipProductionPhase(tanksProduced);
     const trainEconomicUpdate = settleFactoryTrainEconomicEvents(
