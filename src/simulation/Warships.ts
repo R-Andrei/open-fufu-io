@@ -23,7 +23,9 @@ import {
   setMobileUnitStrategicDestination,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
+import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
 import { removePopulation } from "./Population";
+import type { SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
 export type WarshipProductionJobState =
@@ -73,7 +75,29 @@ export type StartWarshipProductionResult =
       readonly state: MatchState;
     };
 
+export interface WarshipTerrainMovementTiming {
+  readonly movementWorkPerTick: number;
+  readonly edgeWeight: number;
+}
+
+export interface WarshipNavigationRoute {
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+  readonly totalWeight: number;
+  readonly movementWorkPerTick: number;
+}
+
+export type WarshipStrategicNavigationRouteResult =
+  | {
+      readonly status: "FOUND" | "BEST_EFFORT";
+      readonly route: WarshipNavigationRoute;
+    }
+  | { readonly status: "LIMIT_REACHED" };
+
 const BASE_WARSHIP_BUILD_TICKS = 50;
+const BASE_WARSHIP_SPEED_CELLS_PER_SECOND = 10n;
+const WARSHIP_MOVEMENT_TICKS_PER_SECOND = 10n;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -241,6 +265,135 @@ function effectiveWarshipPopulationCost(
   return cost;
 }
 
+function warshipMovementScale(
+  state: MatchState,
+  ownerId: string,
+): Readonly<{ numerator: bigint; denominator: bigint }> {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MOVEMENT_SPEED",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MOVEMENT_SPEED,
+    terms,
+  );
+  if (scale.numerator <= 0n || scale.denominator <= 0n) {
+    throw new Error("Warship movement speed must resolve to a positive value");
+  }
+  return Object.freeze({
+    numerator: scale.numerator,
+    denominator: scale.denominator,
+  });
+}
+
+export function warshipTerrainMovementTiming(
+  state: MatchState,
+  ownerId: string,
+  terrain: SimulationTerrain,
+): WarshipTerrainMovementTiming | undefined {
+  if (terrain !== "DEEP_WATER") return undefined;
+  const scale = warshipMovementScale(state, ownerId);
+  const speed = reducedRational(
+    BASE_WARSHIP_SPEED_CELLS_PER_SECOND * scale.numerator,
+    scale.denominator,
+  );
+  if (speed.numerator <= 0n || speed.denominator <= 0n) {
+    throw new Error("Warship movement speed must resolve to a positive value");
+  }
+  const movementWorkPerTick = speed.numerator;
+  const edgeWeight = speed.denominator * WARSHIP_MOVEMENT_TICKS_PER_SECOND;
+  if (movementWorkPerTick > MAX_SAFE_BIGINT || edgeWeight > MAX_SAFE_BIGINT) {
+    throw new Error("Warship movement timing exceeds the safe-integer range");
+  }
+  return Object.freeze({
+    movementWorkPerTick: Number(movementWorkPerTick),
+    edgeWeight: Number(edgeWeight),
+  });
+}
+
+function warshipRouteCellIsPhysicallyAvailable(
+  state: MatchState,
+  startCellId: number,
+  cellId: number,
+): boolean {
+  if (cellId === startCellId) return true;
+  return (
+    !state.structures.some((structure) => structure.cellId === cellId) &&
+    !state.mobileUnits.some((unit) => unit.cellId === cellId)
+  );
+}
+
+export function warshipStrategicNavigationRoute(
+  state: MatchState,
+  ownerId: string,
+  startCellId: number,
+  destinationCellId: number,
+): WarshipStrategicNavigationRouteResult {
+  if (
+    !state.map.isValidCellId(startCellId) ||
+    !state.map.isValidCellId(destinationCellId)
+  ) {
+    throw new Error("Warship strategic navigation query requires valid map cells");
+  }
+  const timing = warshipTerrainMovementTiming(
+    state,
+    ownerId,
+    "DEEP_WATER",
+  );
+  if (timing === undefined) {
+    throw new Error("Deep Water must be traversable for Warships");
+  }
+  const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
+    if (
+      !warshipRouteCellIsPhysicallyAvailable(state, startCellId, fromCellId) ||
+      !warshipRouteCellIsPhysicallyAvailable(state, startCellId, toCellId) ||
+      state.map.terrainAt(fromCellId) !== "DEEP_WATER" ||
+      state.map.terrainAt(toCellId) !== "DEEP_WATER"
+    ) {
+      return undefined;
+    }
+    return timing.edgeWeight;
+  };
+  const policy: NavigationTraversalPolicy = { traversalWeight: edgeWeight };
+  const result = createNavigation(state.map).pathToward(
+    startCellId,
+    destinationCellId,
+    policy,
+  );
+  if (result.status === "LIMIT_REACHED") {
+    return Object.freeze({ status: "LIMIT_REACHED" as const });
+  }
+  const cells = Object.freeze([...result.path.cells]);
+  const edgeWeights = Object.freeze(
+    cells.slice(1).map((cellId, index) => {
+      const weight = edgeWeight(cells[index]!, cellId);
+      if (weight === undefined) {
+        throw new Error(
+          "Warship strategic navigation returned an unavailable route edge",
+        );
+      }
+      return weight;
+    }),
+  );
+  return Object.freeze({
+    status: result.status,
+    route: Object.freeze({
+      cells,
+      edgeWeights,
+      totalWeight: result.path.totalWeight,
+      movementWorkPerTick: timing.movementWorkPerTick,
+    }),
+  });
+}
+
 export function warshipPurchaseCost(activeWarships: number): number {
   if (
     !Number.isSafeInteger(activeWarships) ||
@@ -266,7 +419,8 @@ export function tryStartWarshipProduction(
     typeof request.strategicDestinationCellId !== "number" ||
     !Number.isSafeInteger(request.strategicDestinationCellId) ||
     Object.is(request.strategicDestinationCellId, -0) ||
-    !state.map.isValidCellId(request.strategicDestinationCellId)
+    !state.map.isValidCellId(request.strategicDestinationCellId) ||
+    state.map.terrainAt(request.strategicDestinationCellId) !== "DEEP_WATER"
   ) {
     return failure(state, "INVALID_REQUEST");
   }
