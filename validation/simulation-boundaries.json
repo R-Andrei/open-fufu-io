@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "canonicalContract": "docs/SIMULATION_EVENTS.md",
   "moduleOwners": {
+    "src/simulation/CombatProjectiles.ts": "RUNTIME_CORE",
     "src/simulation/ControllerQueryProjection.ts": "CONTROLLER_ADAPTER",
     "src/simulation/ControllerReferenceSession.ts": "OPERATIONAL_REFERENCE",
     "src/simulation/ControllerRuntime.ts": "CONTROLLER_ADAPTER",

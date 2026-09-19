@@ -7,6 +7,10 @@ import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
+  materializeHomingCombatProjectiles,
+  type HomingCombatProjectileState,
+} from "./CombatProjectiles";
+import {
   materializeFactoryTrainState,
   serializeFactoryTrainState,
   type FactoryTrainState,
@@ -150,6 +154,7 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly combatProjectiles: readonly HomingCombatProjectileState[];
   readonly tradeVoyages: readonly TradeVoyageState[];
   readonly tradePortSchedulers: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs: readonly TradeRetiredPortEpochState[];
@@ -173,6 +178,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly combatProjectiles?: readonly HomingCombatProjectileState[];
   readonly tradeVoyages?: readonly TradeVoyageState[];
   readonly tradePortSchedulers?: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs?: readonly TradeRetiredPortEpochState[];
@@ -1229,6 +1235,9 @@ function createState(
     update.structures ?? previous.structures,
   );
   assertExclusivePhysicalOccupancy(structures, mobileUnits.mobileUnits);
+  const combatProjectiles = materializeHomingCombatProjectiles(
+    update.combatProjectiles ?? previous.combatProjectiles ?? [],
+  );
   const tradeVoyages = freezeTradeVoyages(
     update.tradeVoyages ?? previous.tradeVoyages ?? [],
     mobileUnits.mobileUnits,
@@ -1273,6 +1282,7 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    combatProjectiles,
     tradeVoyages,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
@@ -1376,6 +1386,7 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    combatProjectiles: Object.freeze([]),
     tradeVoyages: Object.freeze([]),
     tradePortSchedulers: Object.freeze([]),
     tradeRetiredPortEpochs: Object.freeze([]),
@@ -1705,6 +1716,30 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const combatProjectiles = [...state.combatProjectiles]
+    .sort(
+      (left, right) =>
+        compareIds(left.sourceUnitId, right.sourceUnitId) ||
+        left.projectileOrdinal - right.projectileOrdinal,
+    )
+    .map((projectile) => ({
+      sourceUnitId: projectile.sourceUnitId,
+      sourceOwnerId: projectile.sourceOwnerId,
+      targetUnitId: projectile.targetUnitId,
+      projectileOrdinal: projectile.projectileOrdinal,
+      profileId: projectile.profileId,
+      position: {
+        x: projectile.position.x,
+        y: projectile.position.y,
+      },
+      speedCellsPerSecond: projectile.speedCellsPerSecond,
+      damage: {
+        numerator: projectile.damage.numerator.toString(),
+        denominator: projectile.damage.denominator.toString(),
+      },
+      createdTick: projectile.createdTick,
+    }));
+
   const warshipOperationalStates = [...state.warshipOperationalStates]
     .sort((left, right) => compareIds(left.unitId, right.unitId))
     .map((entry) => ({
@@ -1788,6 +1823,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    combatProjectiles,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
     tradePendingSignedFacts,
