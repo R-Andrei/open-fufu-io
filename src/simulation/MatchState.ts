@@ -665,11 +665,23 @@ function freezeWarshipOperationalStates(
         `Warship operational state must reference a deployed Warship: ${entry.unitId}`,
       );
     }
+    if (unit.movementClass !== "NAVAL") {
+      throw new Error("Warship movement class must be NAVAL");
+    }
+    if (map.terrainAt(unit.cellId) !== "DEEP_WATER") {
+      throw new Error("Warship current cell must be a Deep-Water map cell");
+    }
     if (
       unit.strategicDestinationCellId !== undefined &&
       map.terrainAt(unit.strategicDestinationCellId) !== "DEEP_WATER"
     ) {
       throw new Error("Warship strategic destination must be a Deep-Water map cell");
+    }
+    if (
+      unit.route !== undefined &&
+      unit.route.cells.some((cellId) => map.terrainAt(cellId) !== "DEEP_WATER")
+    ) {
+      throw new Error("Warship route must contain only Deep-Water map cells");
     }
     if (
       !map.isValidCellId(entry.operatingAnchorCellId) ||
@@ -682,6 +694,13 @@ function freezeWarshipOperationalStates(
       operatingAnchorCellId: entry.operatingAnchorCellId,
     });
   });
+  for (const unit of mobileUnits) {
+    if (unit.type === "WARSHIP" && !seenUnitIds.has(unit.id)) {
+      throw new Error(
+        `deployed Warship is missing operational state: ${unit.id}`,
+      );
+    }
+  }
   states.sort((left, right) => compareIds(left.unitId, right.unitId));
   return Object.freeze(states);
 }
