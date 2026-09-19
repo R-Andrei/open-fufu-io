@@ -408,6 +408,10 @@ describe("authoritative faction strength score", () => {
       warshipOperationalStates: [
         {
           unitId: deployedWarship.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          attackReadyAtTick: funded.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
           operatingAnchorCellId: deployedWarship.unit.cellId,
         },
       ],

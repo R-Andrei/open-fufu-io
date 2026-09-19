@@ -784,7 +784,14 @@ describe("authoritative Trade Ship voyage state", () => {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
       warshipOperationalStates: [
-        { unitId: blocker.unit.id, operatingAnchorCellId: 15 },
+        {
+          unitId: blocker.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: 15,
+          attackReadyAtTick: withPorts.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+        },
       ],
     });
 
@@ -857,7 +864,14 @@ describe("authoritative Trade Ship voyage state", () => {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
       warshipOperationalStates: [
-        { unitId: blocker.unit.id, operatingAnchorCellId: 15 },
+        {
+          unitId: blocker.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: 15,
+          attackReadyAtTick: launched.state.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+        },
       ],
     });
     const reconciled = createProspectiveMatchState(
@@ -941,7 +955,14 @@ describe("authoritative Trade Ship voyage state", () => {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
       warshipOperationalStates: [
-        { unitId: blocker.unit.id, operatingAnchorCellId: 1 },
+        {
+          unitId: blocker.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: 1,
+          attackReadyAtTick: partial.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+        },
       ],
     });
     const reconciled = createProspectiveMatchState(

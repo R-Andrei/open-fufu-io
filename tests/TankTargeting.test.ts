@@ -88,7 +88,11 @@ function addUnit(
               ...state.warshipOperationalStates,
               {
                 unitId: created.unit.id,
+                health: { numerator: 1_000n, denominator: 1n },
                 operatingAnchorCellId: created.unit.cellId,
+                attackReadyAtTick: state.tick,
+                nextProjectileOrdinal: 0,
+                roamingOrdinal: 0,
               },
             ]
           : state.warshipOperationalStates,
