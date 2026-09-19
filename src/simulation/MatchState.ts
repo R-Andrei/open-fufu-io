@@ -419,6 +419,7 @@ function freezeTankProductionJobs(
 
 function freezeWarshipProductionJobs(
   entries: readonly WarshipProductionJobState[],
+  map: SimulationMap,
 ): readonly WarshipProductionJobState[] {
   const seenPorts = new Set<string>();
   const jobs = entries.map((job) => {
@@ -435,6 +436,11 @@ function freezeWarshipProductionJobs(
     if (typeof job.ownerId !== "string" || job.ownerId.length === 0) {
       throw new Error("Warship production ownerId must be a non-empty string");
     }
+    if (!map.isValidCellId(job.strategicDestinationCellId)) {
+      throw new Error(
+        "Warship production strategic destination must be a valid map cell",
+      );
+    }
     if (job.state === "BUILDING") {
       if (
         !Number.isSafeInteger(job.remainingTicks) ||
@@ -448,6 +454,7 @@ function freezeWarshipProductionJobs(
       return Object.freeze({
         portId: job.portId,
         ownerId: job.ownerId,
+        strategicDestinationCellId: job.strategicDestinationCellId,
         state: "BUILDING" as const,
         remainingTicks: job.remainingTicks,
       });
@@ -458,6 +465,7 @@ function freezeWarshipProductionJobs(
     return Object.freeze({
       portId: job.portId,
       ownerId: job.ownerId,
+      strategicDestinationCellId: job.strategicDestinationCellId,
       state: "READY_TO_DEPLOY" as const,
     });
   });
@@ -697,6 +705,7 @@ function createState(
     ),
     warshipProductionJobs: freezeWarshipProductionJobs(
       update.warshipProductionJobs ?? previous.warshipProductionJobs ?? [],
+      previous.map,
     ),
     tankOperationalStates,
     directReveals: freezeDirectReveals(
@@ -1022,12 +1031,14 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         ? {
             portId: job.portId,
             ownerId: job.ownerId,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
             remainingTicks: job.remainingTicks,
           }
         : {
             portId: job.portId,
             ownerId: job.ownerId,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
           },
     );

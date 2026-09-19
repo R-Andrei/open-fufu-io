@@ -420,6 +420,7 @@ describe("physical occupancy admission", () => {
     const first = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("expected first baseline Warship admission");
@@ -427,6 +428,7 @@ describe("physical occupancy admission", () => {
     const second = tryStartWarshipProduction(first.state, {
       ownerId: "alpha",
       portId: "port-b",
+      strategicDestinationCellId: 2,
     });
     expect(second.ok).toBe(true);
     if (!second.ok) throw new Error("expected second baseline Warship admission");
@@ -442,6 +444,7 @@ describe("physical occupancy admission", () => {
     const first = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("expected first P23 Warship admission");
@@ -451,6 +454,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(beforeSecond, {
       ownerId: "alpha",
       portId: "port-b",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -488,6 +492,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(withWarship, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -511,6 +516,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -543,6 +549,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -575,6 +582,7 @@ describe("physical occupancy admission", () => {
     const accepted = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -618,6 +626,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({

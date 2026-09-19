@@ -20,6 +20,7 @@ import {
 } from "./MatchState";
 import {
   createMobileUnit,
+  setMobileUnitStrategicDestination,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
 import { removePopulation } from "./Population";
@@ -29,18 +30,21 @@ export type WarshipProductionJobState =
   | {
       readonly portId: string;
       readonly ownerId: string;
+      readonly strategicDestinationCellId: number;
       readonly state: "BUILDING";
       readonly remainingTicks: number;
     }
   | {
       readonly portId: string;
       readonly ownerId: string;
+      readonly strategicDestinationCellId: number;
       readonly state: "READY_TO_DEPLOY";
     };
 
 export interface StartWarshipProductionRequest {
   readonly ownerId: string;
   readonly portId: string;
+  readonly strategicDestinationCellId: number;
 }
 
 export type WarshipProductionFailureCode =
@@ -258,7 +262,11 @@ export function tryStartWarshipProduction(
     typeof request.ownerId !== "string" ||
     request.ownerId.length === 0 ||
     typeof request.portId !== "string" ||
-    request.portId.length === 0
+    request.portId.length === 0 ||
+    typeof request.strategicDestinationCellId !== "number" ||
+    !Number.isSafeInteger(request.strategicDestinationCellId) ||
+    Object.is(request.strategicDestinationCellId, -0) ||
+    !state.map.isValidCellId(request.strategicDestinationCellId)
   ) {
     return failure(state, "INVALID_REQUEST");
   }
@@ -312,6 +320,7 @@ export function tryStartWarshipProduction(
   const job: WarshipProductionJobState = Object.freeze({
     portId: port.id,
     ownerId: request.ownerId,
+    strategicDestinationCellId: request.strategicDestinationCellId,
     state: "BUILDING" as const,
     remainingTicks: BASE_WARSHIP_BUILD_TICKS,
   });
@@ -359,6 +368,7 @@ function waitingDeploymentJob(
   return Object.freeze({
     portId: job.portId,
     ownerId: job.ownerId,
+    strategicDestinationCellId: job.strategicDestinationCellId,
     state: "READY_TO_DEPLOY" as const,
   });
 }
@@ -404,8 +414,20 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
         movementClass: "NAVAL",
         cellId,
       });
+      const deployedUnit =
+        job.strategicDestinationCellId === cellId
+          ? created.unit
+          : setMobileUnitStrategicDestination(
+              state.map,
+              created.unit,
+              job.strategicDestinationCellId,
+            );
       units = Object.freeze({
-        mobileUnits: created.mobileUnits,
+        mobileUnits: Object.freeze(
+          created.mobileUnits.map((unit) =>
+            unit.id === deployedUnit.id ? deployedUnit : unit,
+          ),
+        ),
         nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
       });
       return true;
@@ -421,6 +443,7 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
         Object.freeze({
           portId: job.portId,
           ownerId: job.ownerId,
+          strategicDestinationCellId: job.strategicDestinationCellId,
           state: "BUILDING" as const,
           remainingTicks: job.remainingTicks - 1,
         }),
