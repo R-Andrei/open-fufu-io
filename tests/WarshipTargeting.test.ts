@@ -14,6 +14,7 @@ import {
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   createMobileUnit,
+  setMobileUnitStrategicDestination,
   type MobileUnitState,
 } from "../src/simulation/MobileUnits";
 import { tryLaunchTradeVoyage } from "../src/simulation/TradeShips";
@@ -69,13 +70,21 @@ function addUnit(
       type: input.type,
       movementClass: "NAVAL",
       cellId: input.cellId,
-      ...(input.strategicDestinationCellId === undefined
-        ? {}
-        : { strategicDestinationCellId: input.strategicDestinationCellId }),
+
     },
   );
+  const createdUnit =
+    input.strategicDestinationCellId === undefined
+      ? created.unit
+      : setMobileUnitStrategicDestination(
+          state.map,
+          created.unit,
+          input.strategicDestinationCellId,
+        );
   const next = createProspectiveMatchState(state, {
-    mobileUnits: created.mobileUnits,
+    mobileUnits: created.mobileUnits.map((unit) =>
+      unit.id === createdUnit.id ? createdUnit : unit,
+    ),
     nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
     warshipOperationalStates:
       input.type === "WARSHIP"
