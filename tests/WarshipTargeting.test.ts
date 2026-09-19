@@ -171,7 +171,7 @@ function p30TradeFixture() {
   const hostileWarship = addUnit(state, {
     ownerId: "beta",
     type: "WARSHIP",
-    cellId: 11,
+    cellId: 9,
   });
   return Object.freeze({
     state: hostileWarship.state,
