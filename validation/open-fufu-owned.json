@@ -94,7 +94,8 @@
     "tests/WarshipCombatRuntime.test.ts",
     "tests/WarshipLifecycle.test.ts",
     "tests/WarshipProjectileImpact.test.ts",
-    "tests/WarshipTargeting.test.ts"
+    "tests/WarshipTargeting.test.ts",
+    "tests/WarshipTransportImpactIntegration.test.ts"
   ],
   "ownedSources": [
     {"path":"design/official-ai/character-configurations.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
