@@ -759,6 +759,12 @@
     },
     {
       "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport destruction applies Population-owned exact TRANSPORT-bucket removal for the frozen carried payload rather than mutating aggregate Population fields locally."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
       "to": "src/simulation/SimulationMap.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Transport endpoint resolution reads map terrain and geometry to map lawful coast candidates onto Shallow/Deep physical water endpoints."

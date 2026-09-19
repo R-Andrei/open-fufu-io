@@ -1,5 +1,10 @@
 import type { CellId } from "../core/controller/ControllerApi";
 import {
+  reducedRational,
+  ruleScopeMatches,
+  type RuleScope,
+} from "../core/rules/RuleComposition";
+import {
   assignMobileUnitRoute,
   createMobileUnit,
   removeMobileUnit,
@@ -10,12 +15,17 @@ import {
 import {
   createProspectiveMatchState,
   type MatchState,
+  type TransportDestructionCauseClass,
+  type TransportDestructionResult,
+  type TransportExactHealth,
+  type TransportOperationalState,
 } from "./MatchState";
 import {
   createNavigation,
   type NavigationCandidate,
   type NavigationPath,
 } from "./Navigation";
+import { removePopulation } from "./Population";
 import type { SimulationMap } from "./SimulationMap";
 import { tryMaterializeStructureGrant } from "./Structures";
 
@@ -54,19 +64,33 @@ export interface TransportMaterializationState extends MobileUnitCollectionState
 export interface TransportMaterializationRequest {
   readonly ownerId: string;
   readonly route: TransportEndpointRoute;
+  /** Population already committed to the aggregate TRANSPORT bucket by admission. */
+  readonly carriedPopulation: number;
 }
 
-export type TransportMaterializationResult<T extends TransportMaterializationState> =
+export type TransportMaterializationResult =
   | Readonly<{
       readonly ok: true;
-      readonly state: T;
+      readonly state: MatchState;
       readonly unit: MobileUnitState;
     }>
   | Readonly<{
       readonly ok: false;
-      readonly state: T;
+      readonly state: MatchState;
       readonly failure: Readonly<{ readonly code: "EMBARK_BLOCKED" }>;
     }>;
+
+export interface TransportDamageRequest {
+  readonly transportId: string;
+  readonly damage: Readonly<{ readonly numerator: bigint; readonly denominator: bigint }>;
+  readonly causeClass: TransportDestructionCauseClass;
+  readonly creditedDestroyerFactionId?: string;
+}
+
+export interface TransportDamageResolution {
+  readonly state: MatchState;
+  readonly destructionResult: TransportDestructionResult | null;
+}
 
 export interface SuccessfulTransportLandingConsequencesRequest {
   readonly transportId: string;
@@ -296,13 +320,77 @@ export function resolveTransportEndpointRouteForState(
   });
 }
 
-export function tryMaterializeTransportAtResolvedRoute<
-  T extends TransportMaterializationState,
->(
-  state: T,
+function assertTransportPopulation(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
+    throw new Error("Transport carried Population must be a non-negative safe integer");
+  }
+}
+
+function effectiveTransportHealth(
+  state: MatchState,
+  ownerId: string,
+): TransportExactHealth | undefined {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown Transport owner: ${ownerId}`);
+  const scope = {
+    kind: "UNIT" as const,
+    unit: "TRANSPORT_SHIP" as const,
+  } satisfies RuleScope;
+  const chassisTerms = owner.rules.normalizedRules.filter(
+    (entry) =>
+      entry.axis === "UNIT_CHASSIS_PROFILE" &&
+      ruleScopeMatches(entry.scope, scope),
+  );
+  if (chassisTerms.length === 0) return undefined;
+  if (chassisTerms.length !== 1) {
+    throw new Error("Transport chassis profile must resolve to at most one transform");
+  }
+  const term = chassisTerms[0]!;
+  if (term.conditions !== undefined && term.conditions.length > 0) {
+    throw new Error("Transport chassis profile has unresolved conditions");
+  }
+  if (
+    term.value.kind !== "SINGLETON" ||
+    typeof term.value.value !== "string"
+  ) {
+    throw new Error("Transport chassis profile must be a singleton profile ID");
+  }
+  if (term.value.value === "ARMORED_PORT_TRANSPORT") {
+    return Object.freeze({ numerator: 500n, denominator: 1n });
+  }
+  if (term.value.value === "TRANSPORT_SHIP") return undefined;
+  throw new Error(
+    `unsupported Transport chassis profile: ${String(term.value.value)}`,
+  );
+}
+
+function ownerBoundTransportPopulation(state: MatchState, ownerId: string): number {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  return state.transportOperationalStates.reduce((sum, entry) => {
+    const unit = unitsById.get(entry.unitId);
+    return unit?.ownerId === ownerId ? sum + entry.carriedPopulation : sum;
+  }, 0);
+}
+
+export function tryMaterializeTransportAtResolvedRoute(
+  state: MatchState,
   request: TransportMaterializationRequest,
-): TransportMaterializationResult<T> {
+): TransportMaterializationResult {
   assertResolvedTransportRoute(state.map, request.route);
+  assertTransportPopulation(request.carriedPopulation);
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  if (owner === undefined) {
+    throw new Error(`unknown Transport owner: ${request.ownerId}`);
+  }
+  const alreadyBound = ownerBoundTransportPopulation(state, request.ownerId);
+  if (
+    request.carriedPopulation >
+    owner.population.aboardTransports - alreadyBound
+  ) {
+    throw new Error(
+      "Transport carried Population exceeds the owner's committed aboard amount",
+    );
+  }
   if (physicalOccupancyCellIds(state).has(request.route.embarkCellId)) {
     return Object.freeze({
       ok: false as const,
@@ -337,16 +425,165 @@ export function tryMaterializeTransportAtResolvedRoute<
   const mobileUnits = Object.freeze(
     created.mobileUnits.map((unit) => (unit.id === routed.id ? routed : unit)),
   );
-  const nextState = Object.freeze({
-    ...state,
+  const health = effectiveTransportHealth(state, request.ownerId);
+  const operational: TransportOperationalState = Object.freeze({
+    unitId: routed.id,
+    carriedPopulation: request.carriedPopulation,
+    ...(health === undefined ? {} : { health }),
+  });
+  const nextState = createProspectiveMatchState(state, {
     mobileUnits,
     nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
-  }) as T;
+    transportOperationalStates: Object.freeze([
+      ...state.transportOperationalStates,
+      operational,
+    ]),
+  });
 
   return Object.freeze({
     ok: true as const,
     state: nextState,
     unit: routed,
+  });
+}
+
+function subtractTransportHealth(
+  health: TransportExactHealth,
+  damage: TransportDamageRequest["damage"],
+): TransportExactHealth {
+  const reduced = reducedRational(
+    health.numerator * damage.denominator -
+      damage.numerator * health.denominator,
+    health.denominator * damage.denominator,
+  );
+  return Object.freeze({
+    numerator: reduced.numerator,
+    denominator: reduced.denominator,
+  });
+}
+
+const TRANSPORT_DESTRUCTION_CAUSE_CLASSES =
+  new Set<TransportDestructionCauseClass>([
+    "NAVAL_GUNFIRE",
+    "SAM_ANTI_SHIP",
+    "STRATEGIC_BLAST",
+    "OTHER_HOSTILE_EFFECT",
+    "UNATTRIBUTED",
+  ]);
+
+export function applyTransportDamage(
+  state: MatchState,
+  request: TransportDamageRequest,
+): TransportDamageResolution {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.transportId !== "string" ||
+    request.transportId.length === 0 ||
+    request.damage === null ||
+    typeof request.damage !== "object" ||
+    typeof request.damage.numerator !== "bigint" ||
+    typeof request.damage.denominator !== "bigint" ||
+    request.damage.numerator <= 0n ||
+    request.damage.denominator <= 0n ||
+    !TRANSPORT_DESTRUCTION_CAUSE_CLASSES.has(request.causeClass) ||
+    (request.creditedDestroyerFactionId !== undefined &&
+      (typeof request.creditedDestroyerFactionId !== "string" ||
+        request.creditedDestroyerFactionId.length === 0))
+  ) {
+    throw new Error("Transport damage request is malformed");
+  }
+  if (
+    request.creditedDestroyerFactionId !== undefined &&
+    !state.factions.some(
+      (faction) => faction.id === request.creditedDestroyerFactionId,
+    )
+  ) {
+    throw new Error("Transport credited destroyer faction is unknown");
+  }
+
+  const transport = state.mobileUnits.find(
+    (unit) => unit.id === request.transportId,
+  );
+  if (transport === undefined) {
+    return Object.freeze({ state, destructionResult: null });
+  }
+  if (transport.type !== "TRANSPORT_SHIP") {
+    throw new Error("Transport damage target is not a Transport");
+  }
+  const operational = state.transportOperationalStates.find(
+    (entry) => entry.unitId === transport.id,
+  );
+  if (operational === undefined) {
+    throw new Error(
+      `active Transport is missing operational payload state: ${transport.id}`,
+    );
+  }
+
+  if (operational.health !== undefined) {
+    const health = subtractTransportHealth(operational.health, request.damage);
+    if (health.numerator > 0n) {
+      return Object.freeze({
+        state: createProspectiveMatchState(state, {
+          transportOperationalStates: state.transportOperationalStates.map(
+            (entry) =>
+              entry.unitId === transport.id
+                ? Object.freeze({ ...entry, health })
+                : entry,
+          ),
+        }),
+        destructionResult: null,
+      });
+    }
+  }
+
+  const ownerIndex = state.factions.findIndex(
+    (faction) => faction.id === transport.ownerId,
+  );
+  if (ownerIndex < 0) {
+    throw new Error(`Transport owner is missing: ${transport.ownerId}`);
+  }
+  const owner = state.factions[ownerIndex]!;
+  const population = removePopulation(
+    owner.population,
+    "TRANSPORT",
+    operational.carriedPopulation,
+  );
+  const factions = state.factions.map((faction, index) =>
+    index === ownerIndex ? Object.freeze({ ...faction, population }) : faction,
+  );
+  const remaining = removeMobileUnit(
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    transport.id,
+  );
+  const destructionResult: TransportDestructionResult = Object.freeze({
+    transportId: transport.id,
+    previousOwnerFactionId: transport.ownerId,
+    destructionTick: state.tick,
+    carriedPopulationAtDestruction: operational.carriedPopulation,
+    ...(request.creditedDestroyerFactionId === undefined
+      ? {}
+      : { creditedDestroyerFactionId: request.creditedDestroyerFactionId }),
+    causeClass: request.causeClass,
+  });
+  const nextState = createProspectiveMatchState(state, {
+    factions,
+    mobileUnits: remaining.mobileUnits,
+    nextMobileUnitOrdinal: remaining.nextMobileUnitOrdinal,
+    transportOperationalStates: state.transportOperationalStates.filter(
+      (entry) => entry.unitId !== transport.id,
+    ),
+    transportDestructionResults: Object.freeze([
+      ...state.transportDestructionResults,
+      destructionResult,
+    ]),
+  });
+  return Object.freeze({
+    state: nextState,
+    destructionResult,
   });
 }
 
@@ -388,6 +625,9 @@ export function applySuccessfulTransportLandingConsequences(
   const landedState = createProspectiveMatchState(state, {
     mobileUnits: remaining.mobileUnits,
     nextMobileUnitOrdinal: remaining.nextMobileUnitOrdinal,
+    transportOperationalStates: state.transportOperationalStates.filter(
+      (entry) => entry.unitId !== transport.id,
+    ),
   });
 
   const owner = landedState.factions.find((faction) => faction.id === transport.ownerId);
