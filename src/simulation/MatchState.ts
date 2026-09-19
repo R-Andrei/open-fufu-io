@@ -446,6 +446,11 @@ function freezeWarshipProductionJobs(
         "Warship production strategic destination must be a valid map cell",
       );
     }
+    if (map.terrainAt(job.strategicDestinationCellId) !== "DEEP_WATER") {
+      throw new Error(
+        "Warship production strategic destination must be a Deep-Water map cell",
+      );
+    }
     if (job.state === "BUILDING") {
       if (
         !Number.isSafeInteger(job.remainingTicks) ||
@@ -659,6 +664,12 @@ function freezeWarshipOperationalStates(
       throw new Error(
         `Warship operational state must reference a deployed Warship: ${entry.unitId}`,
       );
+    }
+    if (
+      unit.strategicDestinationCellId !== undefined &&
+      map.terrainAt(unit.strategicDestinationCellId) !== "DEEP_WATER"
+    ) {
+      throw new Error("Warship strategic destination must be a Deep-Water map cell");
     }
     if (
       !map.isValidCellId(entry.operatingAnchorCellId) ||
