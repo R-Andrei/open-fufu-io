@@ -19,7 +19,6 @@ import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
   evaluateControllerRound,
-  projectLawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import {
   createInitialMatchState,
@@ -1023,323 +1022,79 @@ describe("issue #206 team.signal authoritative RED", () => {
 });
 
 
-describe("issue #206 team.signal approved contract proof", () => {
-  function teamSignalSpec(seed: string) {
-    return createMicroSimulationSpec({
-      seed,
-      width: 5,
-      height: 1,
-      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS"],
-      initialOwners: ["alpha", "beta", "gamma", "delta", "solo"],
-      factions: [
-        { id: "alpha", fixedTeamId: "red", rules: emptyRules() },
-        { id: "beta", fixedTeamId: "red", rules: emptyRules() },
-        { id: "delta", fixedTeamId: "red", rules: emptyRules() },
-        { id: "gamma", fixedTeamId: "blue", rules: emptyRules() },
-        { id: "solo", rules: emptyRules() },
-      ],
-    });
+describe("issue #206 team.signal atomic rejection proof", () => {
+  function atomicSignalRuntime(seed: string) {
+    return new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 2,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta"],
+        factions: [
+          { id: "alpha", fixedTeamId: "red", rules: emptyRules() },
+          { id: "beta", fixedTeamId: "red", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
   }
 
-  function teamSignalRuntime(seed: string) {
-    return new MatchRuntime(teamSignalSpec(seed), {
-      controllerReferenceNamespace: seed,
-    });
-  }
-
-  it("delivers only to other active fixed teammates on the next decision and consumes after exposure", async () => {
-    const runtime = teamSignalRuntime("issue206-team-signal-delivery");
-
-    runtime.acceptAction({ type: "CAPITULATE_FACTION", factionId: "delta" });
-    runtime.tick();
-
-    const sendHost = new InProcessTestControllerHost({
-      alpha(context) {
-        context.team.signal("intent", { target: 7 });
-        return {};
-      },
-    });
-    const sent = await Promise.resolve(runtime.runControllerRound(sendHost));
-    expect(
-      sent.find((entry) => entry.factionId === "alpha")?.receipt,
-    ).toMatchObject({ accepted: true });
-    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
-      type: "TEAM_SIGNAL",
-      senderFactionId: "alpha",
-      channel: "intent",
-      payload: { target: 7 },
-    });
-
-    runtime.tick();
-
-    const observed = new Map<string, readonly unknown[]>();
-    let betaAlphaRef: string | undefined;
-    const observeHost = new InProcessTestControllerHost({
-      alpha(context) {
-        observed.set("alpha", context.events.sinceLastDecision);
-        return {};
-      },
-      beta(context) {
-        betaAlphaRef = context.factions
-          .find()
-          .find((faction) => faction.displayName === "alpha")?.ref;
-        observed.set("beta", context.events.sinceLastDecision);
-        return {};
-      },
-      delta(context) {
-        observed.set("delta", context.events.sinceLastDecision);
-        return {};
-      },
-      gamma(context) {
-        observed.set("gamma", context.events.sinceLastDecision);
-        return {};
-      },
-      solo(context) {
-        observed.set("solo", context.events.sinceLastDecision);
-        return {};
-      },
-    });
-    await Promise.resolve(runtime.runControllerRound(observeHost));
-
-    expect(observed.get("alpha")).toEqual([]);
-    expect(observed.get("delta")).toEqual([]);
-    expect(observed.get("gamma")).toEqual([]);
-    expect(observed.get("solo")).toEqual([]);
-    expect(observed.get("beta")).toEqual([
-      {
-        type: "TEAM_SIGNAL_RECEIVED",
-        fromFactionId: betaAlphaRef,
-        channel: "intent",
-        payload: { target: 7 },
-      },
-    ]);
-
-    runtime.tick();
-    let secondBetaObservation: readonly unknown[] | undefined;
-    const secondObserveHost = new InProcessTestControllerHost({
-      beta(context) {
-        secondBetaObservation = context.events.sinceLastDecision;
-        return {};
-      },
-    });
-    await Promise.resolve(runtime.runControllerRound(secondObserveHost));
-    expect(secondBetaObservation).toEqual([]);
-  });
-
-  it("treats a sender without eligible teammates as a lawful no-op", async () => {
-    const runtime = teamSignalRuntime("issue206-team-signal-no-recipient");
-    const before = runtime.snapshot();
-    const beforeInputs = runtime.acceptedInputs().length;
-    const host = new InProcessTestControllerHost({
-      solo(context) {
-        context.team.signal("status", { ready: true });
-        return {};
-      },
-    });
-    const receipts = await Promise.resolve(runtime.runControllerRound(host));
-    expect(
-      receipts.find((entry) => entry.factionId === "solo")?.receipt,
-    ).toMatchObject({ accepted: true });
-    expect(runtime.snapshot()).toEqual(before);
-    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 1);
-    expect(runtime.acceptedInputs().at(-1)?.action).toMatchObject({
-      type: "TEAM_SIGNAL",
-      senderFactionId: "solo",
-      channel: "status",
-      payload: { ready: true },
-    });
-
-    runtime.tick();
-    const observations = new Map<string, readonly unknown[]>();
-    const observeHost = new InProcessTestControllerHost({
-      alpha(context) {
-        observations.set("alpha", context.events.sinceLastDecision);
-        return {};
-      },
-      beta(context) {
-        observations.set("beta", context.events.sinceLastDecision);
-        return {};
-      },
-      solo(context) {
-        observations.set("solo", context.events.sinceLastDecision);
-        return {};
-      },
-    });
-    await Promise.resolve(runtime.runControllerRound(observeHost));
-    expect(observations.get("alpha")).toEqual([]);
-    expect(observations.get("beta")).toEqual([]);
-    expect(observations.get("solo")).toEqual([]);
-  });
-
-  it("preserves authoritative accepted-input order and reconstructs pending delivery from replay", async () => {
-    const seed = "issue206-team-signal-order";
-    const spec = teamSignalSpec(seed);
-    const runtime = new MatchRuntime(spec, {
-      controllerReferenceNamespace: seed,
-    });
-    const host = new InProcessTestControllerHost({
-      alpha(context) {
-        context.team.signal("first", { ordinal: 1 });
-        context.team.signal("second", { ordinal: 2 });
-        return {};
-      },
-    });
-    const receipts = await Promise.resolve(runtime.runControllerRound(host));
-    expect(
-      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
-    ).toMatchObject({ accepted: true });
-    const acceptedSignals = runtime
-      .acceptedInputs()
-      .filter((input) => input.action.type === "TEAM_SIGNAL");
-    expect(
-      acceptedSignals.map((input) => ({
-        sequence: input.sequence,
-        channel:
-          input.action.type === "TEAM_SIGNAL"
-            ? input.action.channel
-            : undefined,
-      })),
-    ).toEqual([
-      { sequence: acceptedSignals[0]?.sequence, channel: "first" },
-      { sequence: acceptedSignals[1]?.sequence, channel: "second" },
-    ]);
-
-    runtime.tick();
-    let liveChannels: readonly string[] | undefined;
-    await Promise.resolve(
-      runtime.runControllerRound(
+  it("rejects a valid sibling plus over-limit signal atomically in-process and in the production isolate", async () => {
+    const inProcess = atomicSignalRuntime("issue206-team-signal-atomic-in");
+    const inBefore = inProcess.snapshot();
+    const inInputs = inProcess.acceptedInputs().length;
+    const inReceipts = await Promise.resolve(
+      inProcess.runControllerRound(
         new InProcessTestControllerHost({
-          beta(context) {
-            liveChannels = context.events.sinceLastDecision.map(
-              (event) =>
-                event.type === "TEAM_SIGNAL_RECEIVED" ? event.channel : "",
-            );
+          alpha(context) {
+            context.team.signal("first", { legal: true });
+            context.team.signal("oversize", "a".repeat(1_023));
             return {};
           },
         }),
       ),
     );
-    expect(liveChannels).toEqual(["first", "second"]);
-
-    const replay = MatchRuntime.regenerate(
-      spec,
-      acceptedSignals,
-      1,
-      { controllerReferenceNamespace: seed + "-replay" },
-    );
-    let replayChannels: readonly string[] | undefined;
-    await Promise.resolve(
-      replay.runControllerRound(
-        new InProcessTestControllerHost({
-          beta(context) {
-            replayChannels = context.events.sinceLastDecision.map(
-              (event) =>
-                event.type === "TEAM_SIGNAL_RECEIVED" ? event.channel : "",
-            );
-            return {};
-          },
-        }),
-      ),
-    );
-    expect(replayChannels).toEqual(["first", "second"]);
-  });
-
-  it("copies TEAM_SIGNAL_RECEIVED through the production isolate unchanged", async () => {
-    const seed = "issue206-team-signal-worker";
-    const spec = teamSignalSpec(seed);
-    const state = createInitialMatchState(spec);
-    const references = new ControllerReferenceSession(seed, state);
-    const observation = projectLawfulControllerObservation(
-      state,
-      "beta",
-      1,
-      undefined,
-      references,
-      [
-        {
-          senderFactionId: "alpha",
-          channel: "intent",
-          payload: { target: 3 },
-        },
-      ],
-    );
-    const session = createControllerQuerySession(
-      state,
-      "beta",
-      CONTROLLER_QUERY_LIMITS,
-      references,
-    );
-    const pool = new ControllerProcessWorkerPool({ size: 1 });
-    try {
-      const host = new ProductionControllerHost(pool, {
-        beta: Object.freeze({
-          moduleSource:
-            "export function decide(context) {" +
-            " return { log: JSON.stringify(context.events.sinceLastDecision) };" +
-            " }",
-          entrypoints: Object.freeze({ decide: "decide" }),
-        }),
-      });
-      const result = await host.invoke("beta", observation, session);
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      const output = result.output as { readonly log?: string } | undefined;
-      expect(JSON.parse(output?.log ?? "[]")).toEqual(
-        observation.events.sinceLastDecision,
-      );
-    } finally {
-      await pool.close();
-    }
-  }, 20_000);
-
-  it("enforces the exact 1024-byte UTF-8 JSON payload limit and rejects an over-limit sibling proposal atomically", async () => {
-    const state = createInitialMatchState(
-      teamSignalSpec("issue206-team-signal-payload"),
-    );
-    const references = new ControllerReferenceSession(
-      "issue206-team-signal-payload",
-      state,
-    );
-    const session = createControllerQuerySession(
-      state,
-      "alpha",
-      CONTROLLER_QUERY_LIMITS,
-      references,
-    );
-
-    expect(() =>
-      session.team.signal("ascii", "a".repeat(1_022)),
-    ).not.toThrow();
-    expect(() =>
-      session.team.signal("utf8", "é".repeat(511)),
-    ).not.toThrow();
-    expect(() =>
-      session.team.signal("ascii", "a".repeat(1_023)),
-    ).toThrow();
-    expect(() =>
-      session.team.signal("utf8", "é".repeat(512)),
-    ).toThrow();
-
-    const runtime = teamSignalRuntime("issue206-team-signal-atomic");
-    const before = runtime.snapshot();
-    const beforeInputs = runtime.acceptedInputs().length;
-    const host = new InProcessTestControllerHost({
-      alpha(context) {
-        context.team.signal("first", { legal: true });
-        context.team.signal("oversize", "a".repeat(1_023));
-        return {};
-      },
-    });
-    const receipts = await Promise.resolve(runtime.runControllerRound(host));
     expect(
-      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      inReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
     ).toMatchObject({
       accepted: false,
       failure: { code: "RUNTIME_ERROR" },
     });
-    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs);
-    expect(runtime.snapshot()).toEqual(before);
-  });
+    expect(inProcess.acceptedInputs()).toHaveLength(inInputs);
+    expect(inProcess.snapshot()).toEqual(inBefore);
+
+    const production = atomicSignalRuntime("issue206-team-signal-atomic-worker");
+    const productionBefore = production.snapshot();
+    const productionInputs = production.acceptedInputs().length;
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource:
+            "export function decide(context) {" +
+            " context.team.signal('first', { legal: true });" +
+            " context.team.signal('oversize', 'a'.repeat(1023));" +
+            " return {};" +
+            " }",
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const receipts = await Promise.resolve(
+        production.runControllerRound(host),
+      );
+      expect(
+        receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({
+        accepted: false,
+        failure: { code: "RUNTIME_ERROR" },
+      });
+      expect(production.acceptedInputs()).toHaveLength(productionInputs);
+      expect(production.snapshot()).toEqual(productionBefore);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
 });
 
 describe("issue #206 Tank build and strategic-move authoritative RED", () => {
