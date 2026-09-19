@@ -84,6 +84,22 @@ export interface MatchFactionState {
   readonly fixedTeamId?: string;
 }
 
+export interface TradeVoyageEconomicSnapshotV1 {
+  readonly originalOwnerId: string;
+  readonly sourcePortId: string;
+  readonly launchDestinationPortId: string;
+  readonly valuationCellId: number;
+  readonly plannedRouteLengthCells: number;
+  readonly rawCargoFfy: number;
+  readonly ownerSuccessValueFfy: number;
+}
+
+export interface TradeVoyageState {
+  readonly unitId: string;
+  readonly economicSnapshot: TradeVoyageEconomicSnapshotV1;
+  readonly firstHostileCaptureResolved: boolean;
+}
+
 export interface MatchState extends FactoryTrainState {
   readonly seed: string;
   readonly tick: number;
@@ -94,6 +110,7 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly tradeVoyages: readonly TradeVoyageState[];
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
@@ -112,6 +129,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly tradeVoyages?: readonly TradeVoyageState[];
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
@@ -218,6 +236,108 @@ function freezeFactions(
       });
     }),
   );
+}
+
+function freezeTradeVoyages(
+  entries: readonly TradeVoyageState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+  factions: readonly MatchFactionState[],
+): readonly TradeVoyageState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("tradeVoyages must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const voyages = [...entries]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        throw new Error("Trade voyage state must be an object");
+      }
+      if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+        throw new Error("Trade voyage unitId must be a non-empty string");
+      }
+      if (seen.has(entry.unitId)) {
+        throw new Error(`duplicate Trade voyage: ${entry.unitId}`);
+      }
+      seen.add(entry.unitId);
+      const unit = unitsById.get(entry.unitId);
+      if (
+        unit === undefined ||
+        unit.type !== "TRADE_SHIP" ||
+        unit.movementClass !== "NAVAL"
+      ) {
+        throw new Error(
+          `Trade voyage ${entry.unitId} requires a physical NAVAL Trade Ship`,
+        );
+      }
+      const snapshot = entry.economicSnapshot;
+      if (
+        snapshot === null ||
+        typeof snapshot !== "object" ||
+        Array.isArray(snapshot)
+      ) {
+        throw new Error("Trade voyage economic snapshot must be an object");
+      }
+      for (const [label, value] of [
+        ["originalOwnerId", snapshot.originalOwnerId],
+        ["sourcePortId", snapshot.sourcePortId],
+        ["launchDestinationPortId", snapshot.launchDestinationPortId],
+      ] as const) {
+        if (typeof value !== "string" || value.length === 0) {
+          throw new Error(`Trade voyage ${label} must be a non-empty string`);
+        }
+      }
+      if (!factionIds.has(snapshot.originalOwnerId)) {
+        throw new Error("Trade voyage original owner must be a known faction");
+      }
+      if (!map.isValidCellId(snapshot.valuationCellId)) {
+        throw new Error("Trade voyage valuation cell must be a valid map cell");
+      }
+      assertNonNegativeSafeInteger(
+        snapshot.plannedRouteLengthCells,
+        "Trade voyage plannedRouteLengthCells",
+      );
+      assertNonNegativeSafeInteger(snapshot.rawCargoFfy, "Trade voyage rawCargoFfy");
+      assertNonNegativeSafeInteger(
+        snapshot.ownerSuccessValueFfy,
+        "Trade voyage ownerSuccessValueFfy",
+      );
+      if (
+        snapshot.plannedRouteLengthCells >
+          Math.floor(Number.MAX_SAFE_INTEGER / 150) ||
+        snapshot.rawCargoFfy !== snapshot.plannedRouteLengthCells * 150
+      ) {
+        throw new Error("Trade voyage raw cargo must equal 150 FFY per planned route edge");
+      }
+      if (typeof entry.firstHostileCaptureResolved !== "boolean") {
+        throw new Error("Trade voyage first-hostile-capture state must be boolean");
+      }
+      if (
+        !entry.firstHostileCaptureResolved &&
+        unit.ownerId !== snapshot.originalOwnerId
+      ) {
+        throw new Error(
+          "uncaptured Trade voyage physical owner must match original owner",
+        );
+      }
+      return Object.freeze({
+        unitId: entry.unitId,
+        economicSnapshot: Object.freeze({
+          originalOwnerId: snapshot.originalOwnerId,
+          sourcePortId: snapshot.sourcePortId,
+          launchDestinationPortId: snapshot.launchDestinationPortId,
+          valuationCellId: snapshot.valuationCellId,
+          plannedRouteLengthCells: snapshot.plannedRouteLengthCells,
+          rawCargoFfy: snapshot.rawCargoFfy,
+          ownerSuccessValueFfy: snapshot.ownerSuccessValueFfy,
+        }),
+        firstHostileCaptureResolved: entry.firstHostileCaptureResolved,
+      });
+    });
+  return Object.freeze(voyages);
 }
 
 function compareIds(left: string, right: string): number {
@@ -669,6 +789,12 @@ function createState(
     update.structures ?? previous.structures,
   );
   assertExclusivePhysicalOccupancy(structures, mobileUnits.mobileUnits);
+  const tradeVoyages = freezeTradeVoyages(
+    update.tradeVoyages ?? previous.tradeVoyages ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+    factions,
+  );
   const factoryTrains = materializeFactoryTrainState(
     previous,
     update,
@@ -690,6 +816,7 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    tradeVoyages,
     ...factoryTrains,
     tankProductionJobs: freezeTankProductionJobs(
       update.tankProductionJobs ?? previous.tankProductionJobs ?? [],
@@ -787,6 +914,7 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    tradeVoyages: Object.freeze([]),
     factoryRailLoops: Object.freeze([]),
     factoryTrainEpochs: Object.freeze([]),
     trainServices: Object.freeze([]),
@@ -984,6 +1112,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
           }),
     }));
 
+  const tradeVoyages = state.tradeVoyages.map((voyage) => ({
+    unitId: voyage.unitId,
+    economicSnapshot: {
+      originalOwnerId: voyage.economicSnapshot.originalOwnerId,
+      sourcePortId: voyage.economicSnapshot.sourcePortId,
+      launchDestinationPortId: voyage.economicSnapshot.launchDestinationPortId,
+      valuationCellId: voyage.economicSnapshot.valuationCellId,
+      plannedRouteLengthCells: voyage.economicSnapshot.plannedRouteLengthCells,
+      rawCargoFfy: voyage.economicSnapshot.rawCargoFfy,
+      ownerSuccessValueFfy: voyage.economicSnapshot.ownerSuccessValueFfy,
+    },
+    firstHostileCaptureResolved: voyage.firstHostileCaptureResolved,
+  }));
   const factoryTrains = serializeFactoryTrainState(state);
 
   const tankProductionJobs = [...state.tankProductionJobs]
@@ -1135,6 +1276,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    tradeVoyages,
     factoryRailLoops: factoryTrains.factoryRailLoops,
     factoryTrainEpochs: factoryTrains.factoryTrainEpochs,
     trainServices: factoryTrains.trainServices,

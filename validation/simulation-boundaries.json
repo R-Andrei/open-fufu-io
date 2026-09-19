@@ -701,6 +701,12 @@
       "rationale": "Trade Ship launch and terminal arrival use MobileUnits-owned canonical physical-unit creation and removal primitives."
     },
     {
+      "from": "src/simulation/TradeShips.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Trade Ship voyage planning consumes the canonical deterministic navigation substrate for Deep-Water route selection."
+    },
+    {
       "from": "src/simulation/TrainService.ts",
       "to": "src/simulation/MobileUnits.ts",
       "classification": "ORCHESTRATION",
