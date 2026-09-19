@@ -183,6 +183,25 @@ function trySetWarshipDestinationProbe(
   return move(state, request);
 }
 
+
+function removeWarshipUnitsProbe(
+  state: ReturnType<typeof operationalMovementFixture>,
+  unitIds: readonly string[],
+): ReturnType<typeof operationalMovementFixture> {
+  const remove = (
+    WarshipRuntime as unknown as {
+      removeWarshipUnits?: (
+        state: ReturnType<typeof operationalMovementFixture>,
+        unitIds: readonly string[],
+      ) => ReturnType<typeof operationalMovementFixture>;
+    }
+  ).removeWarshipUnits;
+  if (remove === undefined) {
+    throw new Error("Warship atomic removal seam is not implemented");
+  }
+  return remove(state, unitIds);
+}
+
 describe("Warship strategic movement lifecycle", () => {
   it("admits only intrinsic Deep-Water production destinations without requiring connectivity", () => {
     const initial = productionFixture();
@@ -501,6 +520,25 @@ describe("Warship strategic movement lifecycle", () => {
     expect(returned.warshipOperationalStates).toEqual([
       { unitId, operatingAnchorCellId: 0 },
     ]);
+  });
+
+
+  it("removes a Warship and its keyed movement state atomically", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const unitId = completed.mobileUnits[0]!.id;
+    expect(completed.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 0 },
+    ]);
+
+    const removed = removeWarshipUnitsProbe(completed, [unitId]);
+
+    expect(removed.mobileUnits.some((unit) => unit.id === unitId)).toBe(false);
+    expect(
+      removed.warshipOperationalStates.some(
+        (operational) => operational.unitId === unitId,
+      ),
+    ).toBe(false);
+    expect(removed.nextMobileUnitOrdinal).toBe(completed.nextMobileUnitOrdinal);
   });
 
 });
