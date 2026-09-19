@@ -165,7 +165,7 @@
     {"path":"src/simulation/TrainService.ts","validators":["tests/FactoryTrainRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/TrainInterceptionEconomy.test.ts","tests/TrainService.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/Transports.ts","validators":["tests/Navigation.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/TransportDestructionRuntime.test.ts","tests/TransportRuntime.test.ts"]},
     {"path":"src/simulation/VisibilityState.ts","validators":["tests/TankCombatEvents.test.ts","tests/OperationRefRuntime.test.ts","tests/WarshipProjectileImpact.test.ts","tests/WarshipTargeting.test.ts"]},
-    {"path":"src/simulation/WarshipCombat.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/WarshipCombatRuntime.test.ts","tests/WarshipProjectileImpact.test.ts"]},
+    {"path":"src/simulation/WarshipCombat.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/WarshipCombatRuntime.test.ts","tests/WarshipProjectileImpact.test.ts","tests/WarshipTransportImpactIntegration.test.ts"]},
     {"path":"src/simulation/WarshipTargeting.ts","validators":["tests/SimulationDependencyFirewall.test.ts","tests/WarshipTargeting.test.ts"]},
     {"path":"src/simulation/Warships.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts","tests/WarshipCombatRuntime.test.ts","tests/WarshipLifecycle.test.ts","tests/WarshipTargeting.test.ts"]},
     {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},

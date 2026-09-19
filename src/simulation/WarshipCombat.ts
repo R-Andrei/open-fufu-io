@@ -7,6 +7,7 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "./MatchState";
+import { applyTransportDamage } from "./Transports";
 import {
   createProjectileImpactResolvedEvent,
   createUnitDestroyedEvent,
@@ -296,6 +297,82 @@ export function resolveWarshipProjectileImpacts(
             warshipOperationalStates: Object.freeze(operationalStates),
           })
         : state,
+    events: Object.freeze(events),
+    unresolvedImpacts: Object.freeze(unresolvedImpacts),
+  });
+}
+
+
+
+/**
+ * Resolves one globally ordered Naval gun projectile-impact stream across the
+ * focused Warship and Transport damage owners. Other target classes remain
+ * unresolved for their owning subsystem.
+ */
+export function resolveWarshipNavalProjectileImpacts(
+  state: MatchState,
+  impacts: readonly HomingCombatProjectileImpact[],
+): WarshipProjectileImpactResolution {
+  let current = state;
+  const events: PhysicalUnitSimulationEvent[] = [];
+  const unresolvedImpacts: HomingCombatProjectileImpact[] = [];
+
+  for (const impact of [...impacts].sort(compareProjectileImpacts)) {
+    const target = current.mobileUnits.find(
+      (unit) => unit.id === impact.targetUnitId,
+    );
+    if (target === undefined) {
+      continue;
+    }
+
+    if (target.type === "WARSHIP") {
+      const resolved = resolveWarshipProjectileImpacts(current, [impact]);
+      current = resolved.state;
+      events.push(...resolved.events);
+      unresolvedImpacts.push(...resolved.unresolvedImpacts);
+      continue;
+    }
+
+    if (target.type === "TRANSPORT_SHIP") {
+      const impactEvent = createProjectileImpactResolvedEvent({
+        id: warshipProjectileEventId("IMPACT", current.tick, impact),
+        tick: current.tick,
+        projectile: projectileEventSubject(impact),
+        target: unitEventSubject(target),
+      });
+      const damaged = applyTransportDamage(current, {
+        transportId: target.id,
+        damage: impact.damage,
+        causeClass: "NAVAL_GUNFIRE",
+        creditedDestroyerFactionId: impact.sourceOwnerId,
+      });
+      current = damaged.state;
+      events.push(impactEvent);
+
+      if (damaged.destructionResult !== null) {
+        events.push(
+          createUnitDestroyedEvent({
+            id: warshipProjectileEventId("DESTROYED", current.tick, impact),
+            tick: current.tick,
+            unit: unitEventSubject(target),
+            causes: [
+              Object.freeze({
+                kind: "PROJECTILE_IMPACT" as const,
+                impactEventId: impactEvent.id,
+                projectile: projectileEventSubject(impact),
+              }),
+            ],
+          }),
+        );
+      }
+      continue;
+    }
+
+    unresolvedImpacts.push(impact);
+  }
+
+  return Object.freeze({
+    state: current,
     events: Object.freeze(events),
     unresolvedImpacts: Object.freeze(unresolvedImpacts),
   });
