@@ -8,11 +8,22 @@ import {
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import {
+  createFactoryRailLoopLifecycleState,
+  retainFactoryRailLoopSnapshot,
+} from "../src/simulation/FactoryRailLifecycle";
+import {
   advanceMobileUnits,
+  assignMobileUnitRoute,
   createMobileUnit,
 } from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { TickEngine } from "../src/simulation/TickEngine";
+import {
+  createFactoryTrainServiceEpoch,
+  createTrainDispatchEconomicSnapshot,
+  createTrainRouteInput,
+  markFactoryPrimaryTrainDispatched,
+} from "../src/simulation/TrainService";
 import * as TradeShipsModule from "../src/simulation/TradeShips";
 import {
   prepareTradeShipRuntimePhase,
@@ -1130,6 +1141,125 @@ describe("authoritative Trade Ship voyage state", () => {
     expect(settled.factions.find((faction) => faction.id === "beta")?.ffy).toBe(
       betaBefore,
     );
+  });
+
+  it("applies one faction-wide signed Trade stage only after same-tick Factory Train positive FFY", () => {
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-signed-after-train-positive",
+        width: 6,
+        height: 1,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const loop = Object.freeze({
+      factoryId: "factory-a",
+      targetStructureIds: Object.freeze(["city-a"]),
+      servicedStructureIds: Object.freeze(["city-a"]),
+      cells: Object.freeze([1, 2, 3, 2, 1]),
+      sharedExistingEdgeCount: 0,
+      stationInterfaces: Object.freeze([
+        Object.freeze({ structureId: "city-a", cellId: 3 }),
+      ]),
+    });
+    const created = createMobileUnit(
+      base.map,
+      base.factions.map((faction) => faction.id),
+      {
+        mobileUnits: base.mobileUnits,
+        nextMobileUnitOrdinal: base.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "alpha",
+        type: "TRAIN",
+        movementClass: "RAIL",
+        cellId: 1,
+      },
+    );
+    const routed = assignMobileUnitRoute(
+      base.map,
+      created.unit,
+      createTrainRouteInput(loop.cells),
+    );
+    const atStation = advanceMobileUnits(
+      [routed],
+      Object.freeze({ [routed.id]: 4 }),
+    )[0]!;
+    expect(atStation).toMatchObject({
+      cellId: 3,
+      route: { nextCellIndex: 3, edgeProgress: 0 },
+    });
+    const lifecycle = retainFactoryRailLoopSnapshot(
+      createFactoryRailLoopLifecycleState("factory-a", loop),
+      atStation.id,
+    );
+    const epoch = markFactoryPrimaryTrainDispatched(
+      createFactoryTrainServiceEpoch("factory-a", "alpha"),
+      atStation.id,
+    );
+    const prepared = withFactionFfy(
+      createProspectiveMatchState(base, {
+        structures: [
+          {
+            id: "factory-a",
+            ownerId: "alpha",
+            type: "FACTORY",
+            cellId: 0,
+            completedLevel: 1,
+            active: true,
+            acquisitionPath: "GRANT",
+          },
+          {
+            id: "city-a",
+            ownerId: "alpha",
+            type: "CITY",
+            cellId: 4,
+            completedLevel: 1,
+            active: true,
+            acquisitionPath: "GRANT",
+          },
+        ],
+        mobileUnits: [atStation],
+        nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+        factoryRailLoops: [lifecycle],
+        factoryTrainEpochs: [epoch],
+        trainServices: [
+          {
+            trainId: atStation.id,
+            factoryId: "factory-a",
+            loopSnapshotId: atStation.id,
+            isPrimary: true,
+            dispatchSnapshot: createTrainDispatchEconomicSnapshot(
+              "factory-a",
+              "alpha",
+              1,
+            ),
+            resumeAtTick: 16,
+          },
+        ],
+        tradePendingSignedFacts: [
+          {
+            id: "trade:first-capture:same-tick",
+            ownerId: "alpha",
+            componentsFfy: [-1_000],
+          },
+        ],
+      }),
+      "alpha",
+      500,
+    );
+
+    const advanced = new TickEngine().advance(prepared, []);
+
+    expect(advanced.tick).toBe(1);
+    expect(advanced.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(
+      9_600,
+    );
+    expect(advanced.tradePendingSignedFacts).toEqual([]);
   });
 
   it("settles ordinary Trade post-movement inside TickEngine and removes the completed voyage exactly once", () => {
