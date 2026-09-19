@@ -92,6 +92,7 @@
     "tests/ValidationBoundaryPolicy.test.ts",
     "tests/WarshipCombatRuntime.test.ts",
     "tests/WarshipLifecycle.test.ts",
+    "tests/WarshipProjectileImpact.test.ts",
     "tests/WarshipTargeting.test.ts"
   ],
   "ownedSources": [
