@@ -824,6 +824,142 @@ describe("authoritative Trade Ship voyage state", () => {
     });
   });
 
+  it("preserves a blocked retained route and fractional progress when no physical-occupancy bypass exists", () => {
+    const alphaRules = rulesWith(["P06"]);
+    const betaRules = emptyRules();
+    const width = 8;
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-no-bypass-retry",
+        width,
+        height: 2,
+        terrain: [
+          ...Array.from({ length: width }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        factions: [
+          { id: "alpha", rules: alphaRules },
+          { id: "beta", rules: betaRules },
+        ],
+      }),
+    );
+    const withPorts = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 8, 0),
+        port("port-beta", "beta", 15, 7),
+      ],
+    });
+    const launched = tryLaunchTradeVoyage(withPorts, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const partiallyAdvanced = advanceMobileUnits(
+      launched.state.mobileUnits,
+      Object.freeze({ [launched.unit.id]: 1 }),
+    );
+    const partialUnit = partiallyAdvanced.find(
+      (unit) => unit.id === launched.unit.id,
+    )!;
+    expect(partialUnit.route).toMatchObject({
+      cells: [0, 1, 2],
+      nextCellIndex: 1,
+      edgeProgress: 1,
+    });
+    const partial = createProspectiveMatchState(launched.state, {
+      mobileUnits: partiallyAdvanced,
+    });
+    const blocker = createMobileUnit(
+      partial.map,
+      partial.factions.map((faction) => faction.id),
+      {
+        mobileUnits: partial.mobileUnits,
+        nextMobileUnitOrdinal: partial.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "beta",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 1,
+      },
+    );
+    const occupied = createProspectiveMatchState(partial, {
+      mobileUnits: blocker.mobileUnits,
+      nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+    });
+    const reconciled = createProspectiveMatchState(
+      occupied,
+      prepareTradeShipRuntimePhase(occupied, partial),
+    );
+    const tradeUnit = reconciled.mobileUnits.find(
+      (unit) => unit.id === launched.unit.id,
+    );
+
+    expect(tradeUnit?.route).toMatchObject({
+      cells: [0, 1, 2],
+      nextCellIndex: 1,
+      edgeProgress: 1,
+    });
+  });
+
+  it("produces identical autonomous Trade state from equivalent structure insertion orders", () => {
+    const rules = emptyRules();
+    const width = 23;
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-insertion-order-determinism",
+        width,
+        height: 2,
+        terrain: [
+          ...Array.from({ length: width }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+          { id: "gamma", rules },
+        ],
+      }),
+    );
+    const structures = [
+      port("port-alpha", "alpha", 23, 0),
+      port("port-beta", "beta", 33, 10),
+      port("port-gamma", "gamma", 44, 21),
+    ];
+    function prepared(order: readonly (typeof structures)[number][]) {
+      const previous = createProspectiveMatchState(base, {
+        structures: order,
+      });
+      const current = createAdvancedMatchState(previous, {
+        tradePortSchedulers: [
+          {
+            portId: "port-alpha",
+            ownerId: "alpha",
+            ownershipEpochOrdinal: 0,
+            nextAttemptOrdinal: 3,
+            nextAttemptTick: 1,
+            nextDestinationSelectionOrdinal: 0,
+            destinationHistory: [],
+          },
+        ],
+      });
+      return createProspectiveMatchState(
+        current,
+        prepareTradeShipRuntimePhase(current, previous),
+      );
+    }
+
+    const forward = prepared(structures);
+    const reversed = prepared([...structures].reverse());
+
+    expect(canonicalMatchStateSerialization(reversed)).toBe(
+      canonicalMatchStateSerialization(forward),
+    );
+  });
+
   it("settles ordinary Trade at current wartime conditions and lets P08 replace the 0.5 wartime multiplier", () => {
     const settle = requiredTradeFunction<
       (state: TestMatchState, atWar: (left: string, right: string) => boolean) => TestMatchState
