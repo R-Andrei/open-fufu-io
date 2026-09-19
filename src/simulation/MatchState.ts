@@ -547,7 +547,8 @@ function freezeTradeRetiredPortEpochs(
       throw new Error("Trade retired Port destination history must be an array");
     }
     const seenDestinations = new Set<string>();
-    const destinationHistory = entry.destinationHistory.map((history) => {
+    const destinationHistory: TradeDestinationHistoryState[] =
+      entry.destinationHistory.map((history: TradeDestinationHistoryState) => {
       if (
         history === null ||
         typeof history !== "object" ||
@@ -577,8 +578,11 @@ function freezeTradeRetiredPortEpochs(
         lastSelectedOrdinal: history.lastSelectedOrdinal,
       });
     });
-    destinationHistory.sort((left, right) =>
-      compareIds(left.destinationPortId, right.destinationPortId),
+    destinationHistory.sort(
+      (
+        left: TradeDestinationHistoryState,
+        right: TradeDestinationHistoryState,
+      ) => compareIds(left.destinationPortId, right.destinationPortId),
     );
     return Object.freeze({
       portId: entry.portId,
@@ -627,7 +631,8 @@ function freezeTradePendingSignedFacts(
       !Array.isArray(entry.componentsFfy) ||
       entry.componentsFfy.length === 0 ||
       entry.componentsFfy.some(
-        (component) => !Number.isSafeInteger(component) || Object.is(component, -0),
+        (component: number) =>
+          !Number.isSafeInteger(component) || Object.is(component, -0),
       )
     ) {
       throw new Error(

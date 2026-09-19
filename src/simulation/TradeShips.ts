@@ -155,6 +155,114 @@ function tradeShipDockCell(
   return dockCellId;
 }
 
+function stableTradeHash32(domain: string, ...fields: readonly (string | number)[]): number {
+  const text = JSON.stringify([domain, ...fields.map((field) => String(field))]);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    hash ^= code & 0xff;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+    hash ^= code >>> 8;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+function stableUniformInclusive(
+  min: number,
+  max: number,
+  domain: string,
+  ...fields: readonly (string | number)[]
+): number {
+  if (
+    !Number.isSafeInteger(min) ||
+    !Number.isSafeInteger(max) ||
+    min < 0 ||
+    max < min
+  ) {
+    throw new Error("Trade deterministic integer range is invalid");
+  }
+  const range = max - min + 1;
+  const acceptanceLimit = Math.floor(UINT32_RANGE / range) * range;
+  for (let retry = 0; ; retry += 1) {
+    const sample = stableTradeHash32(domain, ...fields, retry);
+    if (sample < acceptanceLimit) return min + (sample % range);
+    if (retry === Number.MAX_SAFE_INTEGER) {
+      throw new Error("Trade deterministic integer rejection sampling exhausted");
+    }
+  }
+}
+
+function nextTradeDispatchDelay(
+  state: MatchState,
+  portId: string,
+  attemptOrdinal: number,
+): number {
+  return stableUniformInclusive(
+    TRADE_DISPATCH_MIN_TICKS,
+    TRADE_DISPATCH_MAX_TICKS,
+    "TRADE_DISPATCH_DELAY_V1",
+    state.seed,
+    portId,
+    attemptOrdinal,
+  );
+}
+
+function compareSeededDestinationTie(
+  state: MatchState,
+  sourcePortId: string,
+  leftDestinationPortId: string,
+  rightDestinationPortId: string,
+): number {
+  const left = stableTradeHash32(
+    "TRADE_DESTINATION_TIE_V1",
+    state.seed,
+    sourcePortId,
+    leftDestinationPortId,
+  );
+  const right = stableTradeHash32(
+    "TRADE_DESTINATION_TIE_V1",
+    state.seed,
+    sourcePortId,
+    rightDestinationPortId,
+  );
+  return left - right ||
+    (leftDestinationPortId < rightDestinationPortId
+      ? -1
+      : leftDestinationPortId > rightDestinationPortId
+        ? 1
+        : 0);
+}
+
+function tradeMovementTiming(state: MatchState, ownerId: string): Readonly<{
+  movementWorkPerTick: number;
+  edgeWeight: number;
+}> {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`Trade movement references unknown owner ${ownerId}`);
+  }
+  const scale = materializeCompiledScalarScaleFactor(
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_MOVEMENT_SPEED",
+    { kind: "UNIT", unit: "TRADE_SHIP" },
+    ffyRuleDynamicState(state, ownerId),
+  );
+  if (
+    scale.numerator <= 0n ||
+    scale.denominator <= 0n ||
+    scale.numerator > MAX_SAFE_BIGINT ||
+    scale.denominator > MAX_SAFE_BIGINT
+  ) {
+    throw new Error("Trade Ship movement speed must resolve to a positive safe ratio");
+  }
+  return Object.freeze({
+    movementWorkPerTick: Number(scale.numerator),
+    edgeWeight: Number(scale.denominator),
+  });
+}
+
 function lawfulDeliveryCells(
   state: MatchState,
   destinationPortId: string,
