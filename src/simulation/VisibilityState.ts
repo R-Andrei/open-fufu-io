@@ -512,7 +512,7 @@ export function resolveDirectRevealsFromLandOperationEvents(
 }
 
 function resolveDirectRevealsFromTankCombatEventSet(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   events: readonly TankCombatVisibilityEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
@@ -532,6 +532,16 @@ function resolveDirectRevealsFromTankCombatEventSet(
       event.kind === "TANK_POPULATION_ATTACK_RESOLVED"
         ? event.payload.targetFactionId
         : event.payload.target.ownerId;
+    const sourceUnitId =
+      event.kind === "PROJECTILE_IMPACT_RESOLVED"
+        ? event.payload.projectile.sourceUnitId
+        : event.payload.attacker.unitId;
+    if (
+      event.kind === "PROJECTILE_IMPACT_RESOLVED" &&
+      !state.mobileUnits.some((unit) => unit.id === sourceUnitId)
+    ) {
+      continue;
+    }
     directReveals = refreshDirectRevealRecords(
       directReveals,
       {
@@ -541,7 +551,7 @@ function resolveDirectRevealsFromTankCombatEventSet(
         attackedFactionIds: [attackedFactionId],
       },
       "UNIT",
-      event.payload.attacker.unitId,
+      sourceUnitId,
       event.tick,
       V1_SIMULATION_TICKS_PER_SECOND,
     );
@@ -563,7 +573,7 @@ function resolveDirectRevealsFromTankCombatEventSet(
  * the directly attacked faction; destruction facts prevent reveal ghosts.
  */
 export function resolveDirectRevealsFromPhysicalEvents(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   events: readonly PhysicalUnitSimulationEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
@@ -575,7 +585,7 @@ export function resolveDirectRevealsFromPhysicalEvents(
  * combat batch, including Population attacks and same-batch destruction.
  */
 export function resolveDirectRevealsFromTankCombatEvents(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   physicalEvents: readonly PhysicalUnitSimulationEvent[],
   populationEvents: readonly TankPopulationAttackResolvedEvent[],
   currentTick: number,

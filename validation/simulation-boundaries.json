@@ -803,7 +803,13 @@
       "from": "src/simulation/WarshipCombat.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
-      "rationale": "Warship gunfire decisions resolve from one frozen authoritative MatchState and materialize only projectile/cooldown state changes."
+      "rationale": "Warship gunfire decisions and projectile-impact resolution consume current authoritative MatchState and mutate only Naval-owned Warship combat state."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Warship projectile impacts emit lifecycle-safe canonical impact and destruction facts for cross-system visibility and downstream attribution consumers."
     },
     {
       "from": "src/simulation/WarshipCombat.ts",

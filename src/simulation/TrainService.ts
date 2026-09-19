@@ -563,12 +563,14 @@ export function resolveTrainDestroyedEconomicOutcome(
   if (service === undefined) return null;
 
   let creditedCause = destructionEvent.payload.causes.find(
-    (cause) => cause.attacker.unitType === "TANK",
+    (cause) =>
+      cause.kind === "UNIT_ATTACK" && cause.attacker.unitType === "TANK",
   );
   if (creditedCause === undefined) return null;
 
   for (const cause of destructionEvent.payload.causes) {
     if (
+      cause.kind === "UNIT_ATTACK" &&
       cause.attacker.unitType === "TANK" &&
       cause.attacker.unitId < creditedCause.attacker.unitId
     ) {
