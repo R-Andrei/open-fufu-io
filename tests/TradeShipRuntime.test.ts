@@ -378,6 +378,51 @@ describe("authoritative Trade Ship voyage state", () => {
     expect(serialized.tradePortSchedulers).toEqual(newlyEligible.tradePortSchedulers);
   });
 
+  it("reaches both inclusive 200-tick and 300-tick dispatch-delay boundaries deterministically", () => {
+    function scheduledDelay(seed: string): number {
+      const rules = emptyRules();
+      const base = createInitialMatchState(
+        createMicroSimulationSpec({
+          seed,
+          width: 13,
+          height: 1,
+          terrain: [
+            "PLAINS",
+            ...Array.from({ length: 11 }, () => "DEEP_WATER" as const),
+            "PLAINS",
+          ],
+          initialOwners: Array.from({ length: 13 }, (_, cellId) =>
+            cellId === 0 ? "alpha" : cellId === 12 ? "beta" : null,
+          ),
+          factions: [
+            { id: "alpha", rules },
+            { id: "beta", rules },
+          ],
+        }),
+      );
+      const state = createProspectiveMatchState(base, {
+        structures: [
+          port("port-alpha", "alpha", 0, 1),
+          port("port-beta", "beta", 12, 11),
+        ],
+      });
+      const prepared = createProspectiveMatchState(
+        state,
+        prepareTradeShipRuntimePhase(state, state),
+      );
+      const scheduler = prepared.tradePortSchedulers.find(
+        (entry) => entry.portId === "port-alpha",
+      );
+      if (scheduler?.nextAttemptTick === null || scheduler?.nextAttemptTick === undefined) {
+        throw new Error("expected scheduled Trade attempt");
+      }
+      return scheduler.nextAttemptTick - state.tick;
+    }
+
+    expect(scheduledDelay("cert-boundary-91")).toBe(200);
+    expect(scheduledDelay("cert-boundary-37")).toBe(300);
+  });
+
   it("dispatches to the least-recently-selected reachable foreign Port, reschedules once, and resets the scheduler epoch on ownership transfer", () => {
     const rules = emptyRules();
     const base = createInitialMatchState(
@@ -1086,6 +1131,71 @@ describe("authoritative Trade Ship voyage state", () => {
     expect(settled.factions.find((faction) => faction.id === "alpha")?.ffy).toBe(25_000);
     expect((settled as any).tradePendingSignedFacts).toEqual([]);
     expect(settled.tradeVoyages).toHaveLength(1);
+  });
+
+  it("breaks equal-distance captured-delivery Port ties by stable Port ID before target-cell tie semantics", () => {
+    const capture = requiredTradeFunction<
+      (
+        state: TestMatchState,
+        request: { unitId: string; capturingFactionId: string },
+      ) => any
+    >("tryCaptureTradeShip");
+    const rules = emptyRules();
+    const width = 21;
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-captured-port-id-tie",
+        width,
+        height: 2,
+        terrain: [
+          ...Array.from({ length: width }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        initialOwners: Array.from({ length: width * 2 }, (_, cellId) =>
+          cellId === 31
+            ? "alpha"
+            : cellId === 25 || cellId === 37
+              ? "beta"
+              : cellId === 41
+                ? "gamma"
+                : null,
+        ),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+          { id: "gamma", rules },
+        ],
+      }),
+    );
+    const state = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 31, 10),
+        port("port-beta-a", "beta", 25, 4),
+        port("port-beta-b", "beta", 37, 16),
+        port("port-gamma", "gamma", 41, 20),
+      ],
+    });
+    const launched = tryLaunchTradeVoyage(state, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-gamma",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    const captured = capture(launched.state, {
+      unitId: launched.unit.id,
+      capturingFactionId: "beta",
+    });
+    expect(captured.ok).toBe(true);
+    expect(captured.state.tradeVoyages[0]).toMatchObject({
+      routingMode: "CAPTURED",
+      destinationPortId: "port-beta-a",
+    });
+    expect(
+      captured.state.mobileUnits.find((unit: any) => unit.id === launched.unit.id)?.route
+        ?.destinationCellId,
+    ).toBe(8);
   });
 
   it("rejects capture without a reachable holder Port, then keeps captured cargo physically in play through temporary no-Port state and resumes routing when service returns", () => {
