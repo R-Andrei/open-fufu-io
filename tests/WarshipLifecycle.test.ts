@@ -230,6 +230,42 @@ describe("Warship strategic movement lifecycle", () => {
     expect(disconnectedDeep.job.strategicDestinationCellId).toBe(3);
   });
 
+
+
+  it("rejects restored Warship production state with an intrinsically illegal destination", () => {
+    const initial = productionFixture();
+
+    expect(() =>
+      createProspectiveMatchState(initial, {
+        warshipProductionJobs: [
+          {
+            portId: "port-a",
+            ownerId: "alpha",
+            strategicDestinationCellId: 2,
+            state: "BUILDING",
+            remainingTicks: 1,
+          },
+        ],
+      }),
+    ).toThrow(/Warship production strategic destination.*Deep-Water/i);
+  });
+
+  it("rejects restored deployed Warship state with an intrinsically illegal strategic destination", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const warship = completed.mobileUnits[0]!;
+
+    expect(() =>
+      createProspectiveMatchState(completed, {
+        mobileUnits: [
+          {
+            ...warship,
+            strategicDestinationCellId: 1,
+          },
+        ],
+      }),
+    ).toThrow(/Warship strategic destination.*Deep-Water/i);
+  });
+
   it("uses Deep Water only and exact effective Warship speed composition", () => {
     expectExactWarshipSpeed(
       warshipTerrainMovementTiming(
