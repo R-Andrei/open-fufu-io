@@ -17,6 +17,7 @@ import {
   warshipTerrainMovementTiming,
 } from "../src/simulation/Warships";
 import { TickEngine } from "../src/simulation/TickEngine";
+import * as WarshipRuntime from "../src/simulation/Warships";
 
 function rulesWithTraits(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
@@ -145,6 +146,41 @@ function completeWarshipProduction(
     working = advanceWarshipProductionPhase(working);
   }
   return working;
+}
+
+
+type WarshipMoveResultProbe =
+  | Readonly<{ ok: true; state: ReturnType<typeof operationalMovementFixture> }>
+  | Readonly<{
+      ok: false;
+      failure: Readonly<{ code: string }>;
+      state: ReturnType<typeof operationalMovementFixture>;
+    }>;
+
+function trySetWarshipDestinationProbe(
+  state: ReturnType<typeof operationalMovementFixture>,
+  request: Readonly<{
+    ownerId: string;
+    unitId: string;
+    strategicDestinationCellId: number;
+  }>,
+): WarshipMoveResultProbe {
+  const move = (
+    WarshipRuntime as unknown as {
+      trySetWarshipStrategicDestination?: (
+        state: ReturnType<typeof operationalMovementFixture>,
+        request: Readonly<{
+          ownerId: string;
+          unitId: string;
+          strategicDestinationCellId: number;
+        }>,
+      ) => WarshipMoveResultProbe;
+    }
+  ).trySetWarshipStrategicDestination;
+  if (move === undefined) {
+    throw new Error("Warship strategic-move admission seam is not implemented");
+  }
+  return move(state, request);
 }
 
 describe("Warship strategic movement lifecycle", () => {
@@ -396,6 +432,75 @@ describe("Warship strategic movement lifecycle", () => {
         }
       ).warshipOperationalStates,
     ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+  });
+
+
+  it("commits a legal Deep-Water strategic move without creating or refreshing hostility state", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const unitId = completed.mobileUnits[0]!.id;
+    const result = trySetWarshipDestinationProbe(completed, {
+      ownerId: "alpha",
+      unitId,
+      strategicDestinationCellId: 4,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected legal Warship move admission");
+    expect(
+      result.state.mobileUnits.find((unit) => unit.id === unitId)
+        ?.strategicDestinationCellId,
+    ).toBe(4);
+    expect(result.state.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 0 },
+    ]);
+    expect(result.state.operations).toEqual(completed.operations);
+    expect(result.state.hostilityGrace).toEqual(completed.hostilityGrace);
+  });
+
+  it("rejects a non-Deep-Water strategic move atomically", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const unitId = completed.mobileUnits[0]!.id;
+    const result = trySetWarshipDestinationProbe(completed, {
+      ownerId: "alpha",
+      unitId,
+      strategicDestinationCellId: 1,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      failure: { code: "INVALID_REQUEST" },
+    });
+    expect(result.state).toBe(completed);
+  });
+
+  it("replaces an active strategic destination deterministically without moving the operating anchor early", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const engine = new TickEngine();
+    const first = engine.advance(completed, []);
+    const unitId = first.mobileUnits[0]!.id;
+    expect(first.mobileUnits[0]).toMatchObject({
+      cellId: 3,
+      strategicDestinationCellId: 2,
+    });
+
+    const replaced = trySetWarshipDestinationProbe(first, {
+      ownerId: "alpha",
+      unitId,
+      strategicDestinationCellId: 0,
+    });
+    expect(replaced.ok).toBe(true);
+    if (!replaced.ok) throw new Error("expected Warship destination replacement");
+    expect(replaced.state.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 0 },
+    ]);
+
+    const returned = engine.advance(replaced.state, []);
+    const returnedUnit = returned.mobileUnits.find((unit) => unit.id === unitId)!;
+    expect(returnedUnit.cellId).toBe(0);
+    expect(returnedUnit.strategicDestinationCellId).toBeUndefined();
+    expect(returned.warshipOperationalStates).toEqual([
+      { unitId, operatingAnchorCellId: 0 },
+    ]);
   });
 
 });
