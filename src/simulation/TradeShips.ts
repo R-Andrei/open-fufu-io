@@ -395,7 +395,7 @@ function selectLeastRecentTradeDestination(
   state: MatchState,
   sourcePortId: string,
   destinations: readonly TradeDestinationRoute[],
-  history: readonly MatchState["tradePortSchedulers"][number]["destinationHistory"],
+  history: MatchState["tradePortSchedulers"][number]["destinationHistory"],
 ): TradeDestinationRoute | null {
   if (destinations.length === 0) return null;
   const lastSelected = new Map(
