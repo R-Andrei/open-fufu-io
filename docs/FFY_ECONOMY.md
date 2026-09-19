@@ -447,6 +447,8 @@ Reaching any such lawful delivery cell completes ordinary service even when the 
 
 If the destination changes owner but remains active, reachable, and foreign, the vessel continues to that physical Port. If it becomes invalid, the ship reroutes using the same policy without recomputing the voyage's snapshotted cargo value or `Vowner`.
 
+The least-recently-selected history used by an ordinary reroute belongs to the **source Port ownership epoch that launched that voyage**, not necessarily the Port's current owner. Every voyage remains bound to its launching source-Port ownership epoch. When the physical source Port transfers ownership, the new owner's current epoch begins with the fresh scheduler/history state defined in §5.1, while the retired old-owner epoch remains serialized for as long as any in-flight voyage still references it. Ordinary reroutes consult and update that launching epoch's destination history. A retired epoch may be discarded once its final referencing voyage terminates.
+
 If no legal foreign destination remains during an uncaptured voyage, the Trade Ship returns to a reachable owned active Port and terminates without an ordinary Trade payout.
 
 When several owned active Ports are reachable for such a return, choose the Port whose lawful radius-5 Deep-Water delivery area has the shortest legal Deep-Water route from the vessel's current cell. Equal Port-distance ties resolve by stable Port ID, then equal target-cell/path ties use the canonical deterministic Navigation tie semantics. Owned return uses the same inclusive radius-5 Deep-Water completion geometry as ordinary Trade service and does not serialize through the Port's designated dock.
