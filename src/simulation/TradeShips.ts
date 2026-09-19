@@ -1508,15 +1508,16 @@ function appendSignedFact(
   else existing.push(fact);
 }
 
-export function settleTradeShipRuntimePhase(
-  state: MatchState,
-  currentAtWar: (leftFactionId: string, rightFactionId: string) => boolean,
-): MatchState {
-  const positiveByOwner = new Map<string, PositiveFfyEventInput[]>();
-  const signedByOwner = new Map<string, SignedFfyFactInput[]>();
-  for (const pending of state.tradePendingSignedFacts) {
+
+export type TradeSignedStageMode = "FINALIZE" | "DEFER";
+
+function tradeSignedFactsByOwner(
+  pendingFacts: readonly MatchState["tradePendingSignedFacts"][number][],
+): Map<string, SignedFfyFactInput[]> {
+  const byOwner = new Map<string, SignedFfyFactInput[]>();
+  for (const pending of pendingFacts) {
     appendSignedFact(
-      signedByOwner,
+      byOwner,
       pending.ownerId,
       Object.freeze({
         id: pending.id,
@@ -1526,6 +1527,16 @@ export function settleTradeShipRuntimePhase(
       }),
     );
   }
+  return byOwner;
+}
+
+export function settleTradeShipRuntimePhase(
+  state: MatchState,
+  currentAtWar: (leftFactionId: string, rightFactionId: string) => boolean,
+  signedStageMode: TradeSignedStageMode = "FINALIZE",
+): MatchState {
+  const positiveByOwner = new Map<string, PositiveFfyEventInput[]>();
+  const pendingSignedFacts = [...state.tradePendingSignedFacts];
 
   const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
   const terminalUnitIds = new Set<string>();
@@ -1557,13 +1568,12 @@ export function settleTradeShipRuntimePhase(
       }
       const ownerId = voyage.economicSnapshot.originalOwnerId;
       if (hasTradeCaptureValueTrait(state, ownerId, "N16")) {
-        appendSignedFact(
-          signedByOwner,
-          ownerId,
+        pendingSignedFacts.push(
           Object.freeze({
             id: tradeTerminalEventId(state, voyage, "ORDINARY"),
-            components: Object.freeze([
-              exactWholeFfy(-voyage.economicSnapshot.ownerSuccessValueFfy),
+            ownerId,
+            componentsFfy: Object.freeze([
+              -voyage.economicSnapshot.ownerSuccessValueFfy,
             ]),
           }),
         );
@@ -1642,6 +1652,10 @@ export function settleTradeShipRuntimePhase(
   const remainingUnits = Object.freeze(
     state.mobileUnits.filter((unit) => !terminalUnitIds.has(unit.id)),
   );
+  const signedByOwner =
+    signedStageMode === "FINALIZE"
+      ? tradeSignedFactsByOwner(pendingSignedFacts)
+      : new Map<string, SignedFfyFactInput[]>();
   const factions = state.factions.map((faction) => {
     const positiveEvents = positiveByOwner.get(faction.id) ?? [];
     const signedFacts = signedByOwner.get(faction.id) ?? [];
@@ -1673,11 +1687,38 @@ export function settleTradeShipRuntimePhase(
     factions,
     mobileUnits: remainingUnits,
     tradeVoyages: remainingVoyages,
-    tradePendingSignedFacts: Object.freeze([]),
+    tradePendingSignedFacts:
+      signedStageMode === "FINALIZE"
+        ? Object.freeze([])
+        : Object.freeze(pendingSignedFacts),
     tradeRetiredPortEpochs: cleanupRetiredTradeEpochs(
       remainingVoyages,
       state.tradeRetiredPortEpochs,
     ),
+  });
+}
+
+export function settleTradeShipSignedFactsPhase(state: MatchState): MatchState {
+  if (state.tradePendingSignedFacts.length === 0) return state;
+  const signedByOwner = tradeSignedFactsByOwner(state.tradePendingSignedFacts);
+  const factions = state.factions.map((faction) => {
+    const signedFacts = signedByOwner.get(faction.id) ?? [];
+    if (signedFacts.length === 0) return faction;
+    const resolved = resolveFfyEconomicStage({
+      balance: faction.ffy,
+      rules: faction.rules,
+      ruleDynamicState: ffyRuleDynamicState(state, faction.id),
+      positiveEvents: Object.freeze([]),
+      signedFacts: Object.freeze([...signedFacts]),
+    });
+    return Object.freeze({
+      ...faction,
+      ffy: resolved.balance,
+    });
+  });
+  return createProspectiveMatchState(state, {
+    factions,
+    tradePendingSignedFacts: Object.freeze([]),
   });
 }
 

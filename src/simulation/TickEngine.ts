@@ -84,6 +84,7 @@ import {
 import {
   prepareTradeShipRuntimePhase,
   settleTradeShipRuntimePhase,
+  settleTradeShipSignedFactsPhase,
   tradeShipMovementWorkByUnitId,
 } from "./TradeShips";
 import { advanceWarshipProductionPhase } from "./Warships";
@@ -1275,6 +1276,7 @@ export class TickEngine {
           tradeOwnerId,
           destinationOwnerId,
         ),
+      "DEFER",
     );
     const repaired = advanceTankRepairPhase(tradeSettled);
     const tanksProduced = advanceTankProductionPhase(repaired);
@@ -1286,8 +1288,10 @@ export class TickEngine {
       (trainOwnerId, stationOwnerId) =>
         matchStateAtWar(produced, trainOwnerId, stationOwnerId),
     );
-    return trainEconomicUpdate === null
-      ? produced
-      : createProspectiveMatchState(produced, trainEconomicUpdate);
+    const trainEconomicSettled =
+      trainEconomicUpdate === null
+        ? produced
+        : createProspectiveMatchState(produced, trainEconomicUpdate);
+    return settleTradeShipSignedFactsPhase(trainEconomicSettled);
   }
 }
