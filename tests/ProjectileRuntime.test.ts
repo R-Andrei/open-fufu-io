@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { originRuleProfileInput } from "../src/core/rules/OriginRuleManifest";
+import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
+import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
   advanceHomingCombatProjectiles,
   createHomingCombatProjectile,
@@ -9,6 +12,11 @@ import {
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
+import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+
+function baselineRules() {
+  return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput([]));
+}
 
 function projectile(
   sourceUnitId: string,
@@ -30,18 +38,18 @@ function projectile(
 
 describe("generic target-bound homing combat projectiles", () => {
   it("binds stable source/target/profile/damage state and serializes it canonically", () => {
-    const state = createInitialMatchState({
-      seed: "projectile-state",
-      map: {
+    const state = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "projectile-state",
         width: 2,
         height: 1,
         terrain: ["DEEP_WATER", "DEEP_WATER"],
-      },
-      factions: [
-        { id: "alpha", displayName: "Alpha", isMinorFaction: false },
-        { id: "beta", displayName: "Beta", isMinorFaction: false },
-      ],
-    });
+        factions: [
+          { id: "alpha", rules: baselineRules() },
+          { id: "beta", rules: baselineRules() },
+        ],
+      }),
+    );
     const shot = projectile("unit:000000000000000001", 7, "unit:000000000000000002");
     const withProjectile = createProspectiveMatchState(state, {
       combatProjectiles: [shot],
