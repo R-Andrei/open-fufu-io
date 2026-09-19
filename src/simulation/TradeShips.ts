@@ -301,10 +301,23 @@ type TradeDestinationRoute = Readonly<{
   route: Readonly<{ cells: readonly number[]; totalWeight: number }>;
 }>;
 
-function routeToTradeDestination(
+function tradeRouteCellIsPhysicallyAvailable(
+  state: MatchState,
+  startCellId: number,
+  cellId: number,
+): boolean {
+  if (cellId === startCellId) return true;
+  return (
+    !state.structures.some((structure) => structure.cellId === cellId) &&
+    !state.mobileUnits.some((unit) => unit.cellId === cellId)
+  );
+}
+
+function resolveTradeDestinationRoute(
   state: MatchState,
   startCellId: number,
   destinationPortId: string,
+  avoidCurrentPhysicalOccupancy: boolean,
 ): TradeDestinationRoute | null {
   const targets = lawfulDeliveryCells(state, destinationPortId).map(
     (cellId) => Object.freeze({ cellId, intentWeight: 0 }),
@@ -315,10 +328,20 @@ function routeToTradeDestination(
     Object.freeze(targets),
     {
       traversalWeight(from, to) {
-        return state.map.terrainAt(from) === "DEEP_WATER" &&
-          state.map.terrainAt(to) === "DEEP_WATER"
-          ? 1
-          : undefined;
+        if (
+          state.map.terrainAt(from) !== "DEEP_WATER" ||
+          state.map.terrainAt(to) !== "DEEP_WATER"
+        ) {
+          return undefined;
+        }
+        if (
+          avoidCurrentPhysicalOccupancy &&
+          (!tradeRouteCellIsPhysicallyAvailable(state, startCellId, from) ||
+            !tradeRouteCellIsPhysicallyAvailable(state, startCellId, to))
+        ) {
+          return undefined;
+        }
+        return 1;
       },
     },
   );
@@ -335,17 +358,48 @@ function routeToTradeDestination(
   });
 }
 
+function occupancyAvoidingTradeDestinationRoute(
+  state: MatchState,
+  startCellId: number,
+  destinationPortId: string,
+): TradeDestinationRoute | null {
+  return resolveTradeDestinationRoute(
+    state,
+    startCellId,
+    destinationPortId,
+    true,
+  );
+}
+
+function routeToTradeDestination(
+  state: MatchState,
+  startCellId: number,
+  destinationPortId: string,
+): TradeDestinationRoute | null {
+  return (
+    occupancyAvoidingTradeDestinationRoute(
+      state,
+      startCellId,
+      destinationPortId,
+    ) ??
+    resolveTradeDestinationRoute(
+      state,
+      startCellId,
+      destinationPortId,
+      false,
+    )
+  );
+}
+
 function reachableForeignTradeDestinations(
   state: MatchState,
   ownerId: string,
-  sourcePortId: string,
   sourceCellId: number,
 ): readonly TradeDestinationRoute[] {
   const destinations = state.structures
     .filter(
       (structure) =>
         structure.type === "PORT" &&
-        structure.id !== sourcePortId &&
         structure.ownerId !== ownerId &&
         structure.active &&
         structure.completedLevel !== undefined &&
@@ -460,6 +514,59 @@ function clearTradeRoute(
     cells: Object.freeze([unit.cellId]),
     edgeWeights: Object.freeze([]),
   });
+}
+
+
+function tradeRouteHasCurrentPhysicalBlocker(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+): boolean {
+  const route = unit.route;
+  if (route === undefined) return false;
+  for (let index = route.nextCellIndex; index < route.cells.length; index += 1) {
+    const cellId = route.cells[index]!;
+    if (
+      state.structures.some((structure) => structure.cellId === cellId) ||
+      state.mobileUnits.some(
+        (candidate) =>
+          candidate.id !== unit.id && candidate.cellId === cellId,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function reconcileTradeRouteToDestination(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+  destinationPortId: string,
+): MatchState["mobileUnits"][number] {
+  if (isTradeShipDeliveryCell(state, destinationPortId, unit.cellId)) {
+    return unit;
+  }
+  if (unit.route === undefined) {
+    const route = routeToTradeDestination(
+      state,
+      unit.cellId,
+      destinationPortId,
+    );
+    return route === null
+      ? unit
+      : assignTradeDestinationRoute(state, unit, route);
+  }
+  if (!tradeRouteHasCurrentPhysicalBlocker(state, unit)) {
+    return unit;
+  }
+  const bypass = occupancyAvoidingTradeDestinationRoute(
+    state,
+    unit.cellId,
+    destinationPortId,
+  );
+  return bypass === null
+    ? unit
+    : assignTradeDestinationRoute(state, unit, bypass);
 }
 
 function nearestReachableOwnedTradePort(
@@ -892,7 +999,6 @@ export function prepareTradeShipRuntimePhase(
     const destinations = reachableForeignTradeDestinations(
       working,
       port.ownerId,
-      port.id,
       dockCellId,
     );
     if (scheduler.nextAttemptTick === null) {
@@ -1036,21 +1142,12 @@ export function prepareTradeShipRuntimePhase(
         currentPort !== undefined &&
         currentPort.ownerId === unit.ownerId;
       if (destinationStillLegal) {
-        if (
-          unit.route === undefined &&
-          !isTradeShipDeliveryCell(
-            working,
-            voyage.destinationPortId!,
-            unit.cellId,
-          )
-        ) {
-          const route = routeToTradeDestination(
-            working,
-            unit.cellId,
-            voyage.destinationPortId!,
-          );
-          if (route !== null) replaceUnit(assignTradeDestinationRoute(working, unit, route));
-        }
+        const reconciledUnit = reconcileTradeRouteToDestination(
+          working,
+          unit,
+          voyage.destinationPortId!,
+        );
+        if (reconciledUnit !== unit) replaceUnit(reconciledUnit);
         continue;
       }
       const ownedRoute = nearestReachableOwnedTradePort(
@@ -1080,7 +1177,15 @@ export function prepareTradeShipRuntimePhase(
       const destinationStillLegal =
         currentPort !== undefined &&
         currentPort.ownerId === voyage.economicSnapshot.originalOwnerId;
-      if (destinationStillLegal) continue;
+      if (destinationStillLegal) {
+        const reconciledUnit = reconcileTradeRouteToDestination(
+          working,
+          unit,
+          voyage.destinationPortId!,
+        );
+        if (reconciledUnit !== unit) replaceUnit(reconciledUnit);
+        continue;
+      }
       const ownedRoute = nearestReachableOwnedTradePort(
         working,
         voyage.economicSnapshot.originalOwnerId,
@@ -1107,12 +1212,19 @@ export function prepareTradeShipRuntimePhase(
     const destinationStillLegal =
       destination !== undefined &&
       destination.ownerId !== voyage.economicSnapshot.originalOwnerId;
-    if (destinationStillLegal) continue;
+    if (destinationStillLegal) {
+      const reconciledUnit = reconcileTradeRouteToDestination(
+        working,
+        unit,
+        voyage.destinationPortId!,
+      );
+      if (reconciledUnit !== unit) replaceUnit(reconciledUnit);
+      continue;
+    }
 
     const foreignDestinations = reachableForeignTradeDestinations(
       working,
       voyage.economicSnapshot.originalOwnerId,
-      voyage.economicSnapshot.sourcePortId,
       unit.cellId,
     );
     if (foreignDestinations.length > 0) {
