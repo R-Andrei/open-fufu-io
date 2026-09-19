@@ -88,7 +88,8 @@
     "tests/TrainInterceptionEconomy.test.ts",
     "tests/TrainService.test.ts",
     "tests/TransportRuntime.test.ts",
-    "tests/ValidationBoundaryPolicy.test.ts"
+    "tests/ValidationBoundaryPolicy.test.ts",
+    "tests/WarshipLifecycle.test.ts"
   ],
   "ownedSources": [
     {"path":"design/official-ai/character-configurations.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
@@ -157,7 +158,7 @@
     {"path":"src/simulation/TrainService.ts","validators":["tests/FactoryTrainRuntime.test.ts","tests/PhysicalOccupancyTransitionIntegration.test.ts","tests/TrainInterceptionEconomy.test.ts","tests/TrainService.test.ts","tests/SimulationDependencyFirewall.test.ts"]},
     {"path":"src/simulation/Transports.ts","validators":["tests/Navigation.test.ts","tests/SimulationDependencyFirewall.test.ts","tests/TransportRuntime.test.ts"]},
     {"path":"src/simulation/VisibilityState.ts","validators":["tests/TankCombatEvents.test.ts","tests/OperationRefRuntime.test.ts"]},
-    {"path":"src/simulation/Warships.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts"]},
+    {"path":"src/simulation/Warships.ts","validators":["tests/PhysicalOccupancyAdmission.test.ts","tests/WarshipLifecycle.test.ts"]},
     {"path":"tests/contracts/controller-api.typecheck.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"tests/types/ControllerApiTypes.ts","validators":["tests/ControllerApiContract.test.ts"]},
     {"path":"vitest.config.ts","validators":["tests/ValidationBoundaryPolicy.test.ts"]}

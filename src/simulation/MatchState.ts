@@ -52,7 +52,10 @@ import {
   type PersistentStructureState,
 } from "./Structures";
 import type { TankOperationalState, TankProductionJobState } from "./Tanks";
-import type { WarshipProductionJobState } from "./Warships";
+import type {
+  WarshipOperationalState,
+  WarshipProductionJobState,
+} from "./Warships";
 export type { TrainServiceRuntimeState } from "./FactoryTrainState";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
@@ -154,6 +157,7 @@ export interface MatchState extends FactoryTrainState {
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
+  readonly warshipOperationalStates: readonly WarshipOperationalState[];
   readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -176,6 +180,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
+  readonly warshipOperationalStates?: readonly WarshipOperationalState[];
   readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
@@ -851,6 +856,7 @@ function freezeTankProductionJobs(
 
 function freezeWarshipProductionJobs(
   entries: readonly WarshipProductionJobState[],
+  map: SimulationMap,
 ): readonly WarshipProductionJobState[] {
   const seenPorts = new Set<string>();
   const jobs = entries.map((job) => {
@@ -867,6 +873,16 @@ function freezeWarshipProductionJobs(
     if (typeof job.ownerId !== "string" || job.ownerId.length === 0) {
       throw new Error("Warship production ownerId must be a non-empty string");
     }
+    if (!map.isValidCellId(job.strategicDestinationCellId)) {
+      throw new Error(
+        "Warship production strategic destination must be a valid map cell",
+      );
+    }
+    if (map.terrainAt(job.strategicDestinationCellId) !== "DEEP_WATER") {
+      throw new Error(
+        "Warship production strategic destination must be a Deep-Water map cell",
+      );
+    }
     if (job.state === "BUILDING") {
       if (
         !Number.isSafeInteger(job.remainingTicks) ||
@@ -880,6 +896,7 @@ function freezeWarshipProductionJobs(
       return Object.freeze({
         portId: job.portId,
         ownerId: job.ownerId,
+        strategicDestinationCellId: job.strategicDestinationCellId,
         state: "BUILDING" as const,
         remainingTicks: job.remainingTicks,
       });
@@ -890,6 +907,7 @@ function freezeWarshipProductionJobs(
     return Object.freeze({
       portId: job.portId,
       ownerId: job.ownerId,
+      strategicDestinationCellId: job.strategicDestinationCellId,
       state: "READY_TO_DEPLOY" as const,
     });
   });
@@ -1052,6 +1070,73 @@ function freezeTankOperationalStates(
   return Object.freeze(states);
 }
 
+function freezeWarshipOperationalStates(
+  entries: readonly WarshipOperationalState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+): readonly WarshipOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("warshipOperationalStates must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const seenUnitIds = new Set<string>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Warship operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Warship operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Warship operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (unit === undefined || unit.type !== "WARSHIP") {
+      throw new Error(
+        `Warship operational state must reference a deployed Warship: ${entry.unitId}`,
+      );
+    }
+    if (unit.movementClass !== "NAVAL") {
+      throw new Error("Warship movement class must be NAVAL");
+    }
+    if (map.terrainAt(unit.cellId) !== "DEEP_WATER") {
+      throw new Error("Warship current cell must be a Deep-Water map cell");
+    }
+    if (
+      unit.strategicDestinationCellId !== undefined &&
+      map.terrainAt(unit.strategicDestinationCellId) !== "DEEP_WATER"
+    ) {
+      throw new Error("Warship strategic destination must be a Deep-Water map cell");
+    }
+    if (
+      unit.route !== undefined &&
+      unit.route.cells.some((cellId) => map.terrainAt(cellId) !== "DEEP_WATER")
+    ) {
+      throw new Error("Warship route must contain only Deep-Water map cells");
+    }
+    if (
+      !map.isValidCellId(entry.operatingAnchorCellId) ||
+      map.terrainAt(entry.operatingAnchorCellId) !== "DEEP_WATER"
+    ) {
+      throw new Error("Warship operating anchor must be a Deep-Water map cell");
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+    });
+  });
+  for (const unit of mobileUnits) {
+    if (unit.type === "WARSHIP" && !seenUnitIds.has(unit.id)) {
+      throw new Error(
+        `deployed Warship is missing operational state: ${unit.id}`,
+      );
+    }
+  }
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
+}
+
 function assertExclusivePhysicalOccupancy(
   structures: readonly PersistentStructureState[],
   mobileUnits: readonly MobileUnitState[],
@@ -1130,6 +1215,11 @@ function createState(
     mobileUnits.mobileUnits,
     previous.map,
   );
+  const warshipOperationalStates = freezeWarshipOperationalStates(
+    update.warshipOperationalStates ?? previous.warshipOperationalStates ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -1151,8 +1241,10 @@ function createState(
     ),
     warshipProductionJobs: freezeWarshipProductionJobs(
       update.warshipProductionJobs ?? previous.warshipProductionJobs ?? [],
+      previous.map,
     ),
     tankOperationalStates,
+    warshipOperationalStates,
     directReveals: freezeDirectReveals(
       update.directReveals ?? previous.directReveals ?? [],
     ),
@@ -1251,6 +1343,7 @@ function createEmptyInitialMatchState(
     tankProductionJobs: Object.freeze([]),
     warshipProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
+    warshipOperationalStates: Object.freeze([]),
     directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
@@ -1523,12 +1616,14 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         ? {
             portId: job.portId,
             ownerId: job.ownerId,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
             remainingTicks: job.remainingTicks,
           }
         : {
             portId: job.portId,
             ownerId: job.ownerId,
+            strategicDestinationCellId: job.strategicDestinationCellId,
             state: job.state,
           },
     );
@@ -1565,6 +1660,13 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       ...(entry.repairArrivalTick === undefined
         ? {}
         : { repairArrivalTick: entry.repairArrivalTick }),
+    }));
+
+  const warshipOperationalStates = [...state.warshipOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      operatingAnchorCellId: entry.operatingAnchorCellId,
     }));
 
   const directReveals = state.directReveals.map((entry) => ({
@@ -1646,6 +1748,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     tankProductionJobs,
     warshipProductionJobs,
     tankOperationalStates,
+    warshipOperationalStates,
     directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]

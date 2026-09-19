@@ -783,6 +783,9 @@ describe("authoritative Trade Ship voyage state", () => {
     const occupied = createProspectiveMatchState(withPorts, {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        { unitId: blocker.unit.id, operatingAnchorCellId: 15 },
+      ],
     });
 
     const launched = tryLaunchTradeVoyage(occupied, {
@@ -853,6 +856,9 @@ describe("authoritative Trade Ship voyage state", () => {
     const occupied = createProspectiveMatchState(launched.state, {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        { unitId: blocker.unit.id, operatingAnchorCellId: 15 },
+      ],
     });
     const reconciled = createProspectiveMatchState(
       occupied,
@@ -934,6 +940,9 @@ describe("authoritative Trade Ship voyage state", () => {
     const occupied = createProspectiveMatchState(partial, {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        { unitId: blocker.unit.id, operatingAnchorCellId: 1 },
+      ],
     });
     const reconciled = createProspectiveMatchState(
       occupied,

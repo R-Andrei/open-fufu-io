@@ -804,9 +804,21 @@
     },
     {
       "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Warship strategic movement reuses the canonical navigation substrate rather than defining a parallel path model."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
       "to": "src/simulation/Population.ts",
       "classification": "ORCHESTRATION",
       "rationale": "Warship production admission invokes the Population-owned permanent Available-Population debit for effective alternate purchase payment."
+    },
+    {
+      "from": "src/simulation/Warships.ts",
+      "to": "src/simulation/SimulationMap.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship movement reads current map terrain to enforce Deep-Water-only traversal and destination legality."
     },
     {
       "from": "src/simulation/Warships.ts",

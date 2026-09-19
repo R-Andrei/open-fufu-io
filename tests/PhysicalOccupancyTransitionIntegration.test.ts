@@ -286,6 +286,7 @@ describe("physical occupancy transition integration", () => {
     const accepted = tryStartWarshipProduction(withPort, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
     expect(accepted.ok).toBe(true);
     if (!accepted.ok) throw new Error("expected Warship production admission");
