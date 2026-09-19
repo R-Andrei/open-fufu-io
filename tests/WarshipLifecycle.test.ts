@@ -5,15 +5,18 @@ import {
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
+  canonicalMatchStateSerialization,
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
+  advanceWarshipProductionPhase,
   tryStartWarshipProduction,
   warshipStrategicNavigationRoute,
   warshipTerrainMovementTiming,
 } from "../src/simulation/Warships";
+import { TickEngine } from "../src/simulation/TickEngine";
 
 function rulesWithTraits(traits: readonly OriginTraitId[] = []) {
   return compileRuleProfile(RULE_AXIS_REGISTRY, originRuleProfileInput(traits));
@@ -84,6 +87,64 @@ function productionFixture() {
       },
     ],
   });
+}
+
+
+function operationalMovementFixture() {
+  const base = createInitialMatchState(
+    createMicroSimulationSpec({
+      seed: "warship-operational-movement-red",
+      width: 3,
+      height: 2,
+      terrain: [
+        "DEEP_WATER",
+        "PLAINS",
+        "DEEP_WATER",
+        "DEEP_WATER",
+        "DEEP_WATER",
+        "DEEP_WATER",
+      ],
+      initialOwners: [null, "alpha", null, null, null, null],
+      factions: [{ id: "alpha", rules: rulesWithTraits() }],
+    }),
+  );
+  return createProspectiveMatchState(base, {
+    factions: base.factions.map((faction) => ({
+      ...faction,
+      ffy: 500_000,
+    })),
+    structures: [
+      {
+        id: "port-a",
+        ownerId: "alpha",
+        type: "PORT",
+        cellId: 1,
+        outputCellId: 0,
+        completedLevel: 1,
+        active: true,
+        acquisitionPath: "GRANT",
+      },
+    ],
+  });
+}
+
+function completeWarshipProduction(
+  state: ReturnType<typeof operationalMovementFixture>,
+  destinationCellId: number,
+) {
+  const accepted = tryStartWarshipProduction(state, {
+    ownerId: "alpha",
+    portId: "port-a",
+    strategicDestinationCellId: destinationCellId,
+  });
+  expect(accepted.ok).toBe(true);
+  if (!accepted.ok) throw new Error("expected Warship production admission");
+
+  let working = accepted.state;
+  for (let tick = 0; tick < 50; tick += 1) {
+    working = advanceWarshipProductionPhase(working);
+  }
+  return working;
 }
 
 describe("Warship strategic movement lifecycle", () => {
@@ -196,4 +257,137 @@ describe("Warship strategic movement lifecycle", () => {
     }
     expect(route.route.cells).toEqual([0, 1]);
   });
+
+  it("creates deterministic fingerprint-relevant operational state at the deployment dock", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    expect(completed.mobileUnits).toHaveLength(1);
+    const unit = completed.mobileUnits[0]!;
+    expect(unit).toMatchObject({
+      ownerId: "alpha",
+      type: "WARSHIP",
+      movementClass: "NAVAL",
+      cellId: 0,
+      strategicDestinationCellId: 2,
+    });
+
+    const operationalStates = (
+      completed as typeof completed & {
+        warshipOperationalStates?: readonly {
+          unitId: string;
+          operatingAnchorCellId: number;
+        }[];
+      }
+    ).warshipOperationalStates;
+    expect(operationalStates).toEqual([
+      {
+        unitId: unit.id,
+        operatingAnchorCellId: 0,
+      },
+    ]);
+
+    const serialized = JSON.parse(canonicalMatchStateSerialization(completed)) as {
+      warshipOperationalStates?: readonly {
+        unitId: string;
+        operatingAnchorCellId: number;
+      }[];
+    };
+    expect(serialized.warshipOperationalStates).toEqual(operationalStates);
+  });
+
+  it("moves a deployed Warship through TickEngine and transfers its operating anchor only on exact destination arrival", () => {
+    const completed = completeWarshipProduction(operationalMovementFixture(), 2);
+    const unitId = completed.mobileUnits[0]!.id;
+    const engine = new TickEngine();
+
+    const first = engine.advance(completed, []);
+    const firstUnit = first.mobileUnits.find((unit) => unit.id === unitId)!;
+    expect(firstUnit.cellId).toBe(3);
+    expect(firstUnit.strategicDestinationCellId).toBe(2);
+    expect(
+      (
+        first as typeof first & {
+          warshipOperationalStates?: readonly {
+            unitId: string;
+            operatingAnchorCellId: number;
+          }[];
+        }
+      ).warshipOperationalStates,
+    ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+
+    const second = engine.advance(first, []);
+    const secondUnit = second.mobileUnits.find((unit) => unit.id === unitId)!;
+    expect(secondUnit.cellId).toBe(4);
+    expect(secondUnit.strategicDestinationCellId).toBe(2);
+
+    const third = engine.advance(second, []);
+    const thirdUnit = third.mobileUnits.find((unit) => unit.id === unitId)!;
+    expect(thirdUnit.cellId).toBe(5);
+    expect(thirdUnit.strategicDestinationCellId).toBe(2);
+
+    const arrived = engine.advance(third, []);
+    const arrivedUnit = arrived.mobileUnits.find((unit) => unit.id === unitId)!;
+    expect(arrivedUnit.cellId).toBe(2);
+    expect(arrivedUnit.strategicDestinationCellId).toBeUndefined();
+    expect(
+      (
+        arrived as typeof arrived & {
+          warshipOperationalStates?: readonly {
+            unitId: string;
+            operatingAnchorCellId: number;
+          }[];
+        }
+      ).warshipOperationalStates,
+    ).toEqual([{ unitId, operatingAnchorCellId: 2 }]);
+  });
+
+  it("keeps an unreachable strategic destination and the old operating anchor after reaching its best-effort frontier", () => {
+    const initial = operationalMovementFixture();
+    const disconnected = createProspectiveMatchState(initial, {
+      map: initial.map,
+    });
+    const accepted = tryStartWarshipProduction(disconnected, {
+      ownerId: "alpha",
+      portId: "port-a",
+      strategicDestinationCellId: 2,
+    });
+    expect(accepted.ok).toBe(true);
+    if (!accepted.ok) throw new Error("expected Warship production admission");
+
+    let working = accepted.state;
+    for (let tick = 0; tick < 50; tick += 1) {
+      working = advanceWarshipProductionPhase(working);
+    }
+
+    const unitId = working.mobileUnits[0]!.id;
+    const blocked = createProspectiveMatchState(working, {
+      mobileUnits: working.mobileUnits,
+      structures: [
+        ...working.structures,
+        {
+          id: "blocker",
+          ownerId: "alpha",
+          type: "PORT",
+          cellId: 4,
+          completedLevel: 1,
+          active: true,
+          acquisitionPath: "GRANT",
+        },
+      ],
+    });
+    const advanced = new TickEngine().advance(blocked, []);
+    const unit = advanced.mobileUnits.find((entry) => entry.id === unitId)!;
+    expect(unit.cellId).toBe(3);
+    expect(unit.strategicDestinationCellId).toBe(2);
+    expect(
+      (
+        advanced as typeof advanced & {
+          warshipOperationalStates?: readonly {
+            unitId: string;
+            operatingAnchorCellId: number;
+          }[];
+        }
+      ).warshipOperationalStates,
+    ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+  });
+
 });
