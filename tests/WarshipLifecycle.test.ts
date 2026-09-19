@@ -367,20 +367,28 @@ describe("Warship strategic movement lifecycle", () => {
           id: "blocker",
           ownerId: "alpha",
           type: "PORT",
-          cellId: 4,
+          cellId: 5,
           completedLevel: 1,
           active: true,
           acquisitionPath: "GRANT",
         },
       ],
     });
-    const advanced = new TickEngine().advance(blocked, []);
-    const unit = advanced.mobileUnits.find((entry) => entry.id === unitId)!;
-    expect(unit.cellId).toBe(3);
-    expect(unit.strategicDestinationCellId).toBe(2);
+    const engine = new TickEngine();
+    const first = engine.advance(blocked, []);
+    const firstUnit = first.mobileUnits.find((entry) => entry.id === unitId)!;
+    expect(firstUnit.cellId).toBe(3);
+    expect(firstUnit.strategicDestinationCellId).toBe(2);
+
+    const frontier = engine.advance(first, []);
+    const frontierUnit = frontier.mobileUnits.find(
+      (entry) => entry.id === unitId,
+    )!;
+    expect(frontierUnit.cellId).toBe(4);
+    expect(frontierUnit.strategicDestinationCellId).toBe(2);
     expect(
       (
-        advanced as typeof advanced & {
+        frontier as typeof frontier & {
           warshipOperationalStates?: readonly {
             unitId: string;
             operatingAnchorCellId: number;
