@@ -44,6 +44,7 @@
     "src/simulation/TrainService.ts": "ECONOMY",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
+    "src/simulation/WarshipCombat.ts": "NAVAL",
     "src/simulation/WarshipTargeting.ts": "NAVAL",
     "src/simulation/Warships.ts": "NAVAL"
   },
@@ -791,6 +792,24 @@
       "to": "src/simulation/Warships.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "Visibility consumes the Naval-owned exact effective Warship gun-range contract to project Warship-local observation without reimplementing Origin range composition."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/CombatProjectiles.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval gunfire decisions materialize target-bound shots through the generic authoritative projectile constructor rather than owning a parallel projectile state model."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship gunfire decisions resolve from one frozen authoritative MatchState and materialize only projectile/cooldown state changes."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/VisibilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship gunfire reacquisition consumes Visibility-owned requester-relative lawful observation at each ready firing decision."
     },
     {
       "from": "src/simulation/WarshipTargeting.ts",

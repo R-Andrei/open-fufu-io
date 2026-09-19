@@ -39,6 +39,11 @@ export interface WarshipExactRange {
   readonly denominator: bigint;
 }
 
+export interface WarshipExactDamage {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
 export interface WarshipOperationalState {
   readonly unitId: string;
   readonly health: WarshipExactHealth;
@@ -142,6 +147,7 @@ export type WarshipStrategicNavigationRouteResult =
 const BASE_WARSHIP_BUILD_TICKS = 50;
 const BASE_WARSHIP_MAX_HEALTH = 1_000n;
 const BASE_WARSHIP_ATTACK_RANGE_CELLS = 130n;
+const BASE_WARSHIP_GUN_DAMAGE = 250n;
 const BASE_WARSHIP_SPEED_CELLS_PER_SECOND = 10n;
 const WARSHIP_MOVEMENT_TICKS_PER_SECOND = 10n;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -249,6 +255,39 @@ export function warshipEffectiveGunRange(
   return Object.freeze({
     numerator: range.numerator,
     denominator: range.denominator,
+  });
+}
+
+export function warshipEffectiveGunDamage(
+  state: MatchState,
+  ownerId: string,
+): WarshipExactDamage {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_DAMAGE",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_DAMAGE,
+    terms,
+  );
+  const damage = reducedRational(
+    BASE_WARSHIP_GUN_DAMAGE * scale.numerator,
+    scale.denominator,
+  );
+  if (damage.numerator < 0n || damage.denominator <= 0n) {
+    throw new Error("Warship gun damage must resolve to a non-negative value");
+  }
+  return Object.freeze({
+    numerator: damage.numerator,
+    denominator: damage.denominator,
   });
 }
 
