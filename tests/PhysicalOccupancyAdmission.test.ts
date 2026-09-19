@@ -420,6 +420,7 @@ describe("physical occupancy admission", () => {
     const first = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("expected first baseline Warship admission");
@@ -427,6 +428,7 @@ describe("physical occupancy admission", () => {
     const second = tryStartWarshipProduction(first.state, {
       ownerId: "alpha",
       portId: "port-b",
+      strategicDestinationCellId: 2,
     });
     expect(second.ok).toBe(true);
     if (!second.ok) throw new Error("expected second baseline Warship admission");
@@ -442,6 +444,7 @@ describe("physical occupancy admission", () => {
     const first = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
     expect(first.ok).toBe(true);
     if (!first.ok) throw new Error("expected first P23 Warship admission");
@@ -451,6 +454,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(beforeSecond, {
       ownerId: "alpha",
       portId: "port-b",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -482,12 +486,19 @@ describe("physical occupancy admission", () => {
     const withWarship = createProspectiveMatchState(initial, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: created.unit.id,
+          operatingAnchorCellId: created.unit.cellId,
+        },
+      ],
     });
     const beforeFfy = withWarship.factions[0]?.ffy;
 
     const rejected = tryStartWarshipProduction(withWarship, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -511,6 +522,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -543,6 +555,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -575,6 +588,7 @@ describe("physical occupancy admission", () => {
     const accepted = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -618,6 +632,7 @@ describe("physical occupancy admission", () => {
     const rejected = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(rejected).toMatchObject({
@@ -635,6 +650,7 @@ describe("physical occupancy admission", () => {
     const accepted = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -645,6 +661,7 @@ describe("physical occupancy admission", () => {
       ownerId: "alpha",
       state: "BUILDING",
       remainingTicks: 50,
+      strategicDestinationCellId: 2,
     });
 
     const beforeCompletion = runWarshipProductionPhases(accepted.state, 49);
@@ -665,6 +682,7 @@ describe("physical occupancy admission", () => {
         type: "WARSHIP",
         movementClass: "NAVAL",
         cellId: 0,
+        strategicDestinationCellId: 2,
       }),
     ]);
   });
@@ -674,6 +692,7 @@ describe("physical occupancy admission", () => {
     const accepted = tryStartWarshipProduction(initial, {
       ownerId: "alpha",
       portId: "port-a",
+      strategicDestinationCellId: 2,
     });
 
     expect(accepted.ok).toBe(true);
@@ -689,6 +708,7 @@ describe("physical occupancy admission", () => {
       {
         portId: "port-a",
         ownerId: "alpha",
+        strategicDestinationCellId: 2,
         state: "READY_TO_DEPLOY",
       },
     ]);
@@ -704,6 +724,7 @@ describe("physical occupancy admission", () => {
       readonly warshipProductionJobs: readonly {
         readonly portId: string;
         readonly ownerId: string;
+        readonly strategicDestinationCellId: number;
         readonly state: string;
       }[];
     };
@@ -717,6 +738,7 @@ describe("physical occupancy admission", () => {
       {
         portId: "port-a",
         ownerId: "alpha",
+        strategicDestinationCellId: 2,
         state: "READY_TO_DEPLOY",
       },
     ]);
@@ -730,6 +752,7 @@ describe("physical occupancy admission", () => {
         type: "WARSHIP",
         movementClass: "NAVAL",
         cellId: 0,
+        strategicDestinationCellId: 2,
       }),
     ]);
   });
@@ -770,6 +793,12 @@ describe("physical occupancy admission", () => {
     const blocked = createProspectiveMatchState(source, {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: blocker.unit.id,
+          operatingAnchorCellId: blocker.unit.cellId,
+        },
+      ],
     });
 
     const rejected = tryLaunchTradeShipAtPortDock(blocked, {
@@ -783,7 +812,10 @@ describe("physical occupancy admission", () => {
     expect(rejected.state).toBe(blocked);
     expect(rejected.state.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
 
-    const cleared = createProspectiveMatchState(blocked, { mobileUnits: [] });
+    const cleared = createProspectiveMatchState(blocked, {
+      mobileUnits: [],
+      warshipOperationalStates: [],
+    });
     const launched = tryLaunchTradeShipAtPortDock(cleared, {
       ownerId: "alpha",
       sourcePortId: "port-source",

@@ -82,6 +82,16 @@ function addUnit(
     state: createProspectiveMatchState(state, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      warshipOperationalStates:
+        input.type === "WARSHIP"
+          ? [
+              ...state.warshipOperationalStates,
+              {
+                unitId: created.unit.id,
+                operatingAnchorCellId: created.unit.cellId,
+              },
+            ]
+          : state.warshipOperationalStates,
     }),
   });
 }

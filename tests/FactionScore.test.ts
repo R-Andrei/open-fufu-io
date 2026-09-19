@@ -405,6 +405,12 @@ describe("authoritative faction strength score", () => {
       ),
       mobileUnits: deployedWarship.mobileUnits,
       nextMobileUnitOrdinal: deployedWarship.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: deployedWarship.unit.id,
+          operatingAnchorCellId: deployedWarship.unit.cellId,
+        },
+      ],
     });
 
     expect(deployedWarship.unit).toMatchObject({
