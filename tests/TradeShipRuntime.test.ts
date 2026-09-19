@@ -865,7 +865,7 @@ describe("authoritative Trade Ship voyage state", () => {
       (unit) => unit.id === launched.unit.id,
     )!;
     expect(partialUnit.route).toMatchObject({
-      cells: [0, 1, 2],
+      cells: [0, 1, 2, 3],
       nextCellIndex: 1,
       edgeProgress: 1,
     });
@@ -899,7 +899,7 @@ describe("authoritative Trade Ship voyage state", () => {
     );
 
     expect(tradeUnit?.route).toMatchObject({
-      cells: [0, 1, 2],
+      cells: [0, 1, 2, 3],
       nextCellIndex: 1,
       edgeProgress: 1,
     });
