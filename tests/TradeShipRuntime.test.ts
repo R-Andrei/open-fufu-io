@@ -7,7 +7,10 @@ import {
   createInitialMatchState,
   createProspectiveMatchState,
 } from "../src/simulation/MatchState";
-import { advanceMobileUnits } from "../src/simulation/MobileUnits";
+import {
+  advanceMobileUnits,
+  createMobileUnit,
+} from "../src/simulation/MobileUnits";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { TickEngine } from "../src/simulation/TickEngine";
 import * as TradeShipsModule from "../src/simulation/TradeShips";
@@ -653,7 +656,7 @@ describe("authoritative Trade Ship voyage state", () => {
     );
     const voyage = (reconciled.tradeVoyages[0] as any);
     expect(voyage.routingMode).toBe("ORDINARY");
-    expect(voyage.destinationPortId).toBe("port-delta");
+    expect(voyage.destinationPortId).toBe("port-alpha");
 
     const retired = (reconciled as any).tradeRetiredPortEpochs;
     expect(retired).toEqual([
@@ -663,8 +666,9 @@ describe("authoritative Trade Ship voyage state", () => {
         ownershipEpochOrdinal: 4,
         nextDestinationSelectionOrdinal: 7,
         destinationHistory: [
+          { destinationPortId: "port-alpha", lastSelectedOrdinal: 6 },
           { destinationPortId: "port-beta", lastSelectedOrdinal: 0 },
-          { destinationPortId: "port-delta", lastSelectedOrdinal: 6 },
+          { destinationPortId: "port-delta", lastSelectedOrdinal: 2 },
           { destinationPortId: "port-gamma", lastSelectedOrdinal: 5 },
         ],
       },
@@ -676,6 +680,136 @@ describe("authoritative Trade Ship voyage state", () => {
       ownershipEpochOrdinal: 5,
       nextDestinationSelectionOrdinal: 0,
       destinationHistory: [],
+    });
+  });
+
+  it("routes a new voyage around current physical occupancy when a legal Deep-Water bypass exists", () => {
+    const width = 7;
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-launch-occupancy-bypass",
+        width,
+        height: 4,
+        terrain: [
+          ...Array.from({ length: width * 3 }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        initialOwners: Array.from({ length: width * 4 }, (_, cellId) =>
+          cellId === 21 ? "alpha" : cellId === 27 ? "beta" : null,
+        ),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const withPorts = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 21, 14),
+        port("port-beta", "beta", 27, 20),
+      ],
+    });
+    const blocker = createMobileUnit(
+      withPorts.map,
+      withPorts.factions.map((faction) => faction.id),
+      {
+        mobileUnits: withPorts.mobileUnits,
+        nextMobileUnitOrdinal: withPorts.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "beta",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 15,
+      },
+    );
+    const occupied = createProspectiveMatchState(withPorts, {
+      mobileUnits: blocker.mobileUnits,
+      nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+    });
+
+    const launched = tryLaunchTradeVoyage(occupied, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+
+    expect(launched.unit.route?.cells).toEqual([14, 7, 8, 9]);
+    expect(launched.state.tradeVoyages[0]?.economicSnapshot).toMatchObject({
+      plannedRouteLengthCells: 3,
+      rawCargoFfy: 450,
+    });
+  });
+
+  it("replans an in-flight voyage around newly occupied remaining route cells when a legal bypass exists", () => {
+    const width = 7;
+    const rules = emptyRules();
+    const base = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed: "trade-inflight-occupancy-bypass",
+        width,
+        height: 4,
+        terrain: [
+          ...Array.from({ length: width * 3 }, () => "DEEP_WATER" as const),
+          ...Array.from({ length: width }, () => "PLAINS" as const),
+        ],
+        initialOwners: Array.from({ length: width * 4 }, (_, cellId) =>
+          cellId === 21 ? "alpha" : cellId === 27 ? "beta" : null,
+        ),
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+    );
+    const withPorts = createProspectiveMatchState(base, {
+      structures: [
+        port("port-alpha", "alpha", 21, 14),
+        port("port-beta", "beta", 27, 20),
+      ],
+    });
+    const launched = tryLaunchTradeVoyage(withPorts, {
+      ownerId: "alpha",
+      sourcePortId: "port-alpha",
+      destinationPortId: "port-beta",
+    });
+    expect(launched.ok).toBe(true);
+    if (!launched.ok) throw new Error("expected Trade voyage launch");
+    expect(launched.unit.route?.cells).toEqual([14, 15, 16]);
+
+    const blocker = createMobileUnit(
+      launched.state.map,
+      launched.state.factions.map((faction) => faction.id),
+      {
+        mobileUnits: launched.state.mobileUnits,
+        nextMobileUnitOrdinal: launched.state.nextMobileUnitOrdinal,
+      },
+      {
+        ownerId: "beta",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 15,
+      },
+    );
+    const occupied = createProspectiveMatchState(launched.state, {
+      mobileUnits: blocker.mobileUnits,
+      nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+    });
+    const reconciled = createProspectiveMatchState(
+      occupied,
+      prepareTradeShipRuntimePhase(occupied, launched.state),
+    );
+    const tradeUnit = reconciled.mobileUnits.find(
+      (unit) => unit.id === launched.unit.id,
+    );
+
+    expect(tradeUnit?.route?.cells).toEqual([14, 7, 8, 9]);
+    expect(reconciled.tradeVoyages[0]?.economicSnapshot).toMatchObject({
+      plannedRouteLengthCells: 2,
+      rawCargoFfy: 300,
     });
   });
 
