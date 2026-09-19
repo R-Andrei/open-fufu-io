@@ -81,7 +81,10 @@ import {
   resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromTankCombatEvents,
 } from "./VisibilityState";
-import { advanceWarshipProductionPhase } from "./Warships";
+import {
+  advanceWarshipProductionPhase,
+  warshipStrategicNavigationRoute,
+} from "./Warships";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -165,6 +168,12 @@ type TankRetainedTarget = NonNullable<
 >;
 
 interface TankMovementPreparation {
+  readonly state: MatchState;
+  readonly movementWorkByUnitId: Readonly<Record<string, number>>;
+  readonly strategicMoverIds: ReadonlySet<string>;
+}
+
+interface WarshipMovementPreparation {
   readonly state: MatchState;
   readonly movementWorkByUnitId: Readonly<Record<string, number>>;
   readonly strategicMoverIds: ReadonlySet<string>;
@@ -291,7 +300,7 @@ function advanceTankTargetAcquisitionPhase(state: MatchState): MatchState {
     : state;
 }
 
-function routeMatchesTankStrategicPlan(
+function routeMatchesStrategicPlan(
   unit: MatchState["mobileUnits"][number],
   plan: Readonly<{
     cells: readonly number[];
@@ -523,7 +532,7 @@ function prepareTankMovementPhase(
             edgeWeights: [],
           });
         }
-      } else if (!routeMatchesTankStrategicPlan(prepared, plan.route)) {
+      } else if (!routeMatchesStrategicPlan(prepared, plan.route)) {
         prepared = assignMobileUnitRoute(state.map, prepared, {
           cells: plan.route.cells,
           edgeWeights: plan.route.edgeWeights,
@@ -562,7 +571,7 @@ function prepareTankMovementPhase(
         operational.operatingAnchorCellId,
       );
       if (returnRoute.status === "FOUND") {
-        if (!routeMatchesTankStrategicPlan(prepared, returnRoute.route)) {
+        if (!routeMatchesStrategicPlan(prepared, returnRoute.route)) {
           prepared = assignMobileUnitRoute(state.map, prepared, {
             cells: returnRoute.route.cells,
             edgeWeights: returnRoute.route.edgeWeights,
@@ -636,6 +645,65 @@ function prepareTankMovementPhase(
   });
 }
 
+function prepareWarshipMovementPhase(
+  state: MatchState,
+): WarshipMovementPreparation {
+  const operationalUnitIds = new Set(
+    state.warshipOperationalStates.map((operational) => operational.unitId),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const movementWorkByUnitId: Record<string, number> = {};
+  const strategicMoverIds = new Set<string>();
+
+  for (const unit of state.mobileUnits) {
+    if (unit.type !== "WARSHIP" || !operationalUnitIds.has(unit.id)) {
+      continue;
+    }
+    const destinationCellId = unit.strategicDestinationCellId;
+    if (destinationCellId === undefined) continue;
+
+    const plan = warshipStrategicNavigationRoute(
+      state,
+      unit.ownerId,
+      unit.cellId,
+      destinationCellId,
+    );
+    if (plan.status === "LIMIT_REACHED") continue;
+
+    let prepared = unit;
+    if (plan.route.cells.length === 1) {
+      if (prepared.route !== undefined) {
+        prepared = assignMobileUnitRoute(state.map, prepared, {
+          cells: [prepared.cellId],
+          edgeWeights: [],
+        });
+      }
+    } else if (!routeMatchesStrategicPlan(prepared, plan.route)) {
+      prepared = assignMobileUnitRoute(state.map, prepared, {
+        cells: plan.route.cells,
+        edgeWeights: plan.route.edgeWeights,
+      });
+    }
+
+    movementWorkByUnitId[prepared.id] = plan.route.movementWorkPerTick;
+    strategicMoverIds.add(prepared.id);
+    if (prepared !== unit) unitUpdates.set(prepared.id, prepared);
+  }
+
+  return Object.freeze({
+    state:
+      unitUpdates.size === 0
+        ? state
+        : createProspectiveMatchState(state, {
+            mobileUnits: state.mobileUnits.map(
+              (unit) => unitUpdates.get(unit.id) ?? unit,
+            ),
+          }),
+    movementWorkByUnitId: Object.freeze(movementWorkByUnitId),
+    strategicMoverIds,
+  });
+}
+
 function settleTankStrategicMovementPhase(
   stateBeforeMovement: MatchState,
   stateAfterMovement: MatchState,
@@ -703,6 +771,79 @@ function settleTankStrategicMovementPhase(
       (unit) => unitUpdates.get(unit.id) ?? unit,
     ),
     tankOperationalStates: stateAfterMovement.tankOperationalStates.map(
+      (operational) =>
+        operationalUpdates.get(operational.unitId) ?? operational,
+    ),
+  });
+}
+
+function settleWarshipStrategicMovementPhase(
+  stateBeforeMovement: MatchState,
+  stateAfterMovement: MatchState,
+  strategicMoverIds: ReadonlySet<string>,
+): MatchState {
+  if (strategicMoverIds.size === 0) return stateAfterMovement;
+  const beforeUnitsById = new Map(
+    stateBeforeMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const afterUnitsById = new Map(
+    stateAfterMovement.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const operationalById = new Map(
+    stateAfterMovement.warshipOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
+  );
+  const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["warshipOperationalStates"][number]
+  >();
+
+  for (const unitId of strategicMoverIds) {
+    const before = beforeUnitsById.get(unitId);
+    const after = afterUnitsById.get(unitId);
+    const destinationCellId = before?.strategicDestinationCellId;
+    if (
+      before === undefined ||
+      after === undefined ||
+      destinationCellId === undefined ||
+      after.cellId !== destinationCellId
+    ) {
+      continue;
+    }
+    unitUpdates.set(
+      unitId,
+      setMobileUnitStrategicDestination(
+        stateAfterMovement.map,
+        after,
+        undefined,
+      ),
+    );
+    const operational = operationalById.get(unitId);
+    if (
+      operational !== undefined &&
+      operational.operatingAnchorCellId !== destinationCellId
+    ) {
+      operationalUpdates.set(
+        unitId,
+        Object.freeze({
+          ...operational,
+          operatingAnchorCellId: destinationCellId,
+        }),
+      );
+    }
+  }
+
+  if (unitUpdates.size === 0 && operationalUpdates.size === 0) {
+    return stateAfterMovement;
+  }
+  return createProspectiveMatchState(stateAfterMovement, {
+    mobileUnits: stateAfterMovement.mobileUnits.map(
+      (unit) => unitUpdates.get(unit.id) ?? unit,
+    ),
+    warshipOperationalStates: stateAfterMovement.warshipOperationalStates.map(
       (operational) =>
         operationalUpdates.get(operational.unitId) ?? operational,
     ),
@@ -1225,10 +1366,14 @@ export class TickEngine {
       targetIntended,
       repairIntended,
     );
-    const movementPrepared = tankPreparation.state;
+    const warshipPreparation = prepareWarshipMovementPhase(
+      tankPreparation.state,
+    );
+    const movementPrepared = warshipPreparation.state;
     const movementWorkByUnitId: Record<string, number> = {
       ...factoryTrainMovementWorkByUnitId(movementPrepared, nextTick),
       ...tankPreparation.movementWorkByUnitId,
+      ...warshipPreparation.movementWorkByUnitId,
     };
     const structureCells = new Set(
       movementPrepared.structures.map((structure) => structure.cellId),
@@ -1247,10 +1392,15 @@ export class TickEngine {
       movementPrepared,
       trainMovementUpdate,
     );
-    const strategicSettled = settleTankStrategicMovementPhase(
+    const tankStrategicSettled = settleTankStrategicMovementPhase(
       movementPrepared,
       trainSettled,
       tankPreparation.strategicMoverIds,
+    );
+    const strategicSettled = settleWarshipStrategicMovementPhase(
+      movementPrepared,
+      tankStrategicSettled,
+      warshipPreparation.strategicMoverIds,
     );
     const repairSettled = settleTankRepairMovementPhase(
       movementPrepared,
