@@ -15,6 +15,7 @@ import {
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import {
   createMobileUnit,
+  setMobileUnitStrategicDestination,
   type MobileUnitState,
 } from "../src/simulation/MobileUnits";
 import { resolveWarshipGunfireDecisions } from "../src/simulation/WarshipCombat";
@@ -210,7 +211,16 @@ describe("Warship post-movement gunfire decisions", () => {
       type: "WARSHIP",
       cellId: 0,
     });
-    state = source.state;
+    const travellingSource = setMobileUnitStrategicDestination(
+      source.state.map,
+      source.unit,
+      141,
+    );
+    state = createProspectiveMatchState(source.state, {
+      mobileUnits: source.state.mobileUnits.map((unit) =>
+        unit.id === travellingSource.id ? travellingSource : unit,
+      ),
+    });
     const target = addNavalUnit(state, {
       ownerId: "beta",
       type: "TRANSPORT_SHIP",
