@@ -6,6 +6,7 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
 import {
+  PRODUCTION_CONTROLLER_LIMITS,
   ProductionControllerHost,
   type ControllerRuntimeArtifact,
 } from "../src/server/controller-runtime/ProductionControllerHost";
@@ -658,6 +659,367 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
   });
 });
 
+
+describe("issue #206 team.signal authoritative RED", () => {
+  function teamSignalSpec(seed: string) {
+    return createMicroSimulationSpec({
+      seed,
+      width: 5,
+      height: 1,
+      terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+      initialOwners: ["alpha", "beta", "delta", "gamma", "solo"],
+      factions: [
+        { id: "alpha", fixedTeamId: "team-a", rules: emptyRules() },
+        { id: "beta", fixedTeamId: "team-a", rules: emptyRules() },
+        { id: "delta", fixedTeamId: "team-a", rules: emptyRules() },
+        { id: "gamma", fixedTeamId: "team-b", rules: emptyRules() },
+        { id: "solo", rules: emptyRules() },
+      ],
+    });
+  }
+
+  function teamSignalRuntime(seed: string) {
+    return new MatchRuntime(teamSignalSpec(seed), {
+      controllerReferenceNamespace: seed,
+    });
+  }
+
+  function contextEvents(context: unknown): readonly Readonly<Record<string, unknown>>[] {
+    const events = (
+      context as {
+        readonly events?: {
+          readonly sinceLastDecision?: readonly Readonly<Record<string, unknown>>[];
+        };
+      }
+    ).events?.sinceLastDecision;
+    return events === undefined ? Object.freeze([]) : events;
+  }
+
+  function noOpArtifact(): ControllerRuntimeArtifact {
+    return Object.freeze({
+      moduleSource: "export function decide() { return {}; }",
+      entrypoints: Object.freeze({ decide: "decide" }),
+    });
+  }
+
+  function signalArtifact(payload: string): ControllerRuntimeArtifact {
+    return Object.freeze({
+      moduleSource:
+        "export function decide(context) {" +
+        " context.team.signal(\"intent\", " +
+        JSON.stringify(payload) +
+        "); return {}; }",
+      entrypoints: Object.freeze({ decide: "decide" }),
+    });
+  }
+
+  it("delivers accepted signals only to other active fixed teammates on their next decision, in accepted-input order, then consumes them", async () => {
+    const runtime = teamSignalRuntime("issue206-team-delivery");
+
+    runtime.acceptAction({ type: "CAPITULATE_FACTION", factionId: "delta" });
+    runtime.tick();
+
+    const beforeSignal = runtime.snapshot();
+    const beforeInputs = runtime.acceptedInputs().length;
+    const sendHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.team.signal("first", { ordinal: 1 });
+        context.team.signal("second", { ordinal: 2 });
+        return {};
+      },
+    });
+    const sendReceipts = await Promise.resolve(runtime.runControllerRound(sendHost));
+    expect(
+      sendReceipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.snapshot()).toEqual(beforeSignal);
+    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 2);
+    expect(runtime.acceptedInputs().slice(-2).map((entry) => entry.action)).toEqual([
+      {
+        type: "TEAM_SIGNAL",
+        senderFactionId: "alpha",
+        channel: "first",
+        payload: { ordinal: 1 },
+      },
+      {
+        type: "TEAM_SIGNAL",
+        senderFactionId: "alpha",
+        channel: "second",
+        payload: { ordinal: 2 },
+      },
+    ]);
+
+    runtime.tick();
+
+    const seen = new Map<string, readonly Readonly<Record<string, unknown>>[]>();
+    const receiveHost = new InProcessTestControllerHost(
+      Object.fromEntries(
+        ["alpha", "beta", "delta", "gamma", "solo"].map((factionId) => [
+          factionId,
+          (context: unknown) => {
+            seen.set(factionId, contextEvents(context));
+            return {};
+          },
+        ]),
+      ),
+    );
+    await Promise.resolve(runtime.runControllerRound(receiveHost));
+
+    const alphaRef = runtime.controllerReferenceSession().issueFaction("alpha");
+    expect(seen.get("beta")).toEqual([
+      {
+        type: "TEAM_SIGNAL_RECEIVED",
+        fromFactionId: alphaRef,
+        channel: "first",
+        payload: { ordinal: 1 },
+      },
+      {
+        type: "TEAM_SIGNAL_RECEIVED",
+        fromFactionId: alphaRef,
+        channel: "second",
+        payload: { ordinal: 2 },
+      },
+    ]);
+    expect(seen.get("alpha")).toEqual([]);
+    expect(seen.get("delta")).toEqual([]);
+    expect(seen.get("gamma")).toEqual([]);
+    expect(seen.get("solo")).toEqual([]);
+
+    runtime.tick();
+    let betaLater: readonly Readonly<Record<string, unknown>>[] | undefined;
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          beta(context) {
+            betaLater = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(betaLater).toEqual([]);
+  });
+
+  it("treats an unteamed sender with no eligible teammate as a lawful no-op", async () => {
+    const runtime = teamSignalRuntime("issue206-team-no-recipient");
+    const before = runtime.snapshot();
+    const beforeInputs = runtime.acceptedInputs().length;
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          solo(context) {
+            context.team.signal("solo", { ok: true });
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "solo")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(runtime.snapshot()).toEqual(before);
+    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 1);
+    expect(runtime.acceptedInputs().at(-1)?.action).toEqual({
+      type: "TEAM_SIGNAL",
+      senderFactionId: "solo",
+      channel: "solo",
+      payload: { ok: true },
+    });
+
+    runtime.tick();
+    const seen = new Map<string, readonly Readonly<Record<string, unknown>>[]>();
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost(
+          Object.fromEntries(
+            ["alpha", "beta", "delta", "gamma", "solo"].map((factionId) => [
+              factionId,
+              (context: unknown) => {
+                seen.set(factionId, contextEvents(context));
+                return {};
+              },
+            ]),
+          ),
+        ),
+      ),
+    );
+    for (const events of seen.values()) expect(events).toEqual([]);
+  });
+
+  it("reconstructs pending team-signal delivery from accepted inputs during replay", async () => {
+    const seed = "issue206-team-replay";
+    const spec = teamSignalSpec(seed);
+    const runtime = new MatchRuntime(spec, {
+      controllerReferenceNamespace: seed,
+    });
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            context.team.signal("replay", { value: 7 });
+            return {};
+          },
+        }),
+      ),
+    );
+    runtime.tick();
+
+    const replay = MatchRuntime.regenerate(
+      spec,
+      runtime.acceptedInputs(),
+      runtime.snapshot().tick,
+      { controllerReferenceNamespace: seed },
+    );
+    let observed: readonly Readonly<Record<string, unknown>>[] | undefined;
+    await Promise.resolve(
+      replay.runControllerRound(
+        new InProcessTestControllerHost({
+          beta(context) {
+            observed = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(observed).toEqual([
+      {
+        type: "TEAM_SIGNAL_RECEIVED",
+        fromFactionId: replay.controllerReferenceSession().issueFaction("alpha"),
+        channel: "replay",
+        payload: { value: 7 },
+      },
+    ]);
+  });
+
+  it("copies next-decision team events into the production isolate", async () => {
+    const runtime = teamSignalRuntime("issue206-team-worker-delivery");
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            context.team.signal("worker", { target: 3 });
+            return {};
+          },
+        }),
+      ),
+    );
+    runtime.tick();
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const betaArtifact: ControllerRuntimeArtifact = Object.freeze({
+        moduleSource:
+          "export function decide(context) {" +
+          " const events = context.events.sinceLastDecision;" +
+          " if (events.length !== 1) throw new Error('missing team signal');" +
+          " const event = events[0];" +
+          " if (event.type !== 'TEAM_SIGNAL_RECEIVED' ||" +
+          " event.channel !== 'worker' || event.payload.target !== 3)" +
+          " throw new Error('wrong team signal');" +
+          " context.capitulate();" +
+          " return {};" +
+          " }",
+        entrypoints: Object.freeze({ decide: "decide" }),
+      });
+      const host = new ProductionControllerHost(pool, {
+        alpha: noOpArtifact(),
+        beta: betaArtifact,
+        delta: noOpArtifact(),
+        gamma: noOpArtifact(),
+        solo: noOpArtifact(),
+      });
+      const beforeInputs = runtime.acceptedInputs().length;
+      const receipts = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        receipts.find((entry) => entry.factionId === "beta")?.receipt,
+      ).toMatchObject({ accepted: true });
+      expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 1);
+      expect(runtime.acceptedInputs().at(-1)?.action).toEqual({
+        type: "CAPITULATE_FACTION",
+        factionId: "beta",
+      });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("enforces the existing UTF-8 JSON payload-byte limit equally in-process and in the production isolate", async () => {
+    expect(PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes).toBe(1_024);
+    const cases = [
+      { payload: "x".repeat(1_022), legal: true },
+      { payload: "x".repeat(1_023), legal: false },
+      { payload: "é".repeat(511), legal: true },
+      { payload: "é".repeat(512), legal: false },
+    ] as const;
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      for (const [index, entry] of cases.entries()) {
+        const state = facadeState("issue206-team-payload-" + index);
+        const inProcessSession = createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          new ControllerReferenceSession(
+            "issue206-team-payload-in-" + index,
+            state,
+          ),
+        );
+        const inProcess = new InProcessTestControllerHost({
+          alpha(context) {
+            context.team.signal("intent", entry.payload);
+            return {};
+          },
+        });
+        const inProcessResult = await Promise.resolve(
+          inProcess.invoke("alpha", Object.freeze({}) as never, inProcessSession),
+        );
+        expect(inProcessResult.ok, "in-process case " + index).toBe(entry.legal);
+
+        const workerSession = createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          new ControllerReferenceSession(
+            "issue206-team-payload-worker-" + index,
+            state,
+          ),
+        );
+        const production = new ProductionControllerHost(pool, {
+          alpha: signalArtifact(entry.payload),
+        });
+        const productionResult = await production.invoke(
+          "alpha",
+          Object.freeze({}) as never,
+          workerSession,
+        );
+        expect(productionResult.ok, "worker case " + index).toBe(entry.legal);
+      }
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects non-JSON team payloads in-process just as the worker transport already does", async () => {
+    const state = facadeState("issue206-team-json-shape");
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      new ControllerReferenceSession("issue206-team-json-shape", state),
+    );
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        context.team.signal("bad", Number.NaN as never);
+        return {};
+      },
+    });
+    const result = await Promise.resolve(
+      host.invoke("alpha", Object.freeze({}) as never, session),
+    );
+    expect(result.ok).toBe(false);
+  });
+});
 
 describe("issue #206 Tank build and strategic-move authoritative RED", () => {
   function tankBuildState(seed: string) {
