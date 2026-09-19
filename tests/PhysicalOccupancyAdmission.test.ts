@@ -793,6 +793,12 @@ describe("physical occupancy admission", () => {
     const blocked = createProspectiveMatchState(source, {
       mobileUnits: blocker.mobileUnits,
       nextMobileUnitOrdinal: blocker.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: blocker.unit.id,
+          operatingAnchorCellId: blocker.unit.cellId,
+        },
+      ],
     });
 
     const rejected = tryLaunchTradeShipAtPortDock(blocked, {
@@ -806,7 +812,10 @@ describe("physical occupancy admission", () => {
     expect(rejected.state).toBe(blocked);
     expect(rejected.state.mobileUnits.some((unit) => unit.cellId === 2)).toBe(false);
 
-    const cleared = createProspectiveMatchState(blocked, { mobileUnits: [] });
+    const cleared = createProspectiveMatchState(blocked, {
+      mobileUnits: [],
+      warshipOperationalStates: [],
+    });
     const launched = tryLaunchTradeShipAtPortDock(cleared, {
       ownerId: "alpha",
       sourcePortId: "port-source",
