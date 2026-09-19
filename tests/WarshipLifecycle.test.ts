@@ -449,6 +449,10 @@ describe("Warship strategic movement lifecycle", () => {
         warshipOperationalStates?: readonly {
           unitId: string;
           operatingAnchorCellId: number;
+          health?: Readonly<{ numerator: bigint; denominator: bigint }>;
+          attackReadyAtTick?: number;
+          nextProjectileOrdinal?: number;
+          roamingOrdinal?: number;
         }[];
       }
     ).warshipOperationalStates;
@@ -456,6 +460,10 @@ describe("Warship strategic movement lifecycle", () => {
       {
         unitId: unit.id,
         operatingAnchorCellId: 0,
+        health: { numerator: 1_000n, denominator: 1n },
+        attackReadyAtTick: completed.tick,
+        nextProjectileOrdinal: 0,
+        roamingOrdinal: 0,
       },
     ]);
 
@@ -463,9 +471,22 @@ describe("Warship strategic movement lifecycle", () => {
       warshipOperationalStates?: readonly {
         unitId: string;
         operatingAnchorCellId: number;
+        health?: Readonly<{ numerator: string; denominator: string }>;
+        attackReadyAtTick?: number;
+        nextProjectileOrdinal?: number;
+        roamingOrdinal?: number;
       }[];
     };
-    expect(serialized.warshipOperationalStates).toEqual(operationalStates);
+    expect(serialized.warshipOperationalStates).toEqual([
+      {
+        unitId: unit.id,
+        operatingAnchorCellId: 0,
+        health: { numerator: "1000", denominator: "1" },
+        attackReadyAtTick: completed.tick,
+        nextProjectileOrdinal: 0,
+        roamingOrdinal: 0,
+      },
+    ]);
   });
 
   it("moves a deployed Warship through TickEngine and transfers its operating anchor only on exact destination arrival", () => {
@@ -486,7 +507,7 @@ describe("Warship strategic movement lifecycle", () => {
           }[];
         }
       ).warshipOperationalStates,
-    ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+    ).toEqual([expect.objectContaining({ unitId, operatingAnchorCellId: 0 })]);
 
     const second = engine.advance(first, []);
     const secondUnit = second.mobileUnits.find((unit) => unit.id === unitId)!;
@@ -511,7 +532,7 @@ describe("Warship strategic movement lifecycle", () => {
           }[];
         }
       ).warshipOperationalStates,
-    ).toEqual([{ unitId, operatingAnchorCellId: 2 }]);
+    ).toEqual([expect.objectContaining({ unitId, operatingAnchorCellId: 2 })]);
   });
 
   it("keeps an unreachable strategic destination and the old operating anchor after reaching its best-effort frontier", () => {
@@ -569,7 +590,7 @@ describe("Warship strategic movement lifecycle", () => {
           }[];
         }
       ).warshipOperationalStates,
-    ).toEqual([{ unitId, operatingAnchorCellId: 0 }]);
+    ).toEqual([expect.objectContaining({ unitId, operatingAnchorCellId: 0 })]);
 
     const unblocked = createProspectiveMatchState(frontier, {
       structures: frontier.structures.filter(
@@ -583,7 +604,7 @@ describe("Warship strategic movement lifecycle", () => {
     expect(resumedUnit.cellId).toBe(5);
     expect(resumedUnit.strategicDestinationCellId).toBe(2);
     expect(resumed.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 0 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 0 }),
     ]);
 
     const arrived = engine.advance(resumed, []);
@@ -593,7 +614,7 @@ describe("Warship strategic movement lifecycle", () => {
     expect(arrivedUnit.cellId).toBe(2);
     expect(arrivedUnit.strategicDestinationCellId).toBeUndefined();
     expect(arrived.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 2 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 2 }),
     ]);
   });
 
@@ -614,7 +635,7 @@ describe("Warship strategic movement lifecycle", () => {
         ?.strategicDestinationCellId,
     ).toBe(4);
     expect(result.state.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 0 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 0 }),
     ]);
     expect(result.state.operations).toEqual(completed.operations);
     expect(result.state.hostilityGrace).toEqual(completed.hostilityGrace);
@@ -654,7 +675,7 @@ describe("Warship strategic movement lifecycle", () => {
     expect(replaced.ok).toBe(true);
     if (!replaced.ok) throw new Error("expected Warship destination replacement");
     expect(replaced.state.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 0 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 0 }),
     ]);
 
     const returned = engine.advance(replaced.state, []);
@@ -662,7 +683,7 @@ describe("Warship strategic movement lifecycle", () => {
     expect(returnedUnit.cellId).toBe(0);
     expect(returnedUnit.strategicDestinationCellId).toBeUndefined();
     expect(returned.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 0 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 0 }),
     ]);
   });
 
@@ -671,7 +692,7 @@ describe("Warship strategic movement lifecycle", () => {
     const completed = completeWarshipProduction(operationalMovementFixture(), 2);
     const unitId = completed.mobileUnits[0]!.id;
     expect(completed.warshipOperationalStates).toEqual([
-      { unitId, operatingAnchorCellId: 0 },
+      expect.objectContaining({ unitId, operatingAnchorCellId: 0 }),
     ]);
 
     const removed = removeWarshipUnitsProbe(completed, [unitId]);
