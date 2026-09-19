@@ -28,9 +28,18 @@ import { removePopulation } from "./Population";
 import type { SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
+export interface WarshipExactHealth {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
 export interface WarshipOperationalState {
   readonly unitId: string;
+  readonly health: WarshipExactHealth;
   readonly operatingAnchorCellId: number;
+  readonly attackReadyAtTick: number;
+  readonly nextProjectileOrdinal: number;
+  readonly roamingOrdinal: number;
 }
 
 export type WarshipProductionJobState =
@@ -125,6 +134,7 @@ export type WarshipStrategicNavigationRouteResult =
   | { readonly status: "LIMIT_REACHED" };
 
 const BASE_WARSHIP_BUILD_TICKS = 50;
+const BASE_WARSHIP_MAX_HEALTH = 1_000n;
 const BASE_WARSHIP_SPEED_CELLS_PER_SECOND = 10n;
 const WARSHIP_MOVEMENT_TICKS_PER_SECOND = 10n;
 const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
@@ -725,7 +735,14 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
       operationalStates.push(
         Object.freeze({
           unitId: deployedUnit.id,
+          health: Object.freeze({
+            numerator: BASE_WARSHIP_MAX_HEALTH,
+            denominator: 1n,
+          }),
           operatingAnchorCellId: cellId,
+          attackReadyAtTick: state.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
         }),
       );
       return true;
