@@ -90,7 +90,8 @@
     "tests/TrainService.test.ts",
     "tests/TransportRuntime.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts",
-    "tests/WarshipLifecycle.test.ts"
+    "tests/WarshipLifecycle.test.ts",
+    "tests/WarshipTargeting.test.ts"
   ],
   "ownedSources": [
     {"path":"design/official-ai/character-configurations.config.ts","validators":["tests/OfficialAiConfiguration.test.ts"]},
