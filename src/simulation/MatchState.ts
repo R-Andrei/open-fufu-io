@@ -52,7 +52,10 @@ import {
   type PersistentStructureState,
 } from "./Structures";
 import type { TankOperationalState, TankProductionJobState } from "./Tanks";
-import type { WarshipProductionJobState } from "./Warships";
+import type {
+  WarshipOperationalState,
+  WarshipProductionJobState,
+} from "./Warships";
 export type { TrainServiceRuntimeState } from "./FactoryTrainState";
 
 const STRUCTURE_TYPES = new Set<StructureType>([
@@ -97,6 +100,7 @@ export interface MatchState extends FactoryTrainState {
   readonly tankProductionJobs: readonly TankProductionJobState[];
   readonly warshipProductionJobs: readonly WarshipProductionJobState[];
   readonly tankOperationalStates: readonly MatchTankOperationalState[];
+  readonly warshipOperationalStates: readonly WarshipOperationalState[];
   readonly directReveals: readonly DirectRevealRecord[];
   readonly operations: readonly LandOperationState[];
   readonly defensePriorities: readonly DefensePriorityState[];
@@ -115,6 +119,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly tankProductionJobs?: readonly TankProductionJobState[];
   readonly warshipProductionJobs?: readonly WarshipProductionJobState[];
   readonly tankOperationalStates?: readonly MatchTankOperationalState[];
+  readonly warshipOperationalStates?: readonly WarshipOperationalState[];
   readonly directReveals?: readonly DirectRevealRecord[];
   readonly operations?: readonly LandOperationState[];
   readonly defensePriorities?: readonly DefensePriorityState[];
@@ -628,6 +633,48 @@ function freezeTankOperationalStates(
   return Object.freeze(states);
 }
 
+function freezeWarshipOperationalStates(
+  entries: readonly WarshipOperationalState[],
+  mobileUnits: readonly MobileUnitState[],
+  map: SimulationMap,
+): readonly WarshipOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("warshipOperationalStates must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const seenUnitIds = new Set<string>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Warship operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Warship operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Warship operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (unit === undefined || unit.type !== "WARSHIP") {
+      throw new Error(
+        `Warship operational state must reference a deployed Warship: ${entry.unitId}`,
+      );
+    }
+    if (
+      !map.isValidCellId(entry.operatingAnchorCellId) ||
+      map.terrainAt(entry.operatingAnchorCellId) !== "DEEP_WATER"
+    ) {
+      throw new Error("Warship operating anchor must be a Deep-Water map cell");
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+    });
+  });
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
+}
+
 function assertExclusivePhysicalOccupancy(
   structures: readonly PersistentStructureState[],
   mobileUnits: readonly MobileUnitState[],
@@ -688,6 +735,11 @@ function createState(
     mobileUnits.mobileUnits,
     previous.map,
   );
+  const warshipOperationalStates = freezeWarshipOperationalStates(
+    update.warshipOperationalStates ?? previous.warshipOperationalStates ?? [],
+    mobileUnits.mobileUnits,
+    previous.map,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -708,6 +760,7 @@ function createState(
       previous.map,
     ),
     tankOperationalStates,
+    warshipOperationalStates,
     directReveals: freezeDirectReveals(
       update.directReveals ?? previous.directReveals ?? [],
     ),
@@ -802,6 +855,7 @@ function createEmptyInitialMatchState(
     tankProductionJobs: Object.freeze([]),
     warshipProductionJobs: Object.freeze([]),
     tankOperationalStates: Object.freeze([]),
+    warshipOperationalStates: Object.freeze([]),
     directReveals: Object.freeze([]),
     operations: Object.freeze([]),
     defensePriorities: Object.freeze([]),
@@ -1077,6 +1131,13 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const warshipOperationalStates = [...state.warshipOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      operatingAnchorCellId: entry.operatingAnchorCellId,
+    }));
+
   const directReveals = state.directReveals.map((entry) => ({
     viewerFactionId: entry.viewerFactionId,
     sourceKind: entry.sourceKind,
@@ -1152,6 +1213,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     tankProductionJobs,
     warshipProductionJobs,
     tankOperationalStates,
+    warshipOperationalStates,
     directReveals,
     operations,
     defensePriorities: [...state.defensePriorities]
