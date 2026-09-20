@@ -450,6 +450,8 @@ describe("Warship strategic movement lifecycle", () => {
           unitId: string;
           operatingAnchorCellId: number;
           health?: Readonly<{ numerator: bigint; denominator: bigint }>;
+          rank?: number;
+          navalXp?: number;
           attackReadyAtTick?: number;
           nextProjectileOrdinal?: number;
           roamingOrdinal?: number;
@@ -461,6 +463,8 @@ describe("Warship strategic movement lifecycle", () => {
         unitId: unit.id,
         operatingAnchorCellId: 0,
         health: { numerator: 1_000n, denominator: 1n },
+        rank: 1,
+        navalXp: 0,
         attackReadyAtTick: completed.tick,
         nextProjectileOrdinal: 0,
         roamingOrdinal: 0,
@@ -472,6 +476,8 @@ describe("Warship strategic movement lifecycle", () => {
         unitId: string;
         operatingAnchorCellId: number;
         health?: Readonly<{ numerator: string; denominator: string }>;
+        rank?: number;
+        navalXp?: number;
         attackReadyAtTick?: number;
         nextProjectileOrdinal?: number;
         roamingOrdinal?: number;
@@ -482,6 +488,8 @@ describe("Warship strategic movement lifecycle", () => {
         unitId: unit.id,
         operatingAnchorCellId: 0,
         health: { numerator: "1000", denominator: "1" },
+        rank: 1,
+        navalXp: 0,
         attackReadyAtTick: completed.tick,
         nextProjectileOrdinal: 0,
         roamingOrdinal: 0,
