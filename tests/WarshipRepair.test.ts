@@ -108,6 +108,8 @@ function fixture(options: Readonly<{
     operational.push({
       unitId: unit.id,
       health: { numerator: seed.health, denominator: 1n },
+      rank: 1,
+      navalXp: 0,
       operatingAnchorCellId: unit.cellId,
       attackReadyAtTick: state.tick,
       nextProjectileOrdinal: 0,
@@ -168,6 +170,8 @@ function addEnemyWarship(state: MatchState, cellId: number): MatchState {
       {
         unitId: created.unit.id,
         health: { numerator: 1_000n, denominator: 1n },
+        rank: 1,
+        navalXp: 0,
         operatingAnchorCellId: cellId,
         attackReadyAtTick: state.tick,
         nextProjectileOrdinal: 0,
