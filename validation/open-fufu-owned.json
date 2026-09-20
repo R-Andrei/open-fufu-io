@@ -135,18 +135,6 @@
       ]
     },
     {
-      "path": "src/core/DetMath.ts",
-      "validators": [
-        "tests/RuleRationalMaterialization.test.ts"
-      ]
-    },
-    {
-      "path": "src/core/FactionRelations.ts",
-      "validators": [
-        "tests/FactionRelations.test.ts"
-      ]
-    },
-    {
       "path": "src/core/controller/ControllerApi.ts",
       "validators": [
         "tests/ControllerApiContract.test.ts",
@@ -159,6 +147,18 @@
       "validators": [
         "tests/ControllerRuntime.test.ts",
         "tests/ControllerWorkerHost.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/DetMath.ts",
+      "validators": [
+        "tests/RuleRationalMaterialization.test.ts"
+      ]
+    },
+    {
+      "path": "src/core/FactionRelations.ts",
+      "validators": [
+        "tests/FactionRelations.test.ts"
       ]
     },
     {
@@ -492,6 +492,14 @@
       ]
     },
     {
+      "path": "src/simulation/NavalRepair.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/TransportRepair.test.ts",
+        "tests/WarshipRepair.test.ts"
+      ]
+    },
+    {
       "path": "src/simulation/Navigation.ts",
       "validators": [
         "tests/Navigation.test.ts",
@@ -528,14 +536,6 @@
         "tests/Segments.test.ts",
         "tests/SegmentsProduction.test.ts",
         "tests/SimulationDependencyFirewall.test.ts"
-      ]
-    },
-    {
-      "path": "src/simulation/NavalRepair.ts",
-      "validators": [
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/TransportRepair.test.ts",
-        "tests/WarshipRepair.test.ts"
       ]
     },
     {
@@ -616,12 +616,6 @@
       ]
     },
     {
-      "path": "src/simulation/TerritoryEffects.ts",
-      "validators": [
-        "tests/TankAftershock.test.ts"
-      ]
-    },
-    {
       "path": "src/simulation/TankCombat.ts",
       "validators": [
         "tests/TankAftershock.test.ts",
@@ -636,13 +630,6 @@
       ]
     },
     {
-      "path": "src/simulation/TankTargeting.ts",
-      "validators": [
-        "tests/TankPursuit.test.ts",
-        "tests/TankTargeting.test.ts"
-      ]
-    },
-    {
       "path": "src/simulation/Tanks.ts",
       "validators": [
         "tests/PhysicalOccupancyMovement.test.ts",
@@ -650,6 +637,19 @@
         "tests/PhysicalOccupancyTransitionIntegration.test.ts",
         "tests/TankLifecycle.test.ts",
         "tests/TankOperationalState.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/TankTargeting.ts",
+      "validators": [
+        "tests/TankPursuit.test.ts",
+        "tests/TankTargeting.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/TerritoryEffects.ts",
+      "validators": [
+        "tests/TankAftershock.test.ts"
       ]
     },
     {
@@ -733,11 +733,9 @@
       ]
     },
     {
-      "path": "src/simulation/WarshipTargeting.ts",
+      "path": "src/simulation/WarshipProgression.ts",
       "validators": [
-        "tests/SimulationDependencyFirewall.test.ts",
-        "tests/WarshipAutonomousMovement.test.ts",
-        "tests/WarshipTargeting.test.ts"
+        "tests/WarshipProgression.test.ts"
       ]
     },
     {
@@ -755,6 +753,14 @@
         "tests/WarshipCombatRuntime.test.ts",
         "tests/WarshipLifecycle.test.ts",
         "tests/WarshipRepair.test.ts",
+        "tests/WarshipTargeting.test.ts"
+      ]
+    },
+    {
+      "path": "src/simulation/WarshipTargeting.ts",
+      "validators": [
+        "tests/SimulationDependencyFirewall.test.ts",
+        "tests/WarshipAutonomousMovement.test.ts",
         "tests/WarshipTargeting.test.ts"
       ]
     },
