@@ -412,6 +412,8 @@ describe("authoritative faction strength score", () => {
           attackReadyAtTick: funded.tick,
           nextProjectileOrdinal: 0,
           roamingOrdinal: 0,
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: deployedWarship.unit.cellId,
         },
       ],
