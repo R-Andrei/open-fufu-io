@@ -700,4 +700,89 @@ describe("P32 Transport ordinary Port repair adapter", () => {
     ).toEqual({ numerator: 515n, denominator: 1n });
   });
 
+
+  it("keeps an ordinary Warship combat-operational when a P32 Transport owns the shared fast-service slot", () => {
+    let state = fixture({
+      seed: "transport-repair-shared-slot-warship-combat-cert",
+      traits: ["P32"],
+      transport: {
+        cellId: 5,
+        health: 250n,
+        repairPortId: "alpha-port",
+        repairArrivalTick: 0,
+      },
+    });
+    const transportId = state.mobileUnits[0]!.id;
+    const ownerIds = state.factions.map((faction) => faction.id);
+
+    const sourceCreated = createMobileUnit(
+      state.map,
+      ownerIds,
+      state,
+      {
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 6,
+      },
+    );
+    state = createProspectiveMatchState(state, {
+      mobileUnits: sourceCreated.mobileUnits,
+      nextMobileUnitOrdinal: sourceCreated.nextMobileUnitOrdinal,
+    });
+    const sourceId = sourceCreated.unit.id;
+
+    const targetCreated = createMobileUnit(
+      state.map,
+      ownerIds,
+      state,
+      {
+        ownerId: "beta",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 7,
+      },
+    );
+    const targetId = targetCreated.unit.id;
+    state = createProspectiveMatchState(state, {
+      mobileUnits: targetCreated.mobileUnits,
+      nextMobileUnitOrdinal: targetCreated.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: sourceId,
+          health: { numerator: 500n, denominator: 1n },
+          operatingAnchorCellId: 6,
+          attackReadyAtTick: 0,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+          repairPortId: "alpha-port",
+          repairArrivalTick: 0,
+        },
+        {
+          unitId: targetId,
+          health: { numerator: 1_000n, denominator: 1n },
+          operatingAnchorCellId: 7,
+          attackReadyAtTick: 1_000,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+        },
+      ],
+    });
+
+    const advanced = new TickEngine().advance(state, []);
+    expect(
+      advanced.transportOperationalStates.find(
+        (entry) => entry.unitId === transportId,
+      )?.health,
+    ).toEqual({ numerator: 260n, denominator: 1n });
+    expect(
+      advanced.warshipOperationalStates.find(
+        (entry) => entry.unitId === sourceId,
+      ),
+    ).toMatchObject({
+      health: { numerator: 501n, denominator: 1n },
+      attackReadyAtTick: 21,
+    });
+  });
+
 });
