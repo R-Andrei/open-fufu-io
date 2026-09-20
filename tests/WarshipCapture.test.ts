@@ -231,7 +231,12 @@ describe("Warship hostile Trade Ship capture runtime", () => {
     const launched = launch(fixture("warship-capture-recapture-red"));
     const beta = addWarship(launched.state, "beta", 5);
     const first = capturePhase(beta.state);
-    const nextTick = createAdvancedMatchState(first, {});
+    const nextTick = createAdvancedMatchState(first, {
+      mobileUnits: first.mobileUnits.filter((unit) => unit.id !== beta.unit.id),
+      warshipOperationalStates: first.warshipOperationalStates.filter(
+        (operational) => operational.unitId !== beta.unit.id,
+      ),
+    });
     const gamma = addWarship(nextTick, "gamma", 4);
 
     const second = capturePhase(gamma.state);
