@@ -145,6 +145,16 @@ describe("issue #215 adversarial certification", () => {
         warshipOperationalStates: ranked.warshipOperationalStates,
       }),
     ).not.toThrow();
+    expect(() =>
+      createProspectiveMatchState(ranked, {
+        warshipOperationalStates: ranked.warshipOperationalStates.map(
+          (entry) =>
+            entry.unitId === p22Id
+              ? Object.freeze({ ...entry, rank: 6, navalXp: 0 })
+              : entry,
+        ),
+      }),
+    ).toThrow(/rank cap|maximum rank/i);
   });
 
   it("rejects malformed/restored P29 launcher ownership and slot-capacity state", () => {
@@ -254,6 +264,34 @@ describe("issue #215 adversarial certification", () => {
     expect(
       launcherState(spent.state, created.unit.id)?.chargeSlots,
     ).toEqual([{ slotId: 0, state: "READY" }]);
+  });
+
+  it("spends slot 0 when multiple P29 charge slots are simultaneously READY", () => {
+    let state = deployed(["P29"]);
+    const unitId = state.mobileUnits[0]!.id;
+    state = applyWarshipNavalXp(state, unitId, 100);
+
+    for (let tick = 0; tick < 90; tick += 1) {
+      state = createAdvancedMatchState(state, {});
+      state = advanceWarshipStrategicLauncherPhase(state);
+    }
+    expect(launcherState(state, unitId)?.chargeSlots).toEqual([
+      { slotId: 0, state: "READY" },
+      { slotId: 1, state: "READY" },
+    ]);
+
+    const committed = tryCommitWarshipStrategicLaunchCharge(state, {
+      ownerId: "alpha",
+      unitId,
+      weapon: "ATOM_BOMB",
+    });
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) throw new Error("expected multi-ready charge commit");
+    expect(committed.binding.slotId).toBe(0);
+    expect(launcherState(committed.state, unitId)?.chargeSlots).toEqual([
+      { slotId: 0, state: "RECHARGING", readyAtTick: 180 },
+      { slotId: 1, state: "READY" },
+    ]);
   });
 
   it("keeps an existing absolute recharge deadline when recharge modifiers later change", () => {
