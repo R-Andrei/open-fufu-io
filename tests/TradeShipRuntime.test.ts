@@ -787,6 +787,8 @@ describe("authoritative Trade Ship voyage state", () => {
         {
           unitId: blocker.unit.id,
           health: { numerator: 1_000n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 15,
           attackReadyAtTick: withPorts.tick,
           nextProjectileOrdinal: 0,
@@ -867,6 +869,8 @@ describe("authoritative Trade Ship voyage state", () => {
         {
           unitId: blocker.unit.id,
           health: { numerator: 1_000n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 15,
           attackReadyAtTick: launched.state.tick,
           nextProjectileOrdinal: 0,
@@ -958,6 +962,8 @@ describe("authoritative Trade Ship voyage state", () => {
         {
           unitId: blocker.unit.id,
           health: { numerator: 1_000n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 1,
           attackReadyAtTick: partial.tick,
           nextProjectileOrdinal: 0,
