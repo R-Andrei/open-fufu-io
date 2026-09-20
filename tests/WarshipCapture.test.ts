@@ -227,6 +227,59 @@ describe("Warship hostile Trade Ship capture runtime", () => {
     );
   });
 
+  it("reveals a successful capturing Warship to the immediately attacked holder for exactly 150 ticks and not to third parties", () => {
+    const launched = launch(fixture("warship-capture-direct-reveal-red"));
+    const beta = addWarship(launched.state, "beta", 5);
+
+    const advanced = new TickEngine().advance(beta.state, []);
+
+    expect(
+      advanced.directReveals.filter(
+        (record) =>
+          record.sourceKind === "UNIT" &&
+          record.sourceId === beta.unit.id,
+      ),
+    ).toEqual([
+      {
+        viewerFactionId: "alpha",
+        sourceKind: "UNIT",
+        sourceId: beta.unit.id,
+        expiryExclusiveTick: 151,
+      },
+    ]);
+  });
+
+  it("attributes recapture direct reveal to the immediately previous holder rather than the original owner", () => {
+    const launched = launch(fixture("warship-recapture-direct-reveal-red"));
+    const beta = addWarship(launched.state, "beta", 5);
+    const first = capturePhase(beta.state);
+    const nextTick = createAdvancedMatchState(first, {
+      mobileUnits: first.mobileUnits.filter((unit) => unit.id !== beta.unit.id),
+      warshipOperationalStates: first.warshipOperationalStates.filter(
+        (operational) => operational.unitId !== beta.unit.id,
+      ),
+      directReveals: [],
+    });
+    const gamma = addWarship(nextTick, "gamma", 4);
+
+    const advanced = new TickEngine().advance(gamma.state, []);
+
+    expect(
+      advanced.directReveals.filter(
+        (record) =>
+          record.sourceKind === "UNIT" &&
+          record.sourceId === gamma.unit.id,
+      ),
+    ).toEqual([
+      {
+        viewerFactionId: "beta",
+        sourceKind: "UNIT",
+        sourceId: gamma.unit.id,
+        expiryExclusiveTick: 152,
+      },
+    ]);
+  });
+
   it("records a later hostile recapture as a distinct stable fact and serializes both occurrences", () => {
     const launched = launch(fixture("warship-capture-recapture-red"));
     const beta = addWarship(launched.state, "beta", 5);
