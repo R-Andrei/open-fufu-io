@@ -99,6 +99,7 @@
     "tests/WarshipNavalXpEvents.test.ts",
     "tests/WarshipProgression.test.ts",
     "tests/WarshipProgressionIntegration.test.ts",
+    "tests/WarshipStrategicLauncher.test.ts",
     "tests/WarshipProjectileImpact.test.ts",
     "tests/WarshipRepair.test.ts",
     "tests/WarshipTargeting.test.ts",
