@@ -90,6 +90,7 @@
     "tests/TrainService.test.ts",
     "tests/TransportDestructionRuntime.test.ts",
     "tests/TransportRuntime.test.ts",
+    "tests/TransportRepair.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts",
     "tests/WarshipAutonomousMovement.test.ts",
     "tests/WarshipCapture.test.ts",
