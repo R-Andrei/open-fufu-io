@@ -1,3 +1,5 @@
+import { reducedRational } from "../core/rules/RuleComposition";
+
 export interface WarshipProgressionState {
   readonly unitId: string;
   readonly rank: number;
@@ -83,8 +85,9 @@ export function warshipRankHealthScale(
   rank: number,
 ): Readonly<{ numerator: bigint; denominator: bigint }> {
   assertRank(rank);
+  const scale = reducedRational(BigInt(5 + (rank - 1)), 5n);
   return Object.freeze({
-    numerator: BigInt(5 + (rank - 1)),
-    denominator: 5n,
+    numerator: scale.numerator,
+    denominator: scale.denominator,
   });
 }
