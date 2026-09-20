@@ -690,7 +690,7 @@
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat and authoritative projectile impacts."
+      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat, authoritative projectile impacts, and successful hostile Warship Trade Ship capture."
     },
     {
       "from": "src/simulation/TickEngine.ts",
@@ -804,7 +804,7 @@
       "from": "src/simulation/VisibilityState.ts",
       "to": "src/simulation/SimulationEvents.ts",
       "classification": "CANONICAL_EVENT",
-      "rationale": "Visibility consumes canonical physical attack/destruction facts to derive direct-reveal consequences."
+      "rationale": "Visibility consumes canonical physical attack/destruction and Warship Trade Ship capture facts to derive direct-reveal consequences."
     },
     {
       "from": "src/simulation/VisibilityState.ts",
@@ -834,7 +834,7 @@
       "from": "src/simulation/WarshipCombat.ts",
       "to": "src/simulation/SimulationEvents.ts",
       "classification": "CANONICAL_EVENT",
-      "rationale": "Warship projectile impacts emit lifecycle-safe canonical impact and destruction facts for cross-system visibility and downstream attribution consumers."
+      "rationale": "Warship combat emits lifecycle-safe canonical projectile impact/destruction and successful Trade Ship capture facts for cross-system visibility and downstream attribution consumers."
     },
     {
       "from": "src/simulation/WarshipCombat.ts",

@@ -13,8 +13,10 @@ import { applyTransportDamage } from "./Transports";
 import {
   createProjectileImpactResolvedEvent,
   createUnitDestroyedEvent,
+  createWarshipTradeShipCaptureResolvedEvent,
   type PhysicalUnitSimulationEvent,
   type UnitEventSubject,
+  type WarshipTradeShipCaptureResolvedEvent,
 } from "./SimulationEvents";
 import {
   selectWarshipAutonomousTarget,
@@ -55,10 +57,15 @@ function cellWithinExactRange(
   );
 }
 
-export function resolveWarshipTradeShipCaptureDecisions(
+export interface WarshipTradeShipCaptureResolution {
+  readonly state: MatchState;
+  readonly events: readonly WarshipTradeShipCaptureResolvedEvent[];
+}
+
+export function resolveWarshipTradeShipCapturePhase(
   admissionState: MatchState,
   currentState: MatchState = admissionState,
-): MatchState {
+): WarshipTradeShipCaptureResolution {
   if (admissionState.tick !== currentState.tick) {
     throw new Error("Warship capture admission/current state tick mismatch");
   }
@@ -130,11 +137,25 @@ export function resolveWarshipTradeShipCaptureDecisions(
   }
 
   let current = currentState;
+  const events: WarshipTradeShipCaptureResolvedEvent[] = [];
   const successfullyCapturedTradeShipIds = new Set<string>();
   for (const admission of admissions.sort((left, right) =>
     compareIds(left.capturingWarshipId, right.capturingWarshipId),
   )) {
     if (successfullyCapturedTradeShipIds.has(admission.tradeShipId)) continue;
+    const capturingWarship = unitsById.get(admission.capturingWarshipId);
+    if (capturingWarship === undefined || capturingWarship.type !== "WARSHIP") {
+      throw new Error(
+        `admitted Trade Ship capture has no Warship source: ${admission.capturingWarshipId}`,
+      );
+    }
+    const preCaptureTradeShip = current.mobileUnits.find(
+      (unit) =>
+        unit.id === admission.tradeShipId &&
+        unit.type === "TRADE_SHIP",
+    );
+    if (preCaptureTradeShip === undefined) continue;
+
     const captured = tryCaptureTradeShip(current, {
       unitId: admission.tradeShipId,
       capturingFactionId: admission.capturingFactionId,
@@ -164,8 +185,30 @@ export function resolveWarshipTradeShipCaptureDecisions(
         fact,
       ]),
     });
+    events.push(
+      createWarshipTradeShipCaptureResolvedEvent({
+        id: fact.id,
+        tick: admissionState.tick,
+        capturingWarship: unitEventSubject(capturingWarship),
+        tradeShip: unitEventSubject(preCaptureTradeShip),
+        nextHolderId: capture.nextHolderId,
+      }),
+    );
   }
-  return current;
+  return Object.freeze({
+    state: current,
+    events: Object.freeze(events),
+  });
+}
+
+export function resolveWarshipTradeShipCaptureDecisions(
+  admissionState: MatchState,
+  currentState: MatchState = admissionState,
+): MatchState {
+  return resolveWarshipTradeShipCapturePhase(
+    admissionState,
+    currentState,
+  ).state;
 }
 
 /**

@@ -72,6 +72,17 @@ export type ProjectileImpactResolvedEvent = SimulationEvent<
   ProjectileImpactResolvedPayload
 >;
 
+export interface WarshipTradeShipCaptureResolvedPayload {
+  readonly capturingWarship: UnitEventSubject;
+  readonly tradeShip: UnitEventSubject;
+  readonly nextHolderId: FactionId;
+}
+
+export type WarshipTradeShipCaptureResolvedEvent = SimulationEvent<
+  "WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED",
+  WarshipTradeShipCaptureResolvedPayload
+>;
+
 export interface TankPopulationAttackResolvedPayload {
   readonly attacker: UnitEventSubject;
   readonly targetFactionId: FactionId;
@@ -201,6 +212,14 @@ export interface CreateProjectileImpactResolvedEventInput {
   readonly tick: number;
   readonly projectile: ProjectileEventSubject;
   readonly target: UnitEventSubject;
+}
+
+export interface CreateWarshipTradeShipCaptureResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly capturingWarship: UnitEventSubject;
+  readonly tradeShip: UnitEventSubject;
+  readonly nextHolderId: FactionId;
 }
 
 export interface CreateTankPopulationAttackResolvedEventInput {
@@ -433,6 +452,38 @@ export function createProjectileImpactResolvedEvent(
     payload: Object.freeze({
       projectile: freezeProjectileEventSubject(input.projectile),
       target: freezeUnitSubject(input.target),
+    }),
+  });
+}
+
+export function createWarshipTradeShipCaptureResolvedEvent(
+  input: CreateWarshipTradeShipCaptureResolvedEventInput,
+): WarshipTradeShipCaptureResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertNonEmptyId(input.nextHolderId, "Trade Ship capture nextHolderId");
+  const capturingWarship = freezeUnitSubject(input.capturingWarship);
+  const tradeShip = freezeUnitSubject(input.tradeShip);
+  if (capturingWarship.unitType !== "WARSHIP") {
+    throw new Error("Trade Ship capture source must be a Warship");
+  }
+  if (tradeShip.unitType !== "TRADE_SHIP") {
+    throw new Error("Trade Ship capture target must be a Trade Ship");
+  }
+  if (
+    capturingWarship.ownerId !== input.nextHolderId ||
+    tradeShip.ownerId === input.nextHolderId
+  ) {
+    throw new Error("Trade Ship capture holder transition is invalid");
+  }
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED" as const,
+    payload: Object.freeze({
+      capturingWarship,
+      tradeShip,
+      nextHolderId: input.nextHolderId,
     }),
   });
 }

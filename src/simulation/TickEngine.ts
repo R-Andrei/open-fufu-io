@@ -83,6 +83,7 @@ import {
   resolveDirectRevealsFromLandOperationEvents,
   resolveDirectRevealsFromPhysicalEvents,
   resolveDirectRevealsFromTankCombatEvents,
+  resolveDirectRevealsFromWarshipTradeShipCaptureEvents,
 } from "./VisibilityState";
 import {
   prepareTradeShipRuntimePhase,
@@ -93,7 +94,7 @@ import {
 import {
   resolveWarshipGunfireDecisions,
   resolveWarshipNavalProjectileImpacts,
-  resolveWarshipTradeShipCaptureDecisions,
+  resolveWarshipTradeShipCapturePhase,
   WARSHIP_NAVAL_GUN_PROFILE_ID,
 } from "./WarshipCombat";
 import {
@@ -1255,10 +1256,11 @@ function advanceWarshipGunfireAndProjectilePhase(
   postTankCombatState: MatchState,
 ): MatchState {
   const firingSnapshot = resolveWarshipGunfireDecisions(combatSnapshot);
-  const captureAppliedState = resolveWarshipTradeShipCaptureDecisions(
+  const captureResolution = resolveWarshipTradeShipCapturePhase(
     combatSnapshot,
     postTankCombatState,
   );
+  const captureAppliedState = captureResolution.state;
   const preExistingKeys = new Set(
     combatSnapshot.combatProjectiles.map(combatProjectileIdentityKey),
   );
@@ -1296,7 +1298,14 @@ function advanceWarshipGunfireAndProjectilePhase(
         projectile.profileId === WARSHIP_NAVAL_GUN_PROFILE_ID,
     );
   if (preExistingWarshipProjectiles.length === 0) {
-    return immediateState;
+    if (captureResolution.events.length === 0) return immediateState;
+    const directReveals =
+      resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+        immediateState,
+        captureResolution.events,
+        combatSnapshot.tick,
+      );
+    return createProspectiveMatchState(immediateState, { directReveals });
   }
 
   const advancingKeys = new Set(
@@ -1335,13 +1344,25 @@ function advanceWarshipGunfireAndProjectilePhase(
       "Warship naval projectile impact resolved to an unsupported target owner",
     );
   }
-  if (impacts.events.length === 0) return impacts.state;
-
-  const directReveals = resolveDirectRevealsFromPhysicalEvents(
-    impacts.state,
-    impacts.events,
-    combatSnapshot.tick,
-  );
+  let directReveals =
+    impacts.events.length === 0
+      ? impacts.state.directReveals
+      : resolveDirectRevealsFromPhysicalEvents(
+          impacts.state,
+          impacts.events,
+          combatSnapshot.tick,
+        );
+  if (captureResolution.events.length > 0) {
+    directReveals = resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+      Object.freeze({
+        directReveals,
+        mobileUnits: impacts.state.mobileUnits,
+      }),
+      captureResolution.events,
+      combatSnapshot.tick,
+    );
+  }
+  if (directReveals === impacts.state.directReveals) return impacts.state;
   return createProspectiveMatchState(impacts.state, { directReveals });
 }
 

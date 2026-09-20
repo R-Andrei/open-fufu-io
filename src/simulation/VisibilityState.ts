@@ -23,6 +23,7 @@ import type { MatchFactionState, MatchState } from "./MatchState";
 import type {
   PhysicalUnitSimulationEvent,
   TankPopulationAttackResolvedEvent,
+  WarshipTradeShipCaptureResolvedEvent,
 } from "./SimulationEvents";
 import type { PersistentStructureState } from "./Structures";
 import { warshipEffectiveGunRange } from "./Warships";
@@ -578,6 +579,43 @@ export function resolveDirectRevealsFromPhysicalEvents(
   currentTick: number,
 ): readonly DirectRevealRecord[] {
   return resolveDirectRevealsFromTankCombatEventSet(state, events, currentTick);
+}
+
+/**
+ * Applies successful hostile Trade Ship capture as a direct hostile
+ * manifestation of the capturing Warship. The pre-capture Trade Ship owner is
+ * the directly attacked faction. A source destroyed later in the same tick
+ * cannot leave a direct-reveal ghost.
+ */
+export function resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
+  events: readonly WarshipTradeShipCaptureResolvedEvent[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  let directReveals = pruneExpiredDirectReveals(
+    state.directReveals,
+    currentTick,
+  );
+  for (const event of events) {
+    const sourceUnitId = event.payload.capturingWarship.unitId;
+    if (!state.mobileUnits.some((unit) => unit.id === sourceUnitId)) {
+      continue;
+    }
+    directReveals = refreshDirectRevealRecords(
+      directReveals,
+      {
+        resolved: true,
+        hostile: true,
+        identifiableSource: true,
+        attackedFactionIds: [event.payload.tradeShip.ownerId],
+      },
+      "UNIT",
+      sourceUnitId,
+      event.tick,
+      V1_SIMULATION_TICKS_PER_SECOND,
+    );
+  }
+  return directReveals;
 }
 
 /**

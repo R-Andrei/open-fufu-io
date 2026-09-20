@@ -142,6 +142,24 @@ The projectile snapshot is lifecycle-safe causal identity captured by the projec
 
 A direct-hostile-manifestation consumer may use the source identity only when that source still exists in current authoritative state; an impact from a projectile whose source was already destroyed must not recreate a visibility ghost.
 
+### 5.1.2 `WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED`
+
+When a Warship successfully commits the authoritative hostile Trade Ship capture/recapture transition, the Naval producer emits:
+
+```ts
+WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED {
+  capturingWarship: UnitEventSubject;
+  tradeShip: UnitEventSubject;
+  nextHolderId: FactionId;
+}
+```
+
+`capturingWarship` is the lifecycle-safe source snapshot from the frozen capture-admission state. `tradeShip` is the lifecycle-safe target snapshot immediately before the successful transition, so its `ownerId` is the faction directly attacked by that capture occurrence. `nextHolderId` is the holder after the already-committed transition and equals the capturing Warship's owner.
+
+This fact crosses the Naval-to-Visibility boundary because successful hostile capture is a direct hostile manifestation. Visibility may use the pre-capture owner and source identity to refresh the ordinary source-specific direct reveal, but it must not infer or re-run capture legality. If the capturing Warship has been destroyed before visibility consequence delivery later in the same authoritative tick, the fact must not recreate a reveal ghost.
+
+Trade Ship cargo, first-hostile-capture state, routing, signed owner adjustments, and terminal payout remain owned by `FFY_ECONOMY.md` and are not duplicated into this event. The occurrence does not create or refresh `atWar`.
+
 ### 5.2 `UNIT_DESTROYED`
 
 When physical unit resolution authoritatively destroys a unit, emit exactly one destruction fact for that unit occurrence:
