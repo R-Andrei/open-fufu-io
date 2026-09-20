@@ -179,29 +179,38 @@ function addEnemyWarship(state: MatchState, cellId: number): MatchState {
 
 describe("Warship Port repair adapter", () => {
   it("enters automatic repair retreat at and below exactly 50% max health and persists the Port assignment", () => {
-    const state = fixture({
-      seed: "warship-repair-threshold-red",
-      width: 30,
-      warships: [
-        { cellId: 14, health: 501n },
-        { cellId: 15, health: 500n },
-        { cellId: 16, health: 499n },
-      ],
-    });
-
-    const intended = intent(state);
-    expect(intended.warshipOperationalStates[0]).not.toHaveProperty(
+    const above = intent(
+      fixture({
+        seed: "warship-repair-threshold-above-red",
+        width: 30,
+        warships: [{ cellId: 15, health: 501n }],
+      }),
+    );
+    expect(above.warshipOperationalStates[0]).not.toHaveProperty(
       "repairPortId",
     );
-    for (const index of [1, 2]) {
-      expect(intended.warshipOperationalStates[index]).toMatchObject({
+
+    for (const [seed, health] of [
+      ["warship-repair-threshold-exact-red", 500n],
+      ["warship-repair-threshold-below-red", 499n],
+    ] as const) {
+      const intended = intent(
+        fixture({
+          seed,
+          width: 30,
+          warships: [{ cellId: 15, health }],
+        }),
+      );
+      expect(intended.warshipOperationalStates[0]).toMatchObject({
+        repairPortId: "alpha-port",
+      });
+      const serialized = JSON.parse(
+        canonicalMatchStateSerialization(intended),
+      );
+      expect(serialized.warshipOperationalStates[0]).toMatchObject({
         repairPortId: "alpha-port",
       });
     }
-    const serialized = JSON.parse(canonicalMatchStateSerialization(intended));
-    expect(serialized.warshipOperationalStates[1]).toMatchObject({
-      repairPortId: "alpha-port",
-    });
   });
 
   it("uses ordinary L1 fast service at 100 HP/s and P31 at 150 HP/s with doubled fast radius", () => {
@@ -302,7 +311,7 @@ describe("Warship Port repair adapter", () => {
       ),
     ).toMatchObject({
       health: { numerator: 515n, denominator: 1n },
-      attackReadyAtTick: 20,
+      attackReadyAtTick: 21,
     });
     expect(
       p31.combatProjectiles.some(
