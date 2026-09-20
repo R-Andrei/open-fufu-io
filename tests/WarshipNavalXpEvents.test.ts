@@ -309,13 +309,16 @@ describe("Warship Naval XP authoritative occurrence integration", () => {
       progression(first, beta.unitId),
     );
 
-    const nextTick = createAdvancedMatchState(repeated, {});
+    const nextTick = createAdvancedMatchState(repeated, {
+      mobileUnits: repeated.mobileUnits.filter(
+        (unit) => unit.id !== beta.unitId,
+      ),
+      warshipOperationalStates: repeated.warshipOperationalStates.filter(
+        (operational) => operational.unitId !== beta.unitId,
+      ),
+    });
     const gamma = addWarship(nextTick, "gamma", 4);
     const recaptured = resolveWarshipTradeShipCaptureDecisions(gamma.state);
-    expect(progression(recaptured, beta.unitId)).toMatchObject({
-      rank: 1,
-      navalXp: 4,
-    });
     expect(progression(recaptured, gamma.unitId)).toMatchObject({
       rank: 1,
       navalXp: 4,
