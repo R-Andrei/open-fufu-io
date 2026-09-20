@@ -149,10 +149,20 @@ export interface TransportExactHealth {
   readonly denominator: bigint;
 }
 
+export interface TransportRepairResumeRoute {
+  readonly interruptionCellId: number;
+  readonly destinationCellId: number;
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+}
+
 export interface TransportOperationalState {
   readonly unitId: string;
   readonly carriedPopulation: number;
   readonly health?: TransportExactHealth;
+  readonly repairPortId?: string;
+  readonly repairArrivalTick?: number;
+  readonly repairResumeRoute?: TransportRepairResumeRoute;
 }
 
 export type TransportDestructionCauseClass =
@@ -1379,10 +1389,65 @@ const TRANSPORT_DESTRUCTION_CAUSE_CLASSES =
     "UNATTRIBUTED",
   ]);
 
+function freezeTransportRepairResumeRoute(
+  route: TransportRepairResumeRoute,
+  map: SimulationMap,
+): TransportRepairResumeRoute {
+  if (
+    !Number.isSafeInteger(route.interruptionCellId) ||
+    !map.isValidCellId(route.interruptionCellId) ||
+    !Number.isSafeInteger(route.destinationCellId) ||
+    !map.isValidCellId(route.destinationCellId)
+  ) {
+    throw new Error("Transport repair resume route cells must be valid map cells");
+  }
+  if (!Array.isArray(route.cells) || route.cells.length === 0) {
+    throw new Error("Transport repair resume route must contain at least one cell");
+  }
+  if (
+    !Array.isArray(route.edgeWeights) ||
+    route.edgeWeights.length !== route.cells.length - 1
+  ) {
+    throw new Error("Transport repair resume route edgeWeights length mismatch");
+  }
+  if (
+    route.cells[0] !== route.interruptionCellId ||
+    route.cells[route.cells.length - 1] !== route.destinationCellId
+  ) {
+    throw new Error("Transport repair resume route endpoints do not match its cells");
+  }
+  for (let index = 0; index < route.cells.length; index += 1) {
+    const cellId = route.cells[index]!;
+    if (!Number.isSafeInteger(cellId) || !map.isValidCellId(cellId)) {
+      throw new Error("Transport repair resume route contains an invalid cell");
+    }
+    if (
+      index > 0 &&
+      !map.cardinalNeighbors(route.cells[index - 1]!).includes(cellId)
+    ) {
+      throw new Error("Transport repair resume route must be cardinally contiguous");
+    }
+  }
+  for (const weight of route.edgeWeights) {
+    if (!Number.isSafeInteger(weight) || weight <= 0) {
+      throw new Error(
+        "Transport repair resume route weights must be positive safe integers",
+      );
+    }
+  }
+  return Object.freeze({
+    interruptionCellId: route.interruptionCellId,
+    destinationCellId: route.destinationCellId,
+    cells: Object.freeze([...route.cells]),
+    edgeWeights: Object.freeze([...route.edgeWeights]),
+  });
+}
+
 function freezeTransportOperationalStates(
   entries: readonly TransportOperationalState[],
   mobileUnits: readonly MobileUnitState[],
   factions: readonly MatchFactionState[],
+  map: SimulationMap,
 ): readonly TransportOperationalState[] {
   if (!Array.isArray(entries)) {
     throw new Error("transportOperationalStates must be an array");
@@ -1425,12 +1490,48 @@ function freezeTransportOperationalStates(
       throw new Error("Transport carried Population exceeds safe-integer range");
     }
     carriedByOwner.set(unit.ownerId, nextCarried);
+    if (entry.repairPortId !== undefined) {
+      if (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0) {
+        throw new Error("Transport repairPortId must be a non-empty string");
+      }
+      if (entry.health === undefined) {
+        throw new Error("Only health-bearing Transports may hold a repair assignment");
+      }
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Transport repairArrivalTick",
+      );
+      if (entry.repairPortId === undefined) {
+        throw new Error("Transport repairArrivalTick requires a repairPortId");
+      }
+    }
+    if (entry.repairResumeRoute !== undefined && entry.health === undefined) {
+      throw new Error(
+        "Only health-bearing Transports may retain a repair resume route",
+      );
+    }
     return Object.freeze({
       unitId: entry.unitId,
       carriedPopulation: entry.carriedPopulation,
       ...(entry.health === undefined
         ? {}
         : { health: freezeTransportHealth(entry.health) }),
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+      ...(entry.repairResumeRoute === undefined
+        ? {}
+        : {
+            repairResumeRoute: freezeTransportRepairResumeRoute(
+              entry.repairResumeRoute,
+              map,
+            ),
+          }),
     });
   });
   for (const [ownerId, carried] of carriedByOwner) {
@@ -1614,6 +1715,7 @@ function createState(
       [],
     mobileUnits.mobileUnits,
     factions,
+    previous.map,
   );
   const transportDestructionResults = freezeTransportDestructionResults(
     update.transportDestructionResults ??
@@ -2140,6 +2242,22 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
             health: {
               numerator: entry.health.numerator.toString(),
               denominator: entry.health.denominator.toString(),
+            },
+          }),
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+      ...(entry.repairResumeRoute === undefined
+        ? {}
+        : {
+            repairResumeRoute: {
+              interruptionCellId: entry.repairResumeRoute.interruptionCellId,
+              destinationCellId: entry.repairResumeRoute.destinationCellId,
+              cells: [...entry.repairResumeRoute.cells],
+              edgeWeights: [...entry.repairResumeRoute.edgeWeights],
             },
           }),
     }));

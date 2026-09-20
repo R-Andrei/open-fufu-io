@@ -26,10 +26,8 @@ import {
   warshipEffectiveGunDamage,
   warshipEffectiveGunRange,
 } from "./Warships";
-import {
-  warshipFastServiceUnitIds,
-  warshipOperationalDuringPortRepair,
-} from "./WarshipRepair";
+import { navalFastServiceUnitIds } from "./NavalRepair";
+import { warshipOperationalDuringPortRepair } from "./WarshipRepair";
 
 const WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND = 75;
 const WARSHIP_GUN_COOLDOWN_TICKS = 20;
@@ -76,7 +74,7 @@ export function resolveWarshipTradeShipCapturePhase(
     string,
     ReturnType<typeof projectWarshipTargetObservation>
   >();
-  const fastServiceUnitIds = warshipFastServiceUnitIds(admissionState);
+  const fastServiceUnitIds = navalFastServiceUnitIds(admissionState);
   const admissions: Array<Readonly<{
     capturingWarshipId: string;
     capturingFactionId: string;
@@ -227,7 +225,7 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
     MatchState["warshipOperationalStates"][number]
   >();
   const spawned = [];
-  const fastServiceUnitIds = warshipFastServiceUnitIds(state);
+  const fastServiceUnitIds = navalFastServiceUnitIds(state);
 
   for (const operational of [...state.warshipOperationalStates].sort((left, right) =>
     compareIds(left.unitId, right.unitId),

@@ -28,11 +28,13 @@ import {
   repairPerTick,
   repairServiceProfileForLevel,
   scaledRepairField,
+  vehicleFastServiceQueueEntries,
   vehicleFastServiceUnitIds,
   type ExactRepairAmount,
   type RepairServiceProfile,
   type VehicleRepairDomain,
   type VehicleRepairPhaseResult,
+  type VehicleFastServiceQueueEntry,
   type VehicleRepairProviderState,
   type VehicleRepairRoute,
 } from "./RepairService";
@@ -486,6 +488,12 @@ export function settleWarshipRepairMovementPhase(
   });
 }
 
+export function warshipFastServiceQueueEntries(
+  state: MatchState,
+): readonly VehicleFastServiceQueueEntry[] {
+  return vehicleFastServiceQueueEntries(warshipRepairDomain(state));
+}
+
 export function warshipFastServiceUnitIds(
   state: MatchState,
 ): ReadonlySet<string> {
@@ -505,9 +513,15 @@ export function warshipOperationalDuringPortRepair(
   );
 }
 
-export function advanceWarshipRepairPhase(state: MatchState): MatchState {
+export function advanceWarshipRepairPhase(
+  state: MatchState,
+  selectedFastServiceUnitIds?: ReadonlySet<string>,
+): MatchState {
   return applyRepairPhase(
     state,
-    advanceVehicleRepairServicePhase(warshipRepairDomain(state)),
+    advanceVehicleRepairServicePhase(
+      warshipRepairDomain(state),
+      selectedFastServiceUnitIds,
+    ),
   );
 }

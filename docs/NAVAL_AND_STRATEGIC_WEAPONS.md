@@ -841,6 +841,14 @@ Destruction before successful return loses the carried Population under ordinary
 
 Ending the final controller-directed hostile Transport operation contributes to war-state cooldown only through the canonical game-wide `atWar` lifecycle; this document does not own that timer.
 
+### 5.3.1 P32 health-bearing Transport Port repair
+
+A living P32 health-bearing Transport at or below **50% of its current effective maximum health** enters automatic Port repair retreat. Repair retreat temporarily pre-empts movement along the retained amphibious/abort route but does not erase that route. The exact interrupted remaining route is authoritative serialized/replay state while repair owns movement.
+
+P32 Transport repair consumes the ordinary Port two-tier naval-repair lifecycle in `TERRAIN_AND_STRUCTURES.md`: broad repair may apply while the Transport travels toward repair or waits in the queue, an actually selected fast-service recipient is parked/stationary, and the Port's one naval fast-service slot is shared with qualifying Warships under the ordinary stable queue. On reaching full health, the repair assignment clears and the Transport deterministically rejoins/resumes the exact retained amphibious/abort route.
+
+P31 is Warship-specific and does **not** enhance P32 Transport broad radius, fast radius, broad rate, fast rate, operational exception, or fast-service capacity. A P32 Transport therefore consumes the ordinary effective Port repair profile unless another explicit rule targets Transports.
+
 Origin-specific Transport transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`.
 
 ## 5.4 Transport destruction and deterministic kill attribution

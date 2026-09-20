@@ -25,6 +25,11 @@ export interface FastServiceQueueEntry {
   readonly repairArrivalTick: number;
 }
 
+export interface VehicleFastServiceQueueEntry extends FastServiceQueueEntry {
+  readonly providerId: string;
+  readonly fastCapacity: number;
+}
+
 export interface VehicleRepairMap {
   readonly width: number;
   readonly height: number;
@@ -621,24 +626,24 @@ export function advanceVehicleRepairMovementPhase<
   return phaseResult(domain, unitUpdates, operationalUpdates);
 }
 
-export function vehicleFastServiceUnitIds<
+export function vehicleFastServiceQueueEntries<
   Unit extends VehicleRepairUnitState,
   Operational extends VehicleRepairOperationalState,
   Provider extends VehicleRepairProviderState,
 >(
   domain: VehicleRepairDomain<Unit, Operational, Provider>,
-): ReadonlySet<string> {
+): readonly VehicleFastServiceQueueEntry[] {
   const unitsById = new Map(domain.units.map((unit) => [unit.id, unit]));
-  const fast = new Set<string>();
+  const entries: VehicleFastServiceQueueEntry[] = [];
   const providers = [...domain.providers].sort((left, right) =>
     compareIds(left.id, right.id),
   );
   for (const provider of providers) {
     const field = fixedRepairField(provider.profile.fastRadiusCells);
-    const queue = domain.operationalStates.flatMap((operational) => {
-      if (domain.repairProviderId(operational) !== provider.id) return [];
+    for (const operational of domain.operationalStates) {
+      if (domain.repairProviderId(operational) !== provider.id) continue;
       const arrival = domain.repairArrivalTick(operational);
-      if (arrival === undefined) return [];
+      if (arrival === undefined) continue;
       const unit = unitsById.get(operational.unitId);
       if (
         unit === undefined ||
@@ -646,10 +651,41 @@ export function vehicleFastServiceUnitIds<
         !domain.isEligibleProvider(provider, unit) ||
         !fieldContainsCell(domain.map, provider, unit.cellId, field)
       ) {
-        return [];
+        continue;
       }
-      return [{ unitId: operational.unitId, repairArrivalTick: arrival }];
-    });
+      entries.push(
+        Object.freeze({
+          providerId: provider.id,
+          unitId: operational.unitId,
+          repairArrivalTick: arrival,
+          fastCapacity: provider.profile.fastCapacity,
+        }),
+      );
+    }
+  }
+  entries.sort(
+    (left, right) =>
+      compareIds(left.providerId, right.providerId) ||
+      left.repairArrivalTick - right.repairArrivalTick ||
+      compareIds(left.unitId, right.unitId),
+  );
+  return Object.freeze(entries);
+}
+
+export function vehicleFastServiceUnitIds<
+  Unit extends VehicleRepairUnitState,
+  Operational extends VehicleRepairOperationalState,
+  Provider extends VehicleRepairProviderState,
+>(
+  domain: VehicleRepairDomain<Unit, Operational, Provider>,
+): ReadonlySet<string> {
+  const fast = new Set<string>();
+  const entries = vehicleFastServiceQueueEntries(domain);
+  const providers = [...domain.providers].sort((left, right) =>
+    compareIds(left.id, right.id),
+  );
+  for (const provider of providers) {
+    const queue = entries.filter((entry) => entry.providerId === provider.id);
     for (const unitId of selectFastServiceUnitIds(queue, provider.profile.fastCapacity)) {
       fast.add(unitId);
     }
@@ -663,9 +699,20 @@ export function advanceVehicleRepairServicePhase<
   Provider extends VehicleRepairProviderState,
 >(
   domain: VehicleRepairDomain<Unit, Operational, Provider>,
+  selectedFastServiceUnitIds?: ReadonlySet<string>,
 ): VehicleRepairPhaseResult<Unit, Operational> {
   const unitsById = new Map(domain.units.map((unit) => [unit.id, unit]));
-  const fastRecipients = vehicleFastServiceUnitIds(domain);
+  const eligibleFast = new Set(
+    vehicleFastServiceQueueEntries(domain).map((entry) => entry.unitId),
+  );
+  const fastRecipients =
+    selectedFastServiceUnitIds === undefined
+      ? vehicleFastServiceUnitIds(domain)
+      : new Set(
+          [...selectedFastServiceUnitIds].filter((unitId) =>
+            eligibleFast.has(unitId),
+          ),
+        );
   const unitUpdates = new Map<string, Unit>();
   const operationalUpdates = new Map<string, Operational>();
   const providers = [...domain.providers].sort((left, right) =>
