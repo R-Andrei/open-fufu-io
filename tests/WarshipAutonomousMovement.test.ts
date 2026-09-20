@@ -68,7 +68,7 @@ function addWarship(
   if (input.routeCells !== undefined) {
     unit = assignMobileUnitRoute(state.map, unit, {
       cells: input.routeCells,
-      edgeWeights: input.routeCells.slice(1).map(() => 1),
+      edgeWeights: input.routeCells.slice(1).map(() => 10),
     });
   }
   const mobileUnits = created.mobileUnits.map((candidate) =>
