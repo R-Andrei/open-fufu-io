@@ -372,4 +372,60 @@ describe("P32 Transport ordinary Port repair adapter", () => {
       },
     });
   });
+
+  it("shares one Port fast-service slot across a queued P32 Transport and Warship", () => {
+    const transportState = fixture({
+      seed: "transport-repair-shared-naval-fast-slot-red",
+      traits: ["P32", "P31"],
+      transport: {
+        cellId: 5,
+        health: 250n,
+        repairPortId: "alpha-port",
+        repairArrivalTick: 0,
+        strategicDestinationCellId: 29,
+      },
+    });
+    const transportId = transportState.mobileUnits[0]!.id;
+    const created = createMobileUnit(
+      transportState.map,
+      transportState.factions.map((faction) => faction.id),
+      transportState,
+      {
+        ownerId: "alpha",
+        type: "WARSHIP",
+        movementClass: "NAVAL",
+        cellId: 6,
+      },
+    );
+    const warshipId = created.unit.id;
+    const contested = createProspectiveMatchState(transportState, {
+      mobileUnits: created.mobileUnits,
+      nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      warshipOperationalStates: [
+        {
+          unitId: warshipId,
+          health: { numerator: 500n, denominator: 1n },
+          operatingAnchorCellId: 6,
+          attackReadyAtTick: transportState.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+          repairPortId: "alpha-port",
+          repairArrivalTick: 0,
+        },
+      ],
+    });
+
+    const advanced = new TickEngine().advance(contested, []);
+    expect(
+      advanced.transportOperationalStates.find(
+        (entry) => entry.unitId === transportId,
+      )?.health,
+    ).toEqual({ numerator: 260n, denominator: 1n });
+    expect(
+      advanced.warshipOperationalStates.find(
+        (entry) => entry.unitId === warshipId,
+      )?.health,
+    ).toEqual({ numerator: 1003n, denominator: 2n });
+  });
+
 });
