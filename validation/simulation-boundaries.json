@@ -699,6 +699,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipTargeting.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine consumes Naval-owned autonomous target, pursuit, and leash-bounded roaming plans while preserving controller strategic-destination state."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine schedules the Naval-owned Warship production phase in deterministic authoritative tick order after Tank production."

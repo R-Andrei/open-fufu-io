@@ -35,6 +35,10 @@ export interface WarshipPursuitRoutePlan {
   readonly movementWorkPerTick: number;
 }
 
+export interface WarshipRoamingRouteRequest {
+  readonly unitId: string;
+}
+
 interface WarshipSourceContext {
   readonly unit: MatchState["mobileUnits"][number];
   readonly operational: MatchState["warshipOperationalStates"][number];
@@ -265,6 +269,110 @@ function shouldReplaceBest(
     return candidate.distanceSquared < best.distanceSquared;
   }
   return compareIds(candidate.unitId, best.unitId) < 0;
+}
+
+function warshipRoamingHash(unitId: string, roamingOrdinal: number): number {
+  let hash = 0x811c9dc5;
+  const key = `${unitId}\u0000${roamingOrdinal}`;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+export function warshipRouteInsideOperatingLeash(
+  state: MatchState,
+  unitId: string,
+  cells: readonly number[],
+): boolean {
+  const source = sourceContext(state, unitId);
+  if (source === undefined) return false;
+  return cells.every((cellId) =>
+    operatingLeashContains(
+      state,
+      source.operational.operatingAnchorCellId,
+      cellId,
+    ),
+  );
+}
+
+export function planWarshipRoamingRoute(
+  state: MatchState,
+  request: WarshipRoamingRouteRequest,
+): WarshipPursuitRoutePlan | undefined {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.unitId !== "string" ||
+    request.unitId.length === 0
+  ) {
+    throw new Error("Warship roaming planning requires a valid request");
+  }
+  const source = sourceContext(state, request.unitId);
+  if (source === undefined) return undefined;
+  if (strategicTravelActive(source.unit)) return undefined;
+
+  const candidates: number[] = [];
+  for (let y = 0; y < state.map.height; y += 1) {
+    for (let x = 0; x < state.map.width; x += 1) {
+      const cellId = state.map.cellIdAt(x, y);
+      if (
+        cellId === undefined ||
+        cellId === source.unit.cellId ||
+        state.map.terrainAt(cellId) !== "DEEP_WATER" ||
+        !operatingLeashContains(
+          state,
+          source.operational.operatingAnchorCellId,
+          cellId,
+        )
+      ) {
+        continue;
+      }
+      candidates.push(cellId);
+    }
+  }
+  candidates.sort((left, right) => left - right);
+  if (candidates.length === 0) return undefined;
+
+  const movement = traversalPolicy(state, source, true);
+  const navigation = createNavigation(state.map);
+  const startIndex =
+    warshipRoamingHash(
+      source.unit.id,
+      source.operational.roamingOrdinal,
+    ) % candidates.length;
+
+  for (let offset = 0; offset < candidates.length; offset += 1) {
+    const destinationCellId =
+      candidates[(startIndex + offset) % candidates.length]!;
+    const path = navigation.path(
+      source.unit.cellId,
+      destinationCellId,
+      movement.policy,
+    );
+    if (path.status !== "FOUND" || path.path.cells.length <= 1) continue;
+    const cells = Object.freeze([...path.path.cells]);
+    const edgeWeights = Object.freeze(
+      cells.slice(1).map((cellId, index) => {
+        const weight = movement.policy.traversalWeight(
+          cells[index]!,
+          cellId,
+        );
+        if (weight === undefined) {
+          throw new Error("Warship roaming returned an unavailable route edge");
+        }
+        return weight;
+      }),
+    );
+    return Object.freeze({
+      destinationCellId,
+      cells,
+      edgeWeights,
+      movementWorkPerTick: movement.movementWorkPerTick,
+    });
+  }
+  return undefined;
 }
 
 export function selectWarshipAutonomousTarget(
