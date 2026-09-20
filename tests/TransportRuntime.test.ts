@@ -131,6 +131,7 @@ describe("Transport runtime endpoint materialization", () => {
     const materialized = tryMaterializeTransportAtResolvedRoute(state, {
       ownerId: "alpha",
       route,
+      carriedPopulation: 0,
     });
     expect(materialized.ok).toBe(true);
     if (!materialized.ok) throw new Error("expected Transport materialization");
@@ -194,6 +195,7 @@ describe("Transport runtime endpoint materialization", () => {
     const rejected = tryMaterializeTransportAtResolvedRoute(blockedState, {
       ownerId: "alpha",
       route,
+      carriedPopulation: 0,
     });
     expect(rejected).toMatchObject({
       ok: false,
@@ -209,6 +211,7 @@ describe("Transport runtime endpoint materialization", () => {
     const retried = tryMaterializeTransportAtResolvedRoute(cleared, {
       ownerId: "alpha",
       route,
+      carriedPopulation: 0,
     });
     expect(retried.ok).toBe(true);
     if (!retried.ok) throw new Error("expected blocked Transport retry to launch");
@@ -247,6 +250,7 @@ describe("Transport endpoint stability with physical occupancy", () => {
       tryMaterializeTransportAtResolvedRoute(blockedState, {
         ownerId: "alpha",
         route: resolved.route,
+        carriedPopulation: 0,
       }),
     ).toMatchObject({
       ok: false,
@@ -326,6 +330,7 @@ describe("P37 successful Transport landing consequences", () => {
     const materialized = tryMaterializeTransportAtResolvedRoute(state, {
       ownerId: "alpha",
       route,
+      carriedPopulation: 0,
     });
     expect(materialized.ok).toBe(true);
     if (!materialized.ok) throw new Error("expected P37 Transport materialization");
@@ -356,6 +361,7 @@ describe("P37 successful Transport landing consequences", () => {
     const materialized = tryMaterializeTransportAtResolvedRoute(blockedLanding, {
       ownerId: "alpha",
       route,
+      carriedPopulation: 0,
     });
     expect(materialized.ok).toBe(true);
     if (!materialized.ok) throw new Error("expected blocked-target P37 Transport materialization");

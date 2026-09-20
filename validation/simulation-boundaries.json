@@ -2,6 +2,7 @@
   "schemaVersion": 1,
   "canonicalContract": "docs/SIMULATION_EVENTS.md",
   "moduleOwners": {
+    "src/simulation/CombatProjectiles.ts": "RUNTIME_CORE",
     "src/simulation/ControllerQueryProjection.ts": "CONTROLLER_ADAPTER",
     "src/simulation/ControllerReferenceSession.ts": "OPERATIONAL_REFERENCE",
     "src/simulation/ControllerRuntime.ts": "CONTROLLER_ADAPTER",
@@ -20,6 +21,7 @@
     "src/simulation/MatchState.ts": "RUNTIME_CORE",
     "src/simulation/MicroSimulationHarness.ts": "TEST_HARNESS",
     "src/simulation/MobileUnits.ts": "MOBILE_UNITS",
+    "src/simulation/NavalRepair.ts": "NAVAL",
     "src/simulation/Navigation.ts": "MAP_SUBSTRATE",
     "src/simulation/Population.ts": "POPULATION",
     "src/simulation/RailNetwork.ts": "MAP_SUBSTRATE",
@@ -41,9 +43,13 @@
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
     "src/simulation/TradeShips.ts": "ECONOMY",
     "src/simulation/TrainService.ts": "ECONOMY",
+    "src/simulation/TransportRepair.ts": "NAVAL",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
-    "src/simulation/Warships.ts": "NAVAL"
+    "src/simulation/WarshipCombat.ts": "NAVAL",
+    "src/simulation/WarshipRepair.ts": "NAVAL",
+    "src/simulation/Warships.ts": "NAVAL",
+    "src/simulation/WarshipTargeting.ts": "NAVAL"
   },
   "crossOwnerImports": [
     {
@@ -353,6 +359,18 @@
       "rationale": "Mobile-unit rules query current map-substrate facts; map state is not an occurrence channel."
     },
     {
+      "from": "src/simulation/NavalRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Naval repair arbitration reads current authoritative MatchState to select one shared Port fast-service recipient across qualifying naval unit adapters."
+    },
+    {
+      "from": "src/simulation/NavalRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval repair arbitration invokes the shared stable fast-service queue selector rather than defining a parallel capacity or tie-break lifecycle."
+    },
+    {
       "from": "src/simulation/SpawnInitialization.ts",
       "to": "src/simulation/MapArtifact.ts",
       "classification": "SHARED_CONTRACT",
@@ -630,6 +648,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/NavalRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Naval-owned shared Warship/Transport Port service phase after combat and before production in deterministic authoritative tick order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Population.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
@@ -684,15 +708,39 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TransportRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Naval-owned P32 Transport repair intent, movement-work, and movement-settlement phases around shared physical movement."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat."
+      "rationale": "TickEngine invokes Visibility-owned lawful observation projection and direct-reveal consequence handling around Tank combat, authoritative projectile impacts, and successful hostile Warship Trade Ship capture."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipCombat.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes Naval-owned frozen-snapshot Warship firing and ordered Warship-gun impact resolution after shared movement and before service/production phases."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Naval-owned Warship/Port adapter around the shared vehicle-repair lifecycle in deterministic intent, movement-settlement, and service order."
     },
     {
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine schedules the Naval-owned Warship production phase in deterministic authoritative tick order after Tank production."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipTargeting.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine consumes Naval-owned autonomous target, pursuit, and leash-bounded roaming plans while preserving controller strategic-destination state."
     },
     {
       "from": "src/simulation/TradeShips.ts",
@@ -737,6 +785,30 @@
       "rationale": "Train service reads current persistent-Structure station state while resolving station eligibility and current event context."
     },
     {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Transport repair evaluates current authoritative MatchState for P32 health, retained-route state, owned Port eligibility, queue state, and repair persistence."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport repair invokes MobileUnits-owned route assignment and movement primitives for automatic Port repair detours and deterministic route resumption."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Transport repair consumes the canonical navigation substrate for deterministic Shallow/Deep-Water Port detour and retained-route rejoin planning."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport repair adapts P32 health and ordinary Port-specific rules into the shared vehicle-repair lifecycle rather than duplicating repair threshold, queue, or service mechanics."
+    },
+    {
       "from": "src/simulation/Transports.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
@@ -753,6 +825,12 @@
       "to": "src/simulation/Navigation.ts",
       "classification": "SHARED_CONTRACT",
       "rationale": "Transport endpoint resolution consumes the canonical navigation substrate for deterministic strategic-intent endpoint pairing and water routing."
+    },
+    {
+      "from": "src/simulation/Transports.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport destruction applies Population-owned exact TRANSPORT-bucket removal for the frozen carried payload rather than mutating aggregate Population fields locally."
     },
     {
       "from": "src/simulation/Transports.ts",
@@ -776,13 +854,67 @@
       "from": "src/simulation/VisibilityState.ts",
       "to": "src/simulation/SimulationEvents.ts",
       "classification": "CANONICAL_EVENT",
-      "rationale": "Visibility consumes canonical physical attack/destruction facts to derive direct-reveal consequences."
+      "rationale": "Visibility consumes canonical physical attack/destruction and Warship Trade Ship capture facts to derive direct-reveal consequences."
     },
     {
       "from": "src/simulation/VisibilityState.ts",
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Visibility reads current Observation Post structure state and fields for ordinary observation/blackout projection."
+    },
+    {
+      "from": "src/simulation/VisibilityState.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Visibility consumes the Naval-owned exact effective Warship gun-range contract to project Warship-local observation without reimplementing Origin range composition."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/CombatProjectiles.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval gunfire decisions materialize target-bound shots through the generic authoritative projectile constructor rather than owning a parallel projectile state model."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship gunfire decisions and projectile-impact resolution consume current authoritative MatchState and mutate only Naval-owned Warship combat state."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/SimulationEvents.ts",
+      "classification": "CANONICAL_EVENT",
+      "rationale": "Warship combat emits lifecycle-safe canonical projectile impact/destruction and successful Trade Ship capture facts for cross-system visibility and downstream attribution consumers."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/TradeShips.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval capture orchestration commits an admitted Warship capture through the Economy-owned authoritative Trade Ship holder/routing/economic transition rather than duplicating Trade lifecycle semantics."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/VisibilityState.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship gunfire reacquisition consumes Visibility-owned requester-relative lawful observation at each ready firing decision."
+    },
+    {
+      "from": "src/simulation/WarshipRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship repair evaluates current authoritative MatchState for Port eligibility, Warship health, assignment, and service state."
+    },
+    {
+      "from": "src/simulation/WarshipRepair.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship repair invokes MobileUnits-owned route and movement primitives for automatic Port repair retreat."
+    },
+    {
+      "from": "src/simulation/WarshipRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship repair adapts Port/Warship-specific rules, health, and Deep-Water navigation into the shared vehicle-repair lifecycle rather than duplicating that lifecycle."
     },
     {
       "from": "src/simulation/Warships.ts",
@@ -825,6 +957,24 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Warship production and deployment read current Port structure state and its persisted designated dock."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship targeting derives lawful autonomous target and pursuit choices from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Warship targeting consumes the canonical deterministic navigation substrate for least-time Deep-Water engagement routing."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/TradeShips.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship targeting probes the Economy-owned authoritative Trade Ship capture transition to determine legal capturability without duplicating voyage/cargo rules."
     }
   ]
 }

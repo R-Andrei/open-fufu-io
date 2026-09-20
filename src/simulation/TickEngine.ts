@@ -3,6 +3,7 @@ import type {
   StructureType,
 } from "../core/controller/ControllerApi";
 import { resolvePassiveFfyTick } from "./Economy";
+import { advanceHomingCombatProjectiles } from "./CombatProjectiles";
 import {
   applyFactoryTrainDestructionLifecycleEvents,
   factoryTrainMovementWorkByUnitId,
@@ -78,8 +79,11 @@ import {
 import { applyRadioactiveAttackAftershockEvents } from "./TerritoryEffects";
 import {
   projectTankTargetObservation,
+  projectWarshipTargetObservation,
   resolveDirectRevealsFromLandOperationEvents,
+  resolveDirectRevealsFromPhysicalEvents,
   resolveDirectRevealsFromTankCombatEvents,
+  resolveDirectRevealsFromWarshipTradeShipCaptureEvents,
 } from "./VisibilityState";
 import {
   prepareTradeShipRuntimePhase,
@@ -87,10 +91,33 @@ import {
   settleTradeShipSignedFactsPhase,
   tradeShipMovementWorkByUnitId,
 } from "./TradeShips";
+import { advanceNavalRepairPhase } from "./NavalRepair";
+import {
+  resolveWarshipGunfireDecisions,
+  resolveWarshipNavalProjectileImpacts,
+  resolveWarshipTradeShipCapturePhase,
+  WARSHIP_NAVAL_GUN_PROFILE_ID,
+} from "./WarshipCombat";
+import {
+  planWarshipPursuitRoute,
+  planWarshipRoamingRoute,
+  selectWarshipAutonomousTarget,
+  warshipRouteInsideOperatingLeash,
+} from "./WarshipTargeting";
+import {
+  advanceTransportRepairIntentPhase,
+  settleTransportRepairMovementPhase,
+  transportRepairMovementWorkByUnitId,
+} from "./TransportRepair";
 import {
   advanceWarshipProductionPhase,
   warshipStrategicNavigationRoute,
+  warshipTerrainMovementTiming,
 } from "./Warships";
+import {
+  advanceWarshipRepairIntentPhase,
+  settleWarshipRepairMovementPhase,
+} from "./WarshipRepair";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -654,55 +681,175 @@ function prepareTankMovementPhase(
 function prepareWarshipMovementPhase(
   state: MatchState,
 ): WarshipMovementPreparation {
-  const operationalUnitIds = new Set(
-    state.warshipOperationalStates.map((operational) => operational.unitId),
+  const operationalById = new Map(
+    state.warshipOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
   );
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectWarshipTargetObservation>
+  >();
   const unitUpdates = new Map<string, MatchState["mobileUnits"][number]>();
+  const operationalUpdates = new Map<
+    string,
+    MatchState["warshipOperationalStates"][number]
+  >();
   const movementWorkByUnitId: Record<string, number> = {};
   const strategicMoverIds = new Set<string>();
 
   for (const unit of state.mobileUnits) {
-    if (unit.type !== "WARSHIP" || !operationalUnitIds.has(unit.id)) {
+    const operational = operationalById.get(unit.id);
+    if (unit.type !== "WARSHIP" || operational === undefined) {
       continue;
     }
-    const destinationCellId = unit.strategicDestinationCellId;
-    if (destinationCellId === undefined) continue;
-
-    const plan = warshipStrategicNavigationRoute(
-      state,
-      unit.ownerId,
-      unit.cellId,
-      destinationCellId,
-    );
-    if (plan.status === "LIMIT_REACHED") continue;
 
     let prepared = unit;
-    if (plan.route.cells.length === 1) {
-      if (prepared.route !== undefined) {
-        prepared = assignMobileUnitRoute(state.map, prepared, {
-          cells: [prepared.cellId],
-          edgeWeights: [],
-        });
+    if (operational.repairPortId !== undefined) {
+      if (
+        operational.repairArrivalTick === undefined &&
+        prepared.route !== undefined
+      ) {
+        const timing = warshipTerrainMovementTiming(
+          state,
+          prepared.ownerId,
+          "DEEP_WATER",
+        );
+        if (timing === undefined) {
+          throw new Error(
+            "Deep Water must be traversable for Warship repair retreat",
+          );
+        }
+        movementWorkByUnitId[prepared.id] = timing.movementWorkPerTick;
       }
-    } else if (!routeMatchesStrategicPlan(prepared, plan.route)) {
-      prepared = assignMobileUnitRoute(state.map, prepared, {
-        cells: plan.route.cells,
-        edgeWeights: plan.route.edgeWeights,
-      });
+      continue;
+    }
+    let observation = observationByOwner.get(unit.ownerId);
+    if (observation === undefined) {
+      observation = projectWarshipTargetObservation(state, unit.ownerId);
+      observationByOwner.set(unit.ownerId, observation);
+    }
+    const target = selectWarshipAutonomousTarget(state, {
+      unitId: unit.id,
+      observedUnitIds: observation.observedUnitIds,
+    });
+    if (target !== undefined) {
+      const plan = planWarshipPursuitRoute(
+        state,
+        { unitId: unit.id },
+        target,
+      );
+      if (plan !== undefined) {
+        if (plan.cells.length === 1) {
+          if (prepared.route !== undefined) {
+            prepared = assignMobileUnitRoute(state.map, prepared, {
+              cells: [prepared.cellId],
+              edgeWeights: [],
+            });
+          }
+        } else {
+          if (!routeMatchesStrategicPlan(prepared, plan)) {
+            prepared = assignMobileUnitRoute(state.map, prepared, {
+              cells: plan.cells,
+              edgeWeights: plan.edgeWeights,
+            });
+          }
+          movementWorkByUnitId[prepared.id] = plan.movementWorkPerTick;
+        }
+        if (prepared !== unit) unitUpdates.set(prepared.id, prepared);
+        continue;
+      }
     }
 
-    movementWorkByUnitId[prepared.id] = plan.route.movementWorkPerTick;
-    strategicMoverIds.add(prepared.id);
-    if (prepared !== unit) unitUpdates.set(prepared.id, prepared);
+    const destinationCellId = prepared.strategicDestinationCellId;
+    if (destinationCellId !== undefined) {
+      const plan = warshipStrategicNavigationRoute(
+        state,
+        prepared.ownerId,
+        prepared.cellId,
+        destinationCellId,
+      );
+      if (plan.status === "LIMIT_REACHED") continue;
+
+      if (plan.route.cells.length === 1) {
+        if (prepared.route !== undefined) {
+          prepared = assignMobileUnitRoute(state.map, prepared, {
+            cells: [prepared.cellId],
+            edgeWeights: [],
+          });
+        }
+      } else if (!routeMatchesStrategicPlan(prepared, plan.route)) {
+        prepared = assignMobileUnitRoute(state.map, prepared, {
+          cells: plan.route.cells,
+          edgeWeights: plan.route.edgeWeights,
+        });
+      }
+
+      movementWorkByUnitId[prepared.id] = plan.route.movementWorkPerTick;
+      strategicMoverIds.add(prepared.id);
+      if (prepared !== unit) unitUpdates.set(prepared.id, prepared);
+      continue;
+    }
+
+    const remainingRouteCells =
+      prepared.route === undefined
+        ? Object.freeze([] as number[])
+        : Object.freeze(
+            prepared.route.cells.slice(prepared.route.nextCellIndex - 1),
+          );
+    if (
+      prepared.route !== undefined &&
+      prepared.route.nextCellIndex < prepared.route.cells.length &&
+      warshipRouteInsideOperatingLeash(
+        state,
+        prepared.id,
+        remainingRouteCells,
+      )
+    ) {
+      const timing = warshipTerrainMovementTiming(
+        state,
+        prepared.ownerId,
+        "DEEP_WATER",
+      );
+      if (timing === undefined) {
+        throw new Error("Deep Water must be traversable for Warship roaming");
+      }
+      movementWorkByUnitId[prepared.id] = timing.movementWorkPerTick;
+      continue;
+    }
+
+    if (operational.roamingOrdinal >= Number.MAX_SAFE_INTEGER) {
+      throw new Error("Warship roaming ordinal is exhausted");
+    }
+    const plan = planWarshipRoamingRoute(state, { unitId: prepared.id });
+    if (plan === undefined) continue;
+    prepared = assignMobileUnitRoute(state.map, prepared, {
+      cells: plan.cells,
+      edgeWeights: plan.edgeWeights,
+    });
+    movementWorkByUnitId[prepared.id] = plan.movementWorkPerTick;
+    unitUpdates.set(prepared.id, prepared);
+    operationalUpdates.set(
+      prepared.id,
+      Object.freeze({
+        ...operational,
+        roamingOrdinal: operational.roamingOrdinal + 1,
+      }),
+    );
   }
 
   return Object.freeze({
     state:
-      unitUpdates.size === 0
+      unitUpdates.size === 0 && operationalUpdates.size === 0
         ? state
         : createProspectiveMatchState(state, {
             mobileUnits: state.mobileUnits.map(
               (unit) => unitUpdates.get(unit.id) ?? unit,
+            ),
+            warshipOperationalStates: state.warshipOperationalStates.map(
+              (operational) =>
+                operationalUpdates.get(operational.unitId) ?? operational,
             ),
           }),
     movementWorkByUnitId: Object.freeze(movementWorkByUnitId),
@@ -1088,6 +1235,142 @@ function advanceTankUnitCombatPhase(state: MatchState) {
   });
 }
 
+const V1_COMBAT_PROJECTILE_TICKS_PER_SECOND = 10 as const;
+
+function combatProjectileIdentityKey(
+  projectile: Readonly<{
+    readonly sourceUnitId: string;
+    readonly projectileOrdinal: number;
+  }>,
+): string {
+  return JSON.stringify([
+    projectile.sourceUnitId,
+    projectile.projectileOrdinal,
+  ]);
+}
+
+/**
+ * Applies Warship firing decisions admitted from the frozen post-movement
+ * snapshot, then advances only Warship-gun projectiles that pre-existed that
+ * combat phase. Tank-owned immediate effects are already committed in
+ * postTankCombatState, but cannot retroactively revoke a shot admitted from
+ * combatSnapshot.
+ */
+function advanceWarshipGunfireAndProjectilePhase(
+  combatSnapshot: MatchState,
+  postTankCombatState: MatchState,
+): MatchState {
+  const firingSnapshot = resolveWarshipGunfireDecisions(combatSnapshot);
+  const captureResolution = resolveWarshipTradeShipCapturePhase(
+    combatSnapshot,
+    postTankCombatState,
+  );
+  const captureAppliedState = captureResolution.state;
+  const preExistingKeys = new Set(
+    combatSnapshot.combatProjectiles.map(combatProjectileIdentityKey),
+  );
+  const spawnedProjectiles = firingSnapshot.combatProjectiles.filter(
+    (projectile) => !preExistingKeys.has(combatProjectileIdentityKey(projectile)),
+  );
+  const firingOperationalByUnitId = new Map(
+    firingSnapshot.warshipOperationalStates.map((operational) => [
+      operational.unitId,
+      operational,
+    ]),
+  );
+
+  const immediateState = createProspectiveMatchState(captureAppliedState, {
+    combatProjectiles: Object.freeze([
+      ...captureAppliedState.combatProjectiles,
+      ...spawnedProjectiles,
+    ]),
+    warshipOperationalStates: captureAppliedState.warshipOperationalStates.map(
+      (operational) => {
+        const firing = firingOperationalByUnitId.get(operational.unitId);
+        if (firing === undefined) return operational;
+        return Object.freeze({
+          ...operational,
+          attackReadyAtTick: firing.attackReadyAtTick,
+          nextProjectileOrdinal: firing.nextProjectileOrdinal,
+        });
+      },
+    ),
+  });
+
+  const preExistingWarshipProjectiles =
+    combatSnapshot.combatProjectiles.filter(
+      (projectile) =>
+        projectile.profileId === WARSHIP_NAVAL_GUN_PROFILE_ID,
+    );
+  if (preExistingWarshipProjectiles.length === 0) {
+    if (captureResolution.events.length === 0) return immediateState;
+    const directReveals =
+      resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+        immediateState,
+        captureResolution.events,
+        combatSnapshot.tick,
+      );
+    return createProspectiveMatchState(immediateState, { directReveals });
+  }
+
+  const advancingKeys = new Set(
+    preExistingWarshipProjectiles.map(combatProjectileIdentityKey),
+  );
+  const advanced = advanceHomingCombatProjectiles(
+    preExistingWarshipProjectiles,
+    {
+      tick: combatSnapshot.tick,
+      ticksPerSecond: V1_COMBAT_PROJECTILE_TICKS_PER_SECOND,
+      targetPosition(unitId) {
+        const target = immediateState.mobileUnits.find(
+          (unit) => unit.id === unitId,
+        );
+        if (target === undefined) return undefined;
+        const position = immediateState.map.positionOf(target.cellId);
+        return Object.freeze({ x: position.x, y: position.y });
+      },
+    },
+  );
+  const projectileTravelState = createProspectiveMatchState(immediateState, {
+    combatProjectiles: Object.freeze([
+      ...immediateState.combatProjectiles.filter(
+        (projectile) =>
+          !advancingKeys.has(combatProjectileIdentityKey(projectile)),
+      ),
+      ...advanced.projectiles,
+    ]),
+  });
+  const impacts = resolveWarshipNavalProjectileImpacts(
+    projectileTravelState,
+    advanced.impacts,
+  );
+  if (impacts.unresolvedImpacts.length > 0) {
+    throw new Error(
+      "Warship naval projectile impact resolved to an unsupported target owner",
+    );
+  }
+  let directReveals =
+    impacts.events.length === 0
+      ? impacts.state.directReveals
+      : resolveDirectRevealsFromPhysicalEvents(
+          impacts.state,
+          impacts.events,
+          combatSnapshot.tick,
+        );
+  if (captureResolution.events.length > 0) {
+    directReveals = resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+      Object.freeze({
+        directReveals,
+        mobileUnits: impacts.state.mobileUnits,
+      }),
+      captureResolution.events,
+      combatSnapshot.tick,
+    );
+  }
+  if (directReveals === impacts.state.directReveals) return impacts.state;
+  return createProspectiveMatchState(impacts.state, { directReveals });
+}
+
 export class TickEngine {
   applyAcceptedInputs(
     state: MatchState,
@@ -1370,7 +1653,11 @@ export class TickEngine {
       trainPrepared,
       prepareTradeShipRuntimePhase(trainPrepared, postLandState),
     );
-    const repairIntended = advanceTankRepairIntentPhase(tradePrepared);
+    const tankRepairIntended = advanceTankRepairIntentPhase(tradePrepared);
+    const transportRepairIntended =
+      advanceTransportRepairIntentPhase(tankRepairIntended);
+    const repairIntended =
+      advanceWarshipRepairIntentPhase(transportRepairIntended);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const tankPreparation = prepareTankMovementPhase(
       targetIntended,
@@ -1383,6 +1670,7 @@ export class TickEngine {
     const movementWorkByUnitId: Record<string, number> = {
       ...factoryTrainMovementWorkByUnitId(movementPrepared, nextTick),
       ...tradeShipMovementWorkByUnitId(movementPrepared),
+      ...transportRepairMovementWorkByUnitId(movementPrepared),
       ...tankPreparation.movementWorkByUnitId,
       ...warshipPreparation.movementWorkByUnitId,
     };
@@ -1413,22 +1701,36 @@ export class TickEngine {
       tankStrategicSettled,
       warshipPreparation.strategicMoverIds,
     );
-    const repairSettled = settleTankRepairMovementPhase(
+    const tankRepairSettled = settleTankRepairMovementPhase(
       movementPrepared,
       strategicSettled,
     );
-    const combatResolved = advanceTankUnitCombatPhase(repairSettled);
-    const tradeSettled = settleTradeShipRuntimePhase(
+    const transportRepairSettled = settleTransportRepairMovementPhase(
+      movementPrepared,
+      tankRepairSettled,
+    );
+    const repairSettled = settleWarshipRepairMovementPhase(
+      movementPrepared,
+      transportRepairSettled,
+    );
+    const combatSnapshot = repairSettled;
+    const combatResolved = advanceTankUnitCombatPhase(combatSnapshot);
+    const warshipCombatResolved = advanceWarshipGunfireAndProjectilePhase(
+      combatSnapshot,
       combatResolved.state,
+    );
+    const tradeSettled = settleTradeShipRuntimePhase(
+      warshipCombatResolved,
       (tradeOwnerId, destinationOwnerId) =>
         matchStateAtWar(
-          combatResolved.state,
+          warshipCombatResolved,
           tradeOwnerId,
           destinationOwnerId,
         ),
       "DEFER",
     );
-    const repaired = advanceTankRepairPhase(tradeSettled);
+    const tanksRepaired = advanceTankRepairPhase(tradeSettled);
+    const repaired = advanceNavalRepairPhase(tanksRepaired);
     const tanksProduced = advanceTankProductionPhase(repaired);
     const produced = advanceWarshipProductionPhase(tanksProduced);
     const trainEconomicUpdate = settleFactoryTrainEconomicEvents(

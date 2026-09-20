@@ -489,6 +489,10 @@ describe("physical occupancy admission", () => {
       warshipOperationalStates: [
         {
           unitId: created.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          attackReadyAtTick: initial.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
           operatingAnchorCellId: created.unit.cellId,
         },
       ],
@@ -796,6 +800,10 @@ describe("physical occupancy admission", () => {
       warshipOperationalStates: [
         {
           unitId: blocker.unit.id,
+          health: { numerator: 1_000n, denominator: 1n },
+          attackReadyAtTick: source.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
           operatingAnchorCellId: blocker.unit.cellId,
         },
       ],

@@ -7,6 +7,10 @@ import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
+  materializeHomingCombatProjectiles,
+  type HomingCombatProjectileState,
+} from "./CombatProjectiles";
+import {
   materializeFactoryTrainState,
   serializeFactoryTrainState,
   type FactoryTrainState,
@@ -140,6 +144,70 @@ export interface TradePendingSignedFactState {
   readonly componentsFfy: readonly number[];
 }
 
+export interface TransportExactHealth {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface TransportRepairResumeRoute {
+  readonly interruptionCellId: number;
+  readonly destinationCellId: number;
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+}
+
+export interface TransportOperationalState {
+  readonly unitId: string;
+  readonly carriedPopulation: number;
+  readonly health?: TransportExactHealth;
+  readonly repairPortId?: string;
+  readonly repairArrivalTick?: number;
+  readonly repairResumeRoute?: TransportRepairResumeRoute;
+}
+
+export type TransportDestructionCauseClass =
+  | "NAVAL_GUNFIRE"
+  | "SAM_ANTI_SHIP"
+  | "STRATEGIC_BLAST"
+  | "OTHER_HOSTILE_EFFECT"
+  | "UNATTRIBUTED";
+
+export interface TransportDestructionResult {
+  readonly transportId: string;
+  readonly previousOwnerFactionId: string;
+  readonly destructionTick: number;
+  readonly carriedPopulationAtDestruction: number;
+  readonly creditedDestroyerFactionId?: string;
+  readonly causeClass: TransportDestructionCauseClass;
+}
+
+export interface WarshipTradeShipCaptureFact {
+  readonly id: string;
+  readonly tick: number;
+  readonly capturingWarshipId: string;
+  readonly capturingFactionId: string;
+  readonly tradeShipId: string;
+  readonly originalOwnerId: string;
+  readonly previousHolderId: string;
+  readonly nextHolderId: string;
+  readonly firstHostileCapture: boolean;
+}
+
+export function warshipTradeShipCaptureFactId(
+  input: Readonly<{
+    tick: number;
+    capturingWarshipId: string;
+    tradeShipId: string;
+  }>,
+): string {
+  return JSON.stringify([
+    "WARSHIP_TRADE_SHIP_CAPTURE",
+    input.tick,
+    input.capturingWarshipId,
+    input.tradeShipId,
+  ]);
+}
+
 export interface MatchState extends FactoryTrainState {
   readonly seed: string;
   readonly tick: number;
@@ -150,6 +218,10 @@ export interface MatchState extends FactoryTrainState {
   readonly structures: readonly PersistentStructureState[];
   readonly mobileUnits: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal: number;
+  readonly combatProjectiles: readonly HomingCombatProjectileState[];
+  readonly transportOperationalStates: readonly TransportOperationalState[];
+  readonly transportDestructionResults: readonly TransportDestructionResult[];
+  readonly warshipTradeShipCaptureFacts: readonly WarshipTradeShipCaptureFact[];
   readonly tradeVoyages: readonly TradeVoyageState[];
   readonly tradePortSchedulers: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs: readonly TradeRetiredPortEpochState[];
@@ -173,6 +245,10 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly structures?: readonly PersistentStructureState[];
   readonly mobileUnits?: readonly MobileUnitState[];
   readonly nextMobileUnitOrdinal?: number;
+  readonly combatProjectiles?: readonly HomingCombatProjectileState[];
+  readonly transportOperationalStates?: readonly TransportOperationalState[];
+  readonly transportDestructionResults?: readonly TransportDestructionResult[];
+  readonly warshipTradeShipCaptureFacts?: readonly WarshipTradeShipCaptureFact[];
   readonly tradeVoyages?: readonly TradeVoyageState[];
   readonly tradePortSchedulers?: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs?: readonly TradeRetiredPortEpochState[];
@@ -949,6 +1025,63 @@ function freezeTankHealth(
   });
 }
 
+function freezeWarshipHealth(
+  health: WarshipOperationalState["health"],
+): WarshipOperationalState["health"] {
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator < 0n ||
+    health.denominator <= 0n
+  ) {
+    throw new Error("Warship health must be a non-negative exact ratio");
+  }
+  if (health.numerator === 0n) {
+    return Object.freeze({ numerator: 0n, denominator: 1n });
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
+  }
+  return Object.freeze({
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
+  });
+}
+
+function freezeTransportHealth(
+  health: TransportExactHealth,
+): TransportExactHealth {
+  if (
+    health === null ||
+    typeof health !== "object" ||
+    Array.isArray(health) ||
+    typeof health.numerator !== "bigint" ||
+    typeof health.denominator !== "bigint" ||
+    health.numerator <= 0n ||
+    health.denominator <= 0n
+  ) {
+    throw new Error("active Transport health must be a positive exact ratio");
+  }
+  let left = health.numerator;
+  let right = health.denominator;
+  while (right !== 0n) {
+    const remainder = left % right;
+    left = right;
+    right = remainder;
+  }
+  return Object.freeze({
+    numerator: health.numerator / left,
+    denominator: health.denominator / left,
+  });
+}
+
 function assertNonNegativeSafeInteger(value: number, label: string): void {
   if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
     throw new Error(`${label} must be a non-negative safe integer`);
@@ -1121,9 +1254,43 @@ function freezeWarshipOperationalStates(
     ) {
       throw new Error("Warship operating anchor must be a Deep-Water map cell");
     }
+    assertNonNegativeSafeInteger(
+      entry.attackReadyAtTick,
+      "Warship attackReadyAtTick",
+    );
+    assertNonNegativeSafeInteger(
+      entry.nextProjectileOrdinal,
+      "Warship nextProjectileOrdinal",
+    );
+    assertNonNegativeSafeInteger(entry.roamingOrdinal, "Warship roamingOrdinal");
+    if (
+      entry.repairPortId !== undefined &&
+      (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0)
+    ) {
+      throw new Error("Warship repairPortId must be a non-empty string");
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Warship repairArrivalTick",
+      );
+      if (entry.repairPortId === undefined) {
+        throw new Error("Warship repairArrivalTick requires repairPortId");
+      }
+    }
     return Object.freeze({
       unitId: entry.unitId,
+      health: freezeWarshipHealth(entry.health),
       operatingAnchorCellId: entry.operatingAnchorCellId,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      nextProjectileOrdinal: entry.nextProjectileOrdinal,
+      roamingOrdinal: entry.roamingOrdinal,
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
     });
   });
   for (const unit of mobileUnits) {
@@ -1135,6 +1302,318 @@ function freezeWarshipOperationalStates(
   }
   states.sort((left, right) => compareIds(left.unitId, right.unitId));
   return Object.freeze(states);
+}
+
+function freezeWarshipTradeShipCaptureFacts(
+  entries: readonly WarshipTradeShipCaptureFact[],
+  factions: readonly MatchFactionState[],
+  stateTick: number,
+): readonly WarshipTradeShipCaptureFact[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("warshipTradeShipCaptureFacts must be an array");
+  }
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const facts = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Warship Trade Ship capture fact must be an object");
+    }
+    for (const [label, value] of [
+      ["id", entry.id],
+      ["capturingWarshipId", entry.capturingWarshipId],
+      ["capturingFactionId", entry.capturingFactionId],
+      ["tradeShipId", entry.tradeShipId],
+      ["originalOwnerId", entry.originalOwnerId],
+      ["previousHolderId", entry.previousHolderId],
+      ["nextHolderId", entry.nextHolderId],
+    ] as const) {
+      if (typeof value !== "string" || value.length === 0) {
+        throw new Error(`Warship Trade Ship capture ${label} must be non-empty`);
+      }
+    }
+    assertNonNegativeSafeInteger(entry.tick, "Warship Trade Ship capture tick");
+    if (entry.tick > stateTick) {
+      throw new Error("Warship Trade Ship capture fact cannot be from a future tick");
+    }
+    if (seen.has(entry.id)) {
+      throw new Error(`duplicate Warship Trade Ship capture fact: ${entry.id}`);
+    }
+    seen.add(entry.id);
+    const expectedId = warshipTradeShipCaptureFactId(entry);
+    if (entry.id !== expectedId) {
+      throw new Error("Warship Trade Ship capture fact id is non-canonical");
+    }
+    if (
+      !factionIds.has(entry.capturingFactionId) ||
+      !factionIds.has(entry.originalOwnerId) ||
+      !factionIds.has(entry.previousHolderId) ||
+      !factionIds.has(entry.nextHolderId)
+    ) {
+      throw new Error("Warship Trade Ship capture fact references an unknown faction");
+    }
+    if (
+      entry.nextHolderId !== entry.capturingFactionId ||
+      entry.previousHolderId === entry.nextHolderId
+    ) {
+      throw new Error("Warship Trade Ship capture holder transition is invalid");
+    }
+    if (typeof entry.firstHostileCapture !== "boolean") {
+      throw new Error("Warship Trade Ship firstHostileCapture must be boolean");
+    }
+    return Object.freeze({
+      id: entry.id,
+      tick: entry.tick,
+      capturingWarshipId: entry.capturingWarshipId,
+      capturingFactionId: entry.capturingFactionId,
+      tradeShipId: entry.tradeShipId,
+      originalOwnerId: entry.originalOwnerId,
+      previousHolderId: entry.previousHolderId,
+      nextHolderId: entry.nextHolderId,
+      firstHostileCapture: entry.firstHostileCapture,
+    });
+  });
+  facts.sort(
+    (left, right) =>
+      left.tick - right.tick ||
+      compareIds(left.id, right.id),
+  );
+  return Object.freeze(facts);
+}
+
+const TRANSPORT_DESTRUCTION_CAUSE_CLASSES =
+  new Set<TransportDestructionCauseClass>([
+    "NAVAL_GUNFIRE",
+    "SAM_ANTI_SHIP",
+    "STRATEGIC_BLAST",
+    "OTHER_HOSTILE_EFFECT",
+    "UNATTRIBUTED",
+  ]);
+
+function freezeTransportRepairResumeRoute(
+  route: TransportRepairResumeRoute,
+  map: SimulationMap,
+): TransportRepairResumeRoute {
+  if (
+    !Number.isSafeInteger(route.interruptionCellId) ||
+    !map.isValidCellId(route.interruptionCellId) ||
+    !Number.isSafeInteger(route.destinationCellId) ||
+    !map.isValidCellId(route.destinationCellId)
+  ) {
+    throw new Error("Transport repair resume route cells must be valid map cells");
+  }
+  if (!Array.isArray(route.cells) || route.cells.length === 0) {
+    throw new Error("Transport repair resume route must contain at least one cell");
+  }
+  if (
+    !Array.isArray(route.edgeWeights) ||
+    route.edgeWeights.length !== route.cells.length - 1
+  ) {
+    throw new Error("Transport repair resume route edgeWeights length mismatch");
+  }
+  if (
+    route.cells[0] !== route.interruptionCellId ||
+    route.cells[route.cells.length - 1] !== route.destinationCellId
+  ) {
+    throw new Error("Transport repair resume route endpoints do not match its cells");
+  }
+  for (let index = 0; index < route.cells.length; index += 1) {
+    const cellId = route.cells[index]!;
+    if (!Number.isSafeInteger(cellId) || !map.isValidCellId(cellId)) {
+      throw new Error("Transport repair resume route contains an invalid cell");
+    }
+    if (
+      index > 0 &&
+      !map.cardinalNeighbors(route.cells[index - 1]!).includes(cellId)
+    ) {
+      throw new Error("Transport repair resume route must be cardinally contiguous");
+    }
+  }
+  for (const weight of route.edgeWeights) {
+    if (!Number.isSafeInteger(weight) || weight <= 0) {
+      throw new Error(
+        "Transport repair resume route weights must be positive safe integers",
+      );
+    }
+  }
+  return Object.freeze({
+    interruptionCellId: route.interruptionCellId,
+    destinationCellId: route.destinationCellId,
+    cells: Object.freeze([...route.cells]),
+    edgeWeights: Object.freeze([...route.edgeWeights]),
+  });
+}
+
+function freezeTransportOperationalStates(
+  entries: readonly TransportOperationalState[],
+  mobileUnits: readonly MobileUnitState[],
+  factions: readonly MatchFactionState[],
+  map: SimulationMap,
+): readonly TransportOperationalState[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("transportOperationalStates must be an array");
+  }
+  const unitsById = new Map(mobileUnits.map((unit) => [unit.id, unit]));
+  const factionsById = new Map(factions.map((faction) => [faction.id, faction]));
+  const seenUnitIds = new Set<string>();
+  const carriedByOwner = new Map<string, number>();
+  const states = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Transport operational state must be an object");
+    }
+    if (typeof entry.unitId !== "string" || entry.unitId.length === 0) {
+      throw new Error("Transport operational unitId must be a non-empty string");
+    }
+    if (seenUnitIds.has(entry.unitId)) {
+      throw new Error(`duplicate Transport operational state: ${entry.unitId}`);
+    }
+    seenUnitIds.add(entry.unitId);
+    const unit = unitsById.get(entry.unitId);
+    if (unit === undefined || unit.type !== "TRANSPORT_SHIP") {
+      throw new Error(
+        `Transport operational state must reference an active Transport: ${entry.unitId}`,
+      );
+    }
+    if (unit.movementClass !== "TRANSPORT") {
+      throw new Error("Transport movement class must be TRANSPORT");
+    }
+    assertNonNegativeSafeInteger(
+      entry.carriedPopulation,
+      "Transport carriedPopulation",
+    );
+    const owner = factionsById.get(unit.ownerId);
+    if (owner === undefined) {
+      throw new Error(`Transport owner is missing: ${unit.ownerId}`);
+    }
+    const nextCarried =
+      (carriedByOwner.get(unit.ownerId) ?? 0) + entry.carriedPopulation;
+    if (!Number.isSafeInteger(nextCarried)) {
+      throw new Error("Transport carried Population exceeds safe-integer range");
+    }
+    carriedByOwner.set(unit.ownerId, nextCarried);
+    if (entry.repairPortId !== undefined) {
+      if (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0) {
+        throw new Error("Transport repairPortId must be a non-empty string");
+      }
+      if (entry.health === undefined) {
+        throw new Error("Only health-bearing Transports may hold a repair assignment");
+      }
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Transport repairArrivalTick",
+      );
+      if (entry.repairPortId === undefined) {
+        throw new Error("Transport repairArrivalTick requires a repairPortId");
+      }
+    }
+    if (entry.repairResumeRoute !== undefined && entry.health === undefined) {
+      throw new Error(
+        "Only health-bearing Transports may retain a repair resume route",
+      );
+    }
+    return Object.freeze({
+      unitId: entry.unitId,
+      carriedPopulation: entry.carriedPopulation,
+      ...(entry.health === undefined
+        ? {}
+        : { health: freezeTransportHealth(entry.health) }),
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+      ...(entry.repairResumeRoute === undefined
+        ? {}
+        : {
+            repairResumeRoute: freezeTransportRepairResumeRoute(
+              entry.repairResumeRoute,
+              map,
+            ),
+          }),
+    });
+  });
+  for (const [ownerId, carried] of carriedByOwner) {
+    const aboard = factionsById.get(ownerId)!.population.aboardTransports;
+    if (carried > aboard) {
+      throw new Error(
+        `Transport operational payload exceeds ${ownerId} aboard Population`,
+      );
+    }
+  }
+  states.sort((left, right) => compareIds(left.unitId, right.unitId));
+  return Object.freeze(states);
+}
+
+function freezeTransportDestructionResults(
+  entries: readonly TransportDestructionResult[],
+  mobileUnits: readonly MobileUnitState[],
+  factions: readonly MatchFactionState[],
+): readonly TransportDestructionResult[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("transportDestructionResults must be an array");
+  }
+  const activeUnitIds = new Set(mobileUnits.map((unit) => unit.id));
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seenTransportIds = new Set<string>();
+  const results = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Transport destruction result must be an object");
+    }
+    if (typeof entry.transportId !== "string" || entry.transportId.length === 0) {
+      throw new Error("Transport destruction transportId must be non-empty");
+    }
+    if (seenTransportIds.has(entry.transportId)) {
+      throw new Error(`duplicate Transport destruction result: ${entry.transportId}`);
+    }
+    seenTransportIds.add(entry.transportId);
+    if (activeUnitIds.has(entry.transportId)) {
+      throw new Error(
+        `Transport destruction result cannot reference an active unit: ${entry.transportId}`,
+      );
+    }
+    if (
+      typeof entry.previousOwnerFactionId !== "string" ||
+      !factionIds.has(entry.previousOwnerFactionId)
+    ) {
+      throw new Error("Transport destruction previous owner must be a current faction");
+    }
+    assertNonNegativeSafeInteger(
+      entry.destructionTick,
+      "Transport destructionTick",
+    );
+    assertNonNegativeSafeInteger(
+      entry.carriedPopulationAtDestruction,
+      "Transport carriedPopulationAtDestruction",
+    );
+    if (
+      entry.creditedDestroyerFactionId !== undefined &&
+      (typeof entry.creditedDestroyerFactionId !== "string" ||
+        !factionIds.has(entry.creditedDestroyerFactionId))
+    ) {
+      throw new Error("Transport credited destroyer must be a current faction");
+    }
+    if (!TRANSPORT_DESTRUCTION_CAUSE_CLASSES.has(entry.causeClass)) {
+      throw new Error("Transport destruction causeClass is invalid");
+    }
+    return Object.freeze({
+      transportId: entry.transportId,
+      previousOwnerFactionId: entry.previousOwnerFactionId,
+      destructionTick: entry.destructionTick,
+      carriedPopulationAtDestruction: entry.carriedPopulationAtDestruction,
+      ...(entry.creditedDestroyerFactionId === undefined
+        ? {}
+        : { creditedDestroyerFactionId: entry.creditedDestroyerFactionId }),
+      causeClass: entry.causeClass,
+    });
+  });
+  results.sort(
+    (left, right) =>
+      left.destructionTick - right.destructionTick ||
+      compareIds(left.transportId, right.transportId),
+  );
+  return Object.freeze(results);
 }
 
 function assertExclusivePhysicalOccupancy(
@@ -1186,6 +1665,9 @@ function createState(
     update.structures ?? previous.structures,
   );
   assertExclusivePhysicalOccupancy(structures, mobileUnits.mobileUnits);
+  const combatProjectiles = materializeHomingCombatProjectiles(
+    update.combatProjectiles ?? previous.combatProjectiles ?? [],
+  );
   const tradeVoyages = freezeTradeVoyages(
     update.tradeVoyages ?? previous.tradeVoyages ?? [],
     mobileUnits.mobileUnits,
@@ -1204,6 +1686,13 @@ function createState(
     update.tradePendingSignedFacts ?? previous.tradePendingSignedFacts ?? [],
     factions,
   );
+  const warshipTradeShipCaptureFacts = freezeWarshipTradeShipCaptureFacts(
+    update.warshipTradeShipCaptureFacts ??
+      previous.warshipTradeShipCaptureFacts ??
+      [],
+    factions,
+    tick,
+  );
   const factoryTrains = materializeFactoryTrainState(
     previous,
     update,
@@ -1220,6 +1709,21 @@ function createState(
     mobileUnits.mobileUnits,
     previous.map,
   );
+  const transportOperationalStates = freezeTransportOperationalStates(
+    update.transportOperationalStates ??
+      previous.transportOperationalStates ??
+      [],
+    mobileUnits.mobileUnits,
+    factions,
+    previous.map,
+  );
+  const transportDestructionResults = freezeTransportDestructionResults(
+    update.transportDestructionResults ??
+      previous.transportDestructionResults ??
+      [],
+    mobileUnits.mobileUnits,
+    factions,
+  );
   return Object.freeze({
     seed: previous.seed,
     tick,
@@ -1230,6 +1734,10 @@ function createState(
     structures,
     mobileUnits: mobileUnits.mobileUnits,
     nextMobileUnitOrdinal: mobileUnits.nextMobileUnitOrdinal,
+    combatProjectiles,
+    transportOperationalStates,
+    transportDestructionResults,
+    warshipTradeShipCaptureFacts,
     tradeVoyages,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
@@ -1333,6 +1841,10 @@ function createEmptyInitialMatchState(
     structures: Object.freeze([]),
     mobileUnits: Object.freeze([]),
     nextMobileUnitOrdinal: 0,
+    combatProjectiles: Object.freeze([]),
+    transportOperationalStates: Object.freeze([]),
+    transportDestructionResults: Object.freeze([]),
+    warshipTradeShipCaptureFacts: Object.freeze([]),
     tradeVoyages: Object.freeze([]),
     tradePortSchedulers: Object.freeze([]),
     tradeRetiredPortEpochs: Object.freeze([]),
@@ -1578,6 +2090,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     ownerId: entry.ownerId,
     componentsFfy: [...entry.componentsFfy],
   }));
+  const warshipTradeShipCaptureFacts = state.warshipTradeShipCaptureFacts.map(
+    (entry) => ({
+      id: entry.id,
+      tick: entry.tick,
+      capturingWarshipId: entry.capturingWarshipId,
+      capturingFactionId: entry.capturingFactionId,
+      tradeShipId: entry.tradeShipId,
+      originalOwnerId: entry.originalOwnerId,
+      previousHolderId: entry.previousHolderId,
+      nextHolderId: entry.nextHolderId,
+      firstHostileCapture: entry.firstHostileCapture,
+    }),
+  );
   const factoryTrains = serializeFactoryTrainState(state);
 
   const tankProductionJobs = [...state.tankProductionJobs]
@@ -1662,11 +2187,96 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
+  const combatProjectiles = [...state.combatProjectiles]
+    .sort(
+      (left, right) =>
+        compareIds(left.sourceUnitId, right.sourceUnitId) ||
+        left.projectileOrdinal - right.projectileOrdinal,
+    )
+    .map((projectile) => ({
+      sourceUnitId: projectile.sourceUnitId,
+      sourceOwnerId: projectile.sourceOwnerId,
+      targetUnitId: projectile.targetUnitId,
+      projectileOrdinal: projectile.projectileOrdinal,
+      profileId: projectile.profileId,
+      position: {
+        x: projectile.position.x,
+        y: projectile.position.y,
+      },
+      speedCellsPerSecond: projectile.speedCellsPerSecond,
+      damage: {
+        numerator: projectile.damage.numerator.toString(),
+        denominator: projectile.damage.denominator.toString(),
+      },
+      createdTick: projectile.createdTick,
+    }));
+
   const warshipOperationalStates = [...state.warshipOperationalStates]
     .sort((left, right) => compareIds(left.unitId, right.unitId))
     .map((entry) => ({
       unitId: entry.unitId,
+      health: {
+        numerator: entry.health.numerator.toString(),
+        denominator: entry.health.denominator.toString(),
+      },
       operatingAnchorCellId: entry.operatingAnchorCellId,
+      attackReadyAtTick: entry.attackReadyAtTick,
+      nextProjectileOrdinal: entry.nextProjectileOrdinal,
+      roamingOrdinal: entry.roamingOrdinal,
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+    }));
+
+  const transportOperationalStates = [...state.transportOperationalStates]
+    .sort((left, right) => compareIds(left.unitId, right.unitId))
+    .map((entry) => ({
+      unitId: entry.unitId,
+      carriedPopulation: entry.carriedPopulation,
+      ...(entry.health === undefined
+        ? {}
+        : {
+            health: {
+              numerator: entry.health.numerator.toString(),
+              denominator: entry.health.denominator.toString(),
+            },
+          }),
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
+      ...(entry.repairResumeRoute === undefined
+        ? {}
+        : {
+            repairResumeRoute: {
+              interruptionCellId: entry.repairResumeRoute.interruptionCellId,
+              destinationCellId: entry.repairResumeRoute.destinationCellId,
+              cells: [...entry.repairResumeRoute.cells],
+              edgeWeights: [...entry.repairResumeRoute.edgeWeights],
+            },
+          }),
+    }));
+
+  const transportDestructionResults = [...state.transportDestructionResults]
+    .sort(
+      (left, right) =>
+        left.destructionTick - right.destructionTick ||
+        compareIds(left.transportId, right.transportId),
+    )
+    .map((entry) => ({
+      transportId: entry.transportId,
+      previousOwnerFactionId: entry.previousOwnerFactionId,
+      destructionTick: entry.destructionTick,
+      carriedPopulationAtDestruction: entry.carriedPopulationAtDestruction,
+      ...(entry.creditedDestroyerFactionId === undefined
+        ? {}
+        : { creditedDestroyerFactionId: entry.creditedDestroyerFactionId }),
+      causeClass: entry.causeClass,
     }));
 
   const directReveals = state.directReveals.map((entry) => ({
@@ -1738,6 +2348,10 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     structures,
     mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    combatProjectiles,
+    transportOperationalStates,
+    transportDestructionResults,
+    warshipTradeShipCaptureFacts,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
     tradePendingSignedFacts,

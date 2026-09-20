@@ -55,6 +55,34 @@ export type UnitAttackResolvedEvent = SimulationEvent<
   UnitAttackResolvedPayload
 >;
 
+export interface ProjectileEventSubject {
+  readonly sourceUnitId: UnitId;
+  readonly sourceOwnerId: FactionId;
+  readonly projectileOrdinal: number;
+  readonly profileId: string;
+}
+
+export interface ProjectileImpactResolvedPayload {
+  readonly projectile: ProjectileEventSubject;
+  readonly target: UnitEventSubject;
+}
+
+export type ProjectileImpactResolvedEvent = SimulationEvent<
+  "PROJECTILE_IMPACT_RESOLVED",
+  ProjectileImpactResolvedPayload
+>;
+
+export interface WarshipTradeShipCaptureResolvedPayload {
+  readonly capturingWarship: UnitEventSubject;
+  readonly tradeShip: UnitEventSubject;
+  readonly nextHolderId: FactionId;
+}
+
+export type WarshipTradeShipCaptureResolvedEvent = SimulationEvent<
+  "WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED",
+  WarshipTradeShipCaptureResolvedPayload
+>;
+
 export interface TankPopulationAttackResolvedPayload {
   readonly attacker: UnitEventSubject;
   readonly targetFactionId: FactionId;
@@ -72,9 +100,19 @@ export interface UnitAttackDestructionCause {
   readonly attacker: UnitEventSubject;
 }
 
+export interface ProjectileImpactDestructionCause {
+  readonly kind: "PROJECTILE_IMPACT";
+  readonly impactEventId: string;
+  readonly projectile: ProjectileEventSubject;
+}
+
+export type UnitDestructionCause =
+  | UnitAttackDestructionCause
+  | ProjectileImpactDestructionCause;
+
 export interface UnitDestroyedPayload {
   readonly unit: UnitEventSubject;
-  readonly causes: readonly UnitAttackDestructionCause[];
+  readonly causes: readonly UnitDestructionCause[];
 }
 
 export type UnitDestroyedEvent = SimulationEvent<
@@ -155,6 +193,7 @@ export type FactionCapitulatedEvent = SimulationEvent<
 
 export type PhysicalUnitSimulationEvent =
   | UnitAttackResolvedEvent
+  | ProjectileImpactResolvedEvent
   | UnitDestroyedEvent;
 
 export type HostilityLifecycleSimulationEvent =
@@ -166,6 +205,21 @@ export interface CreateUnitAttackResolvedEventInput {
   readonly tick: number;
   readonly attacker: UnitEventSubject;
   readonly target: UnitEventSubject;
+}
+
+export interface CreateProjectileImpactResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly projectile: ProjectileEventSubject;
+  readonly target: UnitEventSubject;
+}
+
+export interface CreateWarshipTradeShipCaptureResolvedEventInput {
+  readonly id: string;
+  readonly tick: number;
+  readonly capturingWarship: UnitEventSubject;
+  readonly tradeShip: UnitEventSubject;
+  readonly nextHolderId: FactionId;
 }
 
 export interface CreateTankPopulationAttackResolvedEventInput {
@@ -180,7 +234,7 @@ export interface CreateUnitDestroyedEventInput {
   readonly id: string;
   readonly tick: number;
   readonly unit: UnitEventSubject;
-  readonly causes: readonly UnitAttackDestructionCause[];
+  readonly causes: readonly UnitDestructionCause[];
 }
 
 export interface CreateRadioactiveAttackAftershockResolvedEventInput {
@@ -265,6 +319,27 @@ function freezeUnitSubject(subject: UnitEventSubject): UnitEventSubject {
     ownerId: subject.ownerId,
     unitType: subject.unitType,
     cellId: subject.cellId,
+  });
+}
+
+function freezeProjectileEventSubject(
+  projectile: ProjectileEventSubject,
+): ProjectileEventSubject {
+  assertNonEmptyId(projectile.sourceUnitId, "projectile sourceUnitId");
+  assertNonEmptyId(projectile.sourceOwnerId, "projectile sourceOwnerId");
+  if (
+    !Number.isSafeInteger(projectile.projectileOrdinal) ||
+    projectile.projectileOrdinal < 0 ||
+    Object.is(projectile.projectileOrdinal, -0)
+  ) {
+    throw new Error("projectile ordinal must be a non-negative safe integer");
+  }
+  assertNonEmptyId(projectile.profileId, "projectile profileId");
+  return Object.freeze({
+    sourceUnitId: projectile.sourceUnitId,
+    sourceOwnerId: projectile.sourceOwnerId,
+    projectileOrdinal: projectile.projectileOrdinal,
+    profileId: projectile.profileId,
   });
 }
 
@@ -365,6 +440,54 @@ export function createUnitAttackResolvedEvent(
   });
 }
 
+export function createProjectileImpactResolvedEvent(
+  input: CreateProjectileImpactResolvedEventInput,
+): ProjectileImpactResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "PROJECTILE_IMPACT_RESOLVED" as const,
+    payload: Object.freeze({
+      projectile: freezeProjectileEventSubject(input.projectile),
+      target: freezeUnitSubject(input.target),
+    }),
+  });
+}
+
+export function createWarshipTradeShipCaptureResolvedEvent(
+  input: CreateWarshipTradeShipCaptureResolvedEventInput,
+): WarshipTradeShipCaptureResolvedEvent {
+  assertNonEmptyId(input.id, "simulation event id");
+  assertTick(input.tick);
+  assertNonEmptyId(input.nextHolderId, "Trade Ship capture nextHolderId");
+  const capturingWarship = freezeUnitSubject(input.capturingWarship);
+  const tradeShip = freezeUnitSubject(input.tradeShip);
+  if (capturingWarship.unitType !== "WARSHIP") {
+    throw new Error("Trade Ship capture source must be a Warship");
+  }
+  if (tradeShip.unitType !== "TRADE_SHIP") {
+    throw new Error("Trade Ship capture target must be a Trade Ship");
+  }
+  if (
+    capturingWarship.ownerId !== input.nextHolderId ||
+    tradeShip.ownerId === input.nextHolderId
+  ) {
+    throw new Error("Trade Ship capture holder transition is invalid");
+  }
+  return Object.freeze({
+    id: input.id,
+    tick: input.tick,
+    kind: "WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED" as const,
+    payload: Object.freeze({
+      capturingWarship,
+      tradeShip,
+      nextHolderId: input.nextHolderId,
+    }),
+  });
+}
+
 export function createTankPopulationAttackResolvedEvent(
   input: CreateTankPopulationAttackResolvedEventInput,
 ): TankPopulationAttackResolvedEvent {
@@ -389,23 +512,53 @@ export function createUnitDestroyedEvent(
 ): UnitDestroyedEvent {
   assertNonEmptyId(input.id, "simulation event id");
   assertTick(input.tick);
-  const causes = input.causes
-    .map((cause) => {
-      if (cause.kind !== "UNIT_ATTACK") {
-        throw new Error(`unsupported unit destruction cause: ${String(cause.kind)}`);
-      }
+  const causes: UnitDestructionCause[] = input.causes.map((cause) => {
+    if (cause.kind === "UNIT_ATTACK") {
       assertNonEmptyId(cause.attackEventId, "attack event id");
       return Object.freeze({
         kind: "UNIT_ATTACK" as const,
         attackEventId: cause.attackEventId,
         attacker: freezeUnitSubject(cause.attacker),
       });
-    })
-    .sort(
-      (left, right) =>
-        compareIds(left.attacker.unitId, right.attacker.unitId) ||
-        compareIds(left.attackEventId, right.attackEventId),
+    }
+    if (cause.kind === "PROJECTILE_IMPACT") {
+      assertNonEmptyId(cause.impactEventId, "projectile impact event id");
+      return Object.freeze({
+        kind: "PROJECTILE_IMPACT" as const,
+        impactEventId: cause.impactEventId,
+        projectile: freezeProjectileEventSubject(cause.projectile),
+      });
+    }
+    throw new Error(
+      `unsupported unit destruction cause: ${String((cause as { kind?: unknown }).kind)}`,
     );
+  });
+  causes.sort((left, right) => {
+    if (left.kind !== right.kind) {
+      return left.kind === "UNIT_ATTACK" ? -1 : 1;
+    }
+    if (left.kind === "UNIT_ATTACK" && right.kind === "UNIT_ATTACK") {
+      return (
+        compareIds(left.attacker.unitId, right.attacker.unitId) ||
+        compareIds(left.attackEventId, right.attackEventId)
+      );
+    }
+    if (
+      left.kind === "PROJECTILE_IMPACT" &&
+      right.kind === "PROJECTILE_IMPACT"
+    ) {
+      return (
+        compareIds(
+          left.projectile.sourceUnitId,
+          right.projectile.sourceUnitId,
+        ) ||
+        left.projectile.projectileOrdinal -
+          right.projectile.projectileOrdinal ||
+        compareIds(left.impactEventId, right.impactEventId)
+      );
+    }
+    return 0;
+  });
 
   return Object.freeze({
     id: input.id,
