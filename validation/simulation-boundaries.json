@@ -21,6 +21,7 @@
     "src/simulation/MatchState.ts": "RUNTIME_CORE",
     "src/simulation/MicroSimulationHarness.ts": "TEST_HARNESS",
     "src/simulation/MobileUnits.ts": "MOBILE_UNITS",
+    "src/simulation/NavalRepair.ts": "NAVAL",
     "src/simulation/Navigation.ts": "MAP_SUBSTRATE",
     "src/simulation/Population.ts": "POPULATION",
     "src/simulation/RailNetwork.ts": "MAP_SUBSTRATE",
@@ -42,12 +43,13 @@
     "src/simulation/TickEngine.ts": "RUNTIME_CORE",
     "src/simulation/TradeShips.ts": "ECONOMY",
     "src/simulation/TrainService.ts": "ECONOMY",
+    "src/simulation/TransportRepair.ts": "NAVAL",
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
     "src/simulation/WarshipCombat.ts": "NAVAL",
-    "src/simulation/WarshipTargeting.ts": "NAVAL",
+    "src/simulation/WarshipRepair.ts": "NAVAL",
     "src/simulation/Warships.ts": "NAVAL",
-    "src/simulation/WarshipRepair.ts": "NAVAL"
+    "src/simulation/WarshipTargeting.ts": "NAVAL"
   },
   "crossOwnerImports": [
     {
@@ -357,6 +359,18 @@
       "rationale": "Mobile-unit rules query current map-substrate facts; map state is not an occurrence channel."
     },
     {
+      "from": "src/simulation/NavalRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Naval repair arbitration reads current authoritative MatchState to select one shared Port fast-service recipient across qualifying naval unit adapters."
+    },
+    {
+      "from": "src/simulation/NavalRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval repair arbitration invokes the shared stable fast-service queue selector rather than defining a parallel capacity or tie-break lifecycle."
+    },
+    {
       "from": "src/simulation/SpawnInitialization.ts",
       "to": "src/simulation/MapArtifact.ts",
       "classification": "SHARED_CONTRACT",
@@ -634,6 +648,12 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/NavalRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Naval-owned shared Warship/Transport Port service phase after combat and before production in deterministic authoritative tick order."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Population.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine explicitly invokes this subsystem phase in deterministic authoritative tick order; cross-system occurrences still use SimulationEvents."
@@ -685,6 +705,12 @@
       "to": "src/simulation/TradeShips.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine invokes the Economy-owned Trade scheduler and movement-work preparation after Structure lifecycle and before shared physical movement arbitration."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/TransportRepair.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine invokes the Naval-owned P32 Transport repair intent, movement-work, and movement-settlement phases around shared physical movement."
     },
     {
       "from": "src/simulation/TickEngine.ts",
@@ -757,6 +783,30 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Train service reads current persistent-Structure station state while resolving station eligibility and current event context."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Transport repair evaluates current authoritative MatchState for P32 health, retained-route state, owned Port eligibility, queue state, and repair persistence."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/MobileUnits.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport repair invokes MobileUnits-owned route assignment and movement primitives for automatic Port repair detours and deterministic route resumption."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Transport repair consumes the canonical navigation substrate for deterministic Shallow/Deep-Water Port detour and retained-route rejoin planning."
+    },
+    {
+      "from": "src/simulation/TransportRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Transport repair adapts P32 health and ordinary Port-specific rules into the shared vehicle-repair lifecycle rather than duplicating repair threshold, queue, or service mechanics."
     },
     {
       "from": "src/simulation/Transports.ts",
