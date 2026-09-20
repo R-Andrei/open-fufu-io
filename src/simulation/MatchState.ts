@@ -1263,6 +1263,16 @@ function freezeWarshipOperationalStates(
       "Warship nextProjectileOrdinal",
     );
     assertNonNegativeSafeInteger(entry.roamingOrdinal, "Warship roamingOrdinal");
+    if (!Number.isSafeInteger(entry.rank) || entry.rank < 1) {
+      throw new Error("Warship rank must be a positive safe integer");
+    }
+    if (
+      !Number.isSafeInteger(entry.navalXp) ||
+      entry.navalXp < 0 ||
+      entry.navalXp >= 100
+    ) {
+      throw new Error("Warship carried Naval XP must be in 0..99");
+    }
     if (
       entry.repairPortId !== undefined &&
       (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0)
@@ -1281,6 +1291,8 @@ function freezeWarshipOperationalStates(
     return Object.freeze({
       unitId: entry.unitId,
       health: freezeWarshipHealth(entry.health),
+      rank: entry.rank,
+      navalXp: entry.navalXp,
       operatingAnchorCellId: entry.operatingAnchorCellId,
       attackReadyAtTick: entry.attackReadyAtTick,
       nextProjectileOrdinal: entry.nextProjectileOrdinal,
@@ -2161,6 +2173,8 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         numerator: entry.health.numerator.toString(),
         denominator: entry.health.denominator.toString(),
       },
+      rank: entry.rank,
+      navalXp: entry.navalXp,
       operatingAnchorCellId: entry.operatingAnchorCellId,
       eligibleFromTick: entry.eligibleFromTick,
       attackReadyAtTick: entry.attackReadyAtTick,
