@@ -1,6 +1,5 @@
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
-  reducedRational,
   type RuleCondition,
   type RuleScope,
 } from "../core/rules/RuleComposition";
@@ -39,14 +38,13 @@ import {
   type VehicleRepairRoute,
 } from "./RepairService";
 import {
+  warshipEffectiveMaxHealth,
   warshipStrategicNavigationRoute,
   warshipTerrainMovementTiming,
-  type WarshipExactHealth,
   type WarshipOperationalState,
 } from "./Warships";
 
 const TICKS_PER_SECOND = 10n;
-const BASE_WARSHIP_MAX_HEALTH = 1_000n;
 const P31_OPERATIONAL_REPAIR_DOMAIN =
   "WARSHIP_OPERATIONAL_DURING_PORT_REPAIR";
 
@@ -224,14 +222,6 @@ function effectiveRepairPerTick(
   );
 }
 
-function effectiveWarshipMaxHealth(): WarshipExactHealth {
-  const health = reducedRational(BASE_WARSHIP_MAX_HEALTH, 1n);
-  return Object.freeze({
-    numerator: health.numerator,
-    denominator: health.denominator,
-  });
-}
-
 function clearUnitRoute(
   state: MatchState,
   unit: MobileUnitState,
@@ -335,7 +325,21 @@ function warshipRepairDomain(
           denominator: health.denominator,
         }),
       }),
-    maximumHealth: () => effectiveWarshipMaxHealth(),
+    maximumHealth: (unit) => {
+      const operational = state.warshipOperationalStates.find(
+        (entry) => entry.unitId === unit.id,
+      );
+      if (operational === undefined) {
+        throw new Error(
+          `Warship repair target is missing operational state: ${unit.id}`,
+        );
+      }
+      return warshipEffectiveMaxHealth(
+        state,
+        unit.ownerId,
+        operational.rank,
+      );
+    },
     routeTo: (unit, destinationCellId): VehicleRepairRoute | undefined => {
       if (unit.type !== "WARSHIP") return undefined;
       const route = warshipStrategicNavigationRoute(
