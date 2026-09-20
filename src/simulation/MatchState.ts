@@ -1224,6 +1224,21 @@ function freezeWarshipOperationalStates(
       "Warship nextProjectileOrdinal",
     );
     assertNonNegativeSafeInteger(entry.roamingOrdinal, "Warship roamingOrdinal");
+    if (
+      entry.repairPortId !== undefined &&
+      (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0)
+    ) {
+      throw new Error("Warship repairPortId must be a non-empty string");
+    }
+    if (entry.repairArrivalTick !== undefined) {
+      assertNonNegativeSafeInteger(
+        entry.repairArrivalTick,
+        "Warship repairArrivalTick",
+      );
+      if (entry.repairPortId === undefined) {
+        throw new Error("Warship repairArrivalTick requires repairPortId");
+      }
+    }
     return Object.freeze({
       unitId: entry.unitId,
       health: freezeWarshipHealth(entry.health),
@@ -1231,6 +1246,12 @@ function freezeWarshipOperationalStates(
       attackReadyAtTick: entry.attackReadyAtTick,
       nextProjectileOrdinal: entry.nextProjectileOrdinal,
       roamingOrdinal: entry.roamingOrdinal,
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
     });
   });
   for (const unit of mobileUnits) {
@@ -1973,6 +1994,12 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
       attackReadyAtTick: entry.attackReadyAtTick,
       nextProjectileOrdinal: entry.nextProjectileOrdinal,
       roamingOrdinal: entry.roamingOrdinal,
+      ...(entry.repairPortId === undefined
+        ? {}
+        : { repairPortId: entry.repairPortId }),
+      ...(entry.repairArrivalTick === undefined
+        ? {}
+        : { repairArrivalTick: entry.repairArrivalTick }),
     }));
 
   const transportOperationalStates = [...state.transportOperationalStates]

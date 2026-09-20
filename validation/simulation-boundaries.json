@@ -46,7 +46,8 @@
     "src/simulation/VisibilityState.ts": "VISIBILITY",
     "src/simulation/WarshipCombat.ts": "NAVAL",
     "src/simulation/WarshipTargeting.ts": "NAVAL",
-    "src/simulation/Warships.ts": "NAVAL"
+    "src/simulation/Warships.ts": "NAVAL",
+    "src/simulation/WarshipRepair.ts": "NAVAL"
   },
   "crossOwnerImports": [
     {
@@ -699,15 +700,21 @@
     },
     {
       "from": "src/simulation/TickEngine.ts",
-      "to": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/WarshipRepair.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "TickEngine consumes Naval-owned autonomous target, pursuit, and leash-bounded roaming plans while preserving controller strategic-destination state."
+      "rationale": "TickEngine invokes the Naval-owned Warship/Port adapter around the shared vehicle-repair lifecycle in deterministic intent, movement-settlement, and service order."
     },
     {
       "from": "src/simulation/TickEngine.ts",
       "to": "src/simulation/Warships.ts",
       "classification": "ORCHESTRATION",
       "rationale": "TickEngine schedules the Naval-owned Warship production phase in deterministic authoritative tick order after Tank production."
+    },
+    {
+      "from": "src/simulation/TickEngine.ts",
+      "to": "src/simulation/WarshipTargeting.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "TickEngine consumes Naval-owned autonomous target, pursuit, and leash-bounded roaming plans while preserving controller strategic-destination state."
     },
     {
       "from": "src/simulation/TradeShips.ts",
@@ -836,22 +843,22 @@
       "rationale": "Warship gunfire reacquisition consumes Visibility-owned requester-relative lawful observation at each ready firing decision."
     },
     {
-      "from": "src/simulation/WarshipTargeting.ts",
+      "from": "src/simulation/WarshipRepair.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
-      "rationale": "Warship targeting derives lawful autonomous target and pursuit choices from current authoritative MatchState."
+      "rationale": "Warship repair evaluates current authoritative MatchState for Port eligibility, Warship health, assignment, and service state."
     },
     {
-      "from": "src/simulation/WarshipTargeting.ts",
-      "to": "src/simulation/Navigation.ts",
-      "classification": "SHARED_CONTRACT",
-      "rationale": "Warship targeting consumes the canonical deterministic navigation substrate for least-time Deep-Water engagement routing."
-    },
-    {
-      "from": "src/simulation/WarshipTargeting.ts",
-      "to": "src/simulation/TradeShips.ts",
+      "from": "src/simulation/WarshipRepair.ts",
+      "to": "src/simulation/MobileUnits.ts",
       "classification": "ORCHESTRATION",
-      "rationale": "Warship targeting probes the Economy-owned authoritative Trade Ship capture transition to determine legal capturability without duplicating voyage/cargo rules."
+      "rationale": "Warship repair invokes MobileUnits-owned route and movement primitives for automatic Port repair retreat."
+    },
+    {
+      "from": "src/simulation/WarshipRepair.ts",
+      "to": "src/simulation/RepairService.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship repair adapts Port/Warship-specific rules, health, and Deep-Water navigation into the shared vehicle-repair lifecycle rather than duplicating that lifecycle."
     },
     {
       "from": "src/simulation/Warships.ts",
@@ -894,6 +901,24 @@
       "to": "src/simulation/Structures.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Warship production and deployment read current Port structure state and its persisted designated dock."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/MatchState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Warship targeting derives lawful autonomous target and pursuit choices from current authoritative MatchState."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/Navigation.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Warship targeting consumes the canonical deterministic navigation substrate for least-time Deep-Water engagement routing."
+    },
+    {
+      "from": "src/simulation/WarshipTargeting.ts",
+      "to": "src/simulation/TradeShips.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Warship targeting probes the Economy-owned authoritative Trade Ship capture transition to determine legal capturability without duplicating voyage/cargo rules."
     }
   ]
 }

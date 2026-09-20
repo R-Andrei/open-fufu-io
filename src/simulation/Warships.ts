@@ -51,6 +51,8 @@ export interface WarshipOperationalState {
   readonly attackReadyAtTick: number;
   readonly nextProjectileOrdinal: number;
   readonly roamingOrdinal: number;
+  readonly repairPortId?: string;
+  readonly repairArrivalTick?: number;
 }
 
 export type WarshipProductionJobState =

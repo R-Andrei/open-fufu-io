@@ -106,6 +106,11 @@ import {
   warshipStrategicNavigationRoute,
   warshipTerrainMovementTiming,
 } from "./Warships";
+import {
+  advanceWarshipRepairIntentPhase,
+  advanceWarshipRepairPhase,
+  settleWarshipRepairMovementPhase,
+} from "./WarshipRepair";
 
 export interface SetTestMarkerAction {
   readonly type: "SET_TEST_MARKER";
@@ -694,6 +699,25 @@ function prepareWarshipMovementPhase(
     }
 
     let prepared = unit;
+    if (operational.repairPortId !== undefined) {
+      if (
+        operational.repairArrivalTick === undefined &&
+        prepared.route !== undefined
+      ) {
+        const timing = warshipTerrainMovementTiming(
+          state,
+          prepared.ownerId,
+          "DEEP_WATER",
+        );
+        if (timing === undefined) {
+          throw new Error(
+            "Deep Water must be traversable for Warship repair retreat",
+          );
+        }
+        movementWorkByUnitId[prepared.id] = timing.movementWorkPerTick;
+      }
+      continue;
+    }
     let observation = observationByOwner.get(unit.ownerId);
     if (observation === undefined) {
       observation = projectWarshipTargetObservation(state, unit.ownerId);
@@ -1598,7 +1622,8 @@ export class TickEngine {
       trainPrepared,
       prepareTradeShipRuntimePhase(trainPrepared, postLandState),
     );
-    const repairIntended = advanceTankRepairIntentPhase(tradePrepared);
+    const tankRepairIntended = advanceTankRepairIntentPhase(tradePrepared);
+    const repairIntended = advanceWarshipRepairIntentPhase(tankRepairIntended);
     const targetIntended = advanceTankTargetAcquisitionPhase(repairIntended);
     const tankPreparation = prepareTankMovementPhase(
       targetIntended,
@@ -1641,9 +1666,13 @@ export class TickEngine {
       tankStrategicSettled,
       warshipPreparation.strategicMoverIds,
     );
-    const repairSettled = settleTankRepairMovementPhase(
+    const tankRepairSettled = settleTankRepairMovementPhase(
       movementPrepared,
       strategicSettled,
+    );
+    const repairSettled = settleWarshipRepairMovementPhase(
+      movementPrepared,
+      tankRepairSettled,
     );
     const combatSnapshot = repairSettled;
     const combatResolved = advanceTankUnitCombatPhase(combatSnapshot);
@@ -1661,7 +1690,8 @@ export class TickEngine {
         ),
       "DEFER",
     );
-    const repaired = advanceTankRepairPhase(tradeSettled);
+    const tanksRepaired = advanceTankRepairPhase(tradeSettled);
+    const repaired = advanceWarshipRepairPhase(tanksRepaired);
     const tanksProduced = advanceTankProductionPhase(repaired);
     const produced = advanceWarshipProductionPhase(tanksProduced);
     const trainEconomicUpdate = settleFactoryTrainEconomicEvents(

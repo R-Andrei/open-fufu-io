@@ -22,6 +22,10 @@ import {
   warshipEffectiveGunDamage,
   warshipEffectiveGunRange,
 } from "./Warships";
+import {
+  warshipFastServiceUnitIds,
+  warshipOperationalDuringPortRepair,
+} from "./WarshipRepair";
 
 const WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND = 75;
 const WARSHIP_GUN_COOLDOWN_TICKS = 20;
@@ -64,6 +68,7 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
     MatchState["warshipOperationalStates"][number]
   >();
   const spawned = [];
+  const fastServiceUnitIds = warshipFastServiceUnitIds(state);
 
   for (const operational of [...state.warshipOperationalStates].sort((left, right) =>
     compareIds(left.unitId, right.unitId),
@@ -74,6 +79,12 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
       throw new Error(
         `Warship gunfire operational state has no deployed source: ${operational.unitId}`,
       );
+    }
+    if (
+      fastServiceUnitIds.has(source.id) &&
+      !warshipOperationalDuringPortRepair(state, source.ownerId)
+    ) {
+      continue;
     }
 
     let observation = observationByOwner.get(source.ownerId);
