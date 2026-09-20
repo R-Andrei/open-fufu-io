@@ -287,7 +287,7 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
           y: sourcePosition.y,
         }),
         speedCellsPerSecond: WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND,
-        damage: warshipEffectiveGunDamage(state, source.ownerId),
+        damage: warshipEffectiveGunDamage(state, source.ownerId, operational.rank),
         createdTick: state.tick,
       }),
     );
