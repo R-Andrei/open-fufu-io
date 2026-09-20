@@ -91,6 +91,7 @@
     "tests/TransportDestructionRuntime.test.ts",
     "tests/TransportRuntime.test.ts",
     "tests/ValidationBoundaryPolicy.test.ts",
+    "tests/WarshipAutonomousMovement.test.ts",
     "tests/WarshipCombatRuntime.test.ts",
     "tests/WarshipLifecycle.test.ts",
     "tests/WarshipProjectileImpact.test.ts",
