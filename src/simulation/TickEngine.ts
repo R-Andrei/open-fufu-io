@@ -93,6 +93,7 @@ import {
 import {
   resolveWarshipGunfireDecisions,
   resolveWarshipNavalProjectileImpacts,
+  resolveWarshipTradeShipCaptureDecisions,
   WARSHIP_NAVAL_GUN_PROFILE_ID,
 } from "./WarshipCombat";
 import {
@@ -1254,6 +1255,10 @@ function advanceWarshipGunfireAndProjectilePhase(
   postTankCombatState: MatchState,
 ): MatchState {
   const firingSnapshot = resolveWarshipGunfireDecisions(combatSnapshot);
+  const captureAppliedState = resolveWarshipTradeShipCaptureDecisions(
+    combatSnapshot,
+    postTankCombatState,
+  );
   const preExistingKeys = new Set(
     combatSnapshot.combatProjectiles.map(combatProjectileIdentityKey),
   );
@@ -1267,12 +1272,12 @@ function advanceWarshipGunfireAndProjectilePhase(
     ]),
   );
 
-  const immediateState = createProspectiveMatchState(postTankCombatState, {
+  const immediateState = createProspectiveMatchState(captureAppliedState, {
     combatProjectiles: Object.freeze([
-      ...postTankCombatState.combatProjectiles,
+      ...captureAppliedState.combatProjectiles,
       ...spawnedProjectiles,
     ]),
-    warshipOperationalStates: postTankCombatState.warshipOperationalStates.map(
+    warshipOperationalStates: captureAppliedState.warshipOperationalStates.map(
       (operational) => {
         const firing = firingOperationalByUnitId.get(operational.unitId);
         if (firing === undefined) return operational;

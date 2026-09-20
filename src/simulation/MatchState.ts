@@ -171,6 +171,33 @@ export interface TransportDestructionResult {
   readonly causeClass: TransportDestructionCauseClass;
 }
 
+export interface WarshipTradeShipCaptureFact {
+  readonly id: string;
+  readonly tick: number;
+  readonly capturingWarshipId: string;
+  readonly capturingFactionId: string;
+  readonly tradeShipId: string;
+  readonly originalOwnerId: string;
+  readonly previousHolderId: string;
+  readonly nextHolderId: string;
+  readonly firstHostileCapture: boolean;
+}
+
+export function warshipTradeShipCaptureFactId(
+  input: Readonly<{
+    tick: number;
+    capturingWarshipId: string;
+    tradeShipId: string;
+  }>,
+): string {
+  return JSON.stringify([
+    "WARSHIP_TRADE_SHIP_CAPTURE",
+    input.tick,
+    input.capturingWarshipId,
+    input.tradeShipId,
+  ]);
+}
+
 export interface MatchState extends FactoryTrainState {
   readonly seed: string;
   readonly tick: number;
@@ -184,6 +211,7 @@ export interface MatchState extends FactoryTrainState {
   readonly combatProjectiles: readonly HomingCombatProjectileState[];
   readonly transportOperationalStates: readonly TransportOperationalState[];
   readonly transportDestructionResults: readonly TransportDestructionResult[];
+  readonly warshipTradeShipCaptureFacts: readonly WarshipTradeShipCaptureFact[];
   readonly tradeVoyages: readonly TradeVoyageState[];
   readonly tradePortSchedulers: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs: readonly TradeRetiredPortEpochState[];
@@ -210,6 +238,7 @@ export interface MatchStateUpdate extends FactoryTrainStateUpdate {
   readonly combatProjectiles?: readonly HomingCombatProjectileState[];
   readonly transportOperationalStates?: readonly TransportOperationalState[];
   readonly transportDestructionResults?: readonly TransportDestructionResult[];
+  readonly warshipTradeShipCaptureFacts?: readonly WarshipTradeShipCaptureFact[];
   readonly tradeVoyages?: readonly TradeVoyageState[];
   readonly tradePortSchedulers?: readonly TradePortSchedulerState[];
   readonly tradeRetiredPortEpochs?: readonly TradeRetiredPortEpochState[];
@@ -1265,6 +1294,82 @@ function freezeWarshipOperationalStates(
   return Object.freeze(states);
 }
 
+function freezeWarshipTradeShipCaptureFacts(
+  entries: readonly WarshipTradeShipCaptureFact[],
+  factions: readonly MatchFactionState[],
+  stateTick: number,
+): readonly WarshipTradeShipCaptureFact[] {
+  if (!Array.isArray(entries)) {
+    throw new Error("warshipTradeShipCaptureFacts must be an array");
+  }
+  const factionIds = new Set(factions.map((faction) => faction.id));
+  const seen = new Set<string>();
+  const facts = entries.map((entry) => {
+    if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Warship Trade Ship capture fact must be an object");
+    }
+    for (const [label, value] of [
+      ["id", entry.id],
+      ["capturingWarshipId", entry.capturingWarshipId],
+      ["capturingFactionId", entry.capturingFactionId],
+      ["tradeShipId", entry.tradeShipId],
+      ["originalOwnerId", entry.originalOwnerId],
+      ["previousHolderId", entry.previousHolderId],
+      ["nextHolderId", entry.nextHolderId],
+    ] as const) {
+      if (typeof value !== "string" || value.length === 0) {
+        throw new Error(`Warship Trade Ship capture ${label} must be non-empty`);
+      }
+    }
+    assertNonNegativeSafeInteger(entry.tick, "Warship Trade Ship capture tick");
+    if (entry.tick > stateTick) {
+      throw new Error("Warship Trade Ship capture fact cannot be from a future tick");
+    }
+    if (seen.has(entry.id)) {
+      throw new Error(`duplicate Warship Trade Ship capture fact: ${entry.id}`);
+    }
+    seen.add(entry.id);
+    const expectedId = warshipTradeShipCaptureFactId(entry);
+    if (entry.id !== expectedId) {
+      throw new Error("Warship Trade Ship capture fact id is non-canonical");
+    }
+    if (
+      !factionIds.has(entry.capturingFactionId) ||
+      !factionIds.has(entry.originalOwnerId) ||
+      !factionIds.has(entry.previousHolderId) ||
+      !factionIds.has(entry.nextHolderId)
+    ) {
+      throw new Error("Warship Trade Ship capture fact references an unknown faction");
+    }
+    if (
+      entry.nextHolderId !== entry.capturingFactionId ||
+      entry.previousHolderId === entry.nextHolderId
+    ) {
+      throw new Error("Warship Trade Ship capture holder transition is invalid");
+    }
+    if (typeof entry.firstHostileCapture !== "boolean") {
+      throw new Error("Warship Trade Ship firstHostileCapture must be boolean");
+    }
+    return Object.freeze({
+      id: entry.id,
+      tick: entry.tick,
+      capturingWarshipId: entry.capturingWarshipId,
+      capturingFactionId: entry.capturingFactionId,
+      tradeShipId: entry.tradeShipId,
+      originalOwnerId: entry.originalOwnerId,
+      previousHolderId: entry.previousHolderId,
+      nextHolderId: entry.nextHolderId,
+      firstHostileCapture: entry.firstHostileCapture,
+    });
+  });
+  facts.sort(
+    (left, right) =>
+      left.tick - right.tick ||
+      compareIds(left.id, right.id),
+  );
+  return Object.freeze(facts);
+}
+
 const TRANSPORT_DESTRUCTION_CAUSE_CLASSES =
   new Set<TransportDestructionCauseClass>([
     "NAVAL_GUNFIRE",
@@ -1480,6 +1585,13 @@ function createState(
     update.tradePendingSignedFacts ?? previous.tradePendingSignedFacts ?? [],
     factions,
   );
+  const warshipTradeShipCaptureFacts = freezeWarshipTradeShipCaptureFacts(
+    update.warshipTradeShipCaptureFacts ??
+      previous.warshipTradeShipCaptureFacts ??
+      [],
+    factions,
+    tick,
+  );
   const factoryTrains = materializeFactoryTrainState(
     previous,
     update,
@@ -1523,6 +1635,7 @@ function createState(
     combatProjectiles,
     transportOperationalStates,
     transportDestructionResults,
+    warshipTradeShipCaptureFacts,
     tradeVoyages,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
@@ -1629,6 +1742,7 @@ function createEmptyInitialMatchState(
     combatProjectiles: Object.freeze([]),
     transportOperationalStates: Object.freeze([]),
     transportDestructionResults: Object.freeze([]),
+    warshipTradeShipCaptureFacts: Object.freeze([]),
     tradeVoyages: Object.freeze([]),
     tradePortSchedulers: Object.freeze([]),
     tradeRetiredPortEpochs: Object.freeze([]),
@@ -1874,6 +1988,19 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     ownerId: entry.ownerId,
     componentsFfy: [...entry.componentsFfy],
   }));
+  const warshipTradeShipCaptureFacts = state.warshipTradeShipCaptureFacts.map(
+    (entry) => ({
+      id: entry.id,
+      tick: entry.tick,
+      capturingWarshipId: entry.capturingWarshipId,
+      capturingFactionId: entry.capturingFactionId,
+      tradeShipId: entry.tradeShipId,
+      originalOwnerId: entry.originalOwnerId,
+      previousHolderId: entry.previousHolderId,
+      nextHolderId: entry.nextHolderId,
+      firstHostileCapture: entry.firstHostileCapture,
+    }),
+  );
   const factoryTrains = serializeFactoryTrainState(state);
 
   const tankProductionJobs = [...state.tankProductionJobs]
@@ -2106,6 +2233,7 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
     combatProjectiles,
     transportOperationalStates,
     transportDestructionResults,
+    warshipTradeShipCaptureFacts,
     tradePortSchedulers,
     tradeRetiredPortEpochs,
     tradePendingSignedFacts,

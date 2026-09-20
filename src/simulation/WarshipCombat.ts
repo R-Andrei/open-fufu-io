@@ -5,8 +5,10 @@ import {
 } from "./CombatProjectiles";
 import {
   createProspectiveMatchState,
+  warshipTradeShipCaptureFactId,
   type MatchState,
 } from "./MatchState";
+import { tryCaptureTradeShip } from "./TradeShips";
 import { applyTransportDamage } from "./Transports";
 import {
   createProjectileImpactResolvedEvent,
@@ -29,6 +31,7 @@ import {
 
 const WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND = 75;
 const WARSHIP_GUN_COOLDOWN_TICKS = 20;
+const WARSHIP_TRADE_CAPTURE_RANGE_CELLS = 5;
 export const WARSHIP_NAVAL_GUN_PROFILE_ID = "WARSHIP_NAVAL_GUN" as const;
 
 function compareIds(left: string, right: string): number {
@@ -50,6 +53,119 @@ function cellWithinExactRange(
     distanceSquared * range.denominator * range.denominator <=
     range.numerator * range.numerator
   );
+}
+
+export function resolveWarshipTradeShipCaptureDecisions(
+  admissionState: MatchState,
+  currentState: MatchState = admissionState,
+): MatchState {
+  if (admissionState.tick !== currentState.tick) {
+    throw new Error("Warship capture admission/current state tick mismatch");
+  }
+  const unitsById = new Map(
+    admissionState.mobileUnits.map((unit) => [unit.id, unit]),
+  );
+  const observationByOwner = new Map<
+    string,
+    ReturnType<typeof projectWarshipTargetObservation>
+  >();
+  const fastServiceUnitIds = warshipFastServiceUnitIds(admissionState);
+  const admissions: Array<Readonly<{
+    capturingWarshipId: string;
+    capturingFactionId: string;
+    tradeShipId: string;
+  }>> = [];
+
+  for (const operational of [...admissionState.warshipOperationalStates].sort(
+    (left, right) => compareIds(left.unitId, right.unitId),
+  )) {
+    const source = unitsById.get(operational.unitId);
+    if (source === undefined || source.type !== "WARSHIP") {
+      throw new Error(
+        `Warship capture operational state has no deployed source: ${operational.unitId}`,
+      );
+    }
+    if (
+      fastServiceUnitIds.has(source.id) &&
+      !warshipOperationalDuringPortRepair(admissionState, source.ownerId)
+    ) {
+      continue;
+    }
+
+    let observation = observationByOwner.get(source.ownerId);
+    if (observation === undefined) {
+      observation = projectWarshipTargetObservation(
+        admissionState,
+        source.ownerId,
+      );
+      observationByOwner.set(source.ownerId, observation);
+    }
+    const selected = selectWarshipAutonomousTarget(admissionState, {
+      unitId: source.id,
+      observedUnitIds: observation.observedUnitIds,
+    });
+    if (selected?.targetClass !== "TRADE_SHIP") continue;
+    const target = unitsById.get(selected.unitId);
+    if (
+      target === undefined ||
+      !cellWithinExactRange(
+        admissionState,
+        source.cellId,
+        target.cellId,
+        Object.freeze({
+          numerator: BigInt(WARSHIP_TRADE_CAPTURE_RANGE_CELLS),
+          denominator: 1n,
+        }),
+      )
+    ) {
+      continue;
+    }
+    admissions.push(
+      Object.freeze({
+        capturingWarshipId: source.id,
+        capturingFactionId: source.ownerId,
+        tradeShipId: target.id,
+      }),
+    );
+  }
+
+  let current = currentState;
+  const successfullyCapturedTradeShipIds = new Set<string>();
+  for (const admission of admissions.sort((left, right) =>
+    compareIds(left.capturingWarshipId, right.capturingWarshipId),
+  )) {
+    if (successfullyCapturedTradeShipIds.has(admission.tradeShipId)) continue;
+    const captured = tryCaptureTradeShip(current, {
+      unitId: admission.tradeShipId,
+      capturingFactionId: admission.capturingFactionId,
+    });
+    if (!captured.ok) continue;
+
+    successfullyCapturedTradeShipIds.add(admission.tradeShipId);
+    const capture = captured.capture;
+    const fact = Object.freeze({
+      id: warshipTradeShipCaptureFactId({
+        tick: admissionState.tick,
+        capturingWarshipId: admission.capturingWarshipId,
+        tradeShipId: capture.unitId,
+      }),
+      tick: admissionState.tick,
+      capturingWarshipId: admission.capturingWarshipId,
+      capturingFactionId: admission.capturingFactionId,
+      tradeShipId: capture.unitId,
+      originalOwnerId: capture.originalOwnerId,
+      previousHolderId: capture.previousHolderId,
+      nextHolderId: capture.nextHolderId,
+      firstHostileCapture: capture.firstHostileCapture,
+    });
+    current = createProspectiveMatchState(captured.state, {
+      warshipTradeShipCaptureFacts: Object.freeze([
+        ...captured.state.warshipTradeShipCaptureFacts,
+        fact,
+      ]),
+    });
+  }
+  return current;
 }
 
 /**

@@ -838,6 +838,12 @@
     },
     {
       "from": "src/simulation/WarshipCombat.ts",
+      "to": "src/simulation/TradeShips.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "Naval capture orchestration commits an admitted Warship capture through the Economy-owned authoritative Trade Ship holder/routing/economic transition rather than duplicating Trade lifecycle semantics."
+    },
+    {
+      "from": "src/simulation/WarshipCombat.ts",
       "to": "src/simulation/VisibilityState.ts",
       "classification": "ORCHESTRATION",
       "rationale": "Warship gunfire reacquisition consumes Visibility-owned requester-relative lawful observation at each ready firing decision."
