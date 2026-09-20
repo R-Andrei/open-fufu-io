@@ -3,7 +3,12 @@ import type {
   OriginView,
   StructureType,
 } from "../core/controller/ControllerApi";
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import {
+  materializeCompiledCapRule,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
 import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
@@ -1268,10 +1273,61 @@ function freezeWarshipStrategicLauncherState(
   });
 }
 
+function warshipTerritorialContactCount(
+  ownership: readonly (string | null)[],
+  factions: readonly MatchFactionState[],
+  map: SimulationMap,
+  ownerId: string,
+): number {
+  const active = new Set(
+    factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < ownership.length; cellId += 1) {
+    if (ownership[cellId] !== ownerId) continue;
+    for (const neighbor of map.cardinalNeighbors(cellId)) {
+      const neighborOwner = ownership[neighbor] ?? null;
+      if (
+        neighborOwner !== null &&
+        neighborOwner !== ownerId &&
+        active.has(neighborOwner)
+      ) {
+        contacts.add(neighborOwner);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+function warshipRuleDynamicStateForMaterialization(
+  ownership: readonly (string | null)[],
+  structures: readonly PersistentStructureState[],
+  factions: readonly MatchFactionState[],
+  map: SimulationMap,
+  owner: MatchFactionState,
+): RuleDynamicState {
+  return Object.freeze({
+    ownedPersistentStructureCount: structures.filter(
+      (structure) => structure.ownerId === owner.id,
+    ).length,
+    territorialContactCount: warshipTerritorialContactCount(
+      ownership,
+      factions,
+      map,
+      owner.id,
+    ),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
 function freezeWarshipOperationalStates(
   entries: readonly WarshipOperationalState[],
   mobileUnits: readonly MobileUnitState[],
   factions: readonly MatchFactionState[],
+  structures: readonly PersistentStructureState[],
+  ownership: readonly (string | null)[],
   map: SimulationMap,
 ): readonly WarshipOperationalState[] {
   if (!Array.isArray(entries)) {
@@ -1342,6 +1398,29 @@ function freezeWarshipOperationalStates(
     const owner = factions.find((faction) => faction.id === unit.ownerId);
     if (owner === undefined) {
       throw new Error(`Warship owner is unknown: ${unit.ownerId}`);
+    }
+    const effectiveRankCap = materializeCompiledCapRule(
+      3,
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MAX_RANK",
+      { kind: "UNIT", unit: "WARSHIP" },
+      warshipRuleDynamicStateForMaterialization(
+        ownership,
+        structures,
+        factions,
+        map,
+        owner,
+      ),
+    );
+    if (
+      !Number.isSafeInteger(effectiveRankCap) ||
+      effectiveRankCap < 1
+    ) {
+      throw new Error("Warship effective rank cap must be a positive safe integer");
+    }
+    if (entry.rank > effectiveRankCap) {
+      throw new Error("Warship rank exceeds effective rank cap");
     }
     const p29Enabled = owner.rules.customDomains.some(
       (custom) => custom.domain === "WARSHIP_STRATEGIC_LAUNCHER",
@@ -1802,6 +1881,8 @@ function createState(
     update.warshipOperationalStates ?? previous.warshipOperationalStates ?? [],
     mobileUnits.mobileUnits,
     factions,
+    structures,
+    ownership,
     previous.map,
   );
   const transportOperationalStates = freezeTransportOperationalStates(
