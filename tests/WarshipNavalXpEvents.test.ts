@@ -101,7 +101,7 @@ function addTransport(
     {
       ownerId,
       type: "TRANSPORT_SHIP",
-      movementClass: "NAVAL",
+      movementClass: "TRANSPORT",
       cellId,
     },
   );
