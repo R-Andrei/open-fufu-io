@@ -96,6 +96,7 @@
     "tests/WarshipCapture.test.ts",
     "tests/WarshipCombatRuntime.test.ts",
     "tests/WarshipLifecycle.test.ts",
+    "tests/WarshipNavalXpEvents.test.ts",
     "tests/WarshipProgression.test.ts",
     "tests/WarshipProgressionIntegration.test.ts",
     "tests/WarshipProjectileImpact.test.ts",
