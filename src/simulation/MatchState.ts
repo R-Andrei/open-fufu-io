@@ -3,7 +3,12 @@ import type {
   OriginView,
   StructureType,
 } from "../core/controller/ControllerApi";
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
+import {
+  materializeCompiledCapRule,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
 import type { DirectRevealRecord } from "../core/visibility/TacticalVisibility";
 import { materializeFfyBalance, STARTING_FFY } from "./Economy";
 import {
@@ -59,6 +64,7 @@ import type { TankOperationalState, TankProductionJobState } from "./Tanks";
 import type {
   WarshipOperationalState,
   WarshipProductionJobState,
+  WarshipStrategicLauncherState,
 } from "./Warships";
 export type { TrainServiceRuntimeState } from "./FactoryTrainState";
 
@@ -1203,9 +1209,125 @@ function freezeTankOperationalStates(
   return Object.freeze(states);
 }
 
+function freezeWarshipStrategicLauncherState(
+  launcher: WarshipStrategicLauncherState | undefined,
+  required: boolean,
+  expectedCapacity: number,
+): WarshipStrategicLauncherState | undefined {
+  if (launcher === undefined) {
+    if (required) {
+      throw new Error("P29 Warship is missing strategic launcher state");
+    }
+    return undefined;
+  }
+  if (!required) {
+    throw new Error("non-P29 Warship cannot carry strategic launcher state");
+  }
+  if (
+    launcher === null ||
+    typeof launcher !== "object" ||
+    Array.isArray(launcher)
+  ) {
+    throw new Error("Warship strategic launcher state must be an object");
+  }
+  assertNonNegativeSafeInteger(
+    launcher.acceptedLaunchCount,
+    "Warship acceptedLaunchCount",
+  );
+  if (!Array.isArray(launcher.chargeSlots)) {
+    throw new Error("Warship strategic launcher chargeSlots must be an array");
+  }
+  if (launcher.chargeSlots.length !== expectedCapacity) {
+    throw new Error(
+      "Warship strategic launcher charge capacity must equal effective Silo level",
+    );
+  }
+  const chargeSlots = launcher.chargeSlots.map((slot, index) => {
+    if (slot === null || typeof slot !== "object" || Array.isArray(slot)) {
+      throw new Error("Warship strategic launcher charge slot must be an object");
+    }
+    if (slot.slotId !== index) {
+      throw new Error(
+        "Warship strategic launcher slot IDs must be contiguous from zero",
+      );
+    }
+    if (slot.state === "READY") {
+      return Object.freeze({ slotId: slot.slotId, state: "READY" as const });
+    }
+    if (slot.state !== "RECHARGING") {
+      throw new Error("Warship strategic launcher charge state is invalid");
+    }
+    assertNonNegativeSafeInteger(
+      slot.readyAtTick,
+      "Warship strategic launcher readyAtTick",
+    );
+    return Object.freeze({
+      slotId: slot.slotId,
+      state: "RECHARGING" as const,
+      readyAtTick: slot.readyAtTick,
+    });
+  });
+  return Object.freeze({
+    acceptedLaunchCount: launcher.acceptedLaunchCount,
+    chargeSlots: Object.freeze(chargeSlots),
+  });
+}
+
+function warshipTerritorialContactCount(
+  ownership: readonly (string | null)[],
+  factions: readonly MatchFactionState[],
+  map: SimulationMap,
+  ownerId: string,
+): number {
+  const active = new Set(
+    factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < ownership.length; cellId += 1) {
+    if (ownership[cellId] !== ownerId) continue;
+    for (const neighbor of map.cardinalNeighbors(cellId)) {
+      const neighborOwner = ownership[neighbor] ?? null;
+      if (
+        neighborOwner !== null &&
+        neighborOwner !== ownerId &&
+        active.has(neighborOwner)
+      ) {
+        contacts.add(neighborOwner);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+function warshipRuleDynamicStateForMaterialization(
+  ownership: readonly (string | null)[],
+  structures: readonly PersistentStructureState[],
+  factions: readonly MatchFactionState[],
+  map: SimulationMap,
+  owner: MatchFactionState,
+): RuleDynamicState {
+  return Object.freeze({
+    ownedPersistentStructureCount: structures.filter(
+      (structure) => structure.ownerId === owner.id,
+    ).length,
+    territorialContactCount: warshipTerritorialContactCount(
+      ownership,
+      factions,
+      map,
+      owner.id,
+    ),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
 function freezeWarshipOperationalStates(
   entries: readonly WarshipOperationalState[],
   mobileUnits: readonly MobileUnitState[],
+  factions: readonly MatchFactionState[],
+  structures: readonly PersistentStructureState[],
+  ownership: readonly (string | null)[],
   map: SimulationMap,
 ): readonly WarshipOperationalState[] {
   if (!Array.isArray(entries)) {
@@ -1263,6 +1385,54 @@ function freezeWarshipOperationalStates(
       "Warship nextProjectileOrdinal",
     );
     assertNonNegativeSafeInteger(entry.roamingOrdinal, "Warship roamingOrdinal");
+    if (!Number.isSafeInteger(entry.rank) || entry.rank < 1) {
+      throw new Error("Warship rank must be a positive safe integer");
+    }
+    if (
+      !Number.isSafeInteger(entry.navalXp) ||
+      entry.navalXp < 0 ||
+      entry.navalXp >= 100
+    ) {
+      throw new Error("Warship carried Naval XP must be in 0..99");
+    }
+    const owner = factions.find((faction) => faction.id === unit.ownerId);
+    if (owner === undefined) {
+      throw new Error(`Warship owner is unknown: ${unit.ownerId}`);
+    }
+    const effectiveRankCap = materializeCompiledCapRule(
+      3,
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MAX_RANK",
+      { kind: "UNIT", unit: "WARSHIP" },
+      warshipRuleDynamicStateForMaterialization(
+        ownership,
+        structures,
+        factions,
+        map,
+        owner,
+      ),
+    );
+    if (
+      !Number.isSafeInteger(effectiveRankCap) ||
+      effectiveRankCap < 1
+    ) {
+      throw new Error("Warship effective rank cap must be a positive safe integer");
+    }
+    if (entry.rank > effectiveRankCap) {
+      throw new Error("Warship rank exceeds effective rank cap");
+    }
+    const p29Enabled = owner.rules.customDomains.some(
+      (custom) => custom.domain === "WARSHIP_STRATEGIC_LAUNCHER",
+    );
+    if (p29Enabled && entry.rank > 5) {
+      throw new Error("P29 Warship rank must map to Missile Silo level 1..5");
+    }
+    const strategicLauncher = freezeWarshipStrategicLauncherState(
+      entry.strategicLauncher,
+      p29Enabled,
+      entry.rank,
+    );
     if (
       entry.repairPortId !== undefined &&
       (typeof entry.repairPortId !== "string" || entry.repairPortId.length === 0)
@@ -1281,6 +1451,9 @@ function freezeWarshipOperationalStates(
     return Object.freeze({
       unitId: entry.unitId,
       health: freezeWarshipHealth(entry.health),
+      rank: entry.rank,
+      navalXp: entry.navalXp,
+      ...(strategicLauncher === undefined ? {} : { strategicLauncher }),
       operatingAnchorCellId: entry.operatingAnchorCellId,
       attackReadyAtTick: entry.attackReadyAtTick,
       nextProjectileOrdinal: entry.nextProjectileOrdinal,
@@ -1707,6 +1880,9 @@ function createState(
   const warshipOperationalStates = freezeWarshipOperationalStates(
     update.warshipOperationalStates ?? previous.warshipOperationalStates ?? [],
     mobileUnits.mobileUnits,
+    factions,
+    structures,
+    ownership,
     previous.map,
   );
   const transportOperationalStates = freezeTransportOperationalStates(
@@ -2219,6 +2395,24 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         numerator: entry.health.numerator.toString(),
         denominator: entry.health.denominator.toString(),
       },
+      rank: entry.rank,
+      navalXp: entry.navalXp,
+      ...(entry.strategicLauncher === undefined
+        ? {}
+        : {
+            strategicLauncher: {
+              acceptedLaunchCount: entry.strategicLauncher.acceptedLaunchCount,
+              chargeSlots: entry.strategicLauncher.chargeSlots.map((slot) =>
+                slot.state === "READY"
+                  ? { slotId: slot.slotId, state: "READY" as const }
+                  : {
+                      slotId: slot.slotId,
+                      state: "RECHARGING" as const,
+                      readyAtTick: slot.readyAtTick,
+                    },
+              ),
+            },
+          }),
       operatingAnchorCellId: entry.operatingAnchorCellId,
       attackReadyAtTick: entry.attackReadyAtTick,
       nextProjectileOrdinal: entry.nextProjectileOrdinal,

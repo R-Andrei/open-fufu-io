@@ -418,6 +418,8 @@ describe("P32 Transport ordinary Port repair adapter", () => {
         {
           unitId: warshipId,
           health: { numerator: 500n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 6,
           attackReadyAtTick: transportState.tick,
           nextProjectileOrdinal: 0,
@@ -675,6 +677,8 @@ describe("P32 Transport ordinary Port repair adapter", () => {
           {
             unitId: warshipId,
             health: { numerator: 500n, denominator: 1n },
+            rank: 1,
+            navalXp: 0,
             operatingAnchorCellId: 6,
             attackReadyAtTick: 0,
             nextProjectileOrdinal: 0,
@@ -750,6 +754,8 @@ describe("P32 Transport ordinary Port repair adapter", () => {
         {
           unitId: sourceId,
           health: { numerator: 500n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 6,
           attackReadyAtTick: 0,
           nextProjectileOrdinal: 0,
@@ -760,6 +766,8 @@ describe("P32 Transport ordinary Port repair adapter", () => {
         {
           unitId: targetId,
           health: { numerator: 1_000n, denominator: 1n },
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: 7,
           attackReadyAtTick: 1_000,
           nextProjectileOrdinal: 0,

@@ -92,6 +92,8 @@ function addWarship(
           numerator: input.health ?? 1_000n,
           denominator: 1n,
         }),
+        rank: 1,
+        navalXp: 0,
         operatingAnchorCellId: input.cellId,
         attackReadyAtTick: state.tick,
         nextProjectileOrdinal: input.nextProjectileOrdinal ?? 0,

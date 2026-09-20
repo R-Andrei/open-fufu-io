@@ -111,6 +111,7 @@ import {
 } from "./TransportRepair";
 import {
   advanceWarshipProductionPhase,
+  advanceWarshipStrategicLauncherPhase,
   warshipStrategicNavigationRoute,
   warshipTerrainMovementTiming,
 } from "./Warships";
@@ -1640,13 +1641,14 @@ export class TickEngine {
       hostilityGrace,
       directReveals,
     });
+    const launcherAdvanced = advanceWarshipStrategicLauncherPhase(advanced);
     const factoryTrainUpdate = prepareFactoryTrainRuntimePhase(
-      advanced,
+      launcherAdvanced,
       nextTick,
       structurePhase.events,
     );
     const trainPrepared = createProspectiveMatchState(
-      advanced,
+      launcherAdvanced,
       factoryTrainUpdate,
     );
     const tradePrepared = createProspectiveMatchState(

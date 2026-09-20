@@ -1,4 +1,5 @@
 import type {
+  StrategicWeaponType,
   StructureAcquisitionPath,
   StructureLevel,
   StructureType,
@@ -630,6 +631,43 @@ export function effectiveStructureRechargeTicks(
     ruleDynamicState(state, ownerId),
   );
   return finalizePositiveTicks(effective, `${type} recharge time`);
+}
+
+export interface EffectiveMissileSiloStrategicProfile {
+  readonly level: StructureLevel;
+  readonly weaponAccess: readonly StrategicWeaponType[];
+  readonly chargeCapacity: number;
+  readonly rechargeTicks: number;
+}
+
+function missileSiloWeaponAccess(
+  level: StructureLevel,
+): readonly StrategicWeaponType[] {
+  if (level <= 2) return Object.freeze(["ATOM_BOMB"]);
+  if (level <= 4) {
+    return Object.freeze(["ATOM_BOMB", "HYDROGEN_BOMB"]);
+  }
+  return Object.freeze(["ATOM_BOMB", "HYDROGEN_BOMB", "MIRV"]);
+}
+
+export function effectiveMissileSiloStrategicProfile(
+  state: MatchState,
+  ownerId: string,
+  level: StructureLevel,
+): EffectiveMissileSiloStrategicProfile {
+  if (!isStructureLevel(level)) {
+    throw new Error(`invalid Missile Silo strategic level: ${String(level)}`);
+  }
+  return Object.freeze({
+    level,
+    weaponAccess: missileSiloWeaponAccess(level),
+    chargeCapacity: level,
+    rechargeTicks: effectiveStructureRechargeTicks(
+      state,
+      ownerId,
+      "MISSILE_SILO",
+    ),
+  });
 }
 
 function upgradeAllowed(

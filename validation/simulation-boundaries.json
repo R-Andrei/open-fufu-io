@@ -47,6 +47,7 @@
     "src/simulation/Transports.ts": "NAVAL",
     "src/simulation/VisibilityState.ts": "VISIBILITY",
     "src/simulation/WarshipCombat.ts": "NAVAL",
+    "src/simulation/WarshipProgression.ts": "NAVAL",
     "src/simulation/WarshipRepair.ts": "NAVAL",
     "src/simulation/Warships.ts": "NAVAL",
     "src/simulation/WarshipTargeting.ts": "NAVAL"

@@ -122,6 +122,8 @@ function addWarship(
       {
         unitId: created.unit.id,
         health: { numerator: health, denominator: 1n },
+        rank: 1,
+        navalXp: 0,
         operatingAnchorCellId: cellId,
         attackReadyAtTick: state.tick,
         nextProjectileOrdinal: 0,

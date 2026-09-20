@@ -1,3 +1,4 @@
+import { factionRelationBetween } from "../core/FactionRelations";
 import { reducedRational } from "../core/rules/RuleComposition";
 import {
   createHomingCombatProjectile,
@@ -23,6 +24,7 @@ import {
 } from "./WarshipTargeting";
 import { projectWarshipTargetObservation } from "./VisibilityState";
 import {
+  applyWarshipNavalXp,
   warshipEffectiveGunDamage,
   warshipEffectiveGunRange,
 } from "./Warships";
@@ -32,10 +34,53 @@ import { warshipOperationalDuringPortRepair } from "./WarshipRepair";
 const WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND = 75;
 const WARSHIP_GUN_COOLDOWN_TICKS = 20;
 const WARSHIP_TRADE_CAPTURE_RANGE_CELLS = 5;
+const WARSHIP_DESTRUCTION_NAVAL_XP = 100;
+const TRANSPORT_DESTRUCTION_NAVAL_XP = 10;
+const TRADE_SHIP_CAPTURE_NAVAL_XP = 4;
 export const WARSHIP_NAVAL_GUN_PROFILE_ID = "WARSHIP_NAVAL_GUN" as const;
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function factionIdentity(
+  state: MatchState,
+  factionId: string,
+): Readonly<{ factionId: string; fixedTeamId?: string }> | undefined {
+  const faction = state.factions.find((candidate) => candidate.id === factionId);
+  if (faction === undefined) return undefined;
+  return Object.freeze({
+    factionId: faction.id,
+    ...(faction.fixedTeamId === undefined
+      ? {}
+      : { fixedTeamId: faction.fixedTeamId }),
+  });
+}
+
+function awardWarshipNavalXpForHostileOccurrence(
+  state: MatchState,
+  sourceUnitId: string,
+  sourceOwnerId: string,
+  targetOwnerId: string,
+  awardedXp: number,
+): MatchState {
+  const source = state.mobileUnits.find(
+    (unit) =>
+      unit.id === sourceUnitId &&
+      unit.type === "WARSHIP" &&
+      unit.ownerId === sourceOwnerId,
+  );
+  if (source === undefined) return state;
+  const sourceIdentity = factionIdentity(state, sourceOwnerId);
+  const targetIdentity = factionIdentity(state, targetOwnerId);
+  if (
+    sourceIdentity === undefined ||
+    targetIdentity === undefined ||
+    factionRelationBetween(sourceIdentity, targetIdentity) !== "ENEMY"
+  ) {
+    return state;
+  }
+  return applyWarshipNavalXp(state, sourceUnitId, awardedXp);
 }
 
 function cellWithinExactRange(
@@ -177,9 +222,16 @@ export function resolveWarshipTradeShipCapturePhase(
       nextHolderId: capture.nextHolderId,
       firstHostileCapture: capture.firstHostileCapture,
     });
-    current = createProspectiveMatchState(captured.state, {
+    const awardedCaptureState = awardWarshipNavalXpForHostileOccurrence(
+      captured.state,
+      admission.capturingWarshipId,
+      admission.capturingFactionId,
+      capture.previousHolderId,
+      TRADE_SHIP_CAPTURE_NAVAL_XP,
+    );
+    current = createProspectiveMatchState(awardedCaptureState, {
       warshipTradeShipCaptureFacts: Object.freeze([
-        ...captured.state.warshipTradeShipCaptureFacts,
+        ...awardedCaptureState.warshipTradeShipCaptureFacts,
         fact,
       ]),
     });
@@ -287,7 +339,7 @@ export function resolveWarshipGunfireDecisions(state: MatchState): MatchState {
           y: sourcePosition.y,
         }),
         speedCellsPerSecond: WARSHIP_PROJECTILE_SPEED_CELLS_PER_SECOND,
-        damage: warshipEffectiveGunDamage(state, source.ownerId),
+        damage: warshipEffectiveGunDamage(state, source.ownerId, operational.rank),
         createdTick: state.tick,
       }),
     );
@@ -448,6 +500,20 @@ export function resolveWarshipProjectileImpacts(
       operationalStates = operationalStates.filter(
         (entry) => entry.unitId !== target.id,
       );
+      const postDestructionState = createProspectiveMatchState(state, {
+        mobileUnits: Object.freeze(mobileUnits),
+        warshipOperationalStates: Object.freeze(operationalStates),
+      });
+      const awardedDestructionState =
+        awardWarshipNavalXpForHostileOccurrence(
+          postDestructionState,
+          impact.sourceUnitId,
+          impact.sourceOwnerId,
+          target.ownerId,
+          WARSHIP_DESTRUCTION_NAVAL_XP,
+        );
+      mobileUnits = [...awardedDestructionState.mobileUnits];
+      operationalStates = [...awardedDestructionState.warshipOperationalStates];
       continue;
     }
 
@@ -522,6 +588,13 @@ export function resolveWarshipNavalProjectileImpacts(
       events.push(impactEvent);
 
       if (damaged.destructionResult !== null) {
+        current = awardWarshipNavalXpForHostileOccurrence(
+          current,
+          impact.sourceUnitId,
+          impact.sourceOwnerId,
+          target.ownerId,
+          TRANSPORT_DESTRUCTION_NAVAL_XP,
+        );
         events.push(
           createUnitDestroyedEvent({
             id: warshipProjectileEventId("DESTROYED", current.tick, impact),

@@ -84,6 +84,8 @@ function addWarship(
         Object.freeze({
           unitId: unit.id,
           health: Object.freeze({ numerator: 1_000n, denominator: 1n }),
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: input.cellId,
           attackReadyAtTick: state.tick,
           nextProjectileOrdinal: 0,

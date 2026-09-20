@@ -93,6 +93,8 @@ function addUnit(
             {
               unitId: created.unit.id,
               health: { numerator: 1_000n, denominator: 1n },
+              rank: 1,
+              navalXp: 0,
               operatingAnchorCellId:
                 input.operatingAnchorCellId ?? input.cellId,
               attackReadyAtTick: state.tick,
