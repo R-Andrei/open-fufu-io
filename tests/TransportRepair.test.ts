@@ -726,16 +726,15 @@ describe("P32 Transport ordinary Port repair adapter", () => {
         cellId: 6,
       },
     );
-    state = createProspectiveMatchState(state, {
-      mobileUnits: sourceCreated.mobileUnits,
-      nextMobileUnitOrdinal: sourceCreated.nextMobileUnitOrdinal,
-    });
     const sourceId = sourceCreated.unit.id;
 
     const targetCreated = createMobileUnit(
       state.map,
       ownerIds,
-      state,
+      {
+        mobileUnits: sourceCreated.mobileUnits,
+        nextMobileUnitOrdinal: sourceCreated.nextMobileUnitOrdinal,
+      },
       {
         ownerId: "beta",
         type: "WARSHIP",
