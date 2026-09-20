@@ -26,6 +26,10 @@ import {
 } from "./MobileUnits";
 import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
 import { removePopulation } from "./Population";
+import {
+  awardWarshipNavalXp,
+  warshipRankHealthScale,
+} from "./WarshipProgression";
 import type { SimulationTerrain } from "./SimulationMap";
 import type { PersistentStructureState } from "./Structures";
 
@@ -47,6 +51,8 @@ export interface WarshipExactDamage {
 export interface WarshipOperationalState {
   readonly unitId: string;
   readonly health: WarshipExactHealth;
+  readonly rank: number;
+  readonly navalXp: number;
   readonly operatingAnchorCellId: number;
   readonly attackReadyAtTick: number;
   readonly nextProjectileOrdinal: number;
@@ -260,9 +266,65 @@ export function warshipEffectiveGunRange(
   });
 }
 
+export function warshipEffectiveRankCap(
+  state: MatchState,
+  ownerId: string,
+): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const cap = materializeCompiledCapRule(
+    3,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_MAX_RANK",
+    { kind: "UNIT", unit: "WARSHIP" },
+    ruleDynamicState(state, ownerId),
+  );
+  if (!Number.isSafeInteger(cap) || cap < 1) {
+    throw new Error("Warship maximum rank must resolve to a positive safe integer");
+  }
+  return cap;
+}
+
+export function warshipEffectiveMaxHealth(
+  state: MatchState,
+  ownerId: string,
+  rank: number,
+): WarshipExactHealth {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MAX_HEALTH",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MAX_HEALTH,
+    terms,
+  );
+  const rankScale = warshipRankHealthScale(rank);
+  const health = reducedRational(
+    BASE_WARSHIP_MAX_HEALTH * scale.numerator * rankScale.numerator,
+    scale.denominator * rankScale.denominator,
+  );
+  if (health.numerator <= 0n || health.denominator <= 0n) {
+    throw new Error("Warship maximum health must resolve to a positive value");
+  }
+  return Object.freeze({
+    numerator: health.numerator,
+    denominator: health.denominator,
+  });
+}
+
 export function warshipEffectiveGunDamage(
   state: MatchState,
   ownerId: string,
+  rank = 1,
 ): WarshipExactDamage {
   const owner = state.factions.find((faction) => faction.id === ownerId);
   if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
@@ -280,9 +342,10 @@ export function warshipEffectiveGunDamage(
     RULE_AXIS_REGISTRY.UNIT_DAMAGE,
     terms,
   );
+  const rankScale = warshipRankHealthScale(rank);
   const damage = reducedRational(
-    BASE_WARSHIP_GUN_DAMAGE * scale.numerator,
-    scale.denominator,
+    BASE_WARSHIP_GUN_DAMAGE * scale.numerator * rankScale.numerator,
+    scale.denominator * rankScale.denominator,
   );
   if (damage.numerator < 0n || damage.denominator <= 0n) {
     throw new Error("Warship gun damage must resolve to a non-negative value");
@@ -617,6 +680,81 @@ export function trySetWarshipStrategicDestination(
 
 
 
+export function applyWarshipNavalXp(
+  state: MatchState,
+  unitId: string,
+  awardedXp: number,
+): MatchState {
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    throw new Error("Warship Naval XP target must be a non-empty unitId");
+  }
+  const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
+  if (unit === undefined || unit.type !== "WARSHIP") {
+    throw new Error(`Warship Naval XP requires a deployed Warship: ${unitId}`);
+  }
+  const operational = state.warshipOperationalStates.find(
+    (candidate) => candidate.unitId === unitId,
+  );
+  if (operational === undefined) {
+    throw new Error(`Warship Naval XP target is missing operational state: ${unitId}`);
+  }
+
+  const progression = awardWarshipNavalXp(
+    Object.freeze({
+      unitId,
+      rank: operational.rank,
+      navalXp: operational.navalXp,
+    }),
+    awardedXp,
+    warshipEffectiveRankCap(state, unit.ownerId),
+  );
+  if (
+    progression.rank === operational.rank &&
+    progression.navalXp === operational.navalXp
+  ) {
+    return state;
+  }
+
+  let health = operational.health;
+  if (progression.rank !== operational.rank) {
+    const oldMaximum = warshipEffectiveMaxHealth(
+      state,
+      unit.ownerId,
+      operational.rank,
+    );
+    const newMaximum = warshipEffectiveMaxHealth(
+      state,
+      unit.ownerId,
+      progression.rank,
+    );
+    const scaled = reducedRational(
+      operational.health.numerator *
+        newMaximum.numerator *
+        oldMaximum.denominator,
+      operational.health.denominator *
+        newMaximum.denominator *
+        oldMaximum.numerator,
+    );
+    health = Object.freeze({
+      numerator: scaled.numerator,
+      denominator: scaled.denominator,
+    });
+  }
+
+  return createProspectiveMatchState(state, {
+    warshipOperationalStates: state.warshipOperationalStates.map((candidate) =>
+      candidate.unitId === unitId
+        ? Object.freeze({
+            ...candidate,
+            health,
+            rank: progression.rank,
+            navalXp: progression.navalXp,
+          })
+        : candidate,
+    ),
+  });
+}
+
 export function removeWarshipUnits(
   state: MatchState,
   unitIds: readonly string[],
@@ -844,10 +982,9 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
       operationalStates.push(
         Object.freeze({
           unitId: deployedUnit.id,
-          health: Object.freeze({
-            numerator: BASE_WARSHIP_MAX_HEALTH,
-            denominator: 1n,
-          }),
+          health: warshipEffectiveMaxHealth(state, job.ownerId, 1),
+          rank: 1,
+          navalXp: 0,
           operatingAnchorCellId: cellId,
           attackReadyAtTick: state.tick,
           nextProjectileOrdinal: 0,
