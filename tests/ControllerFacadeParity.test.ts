@@ -789,6 +789,160 @@ describe("issue #206 team.signal authoritative RED", () => {
     });
   }
 
+  function queueTrustedTeamSignals(
+    runtime: MatchRuntime,
+    count: number,
+  ): number {
+    let ordinal = 0;
+    while (ordinal < count) {
+      const end = Math.min(count, ordinal + 64);
+      for (; ordinal < end; ordinal += 1) {
+        runtime.acceptAction({
+          type: "TEAM_SIGNAL",
+          senderFactionId: "alpha",
+          channel: "bulk",
+          payload: { ordinal },
+        });
+      }
+      runtime.tick();
+    }
+    return runtime.snapshot().tick;
+  }
+
+  async function collectBetaEvents(
+    runtime: MatchRuntime,
+  ): Promise<readonly Readonly<Record<string, unknown>>[]> {
+    let events: readonly Readonly<Record<string, unknown>>[] = [];
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          beta(context) {
+            events = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "beta")?.receipt,
+    ).toMatchObject({ accepted: true });
+    return events;
+  }
+
+  function pendingEventCount(runtime: MatchRuntime, factionId: string): number {
+    const pending = (
+      runtime as unknown as {
+        readonly pendingControllerEventsByFaction: ReadonlyMap<
+          string,
+          readonly unknown[]
+        >;
+      }
+    ).pendingControllerEventsByFaction.get(factionId);
+    return pending?.length ?? 0;
+  }
+
+  it("caps event exposure at 512 and retains FIFO excess at 511/512/513", async () => {
+    for (const count of [511, 512, 513] as const) {
+      const runtime = teamSignalRuntime(`issue207-event-cap-${count}`);
+      queueTrustedTeamSignals(runtime, count);
+      const first = await collectBetaEvents(runtime);
+      expect(first).toHaveLength(Math.min(count, 512));
+      expect(
+        (first[0] as { payload?: { ordinal?: number } } | undefined)?.payload
+          ?.ordinal,
+      ).toBe(0);
+      expect(
+        (
+          first.at(-1) as
+            | { payload?: { ordinal?: number } }
+            | undefined
+        )?.payload?.ordinal,
+      ).toBe(Math.min(count, 512) - 1);
+
+      runtime.tick();
+      const second = await collectBetaEvents(runtime);
+      expect(second).toHaveLength(Math.max(0, count - 512));
+      if (count === 513) {
+        expect(second[0]).toMatchObject({
+          type: "TEAM_SIGNAL_RECEIVED",
+          channel: "bulk",
+          payload: { ordinal: 512 },
+        });
+      }
+    }
+  });
+
+  it("bounds pending events at 4096 and surfaces one FIFO overflow/resync event at 4095/4096/4097", async () => {
+    for (const count of [4095, 4096, 4097] as const) {
+      const runtime = teamSignalRuntime(`issue207-event-backlog-${count}`);
+      const lastQueuedTick = queueTrustedTeamSignals(runtime, count);
+      expect(pendingEventCount(runtime, "beta")).toBe(Math.min(count, 4096));
+
+      const batches: Array<readonly Readonly<Record<string, unknown>>[]> = [];
+      for (let decision = 0; decision < 9; decision += 1) {
+        batches.push(await collectBetaEvents(runtime));
+        if (decision < 8) runtime.tick();
+      }
+
+      const lengths = batches.map((batch) => batch.length);
+      if (count === 4095) {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 511, 0]);
+      } else if (count === 4096) {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 512, 0]);
+      } else {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 512, 1]);
+        expect(batches[8]).toEqual([
+          {
+            type: "EVENT_BACKLOG_OVERFLOW",
+            droppedCount: 1,
+            firstDroppedTick: lastQueuedTick,
+            lastDroppedTick: lastQueuedTick,
+          },
+        ]);
+        expect(
+          (
+            batches[7]?.at(-1) as
+              | { payload?: { ordinal?: number } }
+              | undefined
+          )?.payload?.ordinal,
+        ).toBe(4095);
+      }
+    }
+  });
+
+  it("does not retain pending events for a permanently faulted controller", async () => {
+    const runtime = teamSignalRuntime("issue207-faulted-event-consumer");
+    for (let fault = 1; fault <= 5; fault += 1) {
+      const receipts = await Promise.resolve(
+        runtime.runControllerRound(
+          new InProcessTestControllerHost({
+            beta() {
+              throw new Error("intentional controller fault");
+            },
+          }),
+        ),
+      );
+      expect(
+        receipts.find((entry) => entry.factionId === "beta")?.receipt,
+      ).toMatchObject({
+        accepted: false,
+        faultCount: fault,
+        faulted: fault === 5,
+      });
+      if (fault < 5) runtime.tick();
+    }
+
+    runtime.acceptAction({
+      type: "TEAM_SIGNAL",
+      senderFactionId: "alpha",
+      channel: "after-fault",
+      payload: { value: 1 },
+    });
+    runtime.tick();
+
+    expect(pendingEventCount(runtime, "beta")).toBe(0);
+  });
+
   it("delivers accepted signals only to other active fixed teammates on their next decision, in accepted-input order, then consumes them", async () => {
     const runtime = teamSignalRuntime("issue206-team-delivery");
 
