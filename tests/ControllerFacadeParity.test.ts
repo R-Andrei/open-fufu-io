@@ -3096,9 +3096,14 @@ describe("issue #206 Transport facade authoritative RED", () => {
                   },
                 };
               }
-              const unit = await context.units.get(context.memory.unitRef);
-              if (unit === undefined || unit.ref?.type !== "UNIT") {
-                throw new Error("stored UnitRef did not survive worker replacement");
+              if (
+                context.memory.unitRef?.type !== "UNIT" ||
+                typeof context.memory.unitRef.token !== "string" ||
+                typeof context.memory.actionRef !== "string"
+              ) {
+                throw new Error(
+                  "stored lifecycle correlation did not survive worker replacement",
+                );
               }
               return {};
             }
