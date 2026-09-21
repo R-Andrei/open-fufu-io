@@ -375,6 +375,40 @@ describe("production controller worker host", () => {
     }
   }, 20_000);
 
+  it("enforces the team-signal payload byte ceiling inside the worker before IPC", async () => {
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    const requestFor = (repeatCount: number): ControllerWorkerRequest => ({
+      factionId: "alpha",
+      artifact: Object.freeze({
+        moduleSource: `
+          export function decide(context) {
+            context.team.signal("intent", "é".repeat(${repeatCount}));
+            return {};
+          }
+        `,
+        entrypoints: Object.freeze({ decide: "decide" }),
+      }),
+      hook: "DECIDE",
+      entrypoint: "decide",
+      context: ordinaryObservation(),
+      memoryJson: "{}",
+      timeoutMs: PRODUCTION_CONTROLLER_LIMITS.decideTimeoutMs,
+      moduleEvaluationTimeoutMs:
+        PRODUCTION_CONTROLLER_LIMITS.moduleEvaluationTimeoutMs,
+      isolateMemoryMb: PRODUCTION_CONTROLLER_LIMITS.isolateMemoryMb,
+    });
+
+    try {
+      const exact = await pool.invoke(requestFor(511));
+      expect(exact.ok).toBe(true);
+
+      const over = await pool.invoke(requestFor(512));
+      expect(over).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("enforces staged-action count and public-output ceilings before returning a worker result to simulation", async () => {
     const cases: ReadonlyArray<{
       readonly output: ControllerDecision;
