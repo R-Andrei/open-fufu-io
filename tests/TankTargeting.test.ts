@@ -82,6 +82,22 @@ function addUnit(
     state: createProspectiveMatchState(state, {
       mobileUnits: created.mobileUnits,
       nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
+      warshipOperationalStates:
+        input.type === "WARSHIP"
+          ? [
+              ...state.warshipOperationalStates,
+              {
+                unitId: created.unit.id,
+                health: { numerator: 1_000n, denominator: 1n },
+                rank: 1,
+                navalXp: 0,
+                operatingAnchorCellId: created.unit.cellId,
+                attackReadyAtTick: state.tick,
+                nextProjectileOrdinal: 0,
+                roamingOrdinal: 0,
+              },
+            ]
+          : state.warshipOperationalStates,
     }),
   });
 }
@@ -142,7 +158,9 @@ describe("Tank autonomous target arbitration", () => {
     let state = targetFixture(
       50,
       1,
-      Array.from({ length: 50 }, () => "PLAINS"),
+      Array.from({ length: 50 }, (_, cellId) =>
+        cellId === 5 ? "DEEP_WATER" : "PLAINS",
+      ),
       Array.from({ length: 50 }, () => "alpha"),
     );
     const tank = addUnit(state, {
@@ -176,7 +194,9 @@ describe("Tank autonomous target arbitration", () => {
     let state = targetFixture(
       50,
       1,
-      Array.from({ length: 50 }, () => "PLAINS"),
+      Array.from({ length: 50 }, (_, cellId) =>
+        cellId === 5 ? "DEEP_WATER" : "PLAINS",
+      ),
       Array.from({ length: 50 }, () => "alpha"),
     );
     const tank = addUnit(state, {
@@ -289,7 +309,9 @@ describe("Tank autonomous target arbitration", () => {
     let state = targetFixture(
       41,
       1,
-      Array.from({ length: 41 }, () => "PLAINS"),
+      Array.from({ length: 41 }, (_, cellId) =>
+        cellId === 40 ? "DEEP_WATER" : "PLAINS",
+      ),
       ownership,
       ["P43"],
     );

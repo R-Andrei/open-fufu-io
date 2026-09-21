@@ -1,9 +1,9 @@
 import type { CellId } from "../core/controller/ControllerApi";
-import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
-  materializeCompiledScalarRule,
-  type RuleDynamicState,
-} from "../core/rules/RuleMaterialization";
+  reducedRational,
+  ruleScopeMatches,
+  type RuleScope,
+} from "../core/rules/RuleComposition";
 import {
   assignMobileUnitRoute,
   createMobileUnit,
@@ -12,22 +12,20 @@ import {
   type MobileUnitCollectionState,
   type MobileUnitState,
 } from "./MobileUnits";
-import { tryDebitFfy } from "./Economy";
-import {
-  landTerrainBaseSpec,
-  isLandSideCoastTerrain,
-} from "./LandOperationsCore";
 import {
   createProspectiveMatchState,
   type MatchState,
-  type TransportOperationState,
+  type TransportDestructionCauseClass,
+  type TransportDestructionResult,
+  type TransportExactHealth,
+  type TransportOperationalState,
 } from "./MatchState";
 import {
   createNavigation,
   type NavigationCandidate,
   type NavigationPath,
 } from "./Navigation";
-import { repartitionPopulation } from "./Population";
+import { removePopulation } from "./Population";
 import type { SimulationMap } from "./SimulationMap";
 import { tryMaterializeStructureGrant } from "./Structures";
 
@@ -66,19 +64,33 @@ export interface TransportMaterializationState extends MobileUnitCollectionState
 export interface TransportMaterializationRequest {
   readonly ownerId: string;
   readonly route: TransportEndpointRoute;
+  /** Population already committed to the aggregate TRANSPORT bucket by admission. */
+  readonly carriedPopulation: number;
 }
 
-export type TransportMaterializationResult<T extends TransportMaterializationState> =
+export type TransportMaterializationResult =
   | Readonly<{
       readonly ok: true;
-      readonly state: T;
+      readonly state: MatchState;
       readonly unit: MobileUnitState;
     }>
   | Readonly<{
       readonly ok: false;
-      readonly state: T;
+      readonly state: MatchState;
       readonly failure: Readonly<{ readonly code: "EMBARK_BLOCKED" }>;
     }>;
+
+export interface TransportDamageRequest {
+  readonly transportId: string;
+  readonly damage: Readonly<{ readonly numerator: bigint; readonly denominator: bigint }>;
+  readonly causeClass: TransportDestructionCauseClass;
+  readonly creditedDestroyerFactionId?: string;
+}
+
+export interface TransportDamageResolution {
+  readonly state: MatchState;
+  readonly destructionResult: TransportDestructionResult | null;
+}
 
 export interface SuccessfulTransportLandingConsequencesRequest {
   readonly transportId: string;
@@ -308,13 +320,77 @@ export function resolveTransportEndpointRouteForState(
   });
 }
 
-export function tryMaterializeTransportAtResolvedRoute<
-  T extends TransportMaterializationState,
->(
-  state: T,
+function assertTransportPopulation(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0 || Object.is(value, -0)) {
+    throw new Error("Transport carried Population must be a non-negative safe integer");
+  }
+}
+
+function effectiveTransportHealth(
+  state: MatchState,
+  ownerId: string,
+): TransportExactHealth | undefined {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown Transport owner: ${ownerId}`);
+  const scope = {
+    kind: "UNIT" as const,
+    unit: "TRANSPORT_SHIP" as const,
+  } satisfies RuleScope;
+  const chassisTerms = owner.rules.normalizedRules.filter(
+    (entry) =>
+      entry.axis === "UNIT_CHASSIS_PROFILE" &&
+      ruleScopeMatches(entry.scope, scope),
+  );
+  if (chassisTerms.length === 0) return undefined;
+  if (chassisTerms.length !== 1) {
+    throw new Error("Transport chassis profile must resolve to at most one transform");
+  }
+  const term = chassisTerms[0]!;
+  if (term.conditions !== undefined && term.conditions.length > 0) {
+    throw new Error("Transport chassis profile has unresolved conditions");
+  }
+  if (
+    term.value.kind !== "SINGLETON" ||
+    typeof term.value.value !== "string"
+  ) {
+    throw new Error("Transport chassis profile must be a singleton profile ID");
+  }
+  if (term.value.value === "ARMORED_PORT_TRANSPORT") {
+    return Object.freeze({ numerator: 500n, denominator: 1n });
+  }
+  if (term.value.value === "TRANSPORT_SHIP") return undefined;
+  throw new Error(
+    `unsupported Transport chassis profile: ${String(term.value.value)}`,
+  );
+}
+
+function ownerBoundTransportPopulation(state: MatchState, ownerId: string): number {
+  const unitsById = new Map(state.mobileUnits.map((unit) => [unit.id, unit]));
+  return state.transportOperationalStates.reduce((sum, entry) => {
+    const unit = unitsById.get(entry.unitId);
+    return unit?.ownerId === ownerId ? sum + entry.carriedPopulation : sum;
+  }, 0);
+}
+
+export function tryMaterializeTransportAtResolvedRoute(
+  state: MatchState,
   request: TransportMaterializationRequest,
-): TransportMaterializationResult<T> {
+): TransportMaterializationResult {
   assertResolvedTransportRoute(state.map, request.route);
+  assertTransportPopulation(request.carriedPopulation);
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  if (owner === undefined) {
+    throw new Error(`unknown Transport owner: ${request.ownerId}`);
+  }
+  const alreadyBound = ownerBoundTransportPopulation(state, request.ownerId);
+  if (
+    request.carriedPopulation >
+    owner.population.aboardTransports - alreadyBound
+  ) {
+    throw new Error(
+      "Transport carried Population exceeds the owner's committed aboard amount",
+    );
+  }
   if (physicalOccupancyCellIds(state).has(request.route.embarkCellId)) {
     return Object.freeze({
       ok: false as const,
@@ -349,11 +425,20 @@ export function tryMaterializeTransportAtResolvedRoute<
   const mobileUnits = Object.freeze(
     created.mobileUnits.map((unit) => (unit.id === routed.id ? routed : unit)),
   );
-  const nextState = Object.freeze({
-    ...state,
+  const health = effectiveTransportHealth(state, request.ownerId);
+  const operational: TransportOperationalState = Object.freeze({
+    unitId: routed.id,
+    carriedPopulation: request.carriedPopulation,
+    ...(health === undefined ? {} : { health }),
+  });
+  const nextState = createProspectiveMatchState(state, {
     mobileUnits,
     nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
-  }) as T;
+    transportOperationalStates: Object.freeze([
+      ...state.transportOperationalStates,
+      operational,
+    ]),
+  });
 
   return Object.freeze({
     ok: true as const,
@@ -362,495 +447,143 @@ export function tryMaterializeTransportAtResolvedRoute<
   });
 }
 
-export type TransportEmbarkFailureCode =
-  | "INVALID_REQUEST"
-  | "UNKNOWN_OWNER"
-  | "OWNER_INACTIVE"
-  | "INVALID_SOURCE"
-  | "SOURCE_NOT_OWNED"
-  | "INVALID_TARGET"
-  | "OWNERSHIP_CAP"
-  | "INSUFFICIENT_AVAILABLE_POPULATION"
-  | "INSUFFICIENT_FFY"
-  | "UNREACHABLE"
-  | "EMBARK_BLOCKED";
-
-export interface TransportEmbarkRequest {
-  readonly ownerId: string;
-  readonly sourceCellId: CellId;
-  readonly targetCellId: CellId;
-  readonly population: number;
-}
-
-export type TransportEmbarkQuoteResult =
-  | Readonly<{
-      readonly ok: true;
-      readonly ffyCost: number;
-      readonly route: TransportEndpointRoute;
-    }>
-  | Readonly<{
-      readonly ok: false;
-      readonly ffyCost: number;
-      readonly failure: Readonly<{ readonly code: TransportEmbarkFailureCode }>;
-    }>;
-
-export type TransportEmbarkCommitResult =
-  | Readonly<{
-      readonly ok: true;
-      readonly state: MatchState;
-      readonly unit: MobileUnitState;
-      readonly route: TransportEndpointRoute;
-      readonly ffyCost: number;
-    }>
-  | Readonly<{
-      readonly ok: false;
-      readonly state: MatchState;
-      readonly ffyCost: number;
-      readonly failure: Readonly<{ readonly code: TransportEmbarkFailureCode }>;
-    }>;
-
-export type TransportRecallFailureCode =
-  | "INVALID_REQUEST"
-  | "UNKNOWN_OWNER"
-  | "OWNER_INACTIVE"
-  | "UNKNOWN_TRANSPORT"
-  | "NOT_OWNER"
-  | "NOT_ACTIVE_OPERATION"
-  | "NO_RETURN_ROUTE";
-
-export interface TransportRecallRequest {
-  readonly ownerId: string;
-  readonly transportId: string;
-}
-
-export type TransportRecallResult =
-  | Readonly<{
-      readonly ok: true;
-      readonly state: MatchState;
-      readonly unit: MobileUnitState;
-      readonly operation: TransportOperationState;
-    }>
-  | Readonly<{
-      readonly ok: false;
-      readonly state: MatchState;
-      readonly failure: Readonly<{ readonly code: TransportRecallFailureCode }>;
-    }>;
-
-const BASE_TRANSPORT_EMBARK_FFY_COST = 0;
-const MAX_ACTIVE_TRANSPORTS_PER_FACTION = 3;
-
-function transportRuleDynamicState(
-  state: MatchState,
-  ownerId: string,
-): RuleDynamicState {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) {
-    throw new Error(`unknown Transport owner: ${ownerId}`);
-  }
-
-  const contacted = new Set<string>();
-  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
-    if ((state.ownership[cellId] ?? null) !== ownerId) continue;
-    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
-      const neighborOwnerId = state.ownership[neighbor] ?? null;
-      if (neighborOwnerId !== null && neighborOwnerId !== ownerId) {
-        contacted.add(neighborOwnerId);
-      }
-    }
-  }
-
-  return Object.freeze({
-    ownedPersistentStructureCount: state.structures.filter(
-      (structure) => structure.ownerId === ownerId,
-    ).length,
-    territorialContactCount: contacted.size,
-    peakTotalPopulation: owner.population.peakTotal,
-  });
-}
-
-function effectiveTransportEmbarkFfyCost(
-  state: MatchState,
-  ownerId: string,
-): number {
-  const owner = state.factions.find((faction) => faction.id === ownerId);
-  if (owner === undefined) {
-    throw new Error(`unknown Transport owner: ${ownerId}`);
-  }
-  const cost = materializeCompiledScalarRule(
-    BASE_TRANSPORT_EMBARK_FFY_COST,
-    owner.rules,
-    RULE_AXIS_REGISTRY,
-    "TRANSPORT_EMBARK_COST",
-    { kind: "GLOBAL" },
-    transportRuleDynamicState(state, ownerId),
+function subtractTransportHealth(
+  health: TransportExactHealth,
+  damage: TransportDamageRequest["damage"],
+): TransportExactHealth {
+  const reduced = reducedRational(
+    health.numerator * damage.denominator -
+      damage.numerator * health.denominator,
+    health.denominator * damage.denominator,
   );
-  if (!Number.isSafeInteger(cost) || cost < 0) {
-    throw new Error("effective Transport embark FFY cost must be a non-negative safe integer");
-  }
-  return cost;
-}
-
-function isTransportLand(map: SimulationMap, cellId: CellId): boolean {
-  const terrain = map.terrainAt(cellId);
-  return !isTransportWater(map, cellId) && landTerrainBaseSpec(terrain).landTraversable;
-}
-
-function landSideCoastsInPoliticalComponent(
-  state: MatchState,
-  strategicIntentCellId: CellId,
-  ownerId: string | null,
-): readonly CellId[] {
-  if (
-    !state.map.isValidCellId(strategicIntentCellId) ||
-    (state.ownership[strategicIntentCellId] ?? null) !== ownerId ||
-    !isTransportLand(state.map, strategicIntentCellId)
-  ) {
-    return Object.freeze([]);
-  }
-
-  const seen = new Set<CellId>([strategicIntentCellId]);
-  const queue: CellId[] = [strategicIntentCellId];
-  const coasts: CellId[] = [];
-  for (let index = 0; index < queue.length; index += 1) {
-    const cellId = queue[index]!;
-    const terrain = state.map.terrainAt(cellId);
-    const neighbors = state.map.cardinalNeighbors(cellId);
-    if (
-      isLandSideCoastTerrain(
-        terrain,
-        neighbors.map((neighbor) => state.map.terrainAt(neighbor)),
-      )
-    ) {
-      coasts.push(cellId);
-    }
-    for (const neighbor of neighbors) {
-      if (
-        seen.has(neighbor) ||
-        (state.ownership[neighbor] ?? null) !== ownerId ||
-        !isTransportLand(state.map, neighbor)
-      ) {
-        continue;
-      }
-      seen.add(neighbor);
-      queue.push(neighbor);
-    }
-  }
-  coasts.sort((left, right) => left - right);
-  return Object.freeze(coasts);
-}
-
-function embarkFailure(
-  ffyCost: number,
-  code: TransportEmbarkFailureCode,
-): TransportEmbarkQuoteResult {
   return Object.freeze({
-    ok: false as const,
-    ffyCost,
-    failure: Object.freeze({ code }),
+    numerator: reduced.numerator,
+    denominator: reduced.denominator,
   });
 }
 
-export function quoteTransportEmbark(
+const TRANSPORT_DESTRUCTION_CAUSE_CLASSES =
+  new Set<TransportDestructionCauseClass>([
+    "NAVAL_GUNFIRE",
+    "SAM_ANTI_SHIP",
+    "STRATEGIC_BLAST",
+    "OTHER_HOSTILE_EFFECT",
+    "UNATTRIBUTED",
+  ]);
+
+export function applyTransportDamage(
   state: MatchState,
-  request: TransportEmbarkRequest,
-): TransportEmbarkQuoteResult {
+  request: TransportDamageRequest,
+): TransportDamageResolution {
   if (
     request === null ||
     typeof request !== "object" ||
-    typeof request.ownerId !== "string" ||
-    request.ownerId.length === 0 ||
-    !Number.isSafeInteger(request.sourceCellId) ||
-    !Number.isSafeInteger(request.targetCellId) ||
-    !Number.isSafeInteger(request.population) ||
-    request.population <= 0
+    typeof request.transportId !== "string" ||
+    request.transportId.length === 0 ||
+    request.damage === null ||
+    typeof request.damage !== "object" ||
+    typeof request.damage.numerator !== "bigint" ||
+    typeof request.damage.denominator !== "bigint" ||
+    request.damage.numerator <= 0n ||
+    request.damage.denominator <= 0n ||
+    !TRANSPORT_DESTRUCTION_CAUSE_CLASSES.has(request.causeClass) ||
+    (request.creditedDestroyerFactionId !== undefined &&
+      (typeof request.creditedDestroyerFactionId !== "string" ||
+        request.creditedDestroyerFactionId.length === 0))
   ) {
-    return embarkFailure(0, "INVALID_REQUEST");
+    throw new Error("Transport damage request is malformed");
+  }
+  if (
+    request.creditedDestroyerFactionId !== undefined &&
+    !state.factions.some(
+      (faction) => faction.id === request.creditedDestroyerFactionId,
+    )
+  ) {
+    throw new Error("Transport credited destroyer faction is unknown");
   }
 
-  const owner = state.factions.find((faction) => faction.id === request.ownerId);
-  if (owner === undefined) return embarkFailure(0, "UNKNOWN_OWNER");
-  const ffyCost = effectiveTransportEmbarkFfyCost(state, request.ownerId);
-  if (owner.status !== "ACTIVE") return embarkFailure(ffyCost, "OWNER_INACTIVE");
-
-  if (!state.map.isValidCellId(request.sourceCellId)) {
-    return embarkFailure(ffyCost, "INVALID_SOURCE");
-  }
-  if ((state.ownership[request.sourceCellId] ?? null) !== request.ownerId) {
-    return embarkFailure(ffyCost, "SOURCE_NOT_OWNED");
-  }
-  const embarkCoastCellIds = landSideCoastsInPoliticalComponent(
-    state,
-    request.sourceCellId,
-    request.ownerId,
+  const transport = state.mobileUnits.find(
+    (unit) => unit.id === request.transportId,
   );
-  if (embarkCoastCellIds.length === 0) {
-    return embarkFailure(ffyCost, "INVALID_SOURCE");
+  if (transport === undefined) {
+    return Object.freeze({ state, destructionResult: null });
   }
-
-  if (!state.map.isValidCellId(request.targetCellId)) {
-    return embarkFailure(ffyCost, "INVALID_TARGET");
+  if (transport.type !== "TRANSPORT_SHIP") {
+    throw new Error("Transport damage target is not a Transport");
   }
-  const targetOwnerId = state.ownership[request.targetCellId] ?? null;
-  const landingCoastCellIds = landSideCoastsInPoliticalComponent(
-    state,
-    request.targetCellId,
-    targetOwnerId,
+  const operational = state.transportOperationalStates.find(
+    (entry) => entry.unitId === transport.id,
   );
-  if (landingCoastCellIds.length === 0) {
-    return embarkFailure(ffyCost, "INVALID_TARGET");
+  if (operational === undefined) {
+    throw new Error(
+      `active Transport is missing operational payload state: ${transport.id}`,
+    );
   }
 
-  const activeTransportCount = state.mobileUnits.filter(
-    (unit) =>
-      unit.ownerId === request.ownerId && unit.type === "TRANSPORT_SHIP",
-  ).length;
-  if (activeTransportCount >= MAX_ACTIVE_TRANSPORTS_PER_FACTION) {
-    return embarkFailure(ffyCost, "OWNERSHIP_CAP");
-  }
-  if (owner.population.available < request.population) {
-    return embarkFailure(ffyCost, "INSUFFICIENT_AVAILABLE_POPULATION");
-  }
-  const debit = tryDebitFfy(owner.ffy, {
-    numerator: BigInt(ffyCost),
-    denominator: 1n,
-  });
-  if (!debit.ok) return embarkFailure(ffyCost, "INSUFFICIENT_FFY");
-
-  const resolved = resolveTransportEndpointRouteForState(state, {
-    sourceCellId: request.sourceCellId,
-    targetCellId: request.targetCellId,
-    embarkCoastCellIds,
-    landingCoastCellIds,
-  });
-  if (resolved.status !== "FOUND") {
-    return embarkFailure(ffyCost, "UNREACHABLE");
-  }
-  if (physicalOccupancyCellIds(state).has(resolved.route.embarkCellId)) {
-    return embarkFailure(ffyCost, "EMBARK_BLOCKED");
-  }
-  return Object.freeze({
-    ok: true as const,
-    ffyCost,
-    route: resolved.route,
-  });
-}
-
-export function tryCommitTransportEmbark(
-  state: MatchState,
-  request: TransportEmbarkRequest,
-): TransportEmbarkCommitResult {
-  const quoted = quoteTransportEmbark(state, request);
-  if (!quoted.ok) {
-    return Object.freeze({
-      ok: false as const,
-      state,
-      ffyCost: quoted.ffyCost,
-      failure: quoted.failure,
-    });
+  if (operational.health !== undefined) {
+    const health = subtractTransportHealth(operational.health, request.damage);
+    if (health.numerator > 0n) {
+      return Object.freeze({
+        state: createProspectiveMatchState(state, {
+          transportOperationalStates: state.transportOperationalStates.map(
+            (entry) =>
+              entry.unitId === transport.id
+                ? Object.freeze({ ...entry, health })
+                : entry,
+          ),
+        }),
+        destructionResult: null,
+      });
+    }
   }
 
-  const owner = state.factions.find((faction) => faction.id === request.ownerId)!;
-  const debit = tryDebitFfy(owner.ffy, {
-    numerator: BigInt(quoted.ffyCost),
-    denominator: 1n,
-  });
-  if (!debit.ok) {
-    return Object.freeze({
-      ok: false as const,
-      state,
-      ffyCost: quoted.ffyCost,
-      failure: Object.freeze({ code: "INSUFFICIENT_FFY" as const }),
-    });
+  const ownerIndex = state.factions.findIndex(
+    (faction) => faction.id === transport.ownerId,
+  );
+  if (ownerIndex < 0) {
+    throw new Error(`Transport owner is missing: ${transport.ownerId}`);
   }
-  const population = repartitionPopulation(
+  const owner = state.factions[ownerIndex]!;
+  const population = removePopulation(
     owner.population,
-    "AVAILABLE",
     "TRANSPORT",
-    request.population,
+    operational.carriedPopulation,
   );
-  const funded = createProspectiveMatchState(state, {
-    factions: state.factions.map((faction) =>
-      faction.id === owner.id
-        ? Object.freeze({
-            ...faction,
-            ffy: debit.balance,
-            population,
-          })
-        : faction,
+  const factions = state.factions.map((faction, index) =>
+    index === ownerIndex ? Object.freeze({ ...faction, population }) : faction,
+  );
+  const remaining = removeMobileUnit(
+    {
+      mobileUnits: state.mobileUnits,
+      nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
+    },
+    transport.id,
+  );
+  const destructionResult: TransportDestructionResult = Object.freeze({
+    transportId: transport.id,
+    previousOwnerFactionId: transport.ownerId,
+    destructionTick: state.tick,
+    carriedPopulationAtDestruction: operational.carriedPopulation,
+    ...(request.creditedDestroyerFactionId === undefined
+      ? {}
+      : { creditedDestroyerFactionId: request.creditedDestroyerFactionId }),
+    causeClass: request.causeClass,
+  });
+  const nextState = createProspectiveMatchState(state, {
+    factions,
+    mobileUnits: remaining.mobileUnits,
+    nextMobileUnitOrdinal: remaining.nextMobileUnitOrdinal,
+    transportOperationalStates: state.transportOperationalStates.filter(
+      (entry) => entry.unitId !== transport.id,
     ),
-  });
-  const materialized = tryMaterializeTransportAtResolvedRoute(funded, {
-    ownerId: request.ownerId,
-    route: quoted.route,
-  });
-  if (!materialized.ok) {
-    return Object.freeze({
-      ok: false as const,
-      state,
-      ffyCost: quoted.ffyCost,
-      failure: Object.freeze({ code: "EMBARK_BLOCKED" as const }),
-    });
-  }
-
-  const operation: TransportOperationState = Object.freeze({
-    unitId: materialized.unit.id,
-    sourceCellId: request.sourceCellId,
-    targetCellId: request.targetCellId,
-    embarkCellId: quoted.route.embarkCellId,
-    landingCellId: quoted.route.landingCellId,
-    carriedPopulation: request.population,
-    phase: "OUTBOUND" as const,
-  });
-  const nextState = createProspectiveMatchState(materialized.state, {
-    transportOperations: Object.freeze([
-      ...(state.transportOperations ?? []),
-      operation,
+    transportDestructionResults: Object.freeze([
+      ...state.transportDestructionResults,
+      destructionResult,
     ]),
   });
   return Object.freeze({
-    ok: true as const,
     state: nextState,
-    unit: materialized.unit,
-    route: quoted.route,
-    ffyCost: quoted.ffyCost,
-  });
-}
-
-interface TransportReturnRoute {
-  readonly returnWaterCellId: CellId;
-  readonly returnCoastCellId: CellId;
-  readonly path: NavigationPath;
-}
-
-function resolveTransportReturnRoute(
-  state: MatchState,
-  ownerId: string,
-  currentCellId: CellId,
-): TransportReturnRoute | undefined {
-  if (!state.map.isValidCellId(currentCellId) || !isTransportWater(state.map, currentCellId)) {
-    return undefined;
-  }
-  const navigation = createNavigation(state.map);
-  let selected: TransportReturnRoute | undefined;
-
-  for (let coastCellId = 0; coastCellId < state.map.cellCount; coastCellId += 1) {
-    if ((state.ownership[coastCellId] ?? null) !== ownerId) continue;
-    const neighbors = state.map.cardinalNeighbors(coastCellId);
-    if (
-      !isLandSideCoastTerrain(
-        state.map.terrainAt(coastCellId),
-        neighbors.map((neighbor) => state.map.terrainAt(neighbor)),
-      )
-    ) {
-      continue;
-    }
-
-    for (const returnWaterCellId of neighbors) {
-      if (!isTransportWater(state.map, returnWaterCellId)) continue;
-      const resolved = navigation.path(currentCellId, returnWaterCellId, {
-        traversalWeight(from, to) {
-          return isTransportWater(state.map, from) &&
-            isTransportWater(state.map, to)
-            ? 1
-            : undefined;
-        },
-      });
-      if (resolved.status !== "FOUND") continue;
-      const candidate: TransportReturnRoute = Object.freeze({
-        returnWaterCellId,
-        returnCoastCellId: coastCellId,
-        path: resolved.path,
-      });
-      if (
-        selected === undefined ||
-        candidate.path.totalWeight < selected.path.totalWeight ||
-        (candidate.path.totalWeight === selected.path.totalWeight &&
-          (candidate.returnWaterCellId < selected.returnWaterCellId ||
-            (candidate.returnWaterCellId === selected.returnWaterCellId &&
-              candidate.returnCoastCellId < selected.returnCoastCellId)))
-      ) {
-        selected = candidate;
-      }
-    }
-  }
-  return selected;
-}
-
-function recallFailure(
-  state: MatchState,
-  code: TransportRecallFailureCode,
-): TransportRecallResult {
-  return Object.freeze({
-    ok: false as const,
-    state,
-    failure: Object.freeze({ code }),
-  });
-}
-
-export function tryStartTransportRecall(
-  state: MatchState,
-  request: TransportRecallRequest,
-): TransportRecallResult {
-  if (
-    request === null ||
-    typeof request !== "object" ||
-    typeof request.ownerId !== "string" ||
-    request.ownerId.length === 0 ||
-    typeof request.transportId !== "string" ||
-    request.transportId.length === 0
-  ) {
-    return recallFailure(state, "INVALID_REQUEST");
-  }
-  const owner = state.factions.find((faction) => faction.id === request.ownerId);
-  if (owner === undefined) return recallFailure(state, "UNKNOWN_OWNER");
-  if (owner.status !== "ACTIVE") return recallFailure(state, "OWNER_INACTIVE");
-
-  const unit = state.mobileUnits.find(
-    (candidate) =>
-      candidate.id === request.transportId &&
-      candidate.type === "TRANSPORT_SHIP",
-  );
-  if (unit === undefined) return recallFailure(state, "UNKNOWN_TRANSPORT");
-  if (unit.ownerId !== request.ownerId) return recallFailure(state, "NOT_OWNER");
-
-  const operation = (state.transportOperations ?? []).find(
-    (candidate) => candidate.unitId === unit.id,
-  );
-  if (operation === undefined || operation.phase !== "OUTBOUND") {
-    return recallFailure(state, "NOT_ACTIVE_OPERATION");
-  }
-  const route = resolveTransportReturnRoute(state, request.ownerId, unit.cellId);
-  if (route === undefined) return recallFailure(state, "NO_RETURN_ROUTE");
-
-  const cleared = setMobileUnitStrategicDestination(state.map, unit, undefined);
-  const routed = assignMobileUnitRoute(state.map, cleared, {
-    cells: route.path.cells,
-    edgeWeights: Array.from(
-      { length: Math.max(0, route.path.cells.length - 1) },
-      () => 1,
-    ),
-  });
-  const returningOperation: TransportOperationState = Object.freeze({
-    ...operation,
-    phase: "RETURNING" as const,
-    returnWaterCellId: route.returnWaterCellId,
-    returnCoastCellId: route.returnCoastCellId,
-  });
-  const nextState = createProspectiveMatchState(state, {
-    mobileUnits: state.mobileUnits.map((candidate) =>
-      candidate.id === routed.id ? routed : candidate,
-    ),
-    transportOperations: (state.transportOperations ?? []).map((candidate) =>
-      candidate.unitId === returningOperation.unitId
-        ? returningOperation
-        : candidate,
-    ),
-  });
-  return Object.freeze({
-    ok: true as const,
-    state: nextState,
-    unit: routed,
-    operation: returningOperation,
+    destructionResult,
   });
 }
 
@@ -892,8 +625,8 @@ export function applySuccessfulTransportLandingConsequences(
   const landedState = createProspectiveMatchState(state, {
     mobileUnits: remaining.mobileUnits,
     nextMobileUnitOrdinal: remaining.nextMobileUnitOrdinal,
-    transportOperations: (state.transportOperations ?? []).filter(
-      (operation) => operation.unitId !== transport.id,
+    transportOperationalStates: state.transportOperationalStates.filter(
+      (entry) => entry.unitId !== transport.id,
     ),
   });
 

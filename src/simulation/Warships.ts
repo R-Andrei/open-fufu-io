@@ -1,5 +1,7 @@
+import type { StrategicWeaponType, StructureLevel } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
+  reduceCapabilitySetRule,
   reducePermissionRule,
   reducedRational,
   selectRuleContributionsForScope,
@@ -20,27 +22,75 @@ import {
 } from "./MatchState";
 import {
   createMobileUnit,
+  setMobileUnitStrategicDestination,
   type MobileUnitCollectionState,
 } from "./MobileUnits";
+import { createNavigation, type NavigationTraversalPolicy } from "./Navigation";
 import { removePopulation } from "./Population";
-import type { PersistentStructureState } from "./Structures";
+import {
+  awardWarshipNavalXp,
+  warshipRankHealthScale,
+} from "./WarshipProgression";
+import type { SimulationTerrain } from "./SimulationMap";
+import {
+  effectiveMissileSiloStrategicProfile,
+  type PersistentStructureState,
+  type StructureChargeSlotState,
+} from "./Structures";
+
+export interface WarshipExactHealth {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface WarshipExactRange {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface WarshipExactDamage {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface WarshipStrategicLauncherState {
+  readonly acceptedLaunchCount: number;
+  readonly chargeSlots: readonly StructureChargeSlotState[];
+}
+
+export interface WarshipOperationalState {
+  readonly unitId: string;
+  readonly health: WarshipExactHealth;
+  readonly rank: number;
+  readonly navalXp: number;
+  readonly strategicLauncher?: WarshipStrategicLauncherState;
+  readonly operatingAnchorCellId: number;
+  readonly attackReadyAtTick: number;
+  readonly nextProjectileOrdinal: number;
+  readonly roamingOrdinal: number;
+  readonly repairPortId?: string;
+  readonly repairArrivalTick?: number;
+}
 
 export type WarshipProductionJobState =
   | {
       readonly portId: string;
       readonly ownerId: string;
+      readonly strategicDestinationCellId: number;
       readonly state: "BUILDING";
       readonly remainingTicks: number;
     }
   | {
       readonly portId: string;
       readonly ownerId: string;
+      readonly strategicDestinationCellId: number;
       readonly state: "READY_TO_DEPLOY";
     };
 
 export interface StartWarshipProductionRequest {
   readonly ownerId: string;
   readonly portId: string;
+  readonly strategicDestinationCellId: number;
 }
 
 export type WarshipProductionFailureCode =
@@ -69,16 +119,257 @@ export type StartWarshipProductionResult =
       readonly state: MatchState;
     };
 
+
+
+export interface SetWarshipStrategicDestinationRequest {
+  readonly ownerId: string;
+  readonly unitId: string;
+  readonly strategicDestinationCellId: number;
+}
+
+export type WarshipStrategicMoveFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_OWNER"
+  | "UNKNOWN_WARSHIP"
+  | "NOT_OWNER";
+
+export type SetWarshipStrategicDestinationResult =
+  | {
+      readonly ok: true;
+      readonly state: MatchState;
+    }
+  | {
+      readonly ok: false;
+      readonly failure: Readonly<{ code: WarshipStrategicMoveFailureCode }>;
+      readonly state: MatchState;
+    };
+
+export interface WarshipTerrainMovementTiming {
+  readonly movementWorkPerTick: number;
+  readonly edgeWeight: number;
+}
+
+export interface WarshipNavigationRoute {
+  readonly cells: readonly number[];
+  readonly edgeWeights: readonly number[];
+  readonly totalWeight: number;
+  readonly movementWorkPerTick: number;
+}
+
+export type WarshipStrategicNavigationRouteResult =
+  | {
+      readonly status: "FOUND" | "BEST_EFFORT";
+      readonly route: WarshipNavigationRoute;
+    }
+  | { readonly status: "LIMIT_REACHED" };
+
+export interface WarshipStrategicLauncherProfile {
+  readonly launcherId: string;
+  readonly ownerId: string;
+  readonly launchCellId: number;
+  readonly effectiveSiloLevel: StructureLevel;
+  readonly weaponAccess: readonly StrategicWeaponType[];
+  readonly chargeCapacity: number;
+  readonly rechargeTicks: number;
+  readonly acceptedLaunchCount: number;
+  readonly chargeSlots: readonly StructureChargeSlotState[];
+}
+
+export interface CommitWarshipStrategicLaunchChargeRequest {
+  readonly ownerId: string;
+  readonly unitId: string;
+  readonly weapon: StrategicWeaponType;
+}
+
+export type CommitWarshipStrategicLaunchChargeFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_OWNER"
+  | "UNKNOWN_WARSHIP"
+  | "NOT_OWNER"
+  | "LAUNCHER_UNAVAILABLE"
+  | "WEAPON_UNAVAILABLE"
+  | "NO_READY_CHARGE";
+
+export type CommitWarshipStrategicLaunchChargeResult =
+  | Readonly<{
+      ok: true;
+      state: MatchState;
+      binding: Readonly<{
+        launcherId: string;
+        launchCellId: number;
+        weapon: StrategicWeaponType;
+        slotId: number;
+        acceptedLaunchOrdinal: number;
+      }>;
+    }>
+  | Readonly<{
+      ok: false;
+      state: MatchState;
+      failure: Readonly<{ code: CommitWarshipStrategicLaunchChargeFailureCode }>;
+    }>;
+
 const BASE_WARSHIP_BUILD_TICKS = 50;
+const BASE_WARSHIP_MAX_HEALTH = 1_000n;
+const BASE_WARSHIP_ATTACK_RANGE_CELLS = 130n;
+const BASE_WARSHIP_GUN_DAMAGE = 250n;
+const BASE_WARSHIP_SPEED_CELLS_PER_SECOND = 10n;
+const WARSHIP_MOVEMENT_TICKS_PER_SECOND = 10n;
+const MAX_SAFE_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+const STRATEGIC_WEAPON_TYPES = new Set<StrategicWeaponType>([
+  "ATOM_BOMB",
+  "HYDROGEN_BOMB",
+  "MIRV",
+]);
 
 function compareIds(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function warshipStrategicLauncherEnabled(
+  state: MatchState,
+  ownerId: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  return owner.rules.customDomains.some(
+    (entry) => entry.domain === "WARSHIP_STRATEGIC_LAUNCHER",
+  );
+}
+
+function warshipEffectiveSiloLevel(rank: number): StructureLevel {
+  if (!Number.isSafeInteger(rank) || rank < 1 || rank > 5) {
+    throw new Error("P29 Warship rank must resolve to Missile Silo level 1..5");
+  }
+  return Math.max(1, rank) as StructureLevel;
+}
+
+function freezeWarshipStrategicLauncherState(
+  state: WarshipStrategicLauncherState,
+): WarshipStrategicLauncherState {
+  return Object.freeze({
+    acceptedLaunchCount: state.acceptedLaunchCount,
+    chargeSlots: Object.freeze(
+      [...state.chargeSlots]
+        .sort((left, right) => left.slotId - right.slotId)
+        .map((slot) =>
+          slot.state === "READY"
+            ? Object.freeze({ slotId: slot.slotId, state: "READY" as const })
+            : Object.freeze({
+                slotId: slot.slotId,
+                state: "RECHARGING" as const,
+                readyAtTick: slot.readyAtTick,
+              }),
+        ),
+    ),
+  });
+}
+
+function initialWarshipStrategicLauncherState(
+  state: MatchState,
+  ownerId: string,
+  rank: number,
+): WarshipStrategicLauncherState {
+  const profile = effectiveMissileSiloStrategicProfile(
+    state,
+    ownerId,
+    warshipEffectiveSiloLevel(rank),
+  );
+  return freezeWarshipStrategicLauncherState({
+    acceptedLaunchCount: 0,
+    chargeSlots: Array.from({ length: profile.chargeCapacity }, (_, slotId) =>
+      Object.freeze({ slotId, state: "READY" as const }),
+    ),
+  });
+}
+
+function matureWarshipStrategicLauncherState(
+  launcher: WarshipStrategicLauncherState,
+  currentTick: number,
+): WarshipStrategicLauncherState {
+  let changed = false;
+  const chargeSlots = launcher.chargeSlots.map((slot) => {
+    if (slot.state === "RECHARGING" && currentTick >= slot.readyAtTick) {
+      changed = true;
+      return Object.freeze({ slotId: slot.slotId, state: "READY" as const });
+    }
+    return slot;
+  });
+  return changed
+    ? freezeWarshipStrategicLauncherState({
+        acceptedLaunchCount: launcher.acceptedLaunchCount,
+        chargeSlots,
+      })
+    : launcher;
+}
+
+function growWarshipStrategicLauncherState(
+  state: MatchState,
+  ownerId: string,
+  rank: number,
+  launcher: WarshipStrategicLauncherState,
+  activationTick: number,
+): WarshipStrategicLauncherState {
+  const profile = effectiveMissileSiloStrategicProfile(
+    state,
+    ownerId,
+    warshipEffectiveSiloLevel(rank),
+  );
+  const matured = matureWarshipStrategicLauncherState(
+    launcher,
+    activationTick,
+  );
+  if (matured.chargeSlots.length > profile.chargeCapacity) {
+    throw new Error("P29 launcher capacity cannot shrink below existing slots");
+  }
+  if (matured.chargeSlots.length === profile.chargeCapacity) return matured;
+  const chargeSlots: StructureChargeSlotState[] = [...matured.chargeSlots];
+  for (
+    let slotId = matured.chargeSlots.length;
+    slotId < profile.chargeCapacity;
+    slotId += 1
+  ) {
+    chargeSlots.push(
+      Object.freeze({
+        slotId,
+        state: "RECHARGING" as const,
+        readyAtTick: activationTick + profile.rechargeTicks,
+      }),
+    );
+  }
+  return freezeWarshipStrategicLauncherState({
+    acceptedLaunchCount: matured.acceptedLaunchCount,
+    chargeSlots,
+  });
+}
+
+function launcherCommitFailure(
+  state: MatchState,
+  code: CommitWarshipStrategicLaunchChargeFailureCode,
+): CommitWarshipStrategicLaunchChargeResult {
+  return Object.freeze({
+    ok: false,
+    state,
+    failure: Object.freeze({ code }),
+  });
 }
 
 function failure(
   state: MatchState,
   code: WarshipProductionFailureCode,
 ): StartWarshipProductionResult {
+  return Object.freeze({
+    ok: false,
+    failure: Object.freeze({ code }),
+    state,
+  });
+}
+
+
+
+function moveFailure(
+  state: MatchState,
+  code: WarshipStrategicMoveFailureCode,
+): SetWarshipStrategicDestinationResult {
   return Object.freeze({
     ok: false,
     failure: Object.freeze({ code }),
@@ -129,6 +420,157 @@ function ruleDynamicState(state: MatchState, ownerId: string): RuleDynamicState 
     territorialContactCount: territorialContactCount(state, ownerId),
     peakTotalPopulation: owner.population.peakTotal,
   });
+}
+
+export function warshipEffectiveGunRange(
+  state: MatchState,
+  ownerId: string,
+): WarshipExactRange {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_ATTACK_RANGE",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_ATTACK_RANGE,
+    terms,
+  );
+  const range = reducedRational(
+    BASE_WARSHIP_ATTACK_RANGE_CELLS * scale.numerator,
+    scale.denominator,
+  );
+  if (range.numerator < 0n || range.denominator <= 0n) {
+    throw new Error("Warship attack range must resolve to a non-negative value");
+  }
+  return Object.freeze({
+    numerator: range.numerator,
+    denominator: range.denominator,
+  });
+}
+
+export function warshipEffectiveRankCap(
+  state: MatchState,
+  ownerId: string,
+): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const cap = materializeCompiledCapRule(
+    3,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "UNIT_MAX_RANK",
+    { kind: "UNIT", unit: "WARSHIP" },
+    ruleDynamicState(state, ownerId),
+  );
+  if (!Number.isSafeInteger(cap) || cap < 1) {
+    throw new Error("Warship maximum rank must resolve to a positive safe integer");
+  }
+  return cap;
+}
+
+export function warshipEffectiveMaxHealth(
+  state: MatchState,
+  ownerId: string,
+  rank: number,
+): WarshipExactHealth {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MAX_HEALTH",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MAX_HEALTH,
+    terms,
+  );
+  const rankScale = warshipRankHealthScale(rank);
+  const health = reducedRational(
+    BASE_WARSHIP_MAX_HEALTH * scale.numerator * rankScale.numerator,
+    scale.denominator * rankScale.denominator,
+  );
+  if (health.numerator <= 0n || health.denominator <= 0n) {
+    throw new Error("Warship maximum health must resolve to a positive value");
+  }
+  return Object.freeze({
+    numerator: health.numerator,
+    denominator: health.denominator,
+  });
+}
+
+export function warshipEffectiveGunDamage(
+  state: MatchState,
+  ownerId: string,
+  rank = 1,
+): WarshipExactDamage {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_DAMAGE",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_DAMAGE,
+    terms,
+  );
+  const rankScale = warshipRankHealthScale(rank);
+  const damage = reducedRational(
+    BASE_WARSHIP_GUN_DAMAGE * scale.numerator * rankScale.numerator,
+    scale.denominator * rankScale.denominator,
+  );
+  if (damage.numerator < 0n || damage.denominator <= 0n) {
+    throw new Error("Warship gun damage must resolve to a non-negative value");
+  }
+  return Object.freeze({
+    numerator: damage.numerator,
+    denominator: damage.denominator,
+  });
+}
+
+export function warshipNavalGunfireEnabled(
+  state: MatchState,
+  ownerId: string,
+): boolean {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const contributions = selectRuleContributionsForScope(
+    "UNIT_ATTACK_CAPABILITIES",
+    scope,
+    owner.rules.contributions,
+  );
+  if (
+    contributions.some(
+      (entry) => entry.conditions !== undefined && entry.conditions.length > 0,
+    )
+  ) {
+    throw new Error(
+      "conditioned Warship attack capabilities require an explicit combat context",
+    );
+  }
+  return reduceCapabilitySetRule(
+    ["NAVAL_GUNFIRE_AGAINST_SHIPS"],
+    RULE_AXIS_REGISTRY.UNIT_ATTACK_CAPABILITIES,
+    contributions,
+  ).includes("NAVAL_GUNFIRE_AGAINST_SHIPS");
 }
 
 function warshipBuildPermitted(state: MatchState, ownerId: string): boolean {
@@ -237,6 +679,478 @@ function effectiveWarshipPopulationCost(
   return cost;
 }
 
+function warshipMovementScale(
+  state: MatchState,
+  ownerId: string,
+): Readonly<{ numerator: bigint; denominator: bigint }> {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) throw new Error(`unknown faction: ${ownerId}`);
+  const scope = { kind: "UNIT", unit: "WARSHIP" } as const satisfies RuleScope;
+  const terms = conditionEligibleRuleTerms(
+    resolvedRuleTermsForScope(
+      owner.rules,
+      RULE_AXIS_REGISTRY,
+      "UNIT_MOVEMENT_SPEED",
+      scope,
+      ruleDynamicState(state, ownerId),
+    ),
+  );
+  const scale = materializeScalarScaleFactorTerms(
+    RULE_AXIS_REGISTRY.UNIT_MOVEMENT_SPEED,
+    terms,
+  );
+  if (scale.numerator <= 0n || scale.denominator <= 0n) {
+    throw new Error("Warship movement speed must resolve to a positive value");
+  }
+  return Object.freeze({
+    numerator: scale.numerator,
+    denominator: scale.denominator,
+  });
+}
+
+export function warshipTerrainMovementTiming(
+  state: MatchState,
+  ownerId: string,
+  terrain: SimulationTerrain,
+): WarshipTerrainMovementTiming | undefined {
+  if (terrain !== "DEEP_WATER") return undefined;
+  const scale = warshipMovementScale(state, ownerId);
+  const speed = reducedRational(
+    BASE_WARSHIP_SPEED_CELLS_PER_SECOND * scale.numerator,
+    scale.denominator,
+  );
+  if (speed.numerator <= 0n || speed.denominator <= 0n) {
+    throw new Error("Warship movement speed must resolve to a positive value");
+  }
+  const movementWorkPerTick = speed.numerator;
+  const edgeWeight = speed.denominator * WARSHIP_MOVEMENT_TICKS_PER_SECOND;
+  if (movementWorkPerTick > MAX_SAFE_BIGINT || edgeWeight > MAX_SAFE_BIGINT) {
+    throw new Error("Warship movement timing exceeds the safe-integer range");
+  }
+  return Object.freeze({
+    movementWorkPerTick: Number(movementWorkPerTick),
+    edgeWeight: Number(edgeWeight),
+  });
+}
+
+function warshipRouteCellIsPhysicallyAvailable(
+  state: MatchState,
+  startCellId: number,
+  cellId: number,
+): boolean {
+  if (cellId === startCellId) return true;
+  return (
+    !state.structures.some((structure) => structure.cellId === cellId) &&
+    !state.mobileUnits.some((unit) => unit.cellId === cellId)
+  );
+}
+
+export function warshipStrategicNavigationRoute(
+  state: MatchState,
+  ownerId: string,
+  startCellId: number,
+  destinationCellId: number,
+): WarshipStrategicNavigationRouteResult {
+  if (
+    !state.map.isValidCellId(startCellId) ||
+    !state.map.isValidCellId(destinationCellId)
+  ) {
+    throw new Error("Warship strategic navigation query requires valid map cells");
+  }
+  const timing = warshipTerrainMovementTiming(
+    state,
+    ownerId,
+    "DEEP_WATER",
+  );
+  if (timing === undefined) {
+    throw new Error("Deep Water must be traversable for Warships");
+  }
+  const edgeWeight = (fromCellId: number, toCellId: number): number | undefined => {
+    if (
+      !warshipRouteCellIsPhysicallyAvailable(state, startCellId, fromCellId) ||
+      !warshipRouteCellIsPhysicallyAvailable(state, startCellId, toCellId) ||
+      state.map.terrainAt(fromCellId) !== "DEEP_WATER" ||
+      state.map.terrainAt(toCellId) !== "DEEP_WATER"
+    ) {
+      return undefined;
+    }
+    return timing.edgeWeight;
+  };
+  const policy: NavigationTraversalPolicy = { traversalWeight: edgeWeight };
+  const result = createNavigation(state.map).pathToward(
+    startCellId,
+    destinationCellId,
+    policy,
+  );
+  if (result.status === "LIMIT_REACHED") {
+    return Object.freeze({ status: "LIMIT_REACHED" as const });
+  }
+  const cells = Object.freeze([...result.path.cells]);
+  const edgeWeights = Object.freeze(
+    cells.slice(1).map((cellId, index) => {
+      const weight = edgeWeight(cells[index]!, cellId);
+      if (weight === undefined) {
+        throw new Error(
+          "Warship strategic navigation returned an unavailable route edge",
+        );
+      }
+      return weight;
+    }),
+  );
+  return Object.freeze({
+    status: result.status,
+    route: Object.freeze({
+      cells,
+      edgeWeights,
+      totalWeight: result.path.totalWeight,
+      movementWorkPerTick: timing.movementWorkPerTick,
+    }),
+  });
+}
+
+
+
+export function trySetWarshipStrategicDestination(
+  state: MatchState,
+  request: SetWarshipStrategicDestinationRequest,
+): SetWarshipStrategicDestinationResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0 ||
+    typeof request.unitId !== "string" ||
+    request.unitId.length === 0 ||
+    typeof request.strategicDestinationCellId !== "number" ||
+    !Number.isSafeInteger(request.strategicDestinationCellId) ||
+    Object.is(request.strategicDestinationCellId, -0) ||
+    !state.map.isValidCellId(request.strategicDestinationCellId) ||
+    state.map.terrainAt(request.strategicDestinationCellId) !== "DEEP_WATER"
+  ) {
+    return moveFailure(state, "INVALID_REQUEST");
+  }
+
+  if (!state.factions.some((faction) => faction.id === request.ownerId)) {
+    return moveFailure(state, "UNKNOWN_OWNER");
+  }
+  const unit = state.mobileUnits.find(
+    (candidate) => candidate.id === request.unitId,
+  );
+  if (unit === undefined || unit.type !== "WARSHIP") {
+    return moveFailure(state, "UNKNOWN_WARSHIP");
+  }
+  if (unit.ownerId !== request.ownerId) {
+    return moveFailure(state, "NOT_OWNER");
+  }
+  if (
+    !state.warshipOperationalStates.some(
+      (operational) => operational.unitId === unit.id,
+    )
+  ) {
+    throw new Error(
+      `deployed Warship is missing operational state: ${unit.id}`,
+    );
+  }
+
+  const updatedUnit = setMobileUnitStrategicDestination(
+    state.map,
+    unit,
+    request.strategicDestinationCellId,
+  );
+  return Object.freeze({
+    ok: true,
+    state: createProspectiveMatchState(state, {
+      mobileUnits: state.mobileUnits.map((candidate) =>
+        candidate.id === updatedUnit.id ? updatedUnit : candidate,
+      ),
+    }),
+  });
+}
+
+
+
+export function warshipStrategicLauncherProfile(
+  state: MatchState,
+  unitId: string,
+): WarshipStrategicLauncherProfile | undefined {
+  const unit = state.mobileUnits.find(
+    (candidate) => candidate.id === unitId && candidate.type === "WARSHIP",
+  );
+  if (unit === undefined) return undefined;
+  if (!warshipStrategicLauncherEnabled(state, unit.ownerId)) return undefined;
+  const operational = state.warshipOperationalStates.find(
+    (candidate) => candidate.unitId === unit.id,
+  );
+  if (operational === undefined) {
+    throw new Error(`deployed Warship is missing operational state: ${unit.id}`);
+  }
+  if (operational.strategicLauncher === undefined) {
+    throw new Error(`P29 Warship is missing strategic launcher state: ${unit.id}`);
+  }
+  const silo = effectiveMissileSiloStrategicProfile(
+    state,
+    unit.ownerId,
+    warshipEffectiveSiloLevel(operational.rank),
+  );
+  return Object.freeze({
+    launcherId: unit.id,
+    ownerId: unit.ownerId,
+    launchCellId: unit.cellId,
+    effectiveSiloLevel: silo.level,
+    weaponAccess: silo.weaponAccess,
+    chargeCapacity: silo.chargeCapacity,
+    rechargeTicks: silo.rechargeTicks,
+    acceptedLaunchCount: operational.strategicLauncher.acceptedLaunchCount,
+    chargeSlots: operational.strategicLauncher.chargeSlots,
+  });
+}
+
+export function tryCommitWarshipStrategicLaunchCharge(
+  state: MatchState,
+  request: CommitWarshipStrategicLaunchChargeRequest,
+): CommitWarshipStrategicLaunchChargeResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0 ||
+    typeof request.unitId !== "string" ||
+    request.unitId.length === 0 ||
+    typeof request.weapon !== "string" ||
+    !STRATEGIC_WEAPON_TYPES.has(request.weapon as StrategicWeaponType)
+  ) {
+    return launcherCommitFailure(state, "INVALID_REQUEST");
+  }
+  if (!state.factions.some((faction) => faction.id === request.ownerId)) {
+    return launcherCommitFailure(state, "UNKNOWN_OWNER");
+  }
+  const unit = state.mobileUnits.find(
+    (candidate) => candidate.id === request.unitId,
+  );
+  if (unit === undefined || unit.type !== "WARSHIP") {
+    return launcherCommitFailure(state, "UNKNOWN_WARSHIP");
+  }
+  if (unit.ownerId !== request.ownerId) {
+    return launcherCommitFailure(state, "NOT_OWNER");
+  }
+  if (!warshipStrategicLauncherEnabled(state, unit.ownerId)) {
+    return launcherCommitFailure(state, "LAUNCHER_UNAVAILABLE");
+  }
+  const operational = state.warshipOperationalStates.find(
+    (candidate) => candidate.unitId === unit.id,
+  );
+  if (operational === undefined) {
+    throw new Error(`deployed Warship is missing operational state: ${unit.id}`);
+  }
+  if (operational.strategicLauncher === undefined) {
+    throw new Error(`P29 Warship is missing strategic launcher state: ${unit.id}`);
+  }
+  const silo = effectiveMissileSiloStrategicProfile(
+    state,
+    unit.ownerId,
+    warshipEffectiveSiloLevel(operational.rank),
+  );
+  if (!silo.weaponAccess.includes(request.weapon)) {
+    return launcherCommitFailure(state, "WEAPON_UNAVAILABLE");
+  }
+  const matured = matureWarshipStrategicLauncherState(
+    operational.strategicLauncher,
+    state.tick,
+  );
+  const ready = matured.chargeSlots.find((slot) => slot.state === "READY");
+  if (ready === undefined) {
+    return launcherCommitFailure(state, "NO_READY_CHARGE");
+  }
+  if (
+    !Number.isSafeInteger(matured.acceptedLaunchCount) ||
+    matured.acceptedLaunchCount < 0 ||
+    matured.acceptedLaunchCount >= Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error("P29 acceptedLaunchCount is exhausted");
+  }
+  const acceptedLaunchOrdinal = matured.acceptedLaunchCount;
+  const strategicLauncher = freezeWarshipStrategicLauncherState({
+    acceptedLaunchCount: acceptedLaunchOrdinal + 1,
+    chargeSlots: matured.chargeSlots.map((slot) =>
+      slot.slotId === ready.slotId
+        ? Object.freeze({
+            slotId: slot.slotId,
+            state: "RECHARGING" as const,
+            readyAtTick: state.tick + silo.rechargeTicks,
+          })
+        : slot,
+    ),
+  });
+  const next = createProspectiveMatchState(state, {
+    warshipOperationalStates: state.warshipOperationalStates.map((candidate) =>
+      candidate.unitId === unit.id
+        ? Object.freeze({ ...candidate, strategicLauncher })
+        : candidate,
+    ),
+  });
+  return Object.freeze({
+    ok: true,
+    state: next,
+    binding: Object.freeze({
+      launcherId: unit.id,
+      launchCellId: unit.cellId,
+      weapon: request.weapon,
+      slotId: ready.slotId,
+      acceptedLaunchOrdinal,
+    }),
+  });
+}
+
+export function advanceWarshipStrategicLauncherPhase(
+  state: MatchState,
+): MatchState {
+  let changed = false;
+  const warshipOperationalStates = state.warshipOperationalStates.map(
+    (operational) => {
+      if (operational.strategicLauncher === undefined) return operational;
+      const strategicLauncher = matureWarshipStrategicLauncherState(
+        operational.strategicLauncher,
+        state.tick,
+      );
+      if (strategicLauncher === operational.strategicLauncher) {
+        return operational;
+      }
+      changed = true;
+      return Object.freeze({ ...operational, strategicLauncher });
+    },
+  );
+  return changed
+    ? createProspectiveMatchState(state, { warshipOperationalStates })
+    : state;
+}
+
+export function applyWarshipNavalXp(
+  state: MatchState,
+  unitId: string,
+  awardedXp: number,
+): MatchState {
+  if (typeof unitId !== "string" || unitId.length === 0) {
+    throw new Error("Warship Naval XP target must be a non-empty unitId");
+  }
+  const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
+  if (unit === undefined || unit.type !== "WARSHIP") {
+    throw new Error(`Warship Naval XP requires a deployed Warship: ${unitId}`);
+  }
+  const operational = state.warshipOperationalStates.find(
+    (candidate) => candidate.unitId === unitId,
+  );
+  if (operational === undefined) {
+    throw new Error(`Warship Naval XP target is missing operational state: ${unitId}`);
+  }
+
+  const progression = awardWarshipNavalXp(
+    Object.freeze({
+      unitId,
+      rank: operational.rank,
+      navalXp: operational.navalXp,
+    }),
+    awardedXp,
+    warshipEffectiveRankCap(state, unit.ownerId),
+  );
+  if (
+    progression.rank === operational.rank &&
+    progression.navalXp === operational.navalXp
+  ) {
+    return state;
+  }
+
+  let health = operational.health;
+  if (progression.rank !== operational.rank) {
+    const oldMaximum = warshipEffectiveMaxHealth(
+      state,
+      unit.ownerId,
+      operational.rank,
+    );
+    const newMaximum = warshipEffectiveMaxHealth(
+      state,
+      unit.ownerId,
+      progression.rank,
+    );
+    const scaled = reducedRational(
+      operational.health.numerator *
+        newMaximum.numerator *
+        oldMaximum.denominator,
+      operational.health.denominator *
+        newMaximum.denominator *
+        oldMaximum.numerator,
+    );
+    health = Object.freeze({
+      numerator: scaled.numerator,
+      denominator: scaled.denominator,
+    });
+  }
+
+  let strategicLauncher = operational.strategicLauncher;
+  if (
+    progression.rank !== operational.rank &&
+    strategicLauncher !== undefined
+  ) {
+    strategicLauncher = growWarshipStrategicLauncherState(
+      state,
+      unit.ownerId,
+      progression.rank,
+      strategicLauncher,
+      state.tick,
+    );
+  }
+  if (
+    warshipStrategicLauncherEnabled(state, unit.ownerId) &&
+    strategicLauncher === undefined
+  ) {
+    throw new Error(`P29 Warship is missing strategic launcher state: ${unitId}`);
+  }
+
+  return createProspectiveMatchState(state, {
+    warshipOperationalStates: state.warshipOperationalStates.map((candidate) =>
+      candidate.unitId === unitId
+        ? Object.freeze({
+            ...candidate,
+            health,
+            rank: progression.rank,
+            navalXp: progression.navalXp,
+            ...(strategicLauncher === undefined ? {} : { strategicLauncher }),
+          })
+        : candidate,
+    ),
+  });
+}
+
+export function removeWarshipUnits(
+  state: MatchState,
+  unitIds: readonly string[],
+): MatchState {
+  if (!Array.isArray(unitIds)) {
+    throw new Error("Warship removal unitIds must be an array");
+  }
+  const removedIds = new Set<string>();
+  for (const unitId of unitIds) {
+    if (typeof unitId !== "string" || unitId.length === 0) {
+      throw new Error("Warship removal unitId must be a non-empty string");
+    }
+    if (removedIds.has(unitId)) {
+      throw new Error(`duplicate Warship removal unitId: ${unitId}`);
+    }
+    const unit = state.mobileUnits.find((candidate) => candidate.id === unitId);
+    if (unit === undefined || unit.type !== "WARSHIP") {
+      throw new Error(`Warship removal requires a deployed Warship: ${unitId}`);
+    }
+    removedIds.add(unitId);
+  }
+  if (removedIds.size === 0) return state;
+
+  return createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.filter((unit) => !removedIds.has(unit.id)),
+    warshipOperationalStates: state.warshipOperationalStates.filter(
+      (operational) => !removedIds.has(operational.unitId),
+    ),
+  });
+}
+
 export function warshipPurchaseCost(activeWarships: number): number {
   if (
     !Number.isSafeInteger(activeWarships) ||
@@ -258,7 +1172,12 @@ export function tryStartWarshipProduction(
     typeof request.ownerId !== "string" ||
     request.ownerId.length === 0 ||
     typeof request.portId !== "string" ||
-    request.portId.length === 0
+    request.portId.length === 0 ||
+    typeof request.strategicDestinationCellId !== "number" ||
+    !Number.isSafeInteger(request.strategicDestinationCellId) ||
+    Object.is(request.strategicDestinationCellId, -0) ||
+    !state.map.isValidCellId(request.strategicDestinationCellId) ||
+    state.map.terrainAt(request.strategicDestinationCellId) !== "DEEP_WATER"
   ) {
     return failure(state, "INVALID_REQUEST");
   }
@@ -312,6 +1231,7 @@ export function tryStartWarshipProduction(
   const job: WarshipProductionJobState = Object.freeze({
     portId: port.id,
     ownerId: request.ownerId,
+    strategicDestinationCellId: request.strategicDestinationCellId,
     state: "BUILDING" as const,
     remainingTicks: BASE_WARSHIP_BUILD_TICKS,
   });
@@ -359,6 +1279,7 @@ function waitingDeploymentJob(
   return Object.freeze({
     portId: job.portId,
     ownerId: job.ownerId,
+    strategicDestinationCellId: job.strategicDestinationCellId,
     state: "READY_TO_DEPLOY" as const,
   });
 }
@@ -368,6 +1289,9 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
     mobileUnits: state.mobileUnits,
     nextMobileUnitOrdinal: state.nextMobileUnitOrdinal,
   });
+  const operationalStates: WarshipOperationalState[] = [
+    ...state.warshipOperationalStates,
+  ];
   const nextJobs: WarshipProductionJobState[] = [];
   const ownerIds = state.factions.map((faction) => faction.id);
   const jobs = [...state.warshipProductionJobs].sort((left, right) =>
@@ -404,10 +1328,43 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
         movementClass: "NAVAL",
         cellId,
       });
+      const deployedUnit =
+        job.strategicDestinationCellId === cellId
+          ? created.unit
+          : setMobileUnitStrategicDestination(
+              state.map,
+              created.unit,
+              job.strategicDestinationCellId,
+            );
       units = Object.freeze({
-        mobileUnits: created.mobileUnits,
+        mobileUnits: Object.freeze(
+          created.mobileUnits.map((unit) =>
+            unit.id === deployedUnit.id ? deployedUnit : unit,
+          ),
+        ),
         nextMobileUnitOrdinal: created.nextMobileUnitOrdinal,
       });
+      operationalStates.push(
+        Object.freeze({
+          unitId: deployedUnit.id,
+          health: warshipEffectiveMaxHealth(state, job.ownerId, 1),
+          rank: 1,
+          navalXp: 0,
+          ...(warshipStrategicLauncherEnabled(state, job.ownerId)
+            ? {
+                strategicLauncher: initialWarshipStrategicLauncherState(
+                  state,
+                  job.ownerId,
+                  1,
+                ),
+              }
+            : {}),
+          operatingAnchorCellId: cellId,
+          attackReadyAtTick: state.tick,
+          nextProjectileOrdinal: 0,
+          roamingOrdinal: 0,
+        }),
+      );
       return true;
     };
 
@@ -421,6 +1378,7 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
         Object.freeze({
           portId: job.portId,
           ownerId: job.ownerId,
+          strategicDestinationCellId: job.strategicDestinationCellId,
           state: "BUILDING" as const,
           remainingTicks: job.remainingTicks - 1,
         }),
@@ -435,5 +1393,6 @@ export function advanceWarshipProductionPhase(state: MatchState): MatchState {
     mobileUnits: units.mobileUnits,
     nextMobileUnitOrdinal: units.nextMobileUnitOrdinal,
     warshipProductionJobs: nextJobs,
+    warshipOperationalStates: operationalStates,
   });
 }

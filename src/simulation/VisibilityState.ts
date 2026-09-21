@@ -23,8 +23,10 @@ import type { MatchFactionState, MatchState } from "./MatchState";
 import type {
   PhysicalUnitSimulationEvent,
   TankPopulationAttackResolvedEvent,
+  WarshipTradeShipCaptureResolvedEvent,
 } from "./SimulationEvents";
 import type { PersistentStructureState } from "./Structures";
+import { warshipEffectiveGunRange } from "./Warships";
 
 const V1_SIMULATION_TICKS_PER_SECOND = 10 as const;
 const OBSERVATION_POST_BASELINE_RADII = Object.freeze([
@@ -40,6 +42,8 @@ export interface TankTargetObservation {
   readonly observedUnitIds: readonly string[];
   readonly observedCellIds: readonly CellId[];
 }
+
+export type WarshipTargetObservation = TankTargetObservation;
 
 interface LandOperationPressureResolvedEventLike {
   readonly tick: number;
@@ -164,6 +168,21 @@ function tankObservationField(
       baselineRadius,
       scale.numerator,
       scale.denominator,
+    ),
+  });
+}
+
+function warshipObservationField(
+  state: MatchState,
+  unit: MatchState["mobileUnits"][number],
+): ObservationFieldSource {
+  const range = warshipEffectiveGunRange(state, unit.ownerId);
+  return Object.freeze({
+    centerCellId: unit.cellId,
+    profile: structureRadialFieldFromRangeFactor(
+      1,
+      range.numerator,
+      range.denominator,
     ),
   });
 }
@@ -310,48 +329,25 @@ function activeUnitDirectReveal(
   );
 }
 
-/**
- * Derives the lawful current unit/cell observation sets consumed by autonomous
- * Tank targeting. Direct reveal is source-specific and therefore never adds the
- * source cell to observedCellIds.
- */
-export function projectTankTargetObservation(
+function projectTargetObservationFromSources(
   state: MatchState,
   viewerFactionId: string,
+  ordinarySources: readonly ObservationFieldSource[],
+  dynamicState: (ownerId: string) => RuleDynamicState,
 ): TankTargetObservation {
   const viewer = factionById(state, viewerFactionId);
   if (viewer === undefined)
     throw new Error(`unknown faction: ${viewerFactionId}`);
-  const dynamicState = createDynamicStateResolver(state);
-  const ordinarySources: ObservationFieldSource[] = [];
   const blackoutSources: ObservationFieldSource[] = [];
 
-  for (const unit of state.mobileUnits) {
-    if (
-      unit.ownerId !== viewerFactionId ||
-      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
-    ) {
-      continue;
-    }
-    const operational = state.tankOperationalStates.find(
-      (entry) => entry.unitId === unit.id,
-    );
-    if (
-      operational === undefined ||
-      operational.eligibleFromTick > state.tick
-    ) {
-      continue;
-    }
-    ordinarySources.push(tankObservationField(state, unit, dynamicState));
-  }
-
+  const allOrdinarySources = [...ordinarySources];
   for (const structure of state.structures) {
     if (structure.type !== "OBSERVATION_POST") continue;
     const source = observationPostField(state, structure, dynamicState);
     if (source === undefined) continue;
     const blackout = factionHasP49EnemyBlackout(state, structure.ownerId);
     if (structure.ownerId === viewerFactionId && !blackout) {
-      ordinarySources.push(source);
+      allOrdinarySources.push(source);
       continue;
     }
     if (!blackout) continue;
@@ -369,7 +365,7 @@ export function projectTankTargetObservation(
 
   const ordinaryCells = new Set<CellId>();
   const blackoutCells = new Set<CellId>();
-  for (const source of ordinarySources)
+  for (const source of allOrdinarySources)
     addFieldCells(state, source, ordinaryCells);
   for (const source of blackoutSources)
     addFieldCells(state, source, blackoutCells);
@@ -410,6 +406,81 @@ export function projectTankTargetObservation(
 }
 
 /**
+ * Derives the lawful current unit/cell observation sets consumed by autonomous
+ * Tank targeting. Direct reveal is source-specific and therefore never adds the
+ * source cell to observedCellIds.
+ */
+export function projectTankTargetObservation(
+  state: MatchState,
+  viewerFactionId: string,
+): TankTargetObservation {
+  const viewer = factionById(state, viewerFactionId);
+  if (viewer === undefined)
+    throw new Error(`unknown faction: ${viewerFactionId}`);
+  const dynamicState = createDynamicStateResolver(state);
+  const ordinarySources: ObservationFieldSource[] = [];
+
+  for (const unit of state.mobileUnits) {
+    if (
+      unit.ownerId !== viewerFactionId ||
+      (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY")
+    ) {
+      continue;
+    }
+    const operational = state.tankOperationalStates.find(
+      (entry) => entry.unitId === unit.id,
+    );
+    if (
+      operational === undefined ||
+      operational.eligibleFromTick > state.tick
+    ) {
+      continue;
+    }
+    ordinarySources.push(tankObservationField(state, unit, dynamicState));
+  }
+
+  return projectTargetObservationFromSources(
+    state,
+    viewerFactionId,
+    ordinarySources,
+    dynamicState,
+  );
+}
+
+/**
+ * Derives lawful requester-relative observation from deployed Warships using
+ * their current effective naval-gun range. Gun capability removal does not
+ * remove this observation source.
+ */
+export function projectWarshipTargetObservation(
+  state: MatchState,
+  viewerFactionId: string,
+): WarshipTargetObservation {
+  const viewer = factionById(state, viewerFactionId);
+  if (viewer === undefined)
+    throw new Error(`unknown faction: ${viewerFactionId}`);
+  const dynamicState = createDynamicStateResolver(state);
+  const operationalUnitIds = new Set(
+    state.warshipOperationalStates.map((entry) => entry.unitId),
+  );
+  const ordinarySources = state.mobileUnits
+    .filter(
+      (unit) =>
+        unit.ownerId === viewerFactionId &&
+        unit.type === "WARSHIP" &&
+        operationalUnitIds.has(unit.id),
+    )
+    .map((unit) => warshipObservationField(state, unit));
+
+  return projectTargetObservationFromSources(
+    state,
+    viewerFactionId,
+    ordinarySources,
+    dynamicState,
+  );
+}
+
+/**
  * Applies resolved land-operation pressure as one hostile manifestation of the
  * authoritative operation source. Only the directly attacked faction receives
  * the source-specific reveal; unrelated viewers remain unchanged.
@@ -442,7 +513,7 @@ export function resolveDirectRevealsFromLandOperationEvents(
 }
 
 function resolveDirectRevealsFromTankCombatEventSet(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   events: readonly TankCombatVisibilityEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
@@ -462,6 +533,16 @@ function resolveDirectRevealsFromTankCombatEventSet(
       event.kind === "TANK_POPULATION_ATTACK_RESOLVED"
         ? event.payload.targetFactionId
         : event.payload.target.ownerId;
+    const sourceUnitId =
+      event.kind === "PROJECTILE_IMPACT_RESOLVED"
+        ? event.payload.projectile.sourceUnitId
+        : event.payload.attacker.unitId;
+    if (
+      event.kind === "PROJECTILE_IMPACT_RESOLVED" &&
+      !state.mobileUnits.some((unit) => unit.id === sourceUnitId)
+    ) {
+      continue;
+    }
     directReveals = refreshDirectRevealRecords(
       directReveals,
       {
@@ -471,7 +552,7 @@ function resolveDirectRevealsFromTankCombatEventSet(
         attackedFactionIds: [attackedFactionId],
       },
       "UNIT",
-      event.payload.attacker.unitId,
+      sourceUnitId,
       event.tick,
       V1_SIMULATION_TICKS_PER_SECOND,
     );
@@ -493,7 +574,7 @@ function resolveDirectRevealsFromTankCombatEventSet(
  * the directly attacked faction; destruction facts prevent reveal ghosts.
  */
 export function resolveDirectRevealsFromPhysicalEvents(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   events: readonly PhysicalUnitSimulationEvent[],
   currentTick: number,
 ): readonly DirectRevealRecord[] {
@@ -501,11 +582,48 @@ export function resolveDirectRevealsFromPhysicalEvents(
 }
 
 /**
+ * Applies successful hostile Trade Ship capture as a direct hostile
+ * manifestation of the capturing Warship. The pre-capture Trade Ship owner is
+ * the directly attacked faction. A source destroyed later in the same tick
+ * cannot leave a direct-reveal ghost.
+ */
+export function resolveDirectRevealsFromWarshipTradeShipCaptureEvents(
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
+  events: readonly WarshipTradeShipCaptureResolvedEvent[],
+  currentTick: number,
+): readonly DirectRevealRecord[] {
+  let directReveals = pruneExpiredDirectReveals(
+    state.directReveals,
+    currentTick,
+  );
+  for (const event of events) {
+    const sourceUnitId = event.payload.capturingWarship.unitId;
+    if (!state.mobileUnits.some((unit) => unit.id === sourceUnitId)) {
+      continue;
+    }
+    directReveals = refreshDirectRevealRecords(
+      directReveals,
+      {
+        resolved: true,
+        hostile: true,
+        identifiableSource: true,
+        attackedFactionIds: [event.payload.tradeShip.ownerId],
+      },
+      "UNIT",
+      sourceUnitId,
+      event.tick,
+      V1_SIMULATION_TICKS_PER_SECOND,
+    );
+  }
+  return directReveals;
+}
+
+/**
  * Applies the complete Tank-combat visibility consequences for one frozen
  * combat batch, including Population attacks and same-batch destruction.
  */
 export function resolveDirectRevealsFromTankCombatEvents(
-  state: Readonly<Pick<MatchState, "directReveals">>,
+  state: Readonly<Pick<MatchState, "directReveals" | "mobileUnits">>,
   physicalEvents: readonly PhysicalUnitSimulationEvent[],
   populationEvents: readonly TankPopulationAttackResolvedEvent[],
   currentTick: number,

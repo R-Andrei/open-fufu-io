@@ -1,3 +1,4 @@
+import { factionRelationBetween } from "../core/FactionRelations";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import {
@@ -9,11 +10,18 @@ import {
 } from "../core/rules/RuleComposition";
 import {
   conditionEligibleRuleTerms,
+  materializeCompiledScalarRule,
+  materializeCompiledScalarScaleFactor,
   resolvedRuleTermsForScope,
   type ExactRuleScaleFactor,
   type ResolvedRuleTerm,
   type RuleDynamicState,
 } from "../core/rules/RuleMaterialization";
+import {
+  structureRadialFieldContainsCell,
+  structureRadialFieldFromAreaFactor,
+  structureRadialFieldFromRangeFactor,
+} from "../core/rules/StructureFieldGeometry";
 import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
 
@@ -115,6 +123,44 @@ interface PassiveTerrainCounts {
   readonly desertPopulationBearingCells: number;
 }
 
+
+type EventInsideFieldCondition = Extract<
+  RuleCondition,
+  { readonly kind: "EVENT_INSIDE_FIELD" }
+>;
+
+type EventStructureFieldDefinition = Readonly<{
+  structureType: "FORT" | "SAM_LAUNCHER" | "COMMAND_POST";
+  axis: "STRUCTURE_FIELD_COVERAGE_AREA" | "STRUCTURE_INTERCEPTION_RANGE";
+  scaling: "AREA" | "RANGE";
+  baselineRadii: readonly [number, number, number, number, number];
+}>;
+
+const EVENT_STRUCTURE_FIELD_DEFINITIONS: Readonly<
+  Record<EventInsideFieldCondition["field"], EventStructureFieldDefinition>
+> = Object.freeze({
+  FORT: Object.freeze({
+    structureType: "FORT",
+    axis: "STRUCTURE_FIELD_COVERAGE_AREA",
+    scaling: "AREA",
+    baselineRadii: Object.freeze([30, 35, 40, 45, 50] as const),
+  }),
+  SAM_LAUNCHER: Object.freeze({
+    structureType: "SAM_LAUNCHER",
+    axis: "STRUCTURE_INTERCEPTION_RANGE",
+    scaling: "RANGE",
+    baselineRadii: Object.freeze([70, 80, 90, 100, 105] as const),
+  }),
+  COMMAND_POST: Object.freeze({
+    structureType: "COMMAND_POST",
+    axis: "STRUCTURE_FIELD_COVERAGE_AREA",
+    scaling: "AREA",
+    baselineRadii: Object.freeze([30, 35, 40, 45, 50] as const),
+  }),
+});
+
+const EXTERNAL_TRADE_GLOBAL_SCOPE = Object.freeze({ kind: "GLOBAL" as const });
+
 function exactFfy(
   numerator: bigint,
   denominator: bigint = 1n,
@@ -127,6 +173,192 @@ function exactFfy(
     numerator: reduced.numerator,
     denominator: reduced.denominator,
   });
+}
+
+function currentTerritorialContactCount(
+  state: MatchState,
+  ownerId: string,
+): number {
+  const activeFactionIds = new Set(
+    state.factions
+      .filter((faction) => faction.status === "ACTIVE")
+      .map((faction) => faction.id),
+  );
+  const contacts = new Set<string>();
+  for (let cellId = 0; cellId < state.ownership.length; cellId += 1) {
+    if (state.ownership[cellId] !== ownerId) continue;
+    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
+      const neighborOwnerId = state.ownership[neighbor] ?? null;
+      if (
+        neighborOwnerId !== null &&
+        neighborOwnerId !== ownerId &&
+        activeFactionIds.has(neighborOwnerId)
+      ) {
+        contacts.add(neighborOwnerId);
+      }
+    }
+  }
+  return contacts.size;
+}
+
+export function ffyRuleDynamicState(
+  state: MatchState,
+  ownerId: string,
+): RuleDynamicState {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`FFY consequence references unknown faction ${ownerId}`);
+  }
+  return Object.freeze({
+    ownedPersistentStructureCount: state.structures.filter(
+      (structure) => structure.ownerId === ownerId,
+    ).length,
+    territorialContactCount: currentTerritorialContactCount(state, ownerId),
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
+function eventFactionIdentity(state: MatchState, ownerId: string) {
+  const faction = state.factions.find((candidate) => candidate.id === ownerId);
+  if (faction === undefined) {
+    throw new Error(`FFY event condition references unknown faction ${ownerId}`);
+  }
+  return Object.freeze({
+    factionId: faction.id,
+    ...(faction.fixedTeamId === undefined
+      ? {}
+      : { fixedTeamId: faction.fixedTeamId }),
+  });
+}
+
+function eventFieldAffiliationApplies(
+  state: MatchState,
+  ruleHolderId: string,
+  structureOwnerId: string,
+  affiliation: EventInsideFieldCondition["affiliation"],
+): boolean {
+  const relation = factionRelationBetween(
+    eventFactionIdentity(state, ruleHolderId),
+    eventFactionIdentity(state, structureOwnerId),
+  );
+  if (affiliation === "SELF") return relation === "SELF";
+  return relation === "SELF" || relation === "ALLY";
+}
+
+function eventInsideStructureField(
+  state: MatchState,
+  ruleHolderId: string,
+  eventCellId: number,
+  condition: EventInsideFieldCondition,
+): boolean {
+  const definition = EVENT_STRUCTURE_FIELD_DEFINITIONS[condition.field];
+  const eventPosition = state.map.positionOf(eventCellId);
+  for (const structure of state.structures) {
+    if (
+      !structure.active ||
+      structure.completedLevel === undefined ||
+      structure.type !== definition.structureType ||
+      !eventFieldAffiliationApplies(
+        state,
+        ruleHolderId,
+        structure.ownerId,
+        condition.affiliation,
+      )
+    ) {
+      continue;
+    }
+    const structureOwner = state.factions.find(
+      (faction) => faction.id === structure.ownerId,
+    );
+    if (structureOwner === undefined) {
+      throw new Error(
+        `FFY event field structure ${structure.id} has unknown owner ${structure.ownerId}`,
+      );
+    }
+    const factor = materializeCompiledScalarScaleFactor(
+      structureOwner.rules,
+      RULE_AXIS_REGISTRY,
+      definition.axis,
+      { kind: "STRUCTURE", structure: structure.type },
+      ffyRuleDynamicState(state, structureOwner.id),
+    );
+    const baselineRadius = definition.baselineRadii[structure.completedLevel - 1];
+    if (baselineRadius === undefined) {
+      throw new Error(
+        `FFY event field structure ${structure.id} has unsupported level ${structure.completedLevel}`,
+      );
+    }
+    const profile =
+      definition.scaling === "AREA"
+        ? structureRadialFieldFromAreaFactor(
+            baselineRadius,
+            factor.numerator,
+            factor.denominator,
+          )
+        : structureRadialFieldFromRangeFactor(
+            baselineRadius,
+            factor.numerator,
+            factor.denominator,
+          );
+    const center = state.map.positionOf(structure.cellId);
+    if (
+      structureRadialFieldContainsCell(
+        profile,
+        center.x,
+        center.y,
+        eventPosition.x,
+        eventPosition.y,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function ffyEventConditionAppliesAtCell(
+  state: MatchState,
+  ruleHolderId: string,
+  eventCellId: number,
+  condition: RuleCondition,
+): boolean {
+  if (!state.map.isValidCellId(eventCellId)) {
+    throw new Error("FFY event condition cell must be a valid map cell");
+  }
+  switch (condition.kind) {
+    case "EVENT_TERRAIN_IS":
+      return state.map.terrainAt(eventCellId) === condition.terrain;
+    case "EVENT_INSIDE_FIELD":
+      return eventInsideStructureField(
+        state,
+        ruleHolderId,
+        eventCellId,
+        condition,
+      );
+    default:
+      return false;
+  }
+}
+
+export function resolveExternalWartimeTradeMultiplier(
+  rules: CompiledRuleProfile,
+  ruleDynamicState: RuleDynamicState,
+  currentlyAtWar: boolean,
+): ExactFfyValue {
+  if (!currentlyAtWar) return exactFfy(1n);
+  const resolved = materializeCompiledScalarRule(
+    0.5,
+    rules,
+    RULE_AXIS_REGISTRY,
+    "EXTERNAL_TRADE_WARTIME_MULTIPLIER",
+    EXTERNAL_TRADE_GLOBAL_SCOPE,
+    ruleDynamicState,
+  );
+  if (resolved === 0.5) return exactFfy(1n, 2n);
+  if (resolved === 1) return exactFfy(1n);
+  throw new Error(
+    "external wartime Trade multiplier must resolve to canonical 0.5 or 1.0",
+  );
 }
 
 function materializeExactFfy(

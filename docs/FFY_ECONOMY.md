@@ -318,26 +318,35 @@ Baseline Trade Ship routing traverses **Deep Water only**. `SHALLOW_WATER` is no
 
 Every launched Trade Ship materializes through its source Port's persistent designated Deep-Water output/dock cell from `TERRAIN_AND_STRUCTURES.md`. Transient physical occupancy of that exact dock blocks launch; the Port does not choose another neighboring water cell as a fallback.
 
-Every active Port with at least one legal reachable foreign Trade destination maintains its own independent deterministic dispatch timer.
+Trade dispatch scheduling is owned by the source Port's current **ownership epoch**. Each epoch serializes its own scheduler ordinal, optional due tick, and least-recently-selected destination history.
 
-After the Port becomes active and after every successful dispatch, the next ordinary dispatch delay is a deterministic match-RNG value in:
+For every scheduled attempt, the next delay is selected uniformly from the inclusive integer range:
 
 ```text
-20–30 seconds
-mean target: 25 seconds
+200–300 authoritative ticks
+= 20.0–30.0 seconds at 10 Hz
+mean = 250 ticks = 25.0 seconds
 ```
 
-Dispatch frequency is not throttled by ships already in flight, faction/global Trade Ship count, route length, or previous-voyage completion time. Long routes therefore create more simultaneous traffic naturally because ships remain in flight longer.
+The choice is deterministic from rule-bearing match state using stable match seed + source Port identity + that ownership epoch's scheduler ordinal. Each due attempt consumes exactly one ordinal and schedules at most one subsequent attempt; no backlog or catch-up dispatches are manufactured.
 
-If no legal foreign destination exists when a dispatch would occur, no ship is created; retry scheduling is deterministic and must not allow manufactured extra dispatches when a destination becomes available.
+A newly active ownership epoch that already has at least one legal reachable foreign Trade destination schedules its first attempt 200–300 ticks later rather than dispatching immediately. If an active Port begins with no legal reachable foreign destination, it has no due timer; the first transition from zero to at least one legal reachable foreign destination schedules a fresh 200–300-tick attempt.
+
+Once an epoch has a due timer, temporary loss of all legal foreign destinations does not cancel that timer. If no legal foreign destination exists when the due attempt resolves, no ship is created and that attempt schedules exactly one new 200–300-tick attempt under the same deterministic ordinal sequence.
+
+Temporary Port inactivity clears the current due timer but preserves the same owner's destination-history state. When that same ownership epoch becomes active again, it schedules a fresh 200–300-tick attempt if at least one legal reachable foreign destination exists. A successful Port ownership transfer begins a fresh ownership epoch for the new owner: scheduler ordinal and destination-selection history reset, and first-attempt scheduling follows the same active/eligible rule above.
+
+Dispatch frequency is not throttled by ships already in flight, faction/global Trade Ship count, route length, or previous-voyage completion time. Long routes therefore create more simultaneous traffic naturally because ships remain in flight longer.
 
 ## 5.2 Raw cargo value
 
 ```text
-rawCargo = 150 FFY × planned water-route length in cells
+rawCargo = 150 FFY × planned water-route length
 ```
 
-Planned route length and raw cargo are snapshotted when the voyage launches.
+For this calculation, **planned water-route length** is the number of traversed cardinal Deep-Water edges in the launch route, equivalently `path.cells.length - 1`. After the destination Port is selected, launch planning chooses the lawful radius-5 Deep-Water completion cell with the shortest legal Deep-Water route from the source Port's designated dock. Equal shortest paths/cells use the canonical deterministic Navigation tie semantics.
+
+Planned route length and raw cargo are snapshotted when the voyage launches. Later rerouting never recomputes either `rawCargo` or `Vowner`.
 
 | Planned route length | Raw cargo |
 | ---: | ---: |
@@ -438,7 +447,11 @@ Reaching any such lawful delivery cell completes ordinary service even when the 
 
 If the destination changes owner but remains active, reachable, and foreign, the vessel continues to that physical Port. If it becomes invalid, the ship reroutes using the same policy without recomputing the voyage's snapshotted cargo value or `Vowner`.
 
+The least-recently-selected history used by an ordinary reroute belongs to the **source Port ownership epoch that launched that voyage**, not necessarily the Port's current owner. Every voyage remains bound to its launching source-Port ownership epoch. When the physical source Port transfers ownership, the new owner's current epoch begins with the fresh scheduler/history state defined in §5.1, while the retired old-owner epoch remains serialized for as long as any in-flight voyage still references it. Ordinary reroutes consult and update that launching epoch's destination history. A retired epoch may be discarded once its final referencing voyage terminates.
+
 If no legal foreign destination remains during an uncaptured voyage, the Trade Ship returns to a reachable owned active Port and terminates without an ordinary Trade payout.
+
+When several owned active Ports are reachable for such a return, choose the Port whose lawful radius-5 Deep-Water delivery area has the shortest legal Deep-Water route from the vessel's current cell. Equal Port-distance ties resolve by stable Port ID, then equal target-cell/path ties use the canonical deterministic Navigation tie semantics. Owned return uses the same inclusive radius-5 Deep-Water completion geometry as ordinary Trade service and does not serialize through the Port's designated dock.
 
 ## 5.5 Ordinary completion
 
@@ -489,7 +502,9 @@ When a valid hostile capture resolves while that state is `false`, the same atom
 
 When a later hostile capture or recapture occurs with `firstHostileCaptureResolved == true`, the physical ownership/routing transition proceeds normally but **no first-hostile-capture owner adjustment can fire again** and ordinary uncaptured commercial completion remains canceled.
 
-If the delivery Port becomes invalid, captured cargo retargets another legal reachable owned active Port. If none exists, it remains physically in play without paying out until delivery again becomes possible, it is recaptured, or it is destroyed.
+If the delivery Port becomes invalid, captured cargo retargets another legal reachable owned active Port. If several owned active Ports are reachable, choose the Port whose lawful radius-5 Deep-Water delivery area has the shortest legal Deep-Water route from the vessel's current cell. Equal Port-distance ties resolve by stable Port ID, then equal target-cell/path ties use the canonical deterministic Navigation tie semantics. Captured delivery uses the same inclusive radius-5 Deep-Water completion geometry as ordinary Trade service and does not serialize through the Port's designated dock.
+
+If no legal reachable owned active Port exists, the cargo remains physically in play without paying out until delivery again becomes possible, it is recaptured, or it is destroyed.
 
 ## 7.3 Original-owner signed voyage transactions
 

@@ -122,6 +122,44 @@ Its event `id` is the canonical causal identity for that resolved attack occurre
 
 The event says that the authoritative attack resolved. The focused combat owner still determines legality, range, cooldown, damage, simultaneous-resolution behavior, and any other attack mechanics.
 
+### 5.1.1 `PROJECTILE_IMPACT_RESOLVED`
+
+A target-bound authoritative combat projectile that physically arrives and resolves its effect emits:
+
+```ts
+PROJECTILE_IMPACT_RESOLVED {
+  projectile: {
+    sourceUnitId: UnitId;
+    sourceOwnerId: FactionId;
+    projectileOrdinal: number;
+    profileId: string;
+  };
+  target: UnitEventSubject;
+}
+```
+
+The projectile snapshot is lifecycle-safe causal identity captured by the projectile owner before impact. It deliberately does not require the firing unit to still exist when the projectile arrives. The focused projectile/combat owner remains authoritative for motion, arrival, damage/effect payload, target validity, impact order, and whether this occurrence destroys the target.
+
+A direct-hostile-manifestation consumer may use the source identity only when that source still exists in current authoritative state; an impact from a projectile whose source was already destroyed must not recreate a visibility ghost.
+
+### 5.1.2 `WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED`
+
+When a Warship successfully commits the authoritative hostile Trade Ship capture/recapture transition, the Naval producer emits:
+
+```ts
+WARSHIP_TRADE_SHIP_CAPTURE_RESOLVED {
+  capturingWarship: UnitEventSubject;
+  tradeShip: UnitEventSubject;
+  nextHolderId: FactionId;
+}
+```
+
+`capturingWarship` is the lifecycle-safe source snapshot from the frozen capture-admission state. `tradeShip` is the lifecycle-safe target snapshot immediately before the successful transition, so its `ownerId` is the faction directly attacked by that capture occurrence. `nextHolderId` is the holder after the already-committed transition and equals the capturing Warship's owner.
+
+This fact crosses the Naval-to-Visibility boundary because successful hostile capture is a direct hostile manifestation. Visibility may use the pre-capture owner and source identity to refresh the ordinary source-specific direct reveal, but it must not infer or re-run capture legality. If the capturing Warship has been destroyed before visibility consequence delivery later in the same authoritative tick, the fact must not recreate a reveal ghost.
+
+Trade Ship cargo, first-hostile-capture state, routing, signed owner adjustments, and terminal payout remain owned by `FFY_ECONOMY.md` and are not duplicated into this event. The occurrence does not create or refresh `atWar`.
+
 ### 5.2 `UNIT_DESTROYED`
 
 When physical unit resolution authoritatively destroys a unit, emit exactly one destruction fact for that unit occurrence:
@@ -129,26 +167,33 @@ When physical unit resolution authoritatively destroys a unit, emit exactly one 
 ```ts
 UNIT_DESTROYED {
   unit: UnitEventSubject;
-  causes: readonly {
-    kind: "UNIT_ATTACK";
-    attackEventId: string;
-    attacker: UnitEventSubject;
-  }[];
+  causes: readonly (
+    | {
+        kind: "UNIT_ATTACK";
+        attackEventId: string;
+        attacker: UnitEventSubject;
+      }
+    | {
+        kind: "PROJECTILE_IMPACT";
+        impactEventId: string;
+        projectile: {
+          sourceUnitId: UnitId;
+          sourceOwnerId: FactionId;
+          projectileOrdinal: number;
+          profileId: string;
+        };
+      }
+  )[];
 }
 ```
 
-`attackEventId` references the causal `UNIT_ATTACK_RESOLVED` fact. `causes` preserves **every authoritative admitted attack that causally contributes to that same physical destruction result** under the focused combat owner's simultaneous-resolution semantics.
+A `UNIT_ATTACK` cause references its causal `UNIT_ATTACK_RESOLVED` fact and preserves the admitted direct attacks that contribute under that focused combat owner's simultaneous-resolution semantics.
 
-A destruction fact has no universal `killer`, `winner`, or reward owner. Those concepts are consumer policy unless a focused domain explicitly owns such a fact.
+A `PROJECTILE_IMPACT` cause references the causal `PROJECTILE_IMPACT_RESOLVED` fact. For an ordered physical-projectile lifecycle, the focused combat owner records the projectile impact that actually performs the living/active -> destroyed transition; earlier nonlethal projectile impacts remain their own impact facts and later same-phase projectiles bound to the removed target do not become destruction causes.
 
-For deterministic representation, unit-attack destruction causes are ordered by:
+A destruction fact has no universal reward winner. Focused consumers may derive their own qualification from the complete lifecycle-safe cause identity supplied by the relevant physical owner.
 
-```text
-attacker.unitId ascending
-then attackEventId ascending
-```
-
-This order exists only for deterministic serialization/replay and stable comparison. Array position does not mean first hit, last hit, primary cause, or reward credit. Same-tick simultaneous attacks remain simultaneous.
+For deterministic representation, destruction causes are ordered by cause kind with `UNIT_ATTACK` before `PROJECTILE_IMPACT`; unit-attack causes then use attacker unit ID and attack-event ID, while projectile causes use source unit ID, projectile ordinal, and impact-event ID. Array position is deterministic representation, not a general reward-priority rule.
 
 ### 5.3 `RADIOACTIVE_ATTACK_AFTERSHOCK_RESOLVED`
 
