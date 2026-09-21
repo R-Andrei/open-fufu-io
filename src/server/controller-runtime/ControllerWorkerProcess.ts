@@ -411,7 +411,11 @@ const invokeEntrypointSource = `
   let nextActionOrdinal = 1;
   const stagedActions = [];
   const stageAction = (kind, payload = {}) => {
-    const actionRef = "action_" + nextActionOrdinal;
+    const decisionNumber = globalThis.__openFufuInput.decisionNumber;
+    const actionRef =
+      decisionNumber === undefined || decisionNumber === 0
+        ? "action_" + nextActionOrdinal
+        : "action_" + decisionNumber + "_" + nextActionOrdinal;
     nextActionOrdinal += 1;
     const action = deepFreeze({
       kind,
