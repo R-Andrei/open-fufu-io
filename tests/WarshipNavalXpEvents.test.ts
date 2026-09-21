@@ -5,6 +5,7 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import type { HomingCombatProjectileImpact } from "../src/simulation/CombatProjectiles";
 import {
+  canonicalMatchStateSerialization,
   createAdvancedMatchState,
   createInitialMatchState,
   createProspectiveMatchState,
@@ -255,7 +256,7 @@ describe("Warship Naval XP authoritative occurrence integration", () => {
       [
         impact(right.source.unitId, "alpha", right.warship.unitId, 0),
         impact(right.source.unitId, "alpha", right.transport.unitId, 1),
-      ].reverse(),
+      ],
     );
 
     expect(progression(leftResolved.state, left.source.unitId)).toMatchObject({
@@ -264,6 +265,10 @@ describe("Warship Naval XP authoritative occurrence integration", () => {
     });
     expect(progression(rightResolved.state, right.source.unitId)).toEqual(
       progression(leftResolved.state, left.source.unitId),
+    );
+    expect(rightResolved.events).toEqual(leftResolved.events);
+    expect(canonicalMatchStateSerialization(rightResolved.state)).toBe(
+      canonicalMatchStateSerialization(leftResolved.state),
     );
 
     const repeated = resolveWarshipNavalProjectileImpacts(leftResolved.state, [

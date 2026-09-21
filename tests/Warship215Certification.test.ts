@@ -8,6 +8,7 @@ import {
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import {
+  canonicalMatchStateSerialization,
   createAdvancedMatchState,
   createInitialMatchState,
   createProspectiveMatchState,
@@ -123,9 +124,20 @@ describe("issue #215 adversarial certification", () => {
     const ordinary = deployed();
     const ordinaryId = ordinary.mobileUnits[0]!.id;
 
+    const ordinaryRank3 = applyWarshipNavalXp(ordinary, ordinaryId, 200);
+    expect(
+      ordinaryRank3.warshipOperationalStates.find(
+        (entry) => entry.unitId === ordinaryId,
+      ),
+    ).toMatchObject({ rank: 3, navalXp: 0 });
     expect(() =>
-      createProspectiveMatchState(ordinary, {
-        warshipOperationalStates: ordinary.warshipOperationalStates.map(
+      createProspectiveMatchState(ordinaryRank3, {
+        warshipOperationalStates: ordinaryRank3.warshipOperationalStates,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      createProspectiveMatchState(ordinaryRank3, {
+        warshipOperationalStates: ordinaryRank3.warshipOperationalStates.map(
           (entry) =>
             entry.unitId === ordinaryId
               ? Object.freeze({ ...entry, rank: 4, navalXp: 0 })
@@ -155,6 +167,56 @@ describe("issue #215 adversarial certification", () => {
         ),
       }),
     ).toThrow(/rank cap|maximum rank/i);
+  });
+
+  it("binds Warship progression and P29 launcher state into canonical replay serialization", () => {
+    const initial = deployed(["P29"]);
+    const unitId = initial.mobileUnits[0]!.id;
+    const initialSerialization = canonicalMatchStateSerialization(initial);
+
+    const progressed = applyWarshipNavalXp(initial, unitId, 99);
+    expect(
+      progressed.warshipOperationalStates.find((entry) => entry.unitId === unitId),
+    ).toMatchObject({ rank: 1, navalXp: 99 });
+    const progressedSerialization = canonicalMatchStateSerialization(progressed);
+    expect(progressedSerialization).not.toBe(initialSerialization);
+
+    const committed = tryCommitWarshipStrategicLaunchCharge(progressed, {
+      ownerId: "alpha",
+      unitId,
+      weapon: "ATOM_BOMB",
+    });
+    expect(committed.ok).toBe(true);
+    if (!committed.ok) throw new Error("expected P29 launcher-state commit");
+
+    const committedSerialization = canonicalMatchStateSerialization(
+      committed.state,
+    );
+    expect(committedSerialization).not.toBe(progressedSerialization);
+    const parsed = JSON.parse(committedSerialization) as {
+      warshipOperationalStates: readonly {
+        unitId: string;
+        rank: number;
+        navalXp: number;
+        strategicLauncher?: {
+          acceptedLaunchCount: number;
+          chargeSlots: readonly unknown[];
+        };
+      }[];
+    };
+    expect(parsed.warshipOperationalStates).toEqual([
+      expect.objectContaining({
+        unitId,
+        rank: 1,
+        navalXp: 99,
+        strategicLauncher: {
+          acceptedLaunchCount: 1,
+          chargeSlots: [
+            { slotId: 0, state: "RECHARGING", readyAtTick: 90 },
+          ],
+        },
+      }),
+    ]);
   });
 
   it("rejects malformed/restored P29 launcher ownership and slot-capacity state", () => {
