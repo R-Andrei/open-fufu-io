@@ -16,6 +16,8 @@ import {
 } from "./ControllerQueryProjection";
 import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
+  CONTROLLER_EVENTS_PER_DECISION,
+  CONTROLLER_PENDING_EVENTS_PER_FACTION,
   evaluateControllerRound,
   type ControllerHost,
   type ControllerHostInvocationResult,
@@ -1159,6 +1161,14 @@ export class MatchRuntime {
     string,
     readonly PendingControllerEventObservation[]
   >();
+  private readonly pendingControllerEventOverflowByFaction = new Map<
+    string,
+    Readonly<{
+      droppedCount: number;
+      firstDroppedTick: number;
+      lastDroppedTick: number;
+    }>
+  >();
   private readonly pendingTankOriginByFactoryId = new Map<
     string,
     Readonly<{ ownerId: string; originAction: ActionRef }>
@@ -1318,6 +1328,118 @@ export class MatchRuntime {
     return undefined;
   }
 
+  private pendingControllerEventsForDecision(): ReadonlyMap<
+    string,
+    readonly PendingControllerEventObservation[]
+  > {
+    const visible = new Map<
+      string,
+      readonly PendingControllerEventObservation[]
+    >();
+    for (const faction of this.state.factions) {
+      if (this.controllerFaultedFactionIds.has(faction.id)) continue;
+      const pending = this.pendingControllerEventsByFaction.get(faction.id);
+      if (pending === undefined || pending.length === 0) continue;
+      visible.set(
+        faction.id,
+        Object.freeze(pending.slice(0, CONTROLLER_EVENTS_PER_DECISION)),
+      );
+    }
+    return visible;
+  }
+
+  private consumeControllerEventsAfterDecision(
+    evaluated: ControllerRoundEvaluation,
+  ): void {
+    for (const faction of this.state.factions) {
+      if (evaluated.faultedFactionIds.has(faction.id)) {
+        this.pendingControllerEventsByFaction.delete(faction.id);
+        this.pendingControllerEventOverflowByFaction.delete(faction.id);
+        continue;
+      }
+
+      const existing =
+        this.pendingControllerEventsByFaction.get(faction.id) ??
+        Object.freeze([] as PendingControllerEventObservation[]);
+      const consumed = Math.min(
+        existing.length,
+        CONTROLLER_EVENTS_PER_DECISION,
+      );
+      const remaining = existing.slice(consumed);
+      const overflow =
+        this.pendingControllerEventOverflowByFaction.get(faction.id);
+      if (
+        overflow !== undefined &&
+        remaining.length < CONTROLLER_PENDING_EVENTS_PER_FACTION
+      ) {
+        remaining.push(
+          Object.freeze({
+            type: "EVENT_BACKLOG_OVERFLOW" as const,
+            droppedCount: overflow.droppedCount,
+            firstDroppedTick: overflow.firstDroppedTick,
+            lastDroppedTick: overflow.lastDroppedTick,
+          }),
+        );
+        this.pendingControllerEventOverflowByFaction.delete(faction.id);
+      }
+
+      if (remaining.length === 0) {
+        this.pendingControllerEventsByFaction.delete(faction.id);
+      } else {
+        this.pendingControllerEventsByFaction.set(
+          faction.id,
+          Object.freeze(remaining),
+        );
+      }
+    }
+  }
+
+  private enqueueControllerEvents(
+    factionId: string,
+    events: readonly PendingControllerEventObservation[],
+    tick: number,
+  ): void {
+    if (
+      events.length === 0 ||
+      this.controllerFaultedFactionIds.has(factionId)
+    ) {
+      return;
+    }
+
+    const pending = [
+      ...(this.pendingControllerEventsByFaction.get(factionId) ?? []),
+    ];
+    let overflow = this.pendingControllerEventOverflowByFaction.get(factionId);
+
+    for (const event of events) {
+      if (
+        overflow !== undefined ||
+        pending.length >= CONTROLLER_PENDING_EVENTS_PER_FACTION
+      ) {
+        overflow = Object.freeze({
+          droppedCount: Math.min(
+            Number.MAX_SAFE_INTEGER,
+            (overflow?.droppedCount ?? 0) + 1,
+          ),
+          firstDroppedTick: overflow?.firstDroppedTick ?? tick,
+          lastDroppedTick: tick,
+        });
+        continue;
+      }
+      pending.push(event);
+    }
+
+    if (pending.length > 0) {
+      this.pendingControllerEventsByFaction.set(
+        factionId,
+        Object.freeze(pending),
+      );
+    }
+    if (overflow !== undefined) {
+      this.pendingControllerEventOverflowByFaction.set(factionId, overflow);
+    }
+  }
+
   private commitControllerRound(
     evaluated: ControllerRoundEvaluation,
   ): readonly ControllerRoundReceipt[] {
@@ -1353,11 +1475,7 @@ export class MatchRuntime {
     for (const entry of frozenReceipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
-    for (const faction of this.state.factions) {
-      if (!this.controllerFaultedFactionIds.has(faction.id)) {
-        this.pendingControllerEventsByFaction.delete(faction.id);
-      }
-    }
+    this.consumeControllerEventsAfterDecision(evaluated);
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
     this.controllerConsecutiveFaultCounts = new Map(
       evaluated.consecutiveFaultCounts,
@@ -1396,7 +1514,7 @@ export class MatchRuntime {
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
         this.controllerReferences,
-        this.pendingControllerEventsByFaction,
+        this.pendingControllerEventsForDecision(),
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
@@ -1620,13 +1738,7 @@ export class MatchRuntime {
     }
     this.state = nextState;
     for (const [factionId, events] of controllerEventDeliveries) {
-      const existing = this.pendingControllerEventsByFaction.get(factionId);
-      this.pendingControllerEventsByFaction.set(
-        factionId,
-        existing === undefined
-          ? events
-          : Object.freeze([...existing, ...events]),
-      );
+      this.enqueueControllerEvents(factionId, events, nextState.tick);
     }
     return this.state;
   }
