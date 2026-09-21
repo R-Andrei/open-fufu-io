@@ -51,6 +51,8 @@ export {
 } from "./ControllerSpatialSurface";
 
 export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
+export const CONTROLLER_EVENTS_PER_DECISION = 512;
+export const CONTROLLER_PENDING_EVENTS_PER_FACTION = 4_096;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
@@ -121,6 +123,12 @@ export type PendingControllerEventObservation =
       readonly type: "HOSTILE_SOURCE_REVEALED";
       readonly sourceKind: "UNIT" | "STRUCTURE" | "OPERATION";
       readonly sourceId: string;
+    }>
+  | Readonly<{
+      readonly type: "EVENT_BACKLOG_OVERFLOW";
+      readonly droppedCount: number;
+      readonly firstDroppedTick: number;
+      readonly lastDroppedTick: number;
     }>;
 
 export interface LawfulControllerObservation {
@@ -970,6 +978,13 @@ function projectPendingControllerEvent(
         source,
       }) as ControllerEvent;
     }
+    case "EVENT_BACKLOG_OVERFLOW":
+      return Object.freeze({
+        type: pending.type,
+        droppedCount: pending.droppedCount,
+        firstDroppedTick: pending.firstDroppedTick,
+        lastDroppedTick: pending.lastDroppedTick,
+      });
   }
 }
 
@@ -1007,15 +1022,17 @@ export function projectLawfulControllerObservation(
     passiveFfyPerSecond,
   });
   const sinceLastDecision = Object.freeze(
-    pendingControllerEvents.flatMap((pending) => {
-      const projected = projectPendingControllerEvent(
-        state,
-        factionId,
-        controllerReferences,
-        pending,
-      );
-      return projected === undefined ? [] : [projected];
-    }),
+    pendingControllerEvents
+      .slice(0, CONTROLLER_EVENTS_PER_DECISION)
+      .flatMap((pending) => {
+        const projected = projectPendingControllerEvent(
+          state,
+          factionId,
+          controllerReferences,
+          pending,
+        );
+        return projected === undefined ? [] : [projected];
+      }),
   );
   const events = Object.freeze({ sinceLastDecision });
 
