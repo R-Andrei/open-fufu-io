@@ -563,7 +563,7 @@ describe("simulation dependency firewall", () => {
 
     expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
     expect(graph.modules).toHaveLength(50);
-    expect(graph.edges).toHaveLength(212);
+    expect(graph.edges).toHaveLength(213);
   });
 
   it("rejects unclassified, stale, duplicate, and misclassified architecture policy", () => {

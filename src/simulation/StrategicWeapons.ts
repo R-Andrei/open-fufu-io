@@ -26,6 +26,10 @@ import {
   type PersistentStructureState,
   type StructureChargeSlotState,
 } from "./Structures";
+import {
+  tryCommitWarshipStrategicLaunchCharge,
+  warshipStrategicLauncherProfile,
+} from "./Warships";
 
 const BASE_WEAPON_FFY_COST = Object.freeze({
   ATOM_BOMB: 1_000_000,
@@ -460,9 +464,9 @@ function requiredSiloLevel(weapon: StrategicWeaponType): number {
 }
 
 function lowestReadyCharge(
-  launcher: PersistentStructureState,
+  chargeSlots: readonly StructureChargeSlotState[],
 ): StructureChargeSlotState | undefined {
-  return [...(launcher.chargeSlots ?? [])]
+  return [...chargeSlots]
     .filter((slot) => slot.state === "READY")
     .sort((left, right) => left.slotId - right.slotId)[0];
 }
@@ -472,6 +476,13 @@ export function canonicalStrategicLaunchReservations(
   candidates: readonly StrategicLaunchReservationCandidate[],
 ): ReadonlyMap<number, StrategicLaunchReservation> {
   const byLauncher = new Map<string, StrategicLaunchReservationCandidate[]>();
+  const launcherSnapshots = new Map<
+    string,
+    Readonly<{
+      chargeSlots: readonly StructureChargeSlotState[];
+      acceptedLaunchCount: number;
+    }>
+  >();
   const seenSequences = new Set<number>();
 
   for (const candidate of candidates) {
@@ -484,18 +495,52 @@ export function canonicalStrategicLaunchReservations(
       throw new Error("strategic reservation candidates require unique non-negative sequences");
     }
     seenSequences.add(candidate.sequence);
-    const launcher = state.structures.find(
-      (structure) => structure.id === candidate.launcherId,
-    );
-    if (
-      launcher === undefined ||
-      launcher.type !== "MISSILE_SILO" ||
-      launcher.ownerId !== candidate.ownerId
-    ) {
-      throw new Error(
-        `accepted strategic reservation lost launcher ${candidate.launcherId}`,
+
+    if (!launcherSnapshots.has(candidate.launcherId)) {
+      const silo = state.structures.find(
+        (structure) =>
+          structure.id === candidate.launcherId &&
+          structure.type === "MISSILE_SILO",
       );
+      if (silo !== undefined) {
+        if (silo.ownerId !== candidate.ownerId) {
+          throw new Error(
+            `accepted strategic reservation lost launcher ${candidate.launcherId}`,
+          );
+        }
+        launcherSnapshots.set(
+          candidate.launcherId,
+          Object.freeze({
+            chargeSlots: silo.chargeSlots ?? Object.freeze([]),
+            acceptedLaunchCount: silo.acceptedLaunchCount ?? 0,
+          }),
+        );
+      } else {
+        const warship = state.mobileUnits.find(
+          (unit) =>
+            unit.id === candidate.launcherId &&
+            unit.type === "WARSHIP" &&
+            unit.ownerId === candidate.ownerId,
+        );
+        const profile =
+          warship === undefined
+            ? undefined
+            : warshipStrategicLauncherProfile(state, warship.id);
+        if (profile === undefined) {
+          throw new Error(
+            `accepted strategic reservation lost launcher ${candidate.launcherId}`,
+          );
+        }
+        launcherSnapshots.set(
+          candidate.launcherId,
+          Object.freeze({
+            chargeSlots: profile.chargeSlots,
+            acceptedLaunchCount: profile.acceptedLaunchCount,
+          }),
+        );
+      }
     }
+
     const group = byLauncher.get(candidate.launcherId);
     if (group === undefined) {
       byLauncher.set(candidate.launcherId, [candidate]);
@@ -506,13 +551,11 @@ export function canonicalStrategicLaunchReservations(
 
   const reservations = new Map<number, StrategicLaunchReservation>();
   for (const [launcherId, group] of byLauncher) {
-    const launcher = state.structures.find(
-      (structure) => structure.id === launcherId,
-    );
-    if (launcher === undefined) {
+    const snapshot = launcherSnapshots.get(launcherId);
+    if (snapshot === undefined) {
       throw new Error(`strategic reservation lost launcher ${launcherId}`);
     }
-    const readySlots = [...(launcher.chargeSlots ?? [])]
+    const readySlots = [...snapshot.chargeSlots]
       .filter((slot) => slot.state === "READY")
       .sort((left, right) => left.slotId - right.slotId);
     if (group.length > readySlots.length) {
@@ -529,7 +572,6 @@ export function canonicalStrategicLaunchReservations(
       }
       return left.sequence - right.sequence;
     });
-    const baseOrdinal = launcher.acceptedLaunchCount ?? 0;
     for (let index = 0; index < canonical.length; index += 1) {
       const candidate = canonical[index]!;
       const charge = readySlots[index]!;
@@ -537,7 +579,7 @@ export function canonicalStrategicLaunchReservations(
         candidate.sequence,
         Object.freeze({
           chargeSlotId: charge.slotId,
-          acceptedLaunchOrdinal: baseOrdinal + index,
+          acceptedLaunchOrdinal: snapshot.acceptedLaunchCount + index,
         }),
       );
     }
@@ -569,19 +611,48 @@ export function quoteStrategicLaunch(
   if (owner === undefined) return failure(0, "UNKNOWN_OWNER");
 
   const ffyCost = effectiveWeaponFfyCost(state, request.ownerId, request.weapon);
-  const launcher = state.structures.find(
-    (structure) => structure.id === request.launcherId,
+  const silo = state.structures.find(
+    (structure) =>
+      structure.id === request.launcherId &&
+      structure.type === "MISSILE_SILO",
   );
-  if (launcher === undefined || launcher.type !== "MISSILE_SILO") {
+  const warship = state.mobileUnits.find(
+    (unit) => unit.id === request.launcherId && unit.type === "WARSHIP",
+  );
+
+  let launchCellId: number;
+  let effectiveSiloLevel: number;
+  let acceptedLaunchCount: number;
+  let chargeSlots: readonly StructureChargeSlotState[];
+
+  if (silo !== undefined) {
+    if (silo.ownerId !== request.ownerId) {
+      return failure(ffyCost, "NOT_OWNER");
+    }
+    if (!silo.active || silo.completedLevel === undefined) {
+      return failure(ffyCost, "LAUNCHER_INACTIVE");
+    }
+    launchCellId = silo.cellId;
+    effectiveSiloLevel = silo.completedLevel;
+    acceptedLaunchCount = silo.acceptedLaunchCount ?? 0;
+    chargeSlots = silo.chargeSlots ?? Object.freeze([]);
+  } else if (warship !== undefined) {
+    if (warship.ownerId !== request.ownerId) {
+      return failure(ffyCost, "NOT_OWNER");
+    }
+    const profile = warshipStrategicLauncherProfile(state, warship.id);
+    if (profile === undefined) {
+      return failure(ffyCost, "UNKNOWN_LAUNCHER");
+    }
+    launchCellId = profile.launchCellId;
+    effectiveSiloLevel = profile.effectiveSiloLevel;
+    acceptedLaunchCount = profile.acceptedLaunchCount;
+    chargeSlots = profile.chargeSlots;
+  } else {
     return failure(ffyCost, "UNKNOWN_LAUNCHER");
   }
-  if (launcher.ownerId !== request.ownerId) {
-    return failure(ffyCost, "NOT_OWNER");
-  }
-  if (!launcher.active || launcher.completedLevel === undefined) {
-    return failure(ffyCost, "LAUNCHER_INACTIVE");
-  }
-  if (launcher.completedLevel < requiredSiloLevel(request.weapon)) {
+
+  if (effectiveSiloLevel < requiredSiloLevel(request.weapon)) {
     return failure(ffyCost, "LAUNCHER_LEVEL_REQUIRED");
   }
   if (!weaponUsePermitted(state, request.ownerId, request.weapon)) {
@@ -608,7 +679,7 @@ export function quoteStrategicLaunch(
     targetFactionId = state.ownership[request.targetCellId] ?? undefined;
   }
 
-  const charge = lowestReadyCharge(launcher);
+  const charge = lowestReadyCharge(chargeSlots);
   if (charge === undefined) return failure(ffyCost, "NO_READY_CHARGE");
 
   const debit = tryDebitFfy(owner.ffy, {
@@ -628,8 +699,8 @@ export function quoteStrategicLaunch(
     ffyCost: debit.cost,
     ffySpent,
     chargeSlotId: charge.slotId,
-    acceptedLaunchOrdinal: launcher.acceptedLaunchCount ?? 0,
-    launchCellId: launcher.cellId,
+    acceptedLaunchOrdinal: acceptedLaunchCount,
+    launchCellId,
     ...(targetFactionId === undefined ? {} : { targetFactionId }),
   });
 }
@@ -658,10 +729,15 @@ export function tryCommitStrategicLaunch(
   }
 
   const owner = state.factions.find((faction) => faction.id === request.ownerId);
-  const launcher = state.structures.find(
-    (structure) => structure.id === request.launcherId,
+  const silo = state.structures.find(
+    (structure) =>
+      structure.id === request.launcherId &&
+      structure.type === "MISSILE_SILO",
   );
-  if (owner === undefined || launcher === undefined) {
+  const warship = state.mobileUnits.find(
+    (unit) => unit.id === request.launcherId && unit.type === "WARSHIP",
+  );
+  if (owner === undefined || (silo === undefined && warship === undefined)) {
     throw new Error("strategic launch quote/commit state diverged");
   }
 
@@ -678,21 +754,10 @@ export function tryCommitStrategicLaunch(
   ) {
     throw new Error("strategic launch reservation must contain exact non-negative integers");
   }
-  const reservedCharge = (launcher.chargeSlots ?? []).find(
-    (slot) => slot.slotId === chargeSlotId,
-  );
-  if (reservedCharge === undefined || reservedCharge.state !== "READY") {
-    return Object.freeze({
-      ok: false as const,
-      state,
-      ffyCost: quote.ffyCost,
-      failure: Object.freeze({ code: "NO_READY_CHARGE" as const }),
-    });
-  }
   if (
     state.strategicProjectiles.some(
       (projectile) =>
-        projectile.launcherId === launcher.id &&
+        projectile.launcherId === request.launcherId &&
         projectile.acceptedLaunchOrdinal === acceptedLaunchOrdinal,
     )
   ) {
@@ -706,42 +771,95 @@ export function tryCommitStrategicLaunch(
   if (!debit.ok) {
     throw new Error("strategic launch quote/commit FFY state diverged");
   }
-  const rechargeTicks = effectiveStructureRechargeTicks(
-    state,
-    request.ownerId,
-    "MISSILE_SILO",
-  );
-  const chargeSlots = Object.freeze(
-    (launcher.chargeSlots ?? []).map((slot) =>
-      slot.slotId === chargeSlotId
-        ? Object.freeze({
-            slotId: slot.slotId,
-            state: "RECHARGING" as const,
-            readyAtTick: transitionTick + rechargeTicks,
-          })
-        : slot,
-    ),
-  );
-  const acceptedLaunchCount = Math.max(
-    launcher.acceptedLaunchCount ?? 0,
-    acceptedLaunchOrdinal + 1,
-  );
-  const structures = materializePersistentStructures(
-    state.structures.map((structure) =>
-      structure.id === launcher.id
-        ? {
-            ...structure,
-            chargeSlots,
-            acceptedLaunchCount,
-          }
-        : structure,
-    ),
-  );
+
+  let launcherState = state;
+  if (silo !== undefined) {
+    const reservedCharge = (silo.chargeSlots ?? []).find(
+      (slot) => slot.slotId === chargeSlotId,
+    );
+    if (reservedCharge === undefined || reservedCharge.state !== "READY") {
+      return Object.freeze({
+        ok: false as const,
+        state,
+        ffyCost: quote.ffyCost,
+        failure: Object.freeze({ code: "NO_READY_CHARGE" as const }),
+      });
+    }
+    const rechargeTicks = effectiveStructureRechargeTicks(
+      state,
+      request.ownerId,
+      "MISSILE_SILO",
+    );
+    const chargeSlots = Object.freeze(
+      (silo.chargeSlots ?? []).map((slot) =>
+        slot.slotId === chargeSlotId
+          ? Object.freeze({
+              slotId: slot.slotId,
+              state: "RECHARGING" as const,
+              readyAtTick: transitionTick + rechargeTicks,
+            })
+          : slot,
+      ),
+    );
+    const acceptedLaunchCount = Math.max(
+      silo.acceptedLaunchCount ?? 0,
+      acceptedLaunchOrdinal + 1,
+    );
+    const structures = materializePersistentStructures(
+      state.structures.map((structure) =>
+        structure.id === silo.id
+          ? {
+              ...structure,
+              chargeSlots,
+              acceptedLaunchCount,
+            }
+          : structure,
+      ),
+    );
+    launcherState = createProspectiveMatchState(state, { structures });
+  } else {
+    const committed = tryCommitWarshipStrategicLaunchCharge(state, {
+      ownerId: request.ownerId,
+      unitId: request.launcherId,
+      weapon: request.weapon,
+      chargeSlotId,
+      acceptedLaunchOrdinal,
+      transitionTick,
+    });
+    if (!committed.ok) {
+      const code: StrategicLaunchFailureCode =
+        committed.failure.code === "NO_READY_CHARGE"
+          ? "NO_READY_CHARGE"
+          : committed.failure.code === "NOT_OWNER"
+            ? "NOT_OWNER"
+            : committed.failure.code === "UNKNOWN_OWNER"
+              ? "UNKNOWN_OWNER"
+              : committed.failure.code === "WEAPON_UNAVAILABLE"
+                ? "LAUNCHER_LEVEL_REQUIRED"
+                : committed.failure.code === "INVALID_REQUEST"
+                  ? "INVALID_REQUEST"
+                  : "UNKNOWN_LAUNCHER";
+      return Object.freeze({
+        ok: false as const,
+        state,
+        ffyCost: quote.ffyCost,
+        failure: Object.freeze({ code }),
+      });
+    }
+    if (
+      committed.binding.slotId !== chargeSlotId ||
+      committed.binding.acceptedLaunchOrdinal !== acceptedLaunchOrdinal ||
+      committed.binding.launchCellId !== quote.launchCellId
+    ) {
+      throw new Error("P29 strategic launch reservation/commit state diverged");
+    }
+    launcherState = committed.state;
+  }
 
   const blastSeed = strategicBlastHash32(
     "strategic-blast-root",
     state.seed,
-    launcher.id,
+    request.launcherId,
     acceptedLaunchOrdinal,
     request.weapon,
     request.targetCellId,
@@ -782,9 +900,9 @@ export function tryCommitStrategicLaunch(
         })
       : undefined;
   const projectile: StrategicProjectileState = Object.freeze({
-    id: `strategic:${launcher.id}:${acceptedLaunchOrdinal}`,
+    id: `strategic:${request.launcherId}:${acceptedLaunchOrdinal}`,
     ownerId: request.ownerId,
-    launcherId: launcher.id,
+    launcherId: request.launcherId,
     weapon: request.weapon,
     launchCellId: quote.launchCellId,
     targetCellId: request.targetCellId,
@@ -810,7 +928,7 @@ export function tryCommitStrategicLaunch(
   const consumesMirvEntitlement =
     request.weapon === "MIRV" &&
     mirvUseEntitlementAvailable(state, request.ownerId);
-  const factions = state.factions.map((faction) =>
+  const factions = launcherState.factions.map((faction) =>
     faction.id === owner.id
       ? {
           ...faction,
@@ -821,7 +939,7 @@ export function tryCommitStrategicLaunch(
         }
       : faction,
   );
-  let hostilityGrace = state.hostilityGrace;
+  let hostilityGrace = launcherState.hostilityGrace;
   if (quote.targetFactionId !== undefined) {
     const target = state.factions.find(
       (faction) => faction.id === quote.targetFactionId,
@@ -844,7 +962,7 @@ export function tryCommitStrategicLaunch(
       ) === "ENEMY"
     ) {
       hostilityGrace = applyOneShotDirectedHostility(
-        state,
+        launcherState,
         owner.id,
         target.id,
         transitionTick,
@@ -852,11 +970,10 @@ export function tryCommitStrategicLaunch(
     }
   }
 
-  const next = createProspectiveMatchState(state, {
+  const next = createProspectiveMatchState(launcherState, {
     factions,
-    structures,
     strategicProjectiles: Object.freeze([
-      ...state.strategicProjectiles,
+      ...launcherState.strategicProjectiles,
       projectile,
     ]),
     hostilityGrace,

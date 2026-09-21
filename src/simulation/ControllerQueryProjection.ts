@@ -2307,33 +2307,65 @@ export function createControllerQuerySession(
       return unavailable("INVALID_LAUNCHER");
     }
 
-    const authoritativeId =
+    const structureId =
       "ref" in launcher
         ? references.resolve(requesterFactionId, "STRUCTURE", launcher.ref)
         : undefined;
+    const unitId =
+      "ref" in launcher
+        ? references.resolve(requesterFactionId, "UNIT", launcher.ref)
+        : undefined;
     const structure =
-      authoritativeId !== undefined
+      structureId !== undefined
         ? state.structures.find(
             (candidate) =>
-              candidate.id === authoritativeId &&
-              candidate.ownerId === requesterFactionId,
+              candidate.id === structureId &&
+              candidate.ownerId === requesterFactionId &&
+              candidate.type === "MISSILE_SILO",
           )
         : "cellId" in launcher && state.map.isValidCellId(launcher.cellId)
           ? state.structures.find(
               (candidate) =>
                 candidate.cellId === launcher.cellId &&
-                candidate.ownerId === requesterFactionId,
+                candidate.ownerId === requesterFactionId &&
+                candidate.type === "MISSILE_SILO",
             )
           : undefined;
-    if (structure === undefined || structure.type !== "MISSILE_SILO") {
+    const unit =
+      structure === undefined
+        ? unitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === unitId &&
+                candidate.ownerId === requesterFactionId &&
+                candidate.type === "WARSHIP",
+            )
+          : "cellId" in launcher && state.map.isValidCellId(launcher.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === launcher.cellId &&
+                  candidate.ownerId === requesterFactionId &&
+                  candidate.type === "WARSHIP",
+              )
+            : undefined
+        : undefined;
+    if (structure === undefined && unit === undefined) {
       return unavailable("INVALID_LAUNCHER");
     }
 
-    const launcherRef = references.issue(
-      requesterFactionId,
-      "STRUCTURE",
-      structure.id,
-    ) as StructureRef | undefined;
+    const authoritativeLauncherId = structure?.id ?? unit!.id;
+    const launcherRef =
+      structure !== undefined
+        ? (references.issue(
+            requesterFactionId,
+            "STRUCTURE",
+            structure.id,
+          ) as StructureRef | undefined)
+        : (references.issue(
+            requesterFactionId,
+            "UNIT",
+            unit!.id,
+          ) as UnitRef | undefined);
     if (launcherRef === undefined) {
       return unavailable("INVALID_LAUNCHER");
     }
@@ -2351,7 +2383,7 @@ export function createControllerQuerySession(
 
     const result = quoteStrategicLaunch(state, {
       ownerId: requesterFactionId,
-      launcherId: structure.id,
+      launcherId: authoritativeLauncherId,
       weapon,
       targetCellId,
       ...(targetFactionId === undefined ? {} : { targetFactionId }),

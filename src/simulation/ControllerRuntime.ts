@@ -1217,15 +1217,13 @@ function evaluateProposal(
       continue;
     }
     if (staged.kind === "LAUNCH_WEAPON") {
-      // Persistent-Silo strategic execution is authoritative here.
-      // Mobile Warship launchers remain a later focused slice.
       if (
         staged.launcher === null ||
         typeof staged.launcher !== "object"
       ) {
         return invalid("INVALID_LAUNCHER", staged.actionRef);
       }
-      const resolvedLauncherId =
+      const resolvedStructureId =
         "ref" in staged.launcher
           ? controllerReferences.resolve(
               factionId,
@@ -1233,22 +1231,52 @@ function evaluateProposal(
               staged.launcher.ref,
             )
           : undefined;
-      const launcher =
-        resolvedLauncherId !== undefined
+      const resolvedUnitId =
+        "ref" in staged.launcher
+          ? controllerReferences.resolve(
+              factionId,
+              "UNIT",
+              staged.launcher.ref,
+            )
+          : undefined;
+      const structure =
+        resolvedStructureId !== undefined
           ? state.structures.find(
               (candidate) =>
-                candidate.id === resolvedLauncherId &&
-                candidate.ownerId === factionId,
+                candidate.id === resolvedStructureId &&
+                candidate.ownerId === factionId &&
+                candidate.type === "MISSILE_SILO",
             )
           : "cellId" in staged.launcher &&
               state.map.isValidCellId(staged.launcher.cellId)
             ? state.structures.find(
                 (candidate) =>
                   candidate.cellId === staged.launcher.cellId &&
-                  candidate.ownerId === factionId,
+                  candidate.ownerId === factionId &&
+                  candidate.type === "MISSILE_SILO",
               )
             : undefined;
-      if (launcher === undefined) {
+      const unit =
+        structure === undefined
+          ? resolvedUnitId !== undefined
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.id === resolvedUnitId &&
+                  candidate.ownerId === factionId &&
+                  candidate.type === "WARSHIP",
+              )
+            : "cellId" in staged.launcher &&
+                state.map.isValidCellId(staged.launcher.cellId)
+              ? state.mobileUnits.find(
+                  (candidate) =>
+                    candidate.cellId === staged.launcher.cellId &&
+                    candidate.ownerId === factionId &&
+                    candidate.type === "WARSHIP",
+                )
+              : undefined
+          : undefined;
+      const launcherId = structure?.id ?? unit?.id;
+      if (launcherId === undefined) {
         return invalid("INVALID_LAUNCHER", staged.actionRef);
       }
 
@@ -1268,7 +1296,7 @@ function evaluateProposal(
           action: Object.freeze({
             type: "LAUNCH_STRATEGIC_WEAPON" as const,
             ownerId: factionId,
-            launcherId: launcher.id,
+            launcherId,
             weapon: staged.weapon,
             targetCellId: staged.targetCellId,
             ...(targetFactionId === undefined
