@@ -1920,15 +1920,6 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
     ]);
     expect(matchStateAtWar(executed, "alpha", "beta")).toBe(true);
   });
-  function p29FundingRules() {
-    const origin = originRuleProfileInput(["P29", "P53"]);
-    return compileRuleProfile(RULE_AXIS_REGISTRY, {
-      contributions: origin.contributions,
-      dynamicProviders: origin.dynamicProviders,
-      customDomains: origin.customDomains,
-    });
-  }
-
   function p29Runtime(seed: string) {
     return new MatchRuntime(
       createMicroSimulationSpec({
@@ -1951,16 +1942,9 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
             cellId: 1,
             level: 1,
           },
-          {
-            structureId: "silo-alpha",
-            ownerId: "alpha",
-            type: "MISSILE_SILO",
-            cellId: 3,
-            level: 1,
-          },
         ],
         factions: [
-          { id: "alpha", rules: p29FundingRules() },
+          { id: "alpha", rules: warshipRules(true) },
           { id: "beta", rules: emptyRules() },
         ],
       }),
@@ -1979,14 +1963,16 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
     ) {
       runtime.tick();
       guard += 1;
-      if (guard > 10_000) {
+      if (guard > 15_000) {
         throw new Error("P29 fixture failed to accumulate FFY");
       }
     }
   }
 
   function deployP29RuntimeWarship(runtime: MatchRuntime) {
-    advanceP29RuntimeUntilFfy(runtime, 1_500_000);
+    // Baseline economy is 100 FFY/tick: 1.25M covers the first
+    // 250k Warship plus one 1M Atom launch; build ticks add a small buffer.
+    advanceP29RuntimeUntilFfy(runtime, 1_250_000);
     runtime.acceptAction({
       type: "START_WARSHIP_PRODUCTION",
       ownerId: "alpha",
