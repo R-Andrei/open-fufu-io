@@ -586,6 +586,7 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
           : tryStartWarshipProduction(state, {
               ownerId: "alpha",
               portId: producerId,
+              strategicDestinationCellId: destination,
             });
       expect(canonical.ok).toBe(true);
       if (!canonical.ok) throw new Error("expected canonical unit admission");
