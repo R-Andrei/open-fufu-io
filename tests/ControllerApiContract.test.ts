@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 import type {
+  ActionRef,
   CaptureCalculation,
   ControllerEvent,
   FactionRef,
@@ -123,9 +124,36 @@ type FixtureOperationRefType = OperationRef["type"];
 const fixtureUnitRefType: FixtureUnitRefType = "UNIT";
 const fixtureStructureRefType: FixtureStructureRefType = "STRUCTURE";
 const fixtureOperationRefType: FixtureOperationRefType = "OPERATION";
+const fixtureOperationRef = {
+  type: "OPERATION",
+  token: "operation-1",
+} as OperationRef;
+const fixtureActionRef = "action-fixture" as ActionRef;
 void fixtureUnitRefType;
 void fixtureStructureRefType;
 void fixtureOperationRefType;
+
+const fixtureStructureChangedWithOrigin: ControllerEvent = {
+  type: "STRUCTURE_CHANGED",
+  structureId: fixtureFactoryRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+const fixtureUnitChangedWithOrigin: ControllerEvent = {
+  type: "UNIT_CHANGED",
+  unitId: fixtureUnitRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+const fixtureOperationChangedWithOrigin: ControllerEvent = {
+  type: "OPERATION_CHANGED",
+  operationId: fixtureOperationRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+void fixtureStructureChangedWithOrigin;
+void fixtureUnitChangedWithOrigin;
+void fixtureOperationChangedWithOrigin;
 
 const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void fixtureCapturedFactoryPath;
