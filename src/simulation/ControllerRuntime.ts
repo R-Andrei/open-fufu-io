@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   ControllerDecision,
   ControllerEvent,
   ControllerMemory,
@@ -720,7 +721,8 @@ export type ControllerProposedSimulationAction =
   | DeferredControllerStructureUpgradeAction;
 
 export interface ControllerProposedAction {
-  readonly key?: string;
+  /** Present only for one staged facade action; directive bundles have no ActionRef. */
+  readonly key?: ActionRef;
   readonly action: ControllerProposedSimulationAction;
 }
 
