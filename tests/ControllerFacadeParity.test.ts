@@ -509,6 +509,47 @@ describe("issue #206 trusted action staging parity RED", () => {
     }
   }, 30_000);
 
+  it("does not reuse ActionRefs across production-worker controller decisions", async () => {
+    const seed = "issue207-action-ref-cross-decision-worker";
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    const artifact = workerArtifact('context.structures.build("CITY", 999999)');
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact,
+        beta: artifact,
+      });
+      const actionRefs: unknown[] = [];
+
+      for (let decision = 0; decision < 2; decision += 1) {
+        const receipts = await Promise.resolve(runtime.runControllerRound(host));
+        const alphaReceipt = receipts.find(
+          (entry) => entry.factionId === "alpha",
+        )?.receipt;
+        expect(alphaReceipt).toMatchObject({ accepted: false });
+        actionRefs.push(alphaReceipt?.failure?.key);
+        if (decision === 0) runtime.tick();
+      }
+
+      expect(actionRefs[0]).toBeDefined();
+      expect(actionRefs[1]).toBeDefined();
+      expect(actionRefs[1]).not.toBe(actionRefs[0]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects injected legacy raw command arrays in both execution paths", async () => {
     const inProcess = new InProcessTestControllerHost({
       alpha() {
