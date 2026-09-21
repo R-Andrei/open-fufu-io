@@ -340,14 +340,18 @@ describe("land operations through authoritative MatchRuntime", () => {
 
     const responseReceipts = match.runControllerRound(
       new InProcessTestControllerHost({
-        beta() {
+        beta(context) {
+          const incomingOperation = context.operations?.incoming()[0]?.ref;
+          if (incomingOperation === undefined) {
+            throw new Error("expected lawful incoming OperationRef");
+          }
           return {
             directives: {
               set: [
                 {
                   kind: "COUNTER_RESPONSE",
                   key: "beta-counter",
-                  incomingOperationId: incoming!.id,
+                  incomingOperation,
                   population: 100,
                 },
               ],
