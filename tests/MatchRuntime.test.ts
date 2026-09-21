@@ -305,21 +305,24 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(actionRefs[1]).not.toBe(actionRefs[0]);
   });
 
-  it("materializes accepted staged controller actions before replay recording and regenerates exactly", () => {
+  it("materializes staged ActionRef origin before replay recording and regenerates it exactly", () => {
     const runtime = twoFactionRuntime("controller-replay");
+    let actionRef: string | undefined;
     runtime.runControllerRound(
       new InProcessTestControllerHost({
         alpha(context) {
-          context.capitulate!();
+          actionRef = context.capitulate!();
           return {};
         },
       }),
     );
 
+    expect(actionRef).toBeDefined();
     expect(runtime.acceptedInputs()).toEqual([
       {
         tick: 1,
         sequence: 0,
+        originAction: actionRef,
         action: { type: "CAPITULATE_FACTION", factionId: "alpha" },
       },
     ]);
@@ -333,6 +336,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     );
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
+    expect(regenerated.acceptedInputs()).toEqual(runtime.acceptedInputs());
   });
 
   it("surfaces the previous decision receipt on the next eligible controller observation", () => {
