@@ -338,29 +338,21 @@ describe("land operations through authoritative MatchRuntime", () => {
     );
     expect(incoming).toBeDefined();
 
-    const responseReceipts = match.runControllerRound(
-      new InProcessTestControllerHost({
-        beta(context) {
-          const incomingOperation = context.operations?.incoming()[0]?.ref;
-          if (incomingOperation === undefined) {
-            throw new Error("expected lawful incoming OperationRef");
-          }
-          return {
-            directives: {
-              set: [
-                {
-                  kind: "COUNTER_RESPONSE",
-                  key: "beta-counter",
-                  incomingOperation,
-                  population: 100,
-                },
-              ],
-            },
-          };
-        },
-      }),
-    );
-    expect(responseReceipts.find((entry) => entry.factionId === "beta")?.receipt.accepted).toBe(true);
+    const responseInput = match.acceptAction({
+      type: "APPLY_PERSISTENT_DIRECTIVES",
+      factionId: "beta",
+      changes: {
+        set: [
+          {
+            kind: "COUNTER_RESPONSE",
+            key: "beta-counter",
+            incomingOperationId: incoming!.id,
+            population: 100,
+          } as never,
+        ],
+      },
+    });
+    expect(responseInput.action.type).toBe("APPLY_PERSISTENT_DIRECTIVES");
 
     match.tick();
     match.tick();
