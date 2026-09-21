@@ -2124,12 +2124,19 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
       });
 
       const transitionTick = before.tick + 1;
-      const after = runtime.tick();
+      const acceptedInput = runtime.acceptedInputs().at(-1);
+      expect(acceptedInput).toBeDefined();
+      if (acceptedInput === undefined) {
+        throw new Error("expected accepted P29 launch input");
+      }
+      const committed = new TickEngine().applyAcceptedInputs(before, [
+        acceptedInput,
+      ]);
       expect(
-        after.factions.find((faction) => faction.id === "alpha")?.ffy,
+        committed.factions.find((faction) => faction.id === "alpha")?.ffy,
       ).toBe(beforeFfy - 1_000_000);
       expect(
-        after.warshipOperationalStates.find(
+        committed.warshipOperationalStates.find(
           (entry) => entry.unitId === unit.id,
         )?.strategicLauncher,
       ).toEqual({
@@ -2142,21 +2149,37 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
           },
         ],
       });
-      expect(
-        after.strategicProjectiles.find(
-          (projectile) => projectile.launcherId === unit.id,
-        ),
-      ).toMatchObject({
+      const committedProjectile = committed.strategicProjectiles.find(
+        (projectile) => projectile.launcherId === unit.id,
+      );
+      expect(committedProjectile).toMatchObject({
         id: "strategic:" + unit.id + ":0",
         ownerId: "alpha",
         launcherId: unit.id,
         weapon: "ATOM_BOMB",
         launchCellId: unit.cellId,
-        targetCellId: 3,
+        targetCellId: 4,
         targetFactionId: "beta",
         acceptedLaunchOrdinal: 0,
         consumedChargeSlotId: 0,
       });
+      expect(matchStateAtWar(committed, "alpha", "beta")).toBe(true);
+
+      const after = runtime.tick();
+      expect(
+        after.warshipOperationalStates.find(
+          (entry) => entry.unitId === unit.id,
+        )?.strategicLauncher,
+      ).toEqual(
+        committed.warshipOperationalStates.find(
+          (entry) => entry.unitId === unit.id,
+        )?.strategicLauncher,
+      );
+      expect(
+        after.strategicProjectiles.find(
+          (projectile) => projectile.launcherId === unit.id,
+        ),
+      ).toEqual(committedProjectile);
       expect(matchStateAtWar(after, "alpha", "beta")).toBe(true);
     } finally {
       await pool.close();
