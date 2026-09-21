@@ -22,6 +22,7 @@ import type {
 } from "../../core/controller/ControllerApi";
 import {
   PRODUCTION_CONTROLLER_LIMITS,
+  stagedActionsWithinResourceCeilings,
   validateProductionControllerOutput,
   type ControllerWorkerRequest,
   type ControllerWorkerResponse,
@@ -1659,6 +1660,9 @@ async function executeRequest(
     const stagedActions = invocationRecord.stagedActions;
     if (!Array.isArray(stagedActions)) {
       return workerFault("RUNTIME_ERROR");
+    }
+    if (!stagedActionsWithinResourceCeilings(stagedActions)) {
+      return workerFault("INVALID_OUTPUT");
     }
 
     const validated = validateProductionControllerOutput(

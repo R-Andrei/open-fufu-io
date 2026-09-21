@@ -324,8 +324,8 @@ function teamSignalPayloadWithinLimit(command: unknown): boolean {
   return controllerTeamSignalPayloadIsValid(command.payload);
 }
 
-function stagedActionsWithinResourceCeilings(
-  actions: readonly ControllerStagedAction[],
+export function stagedActionsWithinResourceCeilings(
+  actions: readonly unknown[],
 ): boolean {
   if (actions.length > PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision) return false;
   return actions.every(teamSignalPayloadWithinLimit);

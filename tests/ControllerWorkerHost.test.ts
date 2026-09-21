@@ -342,34 +342,41 @@ describe("production controller worker host", () => {
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
   });
 
-  it("rejects staged-action overflow inside the worker before the IPC response crosses into the host", async () => {
+  it("enforces the exact staged-action ceiling inside the worker before IPC", async () => {
     const pool = new ControllerProcessWorkerPool({ size: 1 });
-    try {
-      const overflowArtifact: ControllerRuntimeArtifact = Object.freeze({
+    const requestFor = (count: number): ControllerWorkerRequest => ({
+      factionId: "alpha",
+      artifact: Object.freeze({
         moduleSource: `
           export function decide(context) {
-            for (let index = 0; index < 65; index += 1) {
+            for (let index = 0; index < ${count}; index += 1) {
               context.capitulate();
             }
             return {};
           }
         `,
         entrypoints: Object.freeze({ decide: "decide" }),
-      });
-      const response = await pool.invoke({
-        factionId: "alpha",
-        artifact: overflowArtifact,
-        hook: "DECIDE",
-        entrypoint: "decide",
-        context: ordinaryObservation(),
-        memoryJson: "{}",
-        timeoutMs: PRODUCTION_CONTROLLER_LIMITS.decideTimeoutMs,
-        moduleEvaluationTimeoutMs:
-          PRODUCTION_CONTROLLER_LIMITS.moduleEvaluationTimeoutMs,
-        isolateMemoryMb: PRODUCTION_CONTROLLER_LIMITS.isolateMemoryMb,
-      });
+      }),
+      hook: "DECIDE",
+      entrypoint: "decide",
+      context: ordinaryObservation(),
+      memoryJson: "{}",
+      timeoutMs: PRODUCTION_CONTROLLER_LIMITS.decideTimeoutMs,
+      moduleEvaluationTimeoutMs:
+        PRODUCTION_CONTROLLER_LIMITS.moduleEvaluationTimeoutMs,
+      isolateMemoryMb: PRODUCTION_CONTROLLER_LIMITS.isolateMemoryMb,
+    });
 
-      expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
+    try {
+      const exact = await pool.invoke(
+        requestFor(PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision),
+      );
+      expect(exact.ok).toBe(true);
+
+      const over = await pool.invoke(
+        requestFor(PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision + 1),
+      );
+      expect(over).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
     } finally {
       await pool.close();
     }
