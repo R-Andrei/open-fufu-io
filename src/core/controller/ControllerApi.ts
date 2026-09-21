@@ -61,11 +61,6 @@ export type StructureLocator =
   | Readonly<{ readonly cellId: CellId }>;
 
 export type DirectiveKey = string;
-type CommandKey = string;
-
-declare global {
-  type CommandKey = string;
-}
 export type StructureLevel = 1 | 2 | 3 | 4 | 5;
 export type StructureAcquisitionPath =
   | "PURCHASE_BUILD"
@@ -685,10 +680,12 @@ export interface StructureUpgradeQuote extends ActionQuote {
 
 export interface UnitBuildQuote extends ActionQuote {
   readonly requestedUnit: PurchasableUnitType;
-  readonly resultingUnit: MobileUnitType;
-  readonly producerId: StructureRef;
-  /** Effective producer-sensitive construction duration, including Factory transformations. */
-  readonly buildTicks: number;
+  /** Present when the requested unit can be resolved without exposing unavailable producer state. */
+  readonly resultingUnit?: MobileUnitType;
+  /** Present only when the producer is lawfully observable to the requester. */
+  readonly producerId?: StructureRef;
+  /** Present when canonical producer admission establishes a construction duration. */
+  readonly buildTicks?: number;
   /** Effective hard ownership cap when this unit type is capped for the faction. */
   readonly ownershipCap?: number;
 }
@@ -706,7 +703,8 @@ export interface TransportEmbarkQuote extends ActionQuote {
 }
 
 export interface WeaponLaunchQuote extends ActionQuote {
-  readonly launcherId: StructureRef | UnitRef;
+  /** Present only when the launcher is lawfully resolvable to the requester. */
+  readonly launcherId?: StructureRef | UnitRef;
   readonly weapon: StrategicWeaponType;
   readonly targetCellId: CellId;
   readonly chargeConsumed: boolean;
@@ -1006,7 +1004,7 @@ export interface ControllerLimitsView {
   readonly materializedCellsPerDecision: number;
   readonly materializedEntityViewsPerDecision: number;
   readonly directiveUpdatesPerDecision: number;
-  readonly commandsPerDecision: number;
+  readonly actionsPerDecision: number;
   readonly policyRulesPerDecision: number;
   readonly debugItemsPerDecision: number;
   readonly logBytesPerDecision: number;
@@ -1051,8 +1049,8 @@ export type DecisionFailureCode =
 
 export interface DecisionFailure {
   readonly code: DecisionFailureCode;
-  /** Present when one keyed command/directive is the canonical cause. */
-  readonly key?: CommandKey | DirectiveKey;
+  /** Present when one staged action or persistent directive is the canonical cause. */
+  readonly key?: ActionRef | DirectiveKey;
   readonly detail?: string;
 }
 
@@ -1064,8 +1062,8 @@ export interface DecisionFailure {
 /**
  * Receipt for the previous normal controller decision.
  *
- * Game-facing directives and commands form one atomic proposal evaluated against
- * the same authoritative pre-decision snapshot. accepted=true means the complete
+ * Game-facing persistent directives and staged routine actions form one atomic
+ * proposal evaluated against the same authoritative pre-decision snapshot. accepted=true means the complete
  * proposal committed. accepted=false means none of its game-facing changes did.
  * A successfully validated memory replacement commits independently as defined by
  * docs/CONTROLLER_MEMORY.md.
@@ -1226,110 +1224,14 @@ export interface DirectiveChanges {
   readonly end?: readonly DirectiveKey[];
 }
 
-export interface BuildStructureCommand {
-  readonly kind: "BUILD_STRUCTURE";
-  readonly key: CommandKey;
-  readonly structure: StructureType;
-  readonly cellId: CellId;
-}
-
-export interface UpgradeStructureCommand {
-  readonly kind: "UPGRADE_STRUCTURE";
-  readonly key: CommandKey;
-  readonly cellId: CellId;
-}
-
-export interface BuildUnitCommand {
-  readonly kind: "BUILD_UNIT";
-  readonly key: CommandKey;
-  readonly unit: PurchasableUnitType;
-  readonly producerId: StructureRef;
-}
-
-/**
- * Strategic repositioning only. Once moving/arrived, autonomous unit logic owns
- * roaming, target acquisition, pursuit, firing/capture/interception, and repair
- * retreat. No patrol/raid/target-unit controller modes exist in V1. MOVE_UNIT
- * does not itself create or refresh atWar.
- */
-export interface MoveUnitCommand {
-  readonly kind: "MOVE_UNIT";
-  readonly key: CommandKey;
-  readonly unitId: UnitRef;
-  readonly destination: CellId;
-}
-
-/**
- * Creates one Transport operation carrying the committed Population from a legal
- * embark source toward a legal landing target. Pathing and landing are autonomous.
- * A hostile accepted target is direct hostility under the game-wide atWar rules.
- */
-export interface EmbarkTransportCommand {
-  readonly kind: "EMBARK_TRANSPORT";
-  readonly key: CommandKey;
-  readonly sourceCellId: CellId;
-  readonly targetCellId: CellId;
-  readonly population: number;
-}
-
-/** Abort an active owned Transport and return it by autonomous legal routing. */
-export interface ReturnTransportCommand {
-  readonly kind: "RETURN_TRANSPORT";
-  readonly key: CommandKey;
-  readonly unitId: UnitRef;
-}
-
-export interface LaunchWeaponCommand {
-  readonly kind: "LAUNCH_WEAPON";
-  readonly key: CommandKey;
-  readonly launcherId: StructureRef | UnitRef;
-  readonly weapon: StrategicWeaponType;
-  readonly targetCellId: CellId;
-  readonly targetFactionId?: FactionRef;
-}
-
-export interface RelinquishCommand {
-  readonly kind: "RELINQUISH";
-  readonly key: CommandKey;
-  readonly cells: CellSelector;
-}
-
-/**
- * Broadcasts a bounded deterministic signal to legal fixed teammates. An
- * accepted signal is never observable during the sending invocation; recipients
- * may observe it no earlier than their next eligible controller decision.
- */
-export interface TeamSignalCommand {
-  readonly kind: "TEAM_SIGNAL";
-  readonly key: CommandKey;
-  readonly channel: string;
-  readonly payload: JsonValue;
-}
-
-export interface CapitulateCommand {
-  readonly kind: "CAPITULATE";
-  readonly key: CommandKey;
-}
-
-export type ControllerCommand =
-  | BuildStructureCommand
-  | UpgradeStructureCommand
-  | BuildUnitCommand
-  | MoveUnitCommand
-  | EmbarkTransportCommand
-  | ReturnTransportCommand
-  | LaunchWeaponCommand
-  | RelinquishCommand
-  | TeamSignalCommand
-  | CapitulateCommand;
-
 /**
  * One normal callback result.
  *
  * memory is validated/committed under the separate Controller Memory contract.
- * directives + commands are one atomic game-facing proposal. If any game-facing
- * part is illegal, none of those game-facing changes commit. debug/log are
- * diagnostics and do not create simulation state.
+ * Persistent directive changes plus routine actions staged through ControllerContext
+ * form one atomic game-facing proposal. Routine actions are not returned in this
+ * object. If any game-facing part is illegal, none of those game-facing changes
+ * commit. debug/log are diagnostics and do not create simulation state.
  */
 export interface ControllerDecision<
   M extends ControllerMemory = ControllerMemory,
@@ -1484,8 +1386,8 @@ export interface SpawnOriginDecision<
  * V1 player-controller entry contract.
  *
  * All callbacks execute against immutable deterministic snapshots. Normal
- * directives/commands form one atomic game-facing proposal. Omitted persistent
- * directives remain active until explicitly ended. Module/global state is not
+ * persistent directives plus staged routine actions form one atomic game-facing
+ * proposal. Omitted persistent directives remain active until explicitly ended. Module/global state is not
  * guaranteed to survive between callbacks; use explicit controller memory.
  *
  * The three spawn callbacks are invoked only for Strategic Spawn. Random and

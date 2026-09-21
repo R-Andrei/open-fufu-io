@@ -51,15 +51,14 @@ function asyncCapitulationHost(completionOrder: string[]): ControllerHost {
             );
             resolve({
               ok: true,
-              output: {
-                commands: [
-                  {
-                    kind: "CAPITULATE",
-                    key: `${factionId}-out`,
-                  },
-                ],
-              },
-            });
+              output: {},
+              stagedActions: [
+                {
+                  kind: "CAPITULATE",
+                  actionRef: `${factionId}-out`,
+                },
+              ],
+            } as unknown as ControllerHostInvocationResult<ControllerDecision>);
           }, delayMs);
         },
       );
@@ -233,7 +232,7 @@ describe("controller runtime production-host foundation", () => {
     const host = new InProcessTestControllerHost({
       alpha() {
         alphaInvocations += 1;
-        if (alphaInvocations === 5) return { commands: [] };
+        if (alphaInvocations === 5) return {};
         throw new Error("normal runtime fault");
       },
     });
@@ -263,7 +262,7 @@ describe("controller runtime production-host foundation", () => {
     const host = new InProcessTestControllerHost({
       alpha() {
         alphaInvocations += 1;
-        if (alphaInvocations % 2 === 0) return { commands: [] };
+        if (alphaInvocations % 2 === 0) return {};
         throw new Error("normal runtime fault");
       },
     });
@@ -288,7 +287,7 @@ describe("controller runtime production-host foundation", () => {
           throw new Error("spawn hook fault");
         },
         decide() {
-          return { commands: [] };
+          return {};
         },
       },
     });

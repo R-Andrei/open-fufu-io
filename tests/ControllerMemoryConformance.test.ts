@@ -71,12 +71,12 @@ class RecordingPool implements ControllerWorkerPool {
 }
 
 const artifact: ControllerRuntimeArtifact = Object.freeze({
-  moduleSource: "export function decide() { return { commands: [] }; }",
+  moduleSource: "export function decide() { return {}; }",
   entrypoints: Object.freeze({ decide: "decide" }),
 });
 
 const spawnArtifact: ControllerRuntimeArtifact = Object.freeze({
-  moduleSource: "export function decide() { return { commands: [] }; }",
+  moduleSource: "export function decide() { return {}; }",
   entrypoints: Object.freeze({
     decide: "decide",
     chooseInfluence: "chooseInfluence",
@@ -132,8 +132,8 @@ describe("canonical controller-memory conformance", () => {
           seenMemory.push({ ...observation.memory });
           invocation += 1;
           return invocation === 1
-            ? ({ commands: [], memory: symbolKeyedMemory() } as ControllerDecision)
-            : { commands: [] };
+            ? ({ memory: symbolKeyedMemory() } as ControllerDecision)
+            : {};
         },
       },
     });
@@ -144,7 +144,7 @@ describe("canonical controller-memory conformance", () => {
     });
     expect(host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(seenMemory).toEqual([{}, {}]);
   });
@@ -158,12 +158,12 @@ describe("canonical controller-memory conformance", () => {
           seenMemory.push({ ...observation.memory });
           invocation += 1;
           if (invocation === 1) {
-            return { commands: [], memory: { a: 1, b: 2 } };
+            return { memory: { a: 1, b: 2 } };
           }
           if (invocation === 2) {
-            return { commands: [], memory: { a: 3 } };
+            return { memory: { a: 3 } };
           }
-          return { commands: [] };
+          return {};
         },
       },
     });
@@ -200,19 +200,10 @@ describe("canonical controller-memory conformance", () => {
           seenMemory.push({ ...observation.memory });
           invocation += 1;
           if (invocation === 1) {
-            return {
-              commands: [
-                {
-                  kind: "BUILD_STRUCTURE",
-                  key: "unsupported",
-                  structure: "CITY",
-                  cellId: 0,
-                },
-              ],
-              memory: { remembered: "rejected" },
-            } as ControllerDecision;
+            observation.structures!.build("CITY", 0);
+            return { memory: { remembered: "rejected" } };
           }
-          return { commands: [] };
+          return {};
         },
       },
     });
@@ -220,7 +211,7 @@ describe("canonical controller-memory conformance", () => {
     const first = await runtime.runControllerRound(host);
     expect(first.find((entry) => entry.factionId === "alpha")?.receipt).toMatchObject({
       accepted: false,
-      failure: { code: "CELL_NOT_OWNED", key: "unsupported" },
+      failure: { code: "CELL_NOT_OWNED" },
     });
 
     runtime.tick();
@@ -235,14 +226,14 @@ describe("canonical controller-memory conformance", () => {
       if (invocation === 1) {
         return {
           ok: true,
-          output: { commands: [], memory: { a: 1, b: 2 } },
+          output: { memory: { a: 1, b: 2 } },
           usage: { queries: 0, materializedCells: 0 },
         };
       }
       if (invocation === 2) {
         return {
           ok: true,
-          output: { commands: [], memory: { a: 3 } },
+          output: { memory: { a: 3 } },
           usage: { queries: 0, materializedCells: 0 },
         };
       }
@@ -251,7 +242,7 @@ describe("canonical controller-memory conformance", () => {
       }
       return {
         ok: true,
-        output: { commands: [] },
+        output: {},
         usage: { queries: 0, materializedCells: 0 },
       };
     });
@@ -282,12 +273,12 @@ describe("canonical controller-memory conformance", () => {
       return invocation === 1
         ? {
             ok: true,
-            output: { commands: [], memory: symbolKeyedMemory() },
+            output: { memory: symbolKeyedMemory() },
             usage: { queries: 0, materializedCells: 0 },
           }
         : {
             ok: true,
-            output: { commands: [] },
+            output: {},
             usage: { queries: 0, materializedCells: 0 },
           };
     });
@@ -299,7 +290,7 @@ describe("canonical controller-memory conformance", () => {
     });
     expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(pool.requests.map((request) => request.memoryJson)).toEqual(["{}", "{}"]);
   });
@@ -330,7 +321,7 @@ describe("canonical controller-memory conformance", () => {
         case "DECIDE":
           return {
             ok: true,
-            output: { commands: [] },
+            output: {},
             usage: { queries: 0, materializedCells: 0 },
           };
       }

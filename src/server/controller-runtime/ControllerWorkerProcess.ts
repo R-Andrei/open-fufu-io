@@ -8,16 +8,21 @@ import type {
   CellId,
   CellSelector,
   FactionFindFilter,
+  FactionRef,
   FactionReadView,
   SegmentId,
   StructureFindFilter,
+  StructureType,
   StructureLocator,
+  StrategicWeaponType,
   TerrainType,
+  PurchasableUnitType,
   UnitFindFilter,
   UnitLocator,
 } from "../../core/controller/ControllerApi";
 import {
   PRODUCTION_CONTROLLER_LIMITS,
+  stagedActionsWithinResourceCeilings,
   validateProductionControllerOutput,
   type ControllerWorkerRequest,
   type ControllerWorkerResponse,
@@ -44,6 +49,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
   | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
   | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{
+      operation: "UNITS_CHECK_BUILD";
+      args: readonly [PurchasableUnitType, StructureLocator, CellId];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -52,6 +61,31 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_COUNT";
       args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_BUILD";
+      args: readonly [StructureType, CellId];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_UPGRADE";
+      args: readonly [StructureLocator];
+    }>
+  | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
+  | Readonly<{
+      operation: "TERRITORY_CHECK_RELINQUISH";
+      args: readonly [CellSelector];
+    }>
+  | Readonly<{
+      operation: "WEAPONS_CHECK_LAUNCH";
+      args: readonly [
+        StructureLocator | UnitLocator,
+        StrategicWeaponType,
+        CellId,
+        FactionRef?,
+      ];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -374,6 +408,20 @@ const invokeEntrypointSource = `
     }
   };
 
+  let nextActionOrdinal = 1;
+  const stagedActions = [];
+  const stageAction = (kind, payload = {}) => {
+    const actionRef = "action_" + nextActionOrdinal;
+    nextActionOrdinal += 1;
+    const action = deepFreeze({
+      kind,
+      actionRef,
+      ...materialize(payload)
+    });
+    stagedActions.push(action);
+    return actionRef;
+  };
+
   let queryCount = 0;
   const consumeQuery = () => {
     if (queryCount >= $5) throw new Error("controller query budget exhausted");
@@ -407,6 +455,19 @@ const invokeEntrypointSource = `
       () => undefined
     );
     return frozenResult;
+  };
+
+  const hostCheck = (operation, args) => {
+    consumeQuery();
+    hostQuerySequence += 1;
+    const value = $7.applySyncPromise(
+      undefined,
+      [{ sequence: hostQuerySequence, operation, args }],
+      {
+        arguments: { copy: true }
+      }
+    );
+    return deepFreeze(value);
   };
 
   const localRead = (operation, args) => {
@@ -503,7 +564,13 @@ const invokeEntrypointSource = `
             count: (filter) =>
               filter === undefined
                 ? hostQuery("UNITS_COUNT", [])
-                : hostQuery("UNITS_COUNT", [filter])
+                : hostQuery("UNITS_COUNT", [filter]),
+            build: (unit, producer, destination) =>
+              stageAction("BUILD_UNIT", { unit, producer, destination }),
+            move: (unit, destination) =>
+              stageAction("MOVE_UNIT", { unit, destination }),
+            checkBuild: (unit, producer, destination) =>
+              hostCheck("UNITS_CHECK_BUILD", [unit, producer, destination])
           },
           structures: {
             get: (locator) => hostQuery("STRUCTURES_GET", [locator]),
@@ -514,10 +581,55 @@ const invokeEntrypointSource = `
             count: (filter) =>
               filter === undefined
                 ? hostQuery("STRUCTURES_COUNT", [])
-                : hostQuery("STRUCTURES_COUNT", [filter])
+                : hostQuery("STRUCTURES_COUNT", [filter]),
+            build: (structure, cellId) =>
+              stageAction("BUILD_STRUCTURE", { structure, cellId }),
+            upgrade: (structure) =>
+              stageAction("UPGRADE_STRUCTURE", { structure }),
+            checkBuild: (structure, cellId) =>
+              hostCheck("STRUCTURES_CHECK_BUILD", [structure, cellId]),
+            checkUpgrade: (structure) =>
+              hostCheck("STRUCTURES_CHECK_UPGRADE", [structure])
           }
         }
-      : {})
+      : {}),
+    transports: {
+      embark: (sourceCellId, targetCellId, population) =>
+        stageAction("EMBARK_TRANSPORT", { sourceCellId, targetCellId, population }),
+      recall: (unit) => stageAction("RETURN_TRANSPORT", { unit }),
+      checkEmbark: (sourceCellId, targetCellId, population) =>
+        hostCheck("TRANSPORTS_CHECK_EMBARK", [
+          sourceCellId,
+          targetCellId,
+          population
+        ])
+    },
+    weapons: {
+      launch: (launcher, weapon, targetCellId, targetFaction) =>
+        stageAction("LAUNCH_WEAPON", {
+          launcher,
+          weapon,
+          targetCellId,
+          ...(targetFaction === undefined ? {} : { targetFaction })
+        }),
+      checkLaunch: (launcher, weapon, targetCellId, targetFaction) =>
+        hostCheck(
+          "WEAPONS_CHECK_LAUNCH",
+          targetFaction === undefined
+            ? [launcher, weapon, targetCellId]
+            : [launcher, weapon, targetCellId, targetFaction]
+        )
+    },
+    territory: {
+      relinquish: (cells) => stageAction("RELINQUISH", { cells }),
+      checkRelinquish: (cells) =>
+        hostCheck("TERRITORY_CHECK_RELINQUISH", [cells])
+    },
+    team: {
+      signal: (channel, payload) =>
+        stageAction("TEAM_SIGNAL", { channel, payload })
+    },
+    capitulate: () => stageAction("CAPITULATE")
   });
 
   return (async () => {
@@ -528,9 +640,20 @@ const invokeEntrypointSource = `
       return { status: "RUNTIME_ERROR", queries: queryCount };
     }
 
-    if (output === undefined) return { status: "OK", queries: queryCount };
+    if (output === undefined) {
+      return {
+        status: "OK",
+        queries: queryCount,
+        stagedActions: materialize(stagedActions)
+      };
+    }
     try {
-      return { status: "OK", queries: queryCount, output: materialize(output) };
+      return {
+        status: "OK",
+        queries: queryCount,
+        stagedActions: materialize(stagedActions),
+        output: materialize(output)
+      };
     } catch {
       return { status: "INVALID_OUTPUT", queries: queryCount };
     }
@@ -648,13 +771,47 @@ function isControllerWorkerQueryRequest(
       return args.length === 0;
     case "UNITS_GET":
       return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_CHECK_BUILD":
+      return (
+        args.length === 3 &&
+        (args[0] === "TANK" || args[0] === "WARSHIP") &&
+        isStructureLocatorArgument(args[1]) &&
+        typeof args[2] === "number"
+      );
     case "UNITS_FIND":
     case "UNITS_COUNT":
     case "STRUCTURES_FIND":
     case "STRUCTURES_COUNT":
       return isOptionalEntityFilterArgs(args);
     case "STRUCTURES_GET":
+    case "STRUCTURES_CHECK_UPGRADE":
       return args.length === 1 && isStructureLocatorArgument(args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return (
+        args.length === 2 &&
+        typeof args[0] === "string" &&
+        typeof args[1] === "number"
+      );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
+        typeof args[2] === "number"
+      );
+    case "TERRITORY_CHECK_RELINQUISH":
+      return args.length === 1 && isSelectorArgument(args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return (
+        (args.length === 3 || args.length === 4) &&
+        (isStructureLocatorArgument(args[0]) ||
+          isUnitLocatorArgument(args[0])) &&
+        (args[1] === "ATOM_BOMB" ||
+          args[1] === "HYDROGEN_BOMB" ||
+          args[1] === "MIRV") &&
+        typeof args[2] === "number" &&
+        (args.length === 3 || typeof args[3] === "string")
+      );
     default:
       return false;
   }
@@ -1310,6 +1467,7 @@ async function executeRequest(
 ): Promise<ControllerWorkerResponse> {
   let isolate: ivm.Isolate | undefined;
   let queryReference: ivm.Reference | undefined;
+  let syncQueryReference: ivm.Reference | undefined;
   let localReference: ivm.Reference | undefined;
 
   try {
@@ -1421,6 +1579,21 @@ async function executeRequest(
       }
       return requestHostQuery(requestId, sequence as number, query);
     });
+    syncQueryReference = new ivm.Reference(async (query: unknown) => {
+      if (!isPlainRecord(query)) {
+        throw new Error("invalid controller query");
+      }
+      const sequence = query.sequence;
+      if (
+        !isControllerWorkerQueryRequest(query) ||
+        !Number.isInteger(sequence) ||
+        (sequence as number) <= 0
+      ) {
+        throw new Error("invalid controller query");
+      }
+      const value = await requestHostQuery(requestId, sequence as number, query);
+      return new ivm.ExternalCopy(value).copyInto({ release: true });
+    });
     localReference = new ivm.Reference((query: unknown) =>
       resolveLocalRead(spatialCacheKey, publicFactions, publicOperations, query),
     );
@@ -1437,6 +1610,7 @@ async function executeRequest(
           publicFactions !== undefined,
           PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
           publicOperations !== undefined,
+          syncQueryReference,
         ],
         {
           timeout: request.timeoutMs,
@@ -1483,6 +1657,14 @@ async function executeRequest(
       return workerFault("RUNTIME_ERROR");
     }
 
+    const stagedActions = invocationRecord.stagedActions;
+    if (!Array.isArray(stagedActions)) {
+      return workerFault("RUNTIME_ERROR");
+    }
+    if (!stagedActionsWithinResourceCeilings(stagedActions)) {
+      return workerFault("INVALID_OUTPUT");
+    }
+
     const validated = validateProductionControllerOutput(
       request.hook,
       invocationRecord.output,
@@ -1494,6 +1676,9 @@ async function executeRequest(
     return Object.freeze({
       ok: true as const,
       output: validated.output,
+      ...(stagedActions.length === 0
+        ? {}
+        : { stagedActions: Object.freeze(stagedActions) }),
       usage: Object.freeze({
         queries: queryCount as number,
         materializedCells: 0,
@@ -1505,6 +1690,7 @@ async function executeRequest(
     return workerFault("RUNTIME_ERROR");
   } finally {
     localReference?.release();
+    syncQueryReference?.release();
     queryReference?.release();
     if (isolate !== undefined && !isolate.isDisposed) {
       isolate.dispose();

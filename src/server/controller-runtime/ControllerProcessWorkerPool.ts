@@ -5,10 +5,14 @@ import { fileURLToPath } from "node:url";
 import type {
   CellId,
   CellSelector,
+  FactionRef,
   SegmentId,
   StructureFindFilter,
+  StructureType,
   StructureLocator,
+  StrategicWeaponType,
   TerrainType,
+  PurchasableUnitType,
   UnitFindFilter,
   UnitLocator,
 } from "../../core/controller/ControllerApi";
@@ -73,6 +77,10 @@ type ControllerWorkerQueryRequest =
   | Readonly<{ operation: "UNITS_GET"; args: readonly [UnitLocator] }>
   | Readonly<{ operation: "UNITS_FIND"; args: readonly [UnitFindFilter?] }>
   | Readonly<{ operation: "UNITS_COUNT"; args: readonly [UnitFindFilter?] }>
+  | Readonly<{
+      operation: "UNITS_CHECK_BUILD";
+      args: readonly [PurchasableUnitType, StructureLocator, CellId];
+    }>
   | Readonly<{ operation: "STRUCTURES_GET"; args: readonly [StructureLocator] }>
   | Readonly<{
       operation: "STRUCTURES_FIND";
@@ -81,6 +89,31 @@ type ControllerWorkerQueryRequest =
   | Readonly<{
       operation: "STRUCTURES_COUNT";
       args: readonly [StructureFindFilter?];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_BUILD";
+      args: readonly [StructureType, CellId];
+    }>
+  | Readonly<{
+      operation: "STRUCTURES_CHECK_UPGRADE";
+      args: readonly [StructureLocator];
+    }>
+  | Readonly<{
+      operation: "TRANSPORTS_CHECK_EMBARK";
+      args: readonly [CellId, CellId, number];
+    }>
+  | Readonly<{
+      operation: "TERRITORY_CHECK_RELINQUISH";
+      args: readonly [CellSelector];
+    }>
+  | Readonly<{
+      operation: "WEAPONS_CHECK_LAUNCH";
+      args: readonly [
+        StructureLocator | UnitLocator,
+        StrategicWeaponType,
+        CellId,
+        FactionRef?,
+      ];
     }>;
 
 type WorkerStaticSpatialSnapshot = Readonly<{
@@ -279,13 +312,47 @@ function isControllerWorkerQueryRequest(
       return args.length === 0;
     case "UNITS_GET":
       return args.length === 1 && isUnitLocatorArgument(args[0]);
+    case "UNITS_CHECK_BUILD":
+      return (
+        args.length === 3 &&
+        (args[0] === "TANK" || args[0] === "WARSHIP") &&
+        isStructureLocatorArgument(args[1]) &&
+        typeof args[2] === "number"
+      );
     case "UNITS_FIND":
     case "UNITS_COUNT":
     case "STRUCTURES_FIND":
     case "STRUCTURES_COUNT":
       return isOptionalEntityFilterArgs(args);
     case "STRUCTURES_GET":
+    case "STRUCTURES_CHECK_UPGRADE":
       return args.length === 1 && isStructureLocatorArgument(args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return (
+        args.length === 2 &&
+        typeof args[0] === "string" &&
+        typeof args[1] === "number"
+      );
+    case "TRANSPORTS_CHECK_EMBARK":
+      return (
+        args.length === 3 &&
+        typeof args[0] === "number" &&
+        typeof args[1] === "number" &&
+        typeof args[2] === "number"
+      );
+    case "TERRITORY_CHECK_RELINQUISH":
+      return args.length === 1 && isSelectorArgument(args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return (
+        (args.length === 3 || args.length === 4) &&
+        (isStructureLocatorArgument(args[0]) ||
+          isUnitLocatorArgument(args[0])) &&
+        (args[1] === "ATOM_BOMB" ||
+          args[1] === "HYDROGEN_BOMB" ||
+          args[1] === "MIRV") &&
+        typeof args[2] === "number" &&
+        (args.length === 3 || typeof args[3] === "string")
+      );
     default:
       return false;
   }
@@ -342,12 +409,33 @@ async function resolveControllerWorkerQuery(
       return session.units.find(query.args[0]);
     case "UNITS_COUNT":
       return session.units.count(query.args[0]);
+    case "UNITS_CHECK_BUILD":
+      return session.units.checkBuild(query.args[0], query.args[1], query.args[2]);
     case "STRUCTURES_GET":
       return session.structures.get(query.args[0]);
     case "STRUCTURES_FIND":
       return session.structures.find(query.args[0]);
     case "STRUCTURES_COUNT":
       return session.structures.count(query.args[0]);
+    case "STRUCTURES_CHECK_BUILD":
+      return session.structures.checkBuild(query.args[0], query.args[1]);
+    case "STRUCTURES_CHECK_UPGRADE":
+      return session.structures.checkUpgrade(query.args[0]);
+    case "TRANSPORTS_CHECK_EMBARK":
+      return session.transports.checkEmbark(
+        query.args[0],
+        query.args[1],
+        query.args[2],
+      );
+    case "TERRITORY_CHECK_RELINQUISH":
+      return session.territory.checkRelinquish(query.args[0]);
+    case "WEAPONS_CHECK_LAUNCH":
+      return session.weapons.checkLaunch(
+        query.args[0],
+        query.args[1],
+        query.args[2],
+        query.args[3],
+      );
   }
 }
 

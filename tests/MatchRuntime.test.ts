@@ -215,11 +215,13 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     const controllers = {
       beta(observation: LawfulControllerObservation) {
         secondSeen.push(`beta:${observation.factions.map((f) => f.status).join(",")}`);
-        return { commands: [{ kind: "CAPITULATE" as const, key: "beta-out" }] };
+        (observation as LawfulControllerObservation & { capitulate(): string }).capitulate();
+        return {};
       },
       alpha(observation: LawfulControllerObservation) {
         firstSeen.push(`alpha:${observation.factions.map((f) => f.status).join(",")}`);
-        return { commands: [{ kind: "CAPITULATE" as const, key: "alpha-out" }] };
+        (observation as LawfulControllerObservation & { capitulate(): string }).capitulate();
+        return {};
       },
     };
 
@@ -253,20 +255,13 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
   it("rejects an illegal mixed proposal atomically without recording partial authoritative input", () => {
     const runtime = twoFactionRuntime();
+    let invalidBuildActionRef: string | undefined;
     const receipts = runtime.runControllerRound(
       new InProcessTestControllerHost({
-        alpha() {
-          return {
-            commands: [
-              { kind: "CAPITULATE", key: "valid-first" },
-              {
-                kind: "BUILD_STRUCTURE",
-                key: "unsupported-second",
-                structure: "CITY",
-                cellId: 0,
-              },
-            ],
-          };
+        alpha(context) {
+          context.capitulate!();
+          invalidBuildActionRef = context.structures!.build("CITY", 0);
+          return {};
         },
       }),
     );
@@ -274,7 +269,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(receipts.find((entry) => entry.factionId === "alpha")?.receipt).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "CELL_NOT_OWNED", key: "unsupported-second" },
+      failure: { code: "CELL_NOT_OWNED", key: invalidBuildActionRef },
       faultCount: 0,
       faulted: false,
     });
@@ -284,16 +279,17 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(runtime.snapshot().factions[0]?.status).toBe("ACTIVE");
   });
 
-  it("materializes accepted controller commands before replay recording and regenerates exactly", () => {
+  it("materializes accepted staged controller actions before replay recording and regenerates exactly", () => {
     const runtime = twoFactionRuntime("controller-replay");
-    const decision = {
-      commands: [{ kind: "CAPITULATE" as const, key: "leave" }],
-    };
     runtime.runControllerRound(
-      new InProcessTestControllerHost({ alpha: () => decision }),
+      new InProcessTestControllerHost({
+        alpha(context) {
+          context.capitulate!();
+          return {};
+        },
+      }),
     );
 
-    decision.commands[0].key = "mutated-after-return";
     expect(runtime.acceptedInputs()).toEqual([
       {
         tick: 1,
@@ -315,19 +311,12 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
   it("surfaces the previous decision receipt on the next eligible controller observation", () => {
     const runtime = twoFactionRuntime();
+    let rejectedBuildActionRef: string | undefined;
     runtime.runControllerRound(
       new InProcessTestControllerHost({
-        alpha() {
-          return {
-            commands: [
-              {
-                kind: "BUILD_STRUCTURE",
-                key: "unsupported",
-                structure: "CITY",
-                cellId: 0,
-              },
-            ],
-          };
+        alpha(context) {
+          rejectedBuildActionRef = context.structures!.build("CITY", 0);
+          return {};
         },
       }),
     );
@@ -345,7 +334,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(seen?.lastDecision).toEqual({
       decisionNumber: 0,
       accepted: false,
-      failure: { code: "CELL_NOT_OWNED", key: "unsupported" },
+      failure: { code: "CELL_NOT_OWNED", key: rejectedBuildActionRef },
       faultCount: 0,
       faulted: false,
     });
@@ -461,7 +450,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
             contextFrozen: Object.isFrozen(observation),
             memoryFrozen: Object.isFrozen(observation.memory),
           });
-          return { commands: [], memory: { phase: "decide" } };
+          return { memory: { phase: "decide" } };
         },
       },
     });
@@ -508,7 +497,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(origins).toEqual({ ok: true, output: { origins: [13] } });
     expect(decision).toEqual({
       ok: true,
-      output: { commands: [], memory: { phase: "decide" } },
+      output: { memory: { phase: "decide" } },
     });
     expect(seen).toEqual([
       {
@@ -561,7 +550,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
           },
         ) {
           decideMemory = { ...observation.memory };
-          return { commands: [] };
+          return {};
         },
       },
     });
@@ -601,7 +590,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
     expect(host.invoke("alpha", ordinaryObservation())).toEqual({
       ok: true,
-      output: { commands: [] },
+      output: {},
     });
     expect(decideMemory).toEqual({ stable: 1 });
   });
@@ -644,6 +633,7 @@ describe("persistent structure grant foundation", () => {
         completedLevel: 1,
         active: true,
         chargeSlots: [{ slotId: 0, state: "READY" }],
+        acceptedLaunchCount: 0,
         acquisitionPath: "GRANT",
       },
     ]);
@@ -784,6 +774,7 @@ describe("persistent structure grant foundation", () => {
         completedLevel: 1,
         active: true,
         chargeSlots: [{ slotId: 0, state: "READY" }],
+        acceptedLaunchCount: 0,
         acquisitionPath: "GRANT",
       },
     ]);

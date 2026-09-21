@@ -1,12 +1,17 @@
 import type {
   ControllerDecision,
   CounterResponseDirective,
+  JsonValue,
   DecisionFailure,
   DecisionReceipt,
 } from "../core/controller/ControllerApi";
 import {
+  controllerTeamSignalPayloadIsValid,
+  controllerUnitBuildFailureCode,
   mapControllerStructureBuildFailure,
+  materializeControllerTeamSignalPayload,
   mapControllerStructureUpgradeFailure,
+  mapControllerTransportEmbarkFailure,
 } from "./ControllerQueryProjection";
 import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
@@ -15,6 +20,7 @@ import {
   type ControllerHostInvocationResult,
   type ControllerProposedAction,
   type ControllerRoundEvaluation,
+  type PendingTeamSignalObservation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
@@ -54,6 +60,29 @@ import {
   tryPurchaseStructureBuild,
   tryPurchaseStructureUpgrade,
 } from "./Structures";
+import {
+  trySetTankStrategicDestination,
+  tryStartTankProduction,
+  type TankStrategicDestinationFailureCode,
+} from "./Tanks";
+import {
+  tryRelinquishTerritory,
+  type TerritoryRelinquishmentFailureCode,
+} from "./TerritoryEffects";
+import {
+  tryCommitTransportEmbark,
+  tryStartTransportRecall,
+  type TransportRecallFailureCode,
+} from "./Transports";
+import {
+  tryCommitStrategicLaunch,
+  type StrategicLaunchFailureCode,
+} from "./StrategicWeapons";
+import {
+  trySetWarshipStrategicDestination,
+  tryStartWarshipProduction,
+  type WarshipStrategicMoveFailureCode,
+} from "./Warships";
 import {
   TickEngine,
   type AcceptedSimulationInput,
@@ -191,7 +220,7 @@ function resolvingControllerHost(
   ): ControllerHostInvocationResult<ControllerDecision> => {
     if (!result.ok || result.output === undefined) return result;
     return Object.freeze({
-      ok: true as const,
+      ...result,
       output: resolveCounterResponseOperationRefs(
         state,
         factionId,
@@ -404,6 +433,16 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "TEAM_SIGNAL": {
+      faction(state, action.senderFactionId);
+      if (
+        typeof action.channel !== "string" ||
+        !controllerTeamSignalPayloadIsValid(action.payload)
+      ) {
+        throw new Error("invalid team signal");
+      }
+      break;
+    }
     case "CAPITULATE_FACTION": {
       const target = faction(state, action.factionId);
       if (target.status !== "ACTIVE") {
@@ -482,6 +521,110 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
+    case "START_TANK_PRODUCTION": {
+      const started = tryStartTankProduction(state, {
+        ownerId: action.ownerId,
+        factoryId: action.factoryId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      if (!started.ok) {
+        throw new Error(
+          `invalid Tank production start: ${started.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "START_WARSHIP_PRODUCTION": {
+      const started = tryStartWarshipProduction(state, {
+        ownerId: action.ownerId,
+        portId: action.portId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      if (!started.ok) {
+        throw new Error(
+          `invalid Warship production start: ${started.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const unit = state.mobileUnits.find(
+        (candidate) => candidate.id === action.unitId,
+      );
+      const moved =
+        unit?.type === "WARSHIP"
+          ? trySetWarshipStrategicDestination(state, {
+              ownerId: action.ownerId,
+              unitId: action.unitId,
+              strategicDestinationCellId: action.destinationCellId,
+            })
+          : trySetTankStrategicDestination(state, {
+              ownerId: action.ownerId,
+              unitId: action.unitId,
+              destinationCellId: action.destinationCellId,
+            });
+      if (!moved.ok) {
+        throw new Error(
+          `invalid unit strategic destination: ${moved.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "EMBARK_TRANSPORT": {
+      const embarked = tryCommitTransportEmbark(state, {
+        ownerId: action.ownerId,
+        sourceCellId: action.sourceCellId,
+        targetCellId: action.targetCellId,
+        population: action.population,
+      });
+      if (!embarked.ok) {
+        throw new Error(`invalid Transport embark: ${embarked.failure.code}`);
+      }
+      break;
+    }
+    case "RETURN_TRANSPORT": {
+      const recalled = tryStartTransportRecall(state, {
+        ownerId: action.ownerId,
+        transportId: action.transportId,
+      });
+      if (!recalled.ok) {
+        throw new Error(`invalid Transport recall: ${recalled.failure.code}`);
+      }
+      break;
+    }
+    case "RELINQUISH_TERRITORY": {
+      const relinquished = tryRelinquishTerritory(state, {
+        ownerId: action.ownerId,
+        cellIds: action.cellIds,
+      });
+      if (!relinquished.ok) {
+        throw new Error(
+          `invalid territory relinquishment: ${relinquished.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "LAUNCH_STRATEGIC_WEAPON": {
+      const launched = tryCommitStrategicLaunch(
+        state,
+        {
+          ownerId: action.ownerId,
+          launcherId: action.launcherId,
+          weapon: action.weapon,
+          targetCellId: action.targetCellId,
+          ...(action.targetFactionId === undefined
+            ? {}
+            : { targetFactionId: action.targetFactionId }),
+        },
+        state.tick + 1,
+      );
+      if (!launched.ok) {
+        throw new Error(
+          `invalid strategic launch: ${launched.failure.code}`,
+        );
+      }
+      break;
+    }
   }
 }
 
@@ -494,7 +637,12 @@ function freezeAcceptedInput(
           ...input.action,
           changes: materializeDirectiveChanges(input.action.changes),
         })
-      : Object.freeze({ ...input.action });
+      : input.action.type === "TEAM_SIGNAL"
+        ? Object.freeze({
+            ...input.action,
+            payload: materializeControllerTeamSignalPayload(input.action.payload),
+          })
+        : Object.freeze({ ...input.action });
   return Object.freeze({
     tick: input.tick,
     sequence: input.sequence,
@@ -510,6 +658,91 @@ function decisionFailure(
     code,
     ...(key === undefined ? {} : { key }),
   });
+}
+
+function mapTankStrategicDestinationFailure(
+  code: TankStrategicDestinationFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_TANK":
+    case "INVALID_DESTINATION":
+      return decisionFailure("INVALID_TARGET", key);
+  }
+}
+
+function mapWarshipStrategicDestinationFailure(
+  code: WarshipStrategicMoveFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_WARSHIP":
+      return decisionFailure("INVALID_TARGET", key);
+  }
+}
+
+function mapTerritoryRelinquishmentFailure(
+  code: TerritoryRelinquishmentFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+      return decisionFailure("INVALID_TARGET", key);
+    case "CELL_NOT_OWNED":
+      return decisionFailure("CELL_NOT_OWNED", key);
+    case "PERSISTENT_STRUCTURE_PRESENT":
+      return decisionFailure("PERSISTENT_STRUCTURE_PRESENT", key);
+  }
+}
+
+function mapTransportRecallFailure(
+  code: TransportRecallFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "OWNER_INACTIVE":
+    case "UNKNOWN_TRANSPORT":
+    case "NOT_ACTIVE_OPERATION":
+    case "NO_RETURN_ROUTE":
+      return decisionFailure("INVALID_TARGET", key);
+  }
+}
+
+function mapStrategicLaunchFailure(
+  code: StrategicLaunchFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+      return decisionFailure("INVALID_TARGET", key);
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_LAUNCHER":
+    case "LAUNCHER_INACTIVE":
+    case "LAUNCHER_LEVEL_REQUIRED":
+      return decisionFailure("INVALID_LAUNCHER", key);
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "WEAPON_NOT_PERMITTED":
+      return decisionFailure("INVALID_COMMAND", key);
+    case "NO_READY_CHARGE":
+      return decisionFailure("COMMITMENT_LIMIT", key);
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+  }
 }
 
 function controllerActionFailure(
@@ -566,10 +799,179 @@ function controllerActionFailure(
             proposed.key,
           );
     }
+    case "START_TANK_PRODUCTION": {
+      const started = tryStartTankProduction(state, {
+        ownerId: action.ownerId,
+        factoryId: action.factoryId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      return started.ok
+        ? undefined
+        : decisionFailure(
+            controllerUnitBuildFailureCode(started.failure.code),
+            proposed.key,
+          );
+    }
+    case "START_WARSHIP_PRODUCTION": {
+      const started = tryStartWarshipProduction(state, {
+        ownerId: action.ownerId,
+        portId: action.portId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      return started.ok
+        ? undefined
+        : decisionFailure(
+            controllerUnitBuildFailureCode(started.failure.code),
+            proposed.key,
+          );
+    }
+    case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const unit = state.mobileUnits.find(
+        (candidate) => candidate.id === action.unitId,
+      );
+      if (unit?.type === "WARSHIP") {
+        const moved = trySetWarshipStrategicDestination(state, {
+          ownerId: action.ownerId,
+          unitId: action.unitId,
+          strategicDestinationCellId: action.destinationCellId,
+        });
+        return moved.ok
+          ? undefined
+          : mapWarshipStrategicDestinationFailure(
+              moved.failure.code,
+              proposed.key,
+            );
+      }
+      const moved = trySetTankStrategicDestination(state, {
+        ownerId: action.ownerId,
+        unitId: action.unitId,
+        destinationCellId: action.destinationCellId,
+      });
+      return moved.ok
+        ? undefined
+        : mapTankStrategicDestinationFailure(
+            moved.failure.code,
+            proposed.key,
+          );
+    }
+    case "EMBARK_TRANSPORT": {
+      const embarked = tryCommitTransportEmbark(state, {
+        ownerId: action.ownerId,
+        sourceCellId: action.sourceCellId,
+        targetCellId: action.targetCellId,
+        population: action.population,
+      });
+      return embarked.ok
+        ? undefined
+        : mapControllerTransportEmbarkFailure(
+            embarked.failure.code,
+            proposed.key,
+          );
+    }
+    case "RETURN_TRANSPORT": {
+      const recalled = tryStartTransportRecall(state, {
+        ownerId: action.ownerId,
+        transportId: action.transportId,
+      });
+      return recalled.ok
+        ? undefined
+        : mapTransportRecallFailure(recalled.failure.code, proposed.key);
+    }
+    case "RELINQUISH_TERRITORY": {
+      const relinquished = tryRelinquishTerritory(state, {
+        ownerId: action.ownerId,
+        cellIds: action.cellIds,
+      });
+      return relinquished.ok
+        ? undefined
+        : mapTerritoryRelinquishmentFailure(
+            relinquished.failure.code,
+            proposed.key,
+          );
+    }
+    case "LAUNCH_STRATEGIC_WEAPON": {
+      const launched = tryCommitStrategicLaunch(
+        state,
+        {
+          ownerId: action.ownerId,
+          launcherId: action.launcherId,
+          weapon: action.weapon,
+          targetCellId: action.targetCellId,
+          ...(action.targetFactionId === undefined
+            ? {}
+            : { targetFactionId: action.targetFactionId }),
+        },
+        state.tick + 1,
+      );
+      return launched.ok
+        ? undefined
+        : mapStrategicLaunchFailure(
+            launched.failure.code,
+            proposed.key,
+          );
+    }
     default:
       validateAction(state, action);
       return undefined;
   }
+}
+
+function resolvePendingTeamSignalDeliveries(
+  state: MatchState,
+  inputs: readonly AcceptedSimulationInput[],
+): ReadonlyMap<string, readonly PendingTeamSignalObservation[]> {
+  const factionsById = new Map(state.factions.map((entry) => [entry.id, entry]));
+  const activeById = new Map(
+    state.factions.map((entry) => [entry.id, entry.status === "ACTIVE"]),
+  );
+  const deliveries = new Map<string, PendingTeamSignalObservation[]>();
+
+  for (const input of [...inputs].sort(
+    (left, right) => left.sequence - right.sequence,
+  )) {
+    if (input.action.type === "CAPITULATE_FACTION") {
+      activeById.set(input.action.factionId, false);
+      continue;
+    }
+    if (input.action.type !== "TEAM_SIGNAL") continue;
+
+    const sender = factionsById.get(input.action.senderFactionId);
+    if (sender === undefined) {
+      throw new Error(
+        `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
+      );
+    }
+    const fixedTeamId = sender.fixedTeamId;
+    if (fixedTeamId === undefined) continue;
+
+    const signal = Object.freeze({
+      senderFactionId: sender.id,
+      channel: input.action.channel,
+      payload: input.action.payload,
+    });
+    for (const recipient of state.factions) {
+      if (
+        recipient.id === sender.id ||
+        recipient.fixedTeamId !== fixedTeamId ||
+        activeById.get(recipient.id) !== true
+      ) {
+        continue;
+      }
+      const existing = deliveries.get(recipient.id);
+      if (existing === undefined) {
+        deliveries.set(recipient.id, [signal]);
+      } else {
+        existing.push(signal);
+      }
+    }
+  }
+
+  return new Map(
+    [...deliveries].map(([factionId, signals]) => [
+      factionId,
+      Object.freeze([...signals]),
+    ]),
+  );
 }
 
 export class MatchRuntime {
@@ -585,6 +987,10 @@ export class MatchRuntime {
   private controllerFaultCounts = new Map<string, number>();
   private controllerConsecutiveFaultCounts = new Map<string, number>();
   private controllerFaultedFactionIds = new Set<string>();
+  private readonly pendingTeamSignalsByFaction = new Map<
+    string,
+    readonly PendingTeamSignalObservation[]
+  >();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
   private readonly controllerReferences?: ControllerReferenceSession;
@@ -762,6 +1168,11 @@ export class MatchRuntime {
     for (const entry of frozenReceipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
+    for (const faction of this.state.factions) {
+      if (!this.controllerFaultedFactionIds.has(faction.id)) {
+        this.pendingTeamSignalsByFaction.delete(faction.id);
+      }
+    }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
     this.controllerConsecutiveFaultCounts = new Map(
       evaluated.consecutiveFaultCounts,
@@ -800,6 +1211,7 @@ export class MatchRuntime {
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
         this.controllerReferences,
+        this.pendingTeamSignalsByFaction,
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
@@ -835,6 +1247,10 @@ export class MatchRuntime {
     this.pendingInputs = this.pendingInputs.filter(
       (input) => input.tick !== nextTick,
     );
+    const teamSignalDeliveries = resolvePendingTeamSignalDeliveries(
+      this.state,
+      executing,
+    );
     const nextState = this.engine.advance(this.state, executing);
     if (this.controllerReferences !== undefined) {
       for (const input of [...executing].sort(
@@ -860,6 +1276,15 @@ export class MatchRuntime {
       this.controllerReferences.reconcile(nextState);
     }
     this.state = nextState;
+    for (const [factionId, signals] of teamSignalDeliveries) {
+      const existing = this.pendingTeamSignalsByFaction.get(factionId);
+      this.pendingTeamSignalsByFaction.set(
+        factionId,
+        existing === undefined
+          ? signals
+          : Object.freeze([...existing, ...signals]),
+      );
+    }
     return this.state;
   }
 

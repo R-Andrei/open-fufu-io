@@ -367,6 +367,66 @@ export function resolveHostilityGraceFromEvents<
   );
 }
 
+export function applyOneShotDirectedHostility<
+  F extends HostilityFactionStateLike,
+>(
+  state: HostilityStateLike<F>,
+  sourceFactionId: string,
+  targetFactionId: string,
+  transitionTick: number,
+): readonly HostilityGraceState[] {
+  assertTransitionTick(transitionTick);
+  const source = factionById(state.factions, sourceFactionId);
+  const target = factionById(state.factions, targetFactionId);
+  if (
+    source === undefined ||
+    target === undefined ||
+    source.status !== "ACTIVE" ||
+    target.status !== "ACTIVE"
+  ) {
+    throw new Error("directed hostility requires two active factions");
+  }
+  const pair = normalizedPair(factionSide(source), factionSide(target));
+  if (pair === undefined) {
+    return freezeHostilityGraceForTransition(state, transitionTick);
+  }
+  const grace = new Map<string, HostilityGraceState>();
+  for (const entry of freezeHostilityGraceForTransition(state, transitionTick)) {
+    grace.set(graceKey(entry), entry);
+  }
+  addGraceForPair(grace, pair, transitionTick);
+  return Object.freeze(
+    [...grace.entries()]
+      .filter(
+        ([, entry]) =>
+          sideHasActiveFaction(state.factions, entry.sideA) &&
+          sideHasActiveFaction(state.factions, entry.sideB) &&
+          entry.expiresAtTickExclusive > transitionTick,
+      )
+      .sort(([left], [right]) => compareStrings(left, right))
+      .map(([, entry]) => materializeHostilityGraceState(entry)),
+  );
+}
+
+function freezeHostilityGraceForTransition<
+  F extends HostilityFactionStateLike,
+>(
+  state: HostilityStateLike<F>,
+  transitionTick: number,
+): readonly HostilityGraceState[] {
+  return Object.freeze(
+    state.hostilityGrace
+      .map(materializeHostilityGraceState)
+      .filter(
+        (entry) =>
+          entry.expiresAtTickExclusive > transitionTick &&
+          sideHasActiveFaction(state.factions, entry.sideA) &&
+          sideHasActiveFaction(state.factions, entry.sideB),
+      )
+      .sort((left, right) => compareStrings(graceKey(left), graceKey(right))),
+  );
+}
+
 export function matchStateAtWar<F extends HostilityFactionStateLike>(
   state: HostilityStateLike<F>,
   factionAId: string,

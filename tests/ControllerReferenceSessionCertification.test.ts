@@ -226,7 +226,6 @@ describe("controller reference session certification", () => {
               structure: structures.items[0].ref,
             };
             return {
-              commands: [],
               memory: { refs },
               log: JSON.stringify({ phase: "stored", refs }),
             };
@@ -237,7 +236,6 @@ describe("controller reference session certification", () => {
           const unit = await context.units.get({ ref: stored.unit });
           const structure = await context.structures.get({ ref: stored.structure });
           return {
-            commands: [],
             memory: context.memory,
             log: JSON.stringify({
               phase: "resolved",
@@ -597,7 +595,6 @@ describe("controller reference session certification", () => {
             blocked = true;
           }
           return {
-            commands: [],
             log: JSON.stringify({ count, blocked }),
           };
         }
@@ -636,7 +633,7 @@ describe("controller reference session certification", () => {
 
       const healthyArtifact = Object.freeze({
         moduleSource:
-          'export function decide() { return { commands: [], log: "reused" }; }',
+          'export function decide() { return { log: "reused" }; }',
         entrypoints: Object.freeze({ decide: "decide" }),
       }) satisfies ControllerRuntimeArtifact;
       const healthy = await pool.invoke(
@@ -645,7 +642,7 @@ describe("controller reference session certification", () => {
       );
       expect(healthy).toEqual({
         ok: true,
-        output: { commands: [], log: "reused" },
+        output: { log: "reused" },
         usage: { queries: 0, materializedCells: 0 },
       });
     } finally {

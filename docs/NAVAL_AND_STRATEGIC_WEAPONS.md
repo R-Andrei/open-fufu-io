@@ -591,9 +591,16 @@ distribution radius = 750 cells
 minimum warhead-center spacing = 55 cells
 ```
 
-The first warhead targets the submitted primary target cell.
+The first warhead targets the submitted primary target cell and is canonical child index `0`.
 
-Remaining centers are chosen deterministically from legal land cells within 750 cells of the primary target that belong to the snapshotted target faction, respecting the 55-cell minimum spacing.
+For secondary warheads, enumerate legal land cells within 750 cells of the primary target that belong to the snapshotted target faction, excluding the primary cell. Canonical secondary-candidate order is:
+
+1. ascending squared Euclidean distance from the primary target;
+2. ascending canonical `cellId` for equal-distance candidates.
+
+Walk that ordered list once. Greedily accept a candidate only when its center is at least 55 cells from every already-selected warhead center, including the primary. Stop when 250 total warheads have been selected or when the candidate list is exhausted.
+
+The accepted order is the canonical MIRV child order. It determines child indices and therefore the deterministic child seed inputs.
 
 The resolver does not search beyond the authored distribution radius merely to fill all 250 warheads. If fewer legal spaced centers exist, fewer warheads resolve.
 
@@ -763,7 +770,11 @@ The three-Transport cap prevents fragmentation of one invasion into very large n
 
 ## 5.1 Embark and autonomous travel
 
-The controller begins an amphibious operation by choosing desired source and target cells as **strategic intent**, plus a Population commitment. Those authored cells do not themselves have to be legal physical water embark/landing cells. Transport admission supplies the lawful land-side embark/landing coast candidates around the authored intents; the simulation maps each such coast to its cardinally adjacent Shallow-Water/Deep-Water physical candidates and resolves one connected water route.
+The controller begins an amphibious operation by choosing desired source and target cells as **strategic intent**, plus a Population commitment. Those authored cells do not themselves have to be legal physical water embark/landing cells.
+
+Transport admission derives each land-side candidate set from the authored intent's **cardinally connected, ordinarily land-traversable political-ownership component**. The embark source component must be owned by the acting faction. The landing component uses the political owner of the authored target cell, including neutral ownership when the authored target is neutral. Within the respective component, every land-sided `COAST` cell is a lawful coast candidate and no coast outside that component is admitted. `COAST` classification and ordinary land traversability are owned by `TERRAIN_AND_STRUCTURES.md`.
+
+The simulation maps each admitted coast to its cardinally adjacent Shallow-Water/Deep-Water physical candidates and resolves one connected water route.
 
 Endpoint selection has no arbitrary search-radius cap. For each connected physical embark/landing pair:
 
@@ -828,7 +839,15 @@ After ownership establishment and any structure-capture resolution are fixed, th
 
 ## 5.3 Retreat / abort
 
-The controller may abort an active owned Transport. The simulation then routes it autonomously toward a legal owned return point; the controller does not choose a return path or micro-manage the vessel.
+The controller may abort an active owned Transport. The controller does not choose a return path or micro-manage the vessel.
+
+For recall admission, collect every lawful land-sided `COAST` cell currently owned by the acting faction and each cardinally adjacent Shallow-Water/Deep-Water physical return cell. From the Transport's current physical water cell, consider the static Transport-water path to each reachable physical return cell. Select the return endpoint lexicographically by:
+
+1. minimum static Transport-water path cost;
+2. physical return-water `cellId`;
+3. associated land-side coast `cellId`.
+
+Transient physical occupancy does not participate in return-endpoint identity. After the endpoint is fixed, current occupancy is only an execution/pathing constraint: the Transport may use another lawful water path to that same physical endpoint when one exists, otherwise it waits/blocks under ordinary physical occupancy rather than selecting another return endpoint.
 
 On successful return:
 

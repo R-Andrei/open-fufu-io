@@ -5,18 +5,21 @@ import type {
   CellSelector,
   ActionRef,
   CellView,
-  ControllerCommand,
   ControllerStructureFieldId,
   ControllerStructureView,
   DecisionFailure,
   FactionFindFilter,
+  FactionRef,
   FactionReadView,
+  JsonValue,
   MechanicsApi,
   MobileUnitType,
   OperationKind,
   OperationStatus,
   PublicFactionRelation,
+  PurchasableUnitType,
   QueryPage,
+  RelinquishQuote,
   SegmentId,
   SegmentView,
   StructureBuildQuote,
@@ -27,13 +30,17 @@ import type {
   StructureLocator,
   StructureRef,
   StructureType,
+  StrategicWeaponType,
   StructureUpgradeQuote,
   StructureView,
   TerrainType,
+  TransportEmbarkQuote,
+  UnitBuildQuote,
   UnitFindFilter,
   UnitLocator,
   UnitRef,
   UnitView,
+  WeaponLaunchQuote,
 } from "../core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
@@ -53,7 +60,28 @@ import {
   resolveTacticalVisibility,
 } from "../core/visibility/TacticalVisibility";
 import { landTerrainBaseSpec, type LandOperationState } from "./LandOperations";
+import {
+  relinquishmentAppliesFallout,
+  tryRelinquishTerritory,
+  type TerritoryRelinquishmentFailureCode,
+} from "./TerritoryEffects";
 import type { MatchFactionState, MatchState } from "./MatchState";
+import {
+  tryStartTankProduction,
+  type TankProductionFailureCode,
+} from "./Tanks";
+import {
+  tryStartWarshipProduction,
+  type WarshipProductionFailureCode,
+} from "./Warships";
+import {
+  quoteStrategicLaunch,
+  type StrategicLaunchFailureCode,
+} from "./StrategicWeapons";
+import {
+  quoteTransportEmbark,
+  type TransportEmbarkFailureCode,
+} from "./Transports";
 import type { SimulationTerrain } from "./SimulationMap";
 import {
   effectiveStructureConstructionTicks,
@@ -68,12 +96,149 @@ import {
 
 const DEFAULT_MATERIALIZED_ENTITY_VIEWS_PER_DECISION = 512;
 const MAX_ENTITY_FIND_RESULTS = 128;
+export const CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES = 1_024;
+const teamSignalUtf8Encoder = new TextEncoder();
+
+function materializeTeamSignalJsonValue(
+  value: unknown,
+  ancestors: Set<object>,
+): JsonValue {
+  if (value === null || typeof value === "boolean" || typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new TypeError("team signal payload numbers must be finite");
+    }
+    return Object.is(value, -0) ? 0 : value;
+  }
+  if (typeof value !== "object") {
+    throw new TypeError("team signal payload must be JSON-shaped");
+  }
+  if (ancestors.has(value)) {
+    throw new TypeError("team signal payload must be acyclic");
+  }
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      const copy: JsonValue[] = [];
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) {
+          throw new TypeError("team signal payload arrays must not be sparse");
+        }
+        copy.push(materializeTeamSignalJsonValue(value[index], ancestors));
+      }
+      return Object.freeze(copy);
+    }
+    const prototype = Object.getPrototypeOf(value);
+    if (
+      (prototype !== Object.prototype && prototype !== null) ||
+      Object.getOwnPropertySymbols(value).length !== 0
+    ) {
+      throw new TypeError("team signal payload objects must be plain records");
+    }
+    const copy: Record<string, JsonValue> = {};
+    for (const key of Object.keys(value).sort()) {
+      copy[key] = materializeTeamSignalJsonValue(
+        (value as Record<string, unknown>)[key],
+        ancestors,
+      );
+    }
+    return Object.freeze(copy);
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+export function materializeControllerTeamSignalPayload(
+  value: unknown,
+): JsonValue {
+  const payload = materializeTeamSignalJsonValue(value, new Set<object>());
+  const serialized = JSON.stringify(payload);
+  if (
+    teamSignalUtf8Encoder.encode(serialized).byteLength >
+    CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES
+  ) {
+    throw new RangeError("team signal payload exceeds byte limit");
+  }
+  return payload;
+}
+
+export function controllerTeamSignalPayloadIsValid(value: unknown): boolean {
+  try {
+    materializeControllerTeamSignalPayload(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export interface ControllerQueryBudgetLimits {
   readonly queriesPerDecision: number;
   readonly materializedCellsPerDecision: number;
   readonly materializedEntityViewsPerDecision?: number;
 }
+
+export type ControllerStagedAction =
+  | Readonly<{
+      readonly kind: "BUILD_STRUCTURE";
+      readonly actionRef: ActionRef;
+      readonly structure: StructureType;
+      readonly cellId: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "UPGRADE_STRUCTURE";
+      readonly actionRef: ActionRef;
+      readonly structure: StructureLocator;
+    }>
+  | Readonly<{
+      readonly kind: "BUILD_UNIT";
+      readonly actionRef: ActionRef;
+      readonly unit: PurchasableUnitType;
+      readonly producer: StructureLocator;
+      readonly destination: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "MOVE_UNIT";
+      readonly actionRef: ActionRef;
+      readonly unit: UnitLocator;
+      readonly destination: CellId;
+    }>
+  | Readonly<{
+      readonly kind: "EMBARK_TRANSPORT";
+      readonly actionRef: ActionRef;
+      readonly sourceCellId: CellId;
+      readonly targetCellId: CellId;
+      readonly population: number;
+    }>
+  | Readonly<{
+      readonly kind: "RETURN_TRANSPORT";
+      readonly actionRef: ActionRef;
+      readonly unit: UnitLocator;
+    }>
+  | Readonly<{
+      readonly kind: "LAUNCH_WEAPON";
+      readonly actionRef: ActionRef;
+      readonly launcher: StructureLocator | UnitLocator;
+      readonly weapon: StrategicWeaponType;
+      readonly targetCellId: CellId;
+      readonly targetFaction?: FactionRef;
+    }>
+  | Readonly<{
+      readonly kind: "RELINQUISH";
+      readonly actionRef: ActionRef;
+      readonly cells: CellSelector;
+    }>
+  | Readonly<{
+      readonly kind: "TEAM_SIGNAL";
+      readonly actionRef: ActionRef;
+      readonly channel: string;
+      readonly payload: JsonValue;
+    }>
+  | Readonly<{
+      readonly kind: "CAPITULATE";
+      readonly actionRef: ActionRef;
+    }>;
 
 export interface ControllerQueryUsage {
   readonly queries: number;
@@ -147,15 +312,59 @@ export interface ControllerQuerySession {
     get(locator: UnitLocator): Promise<UnitView | undefined>;
     find(filter?: UnitFindFilter): Promise<QueryPage<UnitView>>;
     count(filter?: UnitFindFilter): Promise<number>;
+    build(
+      type: PurchasableUnitType,
+      producer: StructureLocator,
+      destination: CellId,
+    ): ActionRef;
+    move(unit: UnitLocator, destination: CellId): ActionRef;
+    checkBuild(
+      type: PurchasableUnitType,
+      producer: StructureLocator,
+      destination: CellId,
+    ): UnitBuildQuote;
   }>;
   readonly structures: Readonly<{
     get(locator: StructureLocator): Promise<StructureView | undefined>;
     find(filter?: StructureFindFilter): Promise<QueryPage<StructureView>>;
     count(filter?: StructureFindFilter): Promise<number>;
     build(type: StructureType, cellId: CellId): ActionRef;
+    upgrade(locator: StructureLocator): ActionRef;
     checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;
+    checkUpgrade(locator: StructureLocator): StructureUpgradeQuote;
   }>;
-  consumeStagedCommands(): readonly ControllerCommand[];
+  readonly transports: Readonly<{
+    embark(sourceCellId: CellId, targetCellId: CellId, population: number): ActionRef;
+    recall(unit: UnitLocator): ActionRef;
+    checkEmbark(
+      sourceCellId: CellId,
+      targetCellId: CellId,
+      population: number,
+    ): TransportEmbarkQuote;
+  }>;
+  readonly weapons: Readonly<{
+    launch(
+      launcher: StructureLocator | UnitLocator,
+      weapon: StrategicWeaponType,
+      targetCellId: CellId,
+      targetFaction?: FactionRef,
+    ): ActionRef;
+    checkLaunch(
+      launcher: StructureLocator | UnitLocator,
+      weapon: StrategicWeaponType,
+      targetCellId: CellId,
+      targetFaction?: FactionRef,
+    ): WeaponLaunchQuote;
+  }>;
+  readonly territory: Readonly<{
+    relinquish(cells: CellSelector): ActionRef;
+    checkRelinquish(cells: CellSelector): RelinquishQuote;
+  }>;
+  readonly team: Readonly<{
+    signal(channel: string, payload: JsonValue): ActionRef;
+  }>;
+  capitulate(): ActionRef;
+  consumeStagedActions(): readonly ControllerStagedAction[];
   readonly cells: Readonly<{
     get(id: CellId): Promise<CellView | undefined>;
     query(selector: CellSelector, limit?: number): Promise<QueryPage<CellView>>;
@@ -238,7 +447,7 @@ interface ControllerQueryMobileUnitState {
   readonly strategicDestinationCellId?: CellId;
 }
 
-interface ControllerQueryReferenceSession {
+export interface ControllerQueryReferenceSession {
   issue(
     viewerFactionId: string,
     domain: "UNIT" | "STRUCTURE" | "OPERATION",
@@ -816,6 +1025,32 @@ function structureVisibleToRequester(
   );
 }
 
+export function mapControllerTransportEmbarkFailure(
+  code: TransportEmbarkFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return decisionFailure("INSUFFICIENT_FFY", key);
+    case "INSUFFICIENT_AVAILABLE_POPULATION":
+      return decisionFailure("INSUFFICIENT_AVAILABLE_POPULATION", key);
+    case "OWNERSHIP_CAP":
+      return decisionFailure("OWNERSHIP_CAP", key);
+    case "SOURCE_NOT_OWNED":
+      return decisionFailure("CELL_NOT_OWNED", key);
+    case "EMBARK_BLOCKED":
+      return decisionFailure("CELL_OCCUPIED", key);
+    case "INVALID_SOURCE":
+    case "UNKNOWN_OWNER":
+    case "OWNER_INACTIVE":
+      return decisionFailure("INVALID_SOURCE", key);
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+    case "UNREACHABLE":
+      return decisionFailure("INVALID_TARGET", key);
+  }
+}
+
 export function mapControllerStructureBuildFailure(
   state: MatchState,
   requesterFactionId: string,
@@ -905,12 +1140,81 @@ function quoteStructureId(state: MatchState): string {
 function quoteCost(
   ffyRequired: number,
   ffySpent: number,
+  populationSpent = 0,
 ): StructureBuildQuote["cost"] {
   return Object.freeze({
     ffyRequired,
     ffySpent,
-    populationSpent: 0,
+    populationSpent,
   });
+}
+
+export function controllerUnitBuildFailureCode(
+  code: TankProductionFailureCode | WarshipProductionFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INSUFFICIENT_FFY":
+      return "INSUFFICIENT_FFY";
+    case "INSUFFICIENT_POPULATION":
+      return "INSUFFICIENT_AVAILABLE_POPULATION";
+    case "BUILD_NOT_PERMITTED":
+      return "BUILD_NOT_PERMITTED";
+    case "OWNERSHIP_CAP":
+      return "OWNERSHIP_CAP";
+    case "NOT_OWNER":
+      return "NOT_OWNER";
+    case "FACTORY_CAPACITY":
+    case "PORT_CAPACITY":
+      return "COMMITMENT_LIMIT";
+    case "INVALID_REQUEST":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_FACTORY":
+    case "FACTORY_INACTIVE":
+    case "FACTORY_LEVEL_REQUIRED":
+    case "UNKNOWN_PORT":
+    case "PORT_INACTIVE":
+    case "PORT_LEVEL_REQUIRED":
+      return "INVALID_PRODUCER";
+  }
+}
+
+function territoryRelinquishmentFailureCode(
+  code: TerritoryRelinquishmentFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INVALID_REQUEST":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+      throw new Error("controller territory requester is missing");
+    case "CELL_NOT_OWNED":
+      return "CELL_NOT_OWNED";
+    case "PERSISTENT_STRUCTURE_PRESENT":
+      return "PERSISTENT_STRUCTURE_PRESENT";
+  }
+}
+
+function strategicLaunchFailureCode(
+  code: StrategicLaunchFailureCode,
+): DecisionFailure["code"] {
+  switch (code) {
+    case "INVALID_REQUEST":
+    case "INVALID_TARGET":
+      return "INVALID_TARGET";
+    case "UNKNOWN_OWNER":
+      throw new Error("controller strategic-launch requester is missing");
+    case "UNKNOWN_LAUNCHER":
+    case "NOT_OWNER":
+    case "LAUNCHER_INACTIVE":
+    case "LAUNCHER_LEVEL_REQUIRED":
+      return "INVALID_LAUNCHER";
+    case "WEAPON_NOT_PERMITTED":
+      return "INVALID_COMMAND";
+    case "NO_READY_CHARGE":
+      return "COMMITMENT_LIMIT";
+    case "INSUFFICIENT_FFY":
+      return "INSUFFICIENT_FFY";
+  }
 }
 
 function createConstructionMechanics(
@@ -1370,6 +1674,19 @@ function incomingOperationTargetsRequester(
   return false;
 }
 
+export function resolveControllerCellSelector(
+  state: MatchState,
+  requesterFactionId: string,
+  selector: CellSelector,
+  references?: ControllerQueryReferenceSession,
+): readonly CellId[] {
+  return orderedSelectorCellIds(
+    state,
+    createStructureVisibilityContext(state, requesterFactionId, references),
+    selector,
+  );
+}
+
 export function createControllerQuerySession(
   state: MatchState,
   requesterFactionId: string,
@@ -1633,24 +1950,467 @@ export function createControllerQuerySession(
   };
 
   let nextActionOrdinal = 1;
-  const stagedCommands: ControllerCommand[] = [];
-  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef => {
-    const ordinal = nextActionOrdinal;
+  const stagedActions: ControllerStagedAction[] = [];
+  const nextActionRef = (): ActionRef => {
+    const actionRef = `action_${nextActionOrdinal}` as ActionRef;
     nextActionOrdinal += 1;
-    stagedCommands.push(Object.freeze({
+    return actionRef;
+  };
+  const stage = (
+    materialize: (actionRef: ActionRef) => ControllerStagedAction,
+  ): ActionRef => {
+    const actionRef = nextActionRef();
+    stagedActions.push(Object.freeze(materialize(actionRef)));
+    return actionRef;
+  };
+  const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef =>
+    stage((actionRef) => ({
       kind: "BUILD_STRUCTURE" as const,
-      key: `action:${requesterFactionId}:${ordinal}`,
+      actionRef,
       structure: type,
       cellId,
     }));
-    return `action_${requesterFactionId}_${ordinal}` as ActionRef;
+  const stageStructureUpgrade = (structure: StructureLocator): ActionRef =>
+    stage((actionRef) => ({
+      kind: "UPGRADE_STRUCTURE" as const,
+      actionRef,
+      structure,
+    }));
+  const stageUnitBuild = (
+    unit: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "BUILD_UNIT" as const,
+      actionRef,
+      unit,
+      producer,
+      destination,
+    }));
+  const stageUnitMove = (unit: UnitLocator, destination: CellId): ActionRef =>
+    stage((actionRef) => ({
+      kind: "MOVE_UNIT" as const,
+      actionRef,
+      unit,
+      destination,
+    }));
+  const stageTransportEmbark = (
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "EMBARK_TRANSPORT" as const,
+      actionRef,
+      sourceCellId,
+      targetCellId,
+      population,
+    }));
+  const stageTransportRecall = (unit: UnitLocator): ActionRef =>
+    stage((actionRef) => ({
+      kind: "RETURN_TRANSPORT" as const,
+      actionRef,
+      unit,
+    }));
+  const stageWeaponLaunch = (
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): ActionRef =>
+    stage((actionRef) => ({
+      kind: "LAUNCH_WEAPON" as const,
+      actionRef,
+      launcher,
+      weapon,
+      targetCellId,
+      ...(targetFaction === undefined ? {} : { targetFaction }),
+    }));
+  const stageRelinquish = (cells: CellSelector): ActionRef =>
+    stage((actionRef) => ({
+      kind: "RELINQUISH" as const,
+      actionRef,
+      cells,
+    }));
+  const stageTeamSignal = (channel: string, payload: JsonValue): ActionRef => {
+    const materializedPayload = materializeControllerTeamSignalPayload(payload);
+    return stage((actionRef) => ({
+      kind: "TEAM_SIGNAL" as const,
+      actionRef,
+      channel,
+      payload: materializedPayload,
+    }));
   };
+  const stageCapitulation = (): ActionRef =>
+    stage((actionRef) => ({
+      kind: "CAPITULATE" as const,
+      actionRef,
+    }));
   const checkStructureBuild = (type: StructureType, cellId: CellId): StructureBuildQuote => {
     beginQuery();
     return mechanics.structureBuildQuote(type, cellId);
   };
-  const consumeStagedCommands = (): readonly ControllerCommand[] =>
-    Object.freeze([...stagedCommands]);
+  const checkStructureUpgrade = (
+    locator: StructureLocator,
+  ): StructureUpgradeQuote => {
+    beginQuery();
+    if (
+      references === undefined ||
+      locator === null ||
+      typeof locator !== "object"
+    ) {
+      return mechanics.structureUpgradeQuote(-1);
+    }
+    const authoritativeId =
+      "ref" in locator
+        ? references.resolve(requesterFactionId, "STRUCTURE", locator.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in locator && state.map.isValidCellId(locator.cellId)
+          ? state.structures.find((candidate) => candidate.cellId === locator.cellId)
+          : undefined;
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return mechanics.structureUpgradeQuote(-1);
+    }
+    return mechanics.structureUpgradeQuote(structure.cellId);
+  };
+  const checkUnitBuild = (
+    type: PurchasableUnitType,
+    producer: StructureLocator,
+    destination: CellId,
+  ): UnitBuildQuote => {
+    beginQuery();
+
+    const unavailable = (
+      failureCode: DecisionFailure["code"] = "INVALID_PRODUCER",
+    ): UnitBuildQuote =>
+      Object.freeze({
+        legal: false,
+        failureCode,
+        cost: quoteCost(0, 0),
+        requestedUnit: type,
+      });
+
+    if (
+      references === undefined ||
+      producer === null ||
+      typeof producer !== "object"
+    ) {
+      return unavailable();
+    }
+
+    const authoritativeId =
+      "ref" in producer
+        ? references.resolve(requesterFactionId, "STRUCTURE", producer.ref)
+        : undefined;
+    const structure =
+      authoritativeId !== undefined
+        ? state.structures.find((candidate) => candidate.id === authoritativeId)
+        : "cellId" in producer && state.map.isValidCellId(producer.cellId)
+          ? state.structures.find((candidate) => candidate.cellId === producer.cellId)
+          : undefined;
+    if (
+      structure === undefined ||
+      !structureIsLawfullyVisible(state, visibility, structure)
+    ) {
+      return unavailable();
+    }
+
+    const producerRef = references.issue(
+      requesterFactionId,
+      "STRUCTURE",
+      structure.id,
+    ) as StructureRef | undefined;
+    if (producerRef === undefined) return unavailable();
+
+    const beforeOwner = state.factions.find(
+      (faction) => faction.id === requesterFactionId,
+    );
+    if (beforeOwner === undefined) {
+      throw new Error("controller unit-build quote requester is missing");
+    }
+
+    if (type === "TANK") {
+      const result = tryStartTankProduction(state, {
+        ownerId: requesterFactionId,
+        factoryId: structure.id,
+        strategicDestinationCellId: destination,
+      });
+      if (!result.ok) {
+        return Object.freeze({
+          ...unavailable(controllerUnitBuildFailureCode(result.failure.code)),
+          producerId: producerRef,
+        });
+      }
+      if (result.job.state !== "BUILDING") {
+        throw new Error("new Tank production quote must begin in BUILDING state");
+      }
+      const afterOwner = result.state.factions.find(
+        (faction) => faction.id === requesterFactionId,
+      );
+      if (afterOwner === undefined) {
+        throw new Error("controller unit-build quote prospective owner is missing");
+      }
+      return Object.freeze({
+        legal: true,
+        cost: quoteCost(
+          result.cost,
+          result.cost,
+          beforeOwner.population.available - afterOwner.population.available,
+        ),
+        requestedUnit: type,
+        resultingUnit: result.job.chassisType,
+        producerId: producerRef,
+        buildTicks: result.job.remainingTicks,
+      });
+    }
+
+    const result = tryStartWarshipProduction(state, {
+      ownerId: requesterFactionId,
+      portId: structure.id,
+      strategicDestinationCellId: destination,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        ...unavailable(controllerUnitBuildFailureCode(result.failure.code)),
+        producerId: producerRef,
+      });
+    }
+    if (result.job.state !== "BUILDING") {
+      throw new Error("new Warship production quote must begin in BUILDING state");
+    }
+    const afterOwner = result.state.factions.find(
+      (faction) => faction.id === requesterFactionId,
+    );
+    if (afterOwner === undefined) {
+      throw new Error("controller unit-build quote prospective owner is missing");
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(
+        result.cost,
+        result.cost,
+        beforeOwner.population.available - afterOwner.population.available,
+      ),
+      requestedUnit: type,
+      resultingUnit: "WARSHIP" as const,
+      producerId: producerRef,
+      buildTicks: result.job.remainingTicks,
+    });
+  };
+  const checkTransportEmbark = (
+    sourceCellId: CellId,
+    targetCellId: CellId,
+    population: number,
+  ): TransportEmbarkQuote => {
+    beginQuery();
+    const result = quoteTransportEmbark(state, {
+      ownerId: requesterFactionId,
+      sourceCellId,
+      targetCellId,
+      population,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: mapControllerTransportEmbarkFailure(
+          result.failure.code,
+        ).code,
+        cost: quoteCost(result.ffyCost, 0, 0),
+        sourceCellId,
+        targetCellId,
+        populationCommitted: population,
+        resultingUnit: "TRANSPORT_SHIP" as const,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(result.ffyCost, result.ffyCost, 0),
+      sourceCellId,
+      targetCellId,
+      populationCommitted: population,
+      resultingUnit: "TRANSPORT_SHIP" as const,
+    });
+  };
+  const checkRelinquish = (cells: CellSelector): RelinquishQuote => {
+    beginQuery();
+    const cellIds = orderedSelectorCellIds(state, visibility, cells);
+    const selectedCellCount = cellIds.length;
+    const populationBearingCellCount = cellIds.filter(
+      (cellId) =>
+        state.ownership[cellId] === requesterFactionId &&
+        effectivePopulationBearing(
+          state,
+          cellId,
+          state.map.terrainAt(cellId),
+        ),
+    ).length;
+    const base = Object.freeze({
+      cost: quoteCost(0, 0),
+      selectedCellCount,
+      populationBearingCellCount,
+      capacityDelta: -populationBearingCellCount,
+      appliesFallout: relinquishmentAppliesFallout(
+        state,
+        requesterFactionId,
+      ),
+    });
+    const result = tryRelinquishTerritory(state, {
+      ownerId: requesterFactionId,
+      cellIds,
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: territoryRelinquishmentFailureCode(result.failure.code),
+        ...base,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      ...base,
+    });
+  };
+
+  const checkWeaponLaunch = (
+    launcher: StructureLocator | UnitLocator,
+    weapon: StrategicWeaponType,
+    targetCellId: CellId,
+    targetFaction?: FactionRef,
+  ): WeaponLaunchQuote => {
+    beginQuery();
+
+    const unavailable = (
+      failureCode: DecisionFailure["code"],
+      ffyRequired = 0,
+    ): WeaponLaunchQuote =>
+      Object.freeze({
+        legal: false,
+        failureCode,
+        cost: quoteCost(ffyRequired, 0),
+        weapon,
+        targetCellId,
+        chargeConsumed: false,
+      });
+
+    if (
+      references === undefined ||
+      launcher === null ||
+      typeof launcher !== "object"
+    ) {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    const structureId =
+      "ref" in launcher
+        ? references.resolve(requesterFactionId, "STRUCTURE", launcher.ref)
+        : undefined;
+    const unitId =
+      "ref" in launcher
+        ? references.resolve(requesterFactionId, "UNIT", launcher.ref)
+        : undefined;
+    const structure =
+      structureId !== undefined
+        ? state.structures.find(
+            (candidate) =>
+              candidate.id === structureId &&
+              candidate.ownerId === requesterFactionId &&
+              candidate.type === "MISSILE_SILO",
+          )
+        : "cellId" in launcher && state.map.isValidCellId(launcher.cellId)
+          ? state.structures.find(
+              (candidate) =>
+                candidate.cellId === launcher.cellId &&
+                candidate.ownerId === requesterFactionId &&
+                candidate.type === "MISSILE_SILO",
+            )
+          : undefined;
+    const unit =
+      structure === undefined
+        ? unitId !== undefined
+          ? state.mobileUnits.find(
+              (candidate) =>
+                candidate.id === unitId &&
+                candidate.ownerId === requesterFactionId &&
+                candidate.type === "WARSHIP",
+            )
+          : "cellId" in launcher && state.map.isValidCellId(launcher.cellId)
+            ? state.mobileUnits.find(
+                (candidate) =>
+                  candidate.cellId === launcher.cellId &&
+                  candidate.ownerId === requesterFactionId &&
+                  candidate.type === "WARSHIP",
+              )
+            : undefined
+        : undefined;
+    if (structure === undefined && unit === undefined) {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    const authoritativeLauncherId = structure?.id ?? unit!.id;
+    const launcherRef =
+      structure !== undefined
+        ? (references.issue(
+            requesterFactionId,
+            "STRUCTURE",
+            structure.id,
+          ) as StructureRef | undefined)
+        : (references.issue(
+            requesterFactionId,
+            "UNIT",
+            unit!.id,
+          ) as UnitRef | undefined);
+    if (launcherRef === undefined) {
+      return unavailable("INVALID_LAUNCHER");
+    }
+
+    let targetFactionId: string | undefined;
+    if (targetFaction !== undefined) {
+      targetFactionId = references.resolveFaction(targetFaction);
+      if (targetFactionId === undefined) {
+        return Object.freeze({
+          ...unavailable("INVALID_TARGET"),
+          launcherId: launcherRef,
+        });
+      }
+    }
+
+    const result = quoteStrategicLaunch(state, {
+      ownerId: requesterFactionId,
+      launcherId: authoritativeLauncherId,
+      weapon,
+      targetCellId,
+      ...(targetFactionId === undefined ? {} : { targetFactionId }),
+    });
+    if (!result.ok) {
+      return Object.freeze({
+        legal: false,
+        failureCode: strategicLaunchFailureCode(result.failure.code),
+        cost: quoteCost(result.ffyCost, 0),
+        launcherId: launcherRef,
+        weapon,
+        targetCellId,
+        chargeConsumed: false,
+      });
+    }
+    return Object.freeze({
+      legal: true,
+      cost: quoteCost(result.ffyCost, result.ffySpent),
+      launcherId: launcherRef,
+      weapon,
+      targetCellId,
+      chargeConsumed: true,
+    });
+  };
+
+  const consumeStagedActions = (): readonly ControllerStagedAction[] =>
+    Object.freeze([...stagedActions]);
 
   const publicFactionEntries = Object.freeze(
     state.factions.flatMap((faction) => {
@@ -1967,15 +2727,37 @@ export function createControllerQuerySession(
       get: getUnit,
       find: findUnits,
       count: countUnits,
+      build: stageUnitBuild,
+      move: stageUnitMove,
+      checkBuild: checkUnitBuild,
     }),
     structures: Object.freeze({
       get: getStructure,
       find: findStructures,
       count: countStructures,
       build: stageStructureBuild,
+      upgrade: stageStructureUpgrade,
       checkBuild: checkStructureBuild,
+      checkUpgrade: checkStructureUpgrade,
     }),
-    consumeStagedCommands,
+    transports: Object.freeze({
+      embark: stageTransportEmbark,
+      recall: stageTransportRecall,
+      checkEmbark: checkTransportEmbark,
+    }),
+    weapons: Object.freeze({
+      launch: stageWeaponLaunch,
+      checkLaunch: checkWeaponLaunch,
+    }),
+    territory: Object.freeze({
+      relinquish: stageRelinquish,
+      checkRelinquish,
+    }),
+    team: Object.freeze({
+      signal: stageTeamSignal,
+    }),
+    capitulate: stageCapitulation,
+    consumeStagedActions,
     cells: Object.freeze({
       get,
       query,

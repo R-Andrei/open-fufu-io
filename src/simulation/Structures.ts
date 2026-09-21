@@ -370,6 +370,11 @@ function progressStructure(
     completedLevel: targetLevel,
     active: true,
     ...(chargeSlots === undefined ? {} : { chargeSlots }),
+    ...(current.type === "MISSILE_SILO"
+      ? { acceptedLaunchCount: current.acceptedLaunchCount ?? 0 }
+      : current.acceptedLaunchCount === undefined
+        ? {}
+        : { acceptedLaunchCount: current.acceptedLaunchCount }),
     acquisitionPath: current.acquisitionPath,
   });
 }

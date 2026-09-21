@@ -179,6 +179,12 @@ export interface CommitWarshipStrategicLaunchChargeRequest {
   readonly ownerId: string;
   readonly unitId: string;
   readonly weapon: StrategicWeaponType;
+  /** Internal canonical reservation chosen from one immutable pre-launch snapshot. */
+  readonly chargeSlotId?: number;
+  /** Internal canonical launch identity chosen from one immutable pre-launch snapshot. */
+  readonly acceptedLaunchOrdinal?: number;
+  /** Accepted-action transition tick used to bind the exact recharge deadline. */
+  readonly transitionTick?: number;
 }
 
 export type CommitWarshipStrategicLaunchChargeFailureCode =
@@ -917,7 +923,20 @@ export function tryCommitWarshipStrategicLaunchCharge(
     typeof request.unitId !== "string" ||
     request.unitId.length === 0 ||
     typeof request.weapon !== "string" ||
-    !STRATEGIC_WEAPON_TYPES.has(request.weapon as StrategicWeaponType)
+    !STRATEGIC_WEAPON_TYPES.has(request.weapon as StrategicWeaponType) ||
+    (request.chargeSlotId !== undefined &&
+      (!Number.isSafeInteger(request.chargeSlotId) ||
+        request.chargeSlotId < 0 ||
+        Object.is(request.chargeSlotId, -0))) ||
+    (request.acceptedLaunchOrdinal !== undefined &&
+      (!Number.isSafeInteger(request.acceptedLaunchOrdinal) ||
+        request.acceptedLaunchOrdinal < 0 ||
+        request.acceptedLaunchOrdinal >= Number.MAX_SAFE_INTEGER ||
+        Object.is(request.acceptedLaunchOrdinal, -0))) ||
+    (request.transitionTick !== undefined &&
+      (!Number.isSafeInteger(request.transitionTick) ||
+        request.transitionTick < state.tick ||
+        Object.is(request.transitionTick, -0)))
   ) {
     return launcherCommitFailure(state, "INVALID_REQUEST");
   }
@@ -957,7 +976,13 @@ export function tryCommitWarshipStrategicLaunchCharge(
     operational.strategicLauncher,
     state.tick,
   );
-  const ready = matured.chargeSlots.find((slot) => slot.state === "READY");
+  const ready =
+    request.chargeSlotId === undefined
+      ? matured.chargeSlots.find((slot) => slot.state === "READY")
+      : matured.chargeSlots.find(
+          (slot) =>
+            slot.slotId === request.chargeSlotId && slot.state === "READY",
+        );
   if (ready === undefined) {
     return launcherCommitFailure(state, "NO_READY_CHARGE");
   }
@@ -968,15 +993,27 @@ export function tryCommitWarshipStrategicLaunchCharge(
   ) {
     throw new Error("P29 acceptedLaunchCount is exhausted");
   }
-  const acceptedLaunchOrdinal = matured.acceptedLaunchCount;
+  const acceptedLaunchOrdinal =
+    request.acceptedLaunchOrdinal ?? matured.acceptedLaunchCount;
+  const nextAcceptedLaunchCount = Math.max(
+    matured.acceptedLaunchCount,
+    acceptedLaunchOrdinal + 1,
+  );
+  if (
+    !Number.isSafeInteger(nextAcceptedLaunchCount) ||
+    nextAcceptedLaunchCount > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error("P29 acceptedLaunchCount is exhausted");
+  }
+  const rechargeBaseTick = request.transitionTick ?? state.tick;
   const strategicLauncher = freezeWarshipStrategicLauncherState({
-    acceptedLaunchCount: acceptedLaunchOrdinal + 1,
+    acceptedLaunchCount: nextAcceptedLaunchCount,
     chargeSlots: matured.chargeSlots.map((slot) =>
       slot.slotId === ready.slotId
         ? Object.freeze({
             slotId: slot.slotId,
             state: "RECHARGING" as const,
-            readyAtTick: state.tick + silo.rechargeTicks,
+            readyAtTick: rechargeBaseTick + silo.rechargeTicks,
           })
         : slot,
     ),
