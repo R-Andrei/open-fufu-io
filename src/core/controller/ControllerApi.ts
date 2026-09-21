@@ -40,14 +40,20 @@ declare const actionRefBrand: unique symbol;
 
 /** Stable opaque match-global public faction identity. */
 export type FactionRef = string & { readonly [factionRefBrand]: "FactionRef" };
-/** Stable opaque viewer-scoped public mobile-unit incarnation identity. */
+/**
+ * Stable opaque viewer-scoped public mobile-unit incarnation identity.
+ * Plain JavaScript may inspect `ref.type`; `token` is opaque and must not be parsed.
+ */
 export type UnitRef = Readonly<{
   readonly type: "UNIT";
   /** Opaque engine-owned identity token. */
   readonly token: string;
   readonly [unitRefBrand]: "UnitRef";
 }>;
-/** Stable opaque viewer-scoped public persistent-structure incarnation identity. */
+/**
+ * Stable opaque viewer-scoped public persistent-structure incarnation identity.
+ * Plain JavaScript may inspect `ref.type`; `token` is opaque and must not be parsed.
+ */
 export type StructureRef = Readonly<{
   readonly type: "STRUCTURE";
   /** Opaque engine-owned identity token. */
@@ -1158,7 +1164,13 @@ export type ControllerEvent =
     };
 
 export interface EventsApi {
-  /** Events are requester-lawful projections and never act as a hidden-state side channel. */
+  /**
+   * Requester-lawful FIFO events since the prior decision.
+   *
+   * Delivery is resource-bounded. EVENT_BACKLOG_OVERFLOW explicitly marks that
+   * older event history exceeded the retained backlog and current lawful state
+   * should be re-read where needed.
+   */
   readonly sinceLastDecision: readonly ControllerEvent[];
 }
 
