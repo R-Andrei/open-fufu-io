@@ -50,7 +50,10 @@ describe("CounterResponse public identity validation", () => {
             {
               kind: "COUNTER_RESPONSE",
               key: "counter-ref",
-              incomingOperation: "ofr1:counter-response:o:000000000001",
+              incomingOperation: {
+                type: "OPERATION",
+                token: "ofr1:counter-response:o:000000000001",
+              },
               population: 10,
             },
           ],
