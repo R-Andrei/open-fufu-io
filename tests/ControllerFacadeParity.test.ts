@@ -1874,9 +1874,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
       },
     });
     expect(
-      (after as unknown as {
-        readonly transportOperations?: readonly Readonly<Record<string, unknown>>[];
-      }).transportOperations,
+      after.transportOperationalStates,
     ).toEqual([
       expect.objectContaining({
         unitId: transport?.id,
@@ -1982,9 +1980,7 @@ describe("issue #206 Transport facade authoritative RED", () => {
 
     const returning = runtime.tick();
     expect(
-      (returning as unknown as {
-        readonly transportOperations?: readonly Readonly<Record<string, unknown>>[];
-      }).transportOperations,
+      returning.transportOperationalStates,
     ).toEqual([
       expect.objectContaining({
         unitId: transport?.id,

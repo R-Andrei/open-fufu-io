@@ -1,9 +1,19 @@
 import type { CellId } from "../core/controller/ControllerApi";
+import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import {
   reducedRational,
   ruleScopeMatches,
   type RuleScope,
 } from "../core/rules/RuleComposition";
+import {
+  materializeCompiledScalarRule,
+  type RuleDynamicState,
+} from "../core/rules/RuleMaterialization";
+import { tryDebitFfy } from "./Economy";
+import {
+  landTerrainBaseSpec,
+  isLandSideCoastTerrain,
+} from "./LandOperationsCore";
 import {
   assignMobileUnitRoute,
   createMobileUnit,
@@ -25,7 +35,7 @@ import {
   type NavigationCandidate,
   type NavigationPath,
 } from "./Navigation";
-import { removePopulation } from "./Population";
+import { removePopulation, repartitionPopulation } from "./Population";
 import type { SimulationMap } from "./SimulationMap";
 import { tryMaterializeStructureGrant } from "./Structures";
 
@@ -584,6 +594,507 @@ export function applyTransportDamage(
   return Object.freeze({
     state: nextState,
     destructionResult,
+  });
+}
+
+export type TransportEmbarkFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_OWNER"
+  | "OWNER_INACTIVE"
+  | "INVALID_SOURCE"
+  | "SOURCE_NOT_OWNED"
+  | "INVALID_TARGET"
+  | "OWNERSHIP_CAP"
+  | "INSUFFICIENT_AVAILABLE_POPULATION"
+  | "INSUFFICIENT_FFY"
+  | "UNREACHABLE"
+  | "EMBARK_BLOCKED";
+
+export interface TransportEmbarkRequest {
+  readonly ownerId: string;
+  readonly sourceCellId: CellId;
+  readonly targetCellId: CellId;
+  readonly population: number;
+}
+
+export type TransportEmbarkQuoteResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly ffyCost: number;
+      readonly route: TransportEndpointRoute;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly ffyCost: number;
+      readonly failure: Readonly<{ readonly code: TransportEmbarkFailureCode }>;
+    }>;
+
+export type TransportEmbarkCommitResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly state: MatchState;
+      readonly unit: MobileUnitState;
+      readonly route: TransportEndpointRoute;
+      readonly ffyCost: number;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly state: MatchState;
+      readonly ffyCost: number;
+      readonly failure: Readonly<{ readonly code: TransportEmbarkFailureCode }>;
+    }>;
+
+export type TransportRecallFailureCode =
+  | "INVALID_REQUEST"
+  | "UNKNOWN_OWNER"
+  | "OWNER_INACTIVE"
+  | "UNKNOWN_TRANSPORT"
+  | "NOT_OWNER"
+  | "NOT_ACTIVE_OPERATION"
+  | "NO_RETURN_ROUTE";
+
+export interface TransportRecallRequest {
+  readonly ownerId: string;
+  readonly transportId: string;
+}
+
+export type TransportRecallResult =
+  | Readonly<{
+      readonly ok: true;
+      readonly state: MatchState;
+      readonly unit: MobileUnitState;
+      readonly operation: TransportOperationalState;
+    }>
+  | Readonly<{
+      readonly ok: false;
+      readonly state: MatchState;
+      readonly failure: Readonly<{ readonly code: TransportRecallFailureCode }>;
+    }>;
+
+const BASE_TRANSPORT_EMBARK_FFY_COST = 0;
+const MAX_ACTIVE_TRANSPORTS_PER_FACTION = 3;
+
+function transportRuleDynamicState(
+  state: MatchState,
+  ownerId: string,
+): RuleDynamicState {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`unknown Transport owner: ${ownerId}`);
+  }
+
+  const contacted = new Set<string>();
+  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+    if ((state.ownership[cellId] ?? null) !== ownerId) continue;
+    for (const neighbor of state.map.cardinalNeighbors(cellId)) {
+      const neighborOwnerId = state.ownership[neighbor] ?? null;
+      if (neighborOwnerId !== null && neighborOwnerId !== ownerId) {
+        contacted.add(neighborOwnerId);
+      }
+    }
+  }
+
+  return Object.freeze({
+    ownedPersistentStructureCount: state.structures.filter(
+      (structure) => structure.ownerId === ownerId,
+    ).length,
+    territorialContactCount: contacted.size,
+    peakTotalPopulation: owner.population.peakTotal,
+  });
+}
+
+function effectiveTransportEmbarkFfyCost(
+  state: MatchState,
+  ownerId: string,
+): number {
+  const owner = state.factions.find((faction) => faction.id === ownerId);
+  if (owner === undefined) {
+    throw new Error(`unknown Transport owner: ${ownerId}`);
+  }
+  const cost = materializeCompiledScalarRule(
+    BASE_TRANSPORT_EMBARK_FFY_COST,
+    owner.rules,
+    RULE_AXIS_REGISTRY,
+    "TRANSPORT_EMBARK_COST",
+    { kind: "GLOBAL" },
+    transportRuleDynamicState(state, ownerId),
+  );
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    throw new Error("effective Transport embark FFY cost must be a non-negative safe integer");
+  }
+  return cost;
+}
+
+function isTransportLand(map: SimulationMap, cellId: CellId): boolean {
+  const terrain = map.terrainAt(cellId);
+  return !isTransportWater(map, cellId) && landTerrainBaseSpec(terrain).landTraversable;
+}
+
+function landSideCoastsInPoliticalComponent(
+  state: MatchState,
+  strategicIntentCellId: CellId,
+  ownerId: string | null,
+): readonly CellId[] {
+  if (
+    !state.map.isValidCellId(strategicIntentCellId) ||
+    (state.ownership[strategicIntentCellId] ?? null) !== ownerId ||
+    !isTransportLand(state.map, strategicIntentCellId)
+  ) {
+    return Object.freeze([]);
+  }
+
+  const seen = new Set<CellId>([strategicIntentCellId]);
+  const queue: CellId[] = [strategicIntentCellId];
+  const coasts: CellId[] = [];
+  for (let index = 0; index < queue.length; index += 1) {
+    const cellId = queue[index]!;
+    const terrain = state.map.terrainAt(cellId);
+    const neighbors = state.map.cardinalNeighbors(cellId);
+    if (
+      isLandSideCoastTerrain(
+        terrain,
+        neighbors.map((neighbor) => state.map.terrainAt(neighbor)),
+      )
+    ) {
+      coasts.push(cellId);
+    }
+    for (const neighbor of neighbors) {
+      if (
+        seen.has(neighbor) ||
+        (state.ownership[neighbor] ?? null) !== ownerId ||
+        !isTransportLand(state.map, neighbor)
+      ) {
+        continue;
+      }
+      seen.add(neighbor);
+      queue.push(neighbor);
+    }
+  }
+  coasts.sort((left, right) => left - right);
+  return Object.freeze(coasts);
+}
+
+function embarkFailure(
+  ffyCost: number,
+  code: TransportEmbarkFailureCode,
+): TransportEmbarkQuoteResult {
+  return Object.freeze({
+    ok: false as const,
+    ffyCost,
+    failure: Object.freeze({ code }),
+  });
+}
+
+export function quoteTransportEmbark(
+  state: MatchState,
+  request: TransportEmbarkRequest,
+): TransportEmbarkQuoteResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0 ||
+    !Number.isSafeInteger(request.sourceCellId) ||
+    !Number.isSafeInteger(request.targetCellId) ||
+    !Number.isSafeInteger(request.population) ||
+    request.population <= 0
+  ) {
+    return embarkFailure(0, "INVALID_REQUEST");
+  }
+
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  if (owner === undefined) return embarkFailure(0, "UNKNOWN_OWNER");
+  const ffyCost = effectiveTransportEmbarkFfyCost(state, request.ownerId);
+  if (owner.status !== "ACTIVE") return embarkFailure(ffyCost, "OWNER_INACTIVE");
+
+  if (!state.map.isValidCellId(request.sourceCellId)) {
+    return embarkFailure(ffyCost, "INVALID_SOURCE");
+  }
+  if ((state.ownership[request.sourceCellId] ?? null) !== request.ownerId) {
+    return embarkFailure(ffyCost, "SOURCE_NOT_OWNED");
+  }
+  const embarkCoastCellIds = landSideCoastsInPoliticalComponent(
+    state,
+    request.sourceCellId,
+    request.ownerId,
+  );
+  if (embarkCoastCellIds.length === 0) {
+    return embarkFailure(ffyCost, "INVALID_SOURCE");
+  }
+
+  if (!state.map.isValidCellId(request.targetCellId)) {
+    return embarkFailure(ffyCost, "INVALID_TARGET");
+  }
+  const targetOwnerId = state.ownership[request.targetCellId] ?? null;
+  const landingCoastCellIds = landSideCoastsInPoliticalComponent(
+    state,
+    request.targetCellId,
+    targetOwnerId,
+  );
+  if (landingCoastCellIds.length === 0) {
+    return embarkFailure(ffyCost, "INVALID_TARGET");
+  }
+
+  const activeTransportCount = state.mobileUnits.filter(
+    (unit) =>
+      unit.ownerId === request.ownerId && unit.type === "TRANSPORT_SHIP",
+  ).length;
+  if (activeTransportCount >= MAX_ACTIVE_TRANSPORTS_PER_FACTION) {
+    return embarkFailure(ffyCost, "OWNERSHIP_CAP");
+  }
+  if (owner.population.available < request.population) {
+    return embarkFailure(ffyCost, "INSUFFICIENT_AVAILABLE_POPULATION");
+  }
+  const debit = tryDebitFfy(owner.ffy, {
+    numerator: BigInt(ffyCost),
+    denominator: 1n,
+  });
+  if (!debit.ok) return embarkFailure(ffyCost, "INSUFFICIENT_FFY");
+
+  const resolved = resolveTransportEndpointRouteForState(state, {
+    sourceCellId: request.sourceCellId,
+    targetCellId: request.targetCellId,
+    embarkCoastCellIds,
+    landingCoastCellIds,
+  });
+  if (resolved.status !== "FOUND") {
+    return embarkFailure(ffyCost, "UNREACHABLE");
+  }
+  if (physicalOccupancyCellIds(state).has(resolved.route.embarkCellId)) {
+    return embarkFailure(ffyCost, "EMBARK_BLOCKED");
+  }
+  return Object.freeze({
+    ok: true as const,
+    ffyCost,
+    route: resolved.route,
+  });
+}
+
+export function tryCommitTransportEmbark(
+  state: MatchState,
+  request: TransportEmbarkRequest,
+): TransportEmbarkCommitResult {
+  const quoted = quoteTransportEmbark(state, request);
+  if (!quoted.ok) {
+    return Object.freeze({
+      ok: false as const,
+      state,
+      ffyCost: quoted.ffyCost,
+      failure: quoted.failure,
+    });
+  }
+
+  const owner = state.factions.find((faction) => faction.id === request.ownerId)!;
+  const debit = tryDebitFfy(owner.ffy, {
+    numerator: BigInt(quoted.ffyCost),
+    denominator: 1n,
+  });
+  if (!debit.ok) {
+    return Object.freeze({
+      ok: false as const,
+      state,
+      ffyCost: quoted.ffyCost,
+      failure: Object.freeze({ code: "INSUFFICIENT_FFY" as const }),
+    });
+  }
+  const population = repartitionPopulation(
+    owner.population,
+    "AVAILABLE",
+    "TRANSPORT",
+    request.population,
+  );
+  const funded = createProspectiveMatchState(state, {
+    factions: state.factions.map((faction) =>
+      faction.id === owner.id
+        ? Object.freeze({
+            ...faction,
+            ffy: debit.balance,
+            population,
+          })
+        : faction,
+    ),
+  });
+  const materialized = tryMaterializeTransportAtResolvedRoute(funded, {
+    ownerId: request.ownerId,
+    route: quoted.route,
+    carriedPopulation: request.population,
+  });
+  if (!materialized.ok) {
+    return Object.freeze({
+      ok: false as const,
+      state,
+      ffyCost: quoted.ffyCost,
+      failure: Object.freeze({ code: "EMBARK_BLOCKED" as const }),
+    });
+  }
+
+  const operation = materialized.state.transportOperationalStates.find(
+    (candidate) => candidate.unitId === materialized.unit.id,
+  );
+  if (operation === undefined) {
+    throw new Error("materialized Transport is missing operational state");
+  }
+  const outboundOperation: TransportOperationalState = Object.freeze({
+    ...operation,
+    sourceCellId: request.sourceCellId,
+    targetCellId: request.targetCellId,
+    embarkCellId: quoted.route.embarkCellId,
+    landingCellId: quoted.route.landingCellId,
+    phase: "OUTBOUND" as const,
+  });
+  const nextState = createProspectiveMatchState(materialized.state, {
+    transportOperationalStates: materialized.state.transportOperationalStates.map(
+      (candidate) =>
+        candidate.unitId === outboundOperation.unitId
+          ? outboundOperation
+          : candidate,
+    ),
+  });
+  return Object.freeze({
+    ok: true as const,
+    state: nextState,
+    unit: materialized.unit,
+    route: quoted.route,
+    ffyCost: quoted.ffyCost,
+  });
+}
+
+interface TransportReturnRoute {
+  readonly returnWaterCellId: CellId;
+  readonly returnCoastCellId: CellId;
+  readonly path: NavigationPath;
+}
+
+function resolveTransportReturnRoute(
+  state: MatchState,
+  ownerId: string,
+  currentCellId: CellId,
+): TransportReturnRoute | undefined {
+  if (!state.map.isValidCellId(currentCellId) || !isTransportWater(state.map, currentCellId)) {
+    return undefined;
+  }
+  const navigation = createNavigation(state.map);
+  let selected: TransportReturnRoute | undefined;
+
+  for (let coastCellId = 0; coastCellId < state.map.cellCount; coastCellId += 1) {
+    if ((state.ownership[coastCellId] ?? null) !== ownerId) continue;
+    const neighbors = state.map.cardinalNeighbors(coastCellId);
+    if (
+      !isLandSideCoastTerrain(
+        state.map.terrainAt(coastCellId),
+        neighbors.map((neighbor) => state.map.terrainAt(neighbor)),
+      )
+    ) {
+      continue;
+    }
+
+    for (const returnWaterCellId of neighbors) {
+      if (!isTransportWater(state.map, returnWaterCellId)) continue;
+      const resolved = navigation.path(currentCellId, returnWaterCellId, {
+        traversalWeight(from, to) {
+          return isTransportWater(state.map, from) &&
+            isTransportWater(state.map, to)
+            ? 1
+            : undefined;
+        },
+      });
+      if (resolved.status !== "FOUND") continue;
+      const candidate: TransportReturnRoute = Object.freeze({
+        returnWaterCellId,
+        returnCoastCellId: coastCellId,
+        path: resolved.path,
+      });
+      if (
+        selected === undefined ||
+        candidate.path.totalWeight < selected.path.totalWeight ||
+        (candidate.path.totalWeight === selected.path.totalWeight &&
+          (candidate.returnWaterCellId < selected.returnWaterCellId ||
+            (candidate.returnWaterCellId === selected.returnWaterCellId &&
+              candidate.returnCoastCellId < selected.returnCoastCellId)))
+      ) {
+        selected = candidate;
+      }
+    }
+  }
+  return selected;
+}
+
+function recallFailure(
+  state: MatchState,
+  code: TransportRecallFailureCode,
+): TransportRecallResult {
+  return Object.freeze({
+    ok: false as const,
+    state,
+    failure: Object.freeze({ code }),
+  });
+}
+
+export function tryStartTransportRecall(
+  state: MatchState,
+  request: TransportRecallRequest,
+): TransportRecallResult {
+  if (
+    request === null ||
+    typeof request !== "object" ||
+    typeof request.ownerId !== "string" ||
+    request.ownerId.length === 0 ||
+    typeof request.transportId !== "string" ||
+    request.transportId.length === 0
+  ) {
+    return recallFailure(state, "INVALID_REQUEST");
+  }
+  const owner = state.factions.find((faction) => faction.id === request.ownerId);
+  if (owner === undefined) return recallFailure(state, "UNKNOWN_OWNER");
+  if (owner.status !== "ACTIVE") return recallFailure(state, "OWNER_INACTIVE");
+
+  const unit = state.mobileUnits.find(
+    (candidate) =>
+      candidate.id === request.transportId &&
+      candidate.type === "TRANSPORT_SHIP",
+  );
+  if (unit === undefined) return recallFailure(state, "UNKNOWN_TRANSPORT");
+  if (unit.ownerId !== request.ownerId) return recallFailure(state, "NOT_OWNER");
+
+  const operation = state.transportOperationalStates.find(
+    (candidate) => candidate.unitId === unit.id,
+  );
+  if (operation === undefined || operation.phase !== "OUTBOUND") {
+    return recallFailure(state, "NOT_ACTIVE_OPERATION");
+  }
+  const route = resolveTransportReturnRoute(state, request.ownerId, unit.cellId);
+  if (route === undefined) return recallFailure(state, "NO_RETURN_ROUTE");
+
+  const cleared = setMobileUnitStrategicDestination(state.map, unit, undefined);
+  const routed = assignMobileUnitRoute(state.map, cleared, {
+    cells: route.path.cells,
+    edgeWeights: Array.from(
+      { length: Math.max(0, route.path.cells.length - 1) },
+      () => 1,
+    ),
+  });
+  const returningOperation: TransportOperationalState = Object.freeze({
+    ...operation,
+    phase: "RETURNING" as const,
+    returnWaterCellId: route.returnWaterCellId,
+    returnCoastCellId: route.returnCoastCellId,
+  });
+  const nextState = createProspectiveMatchState(state, {
+    mobileUnits: state.mobileUnits.map((candidate) =>
+      candidate.id === routed.id ? routed : candidate,
+    ),
+    transportOperationalStates: state.transportOperationalStates.map(
+      (candidate) =>
+        candidate.unitId === returningOperation.unitId
+          ? returningOperation
+          : candidate,
+    ),
+  });
+  return Object.freeze({
+    ok: true as const,
+    state: nextState,
+    unit: routed,
+    operation: returningOperation,
   });
 }
 
