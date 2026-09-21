@@ -1,6 +1,9 @@
 import type {
   DirectiveChanges,
   FactionRef,
+  OperationRef,
+  StructureRef,
+  UnitRef,
 } from "../core/controller/ControllerApi";
 import type { MatchState } from "./MatchState";
 
@@ -10,6 +13,7 @@ type IncarnationOrdinal = number;
 type OperationDirectiveKind = "LAND_OPERATION" | "COUNTER_RESPONSE";
 type SimpleEntityDomain = "UNIT" | "STRUCTURE";
 type EntityLifecycleTransitionKind = "START" | "END";
+type ControllerEntityRef = UnitRef | StructureRef | OperationRef;
 
 type OperationTransition =
   | Readonly<{
@@ -105,7 +109,7 @@ export class ControllerReferenceSession {
     OperationDirectiveKind
   >();
   private pendingOperationTransitions: OperationTransition[] = [];
-  private readonly issuedRefByIdentity = new Map<string, string>();
+  private readonly issuedRefByIdentity = new Map<string, ControllerEntityRef>();
   private readonly issuedIdentityByRef = new Map<string, IssuedReference>();
   private readonly nextRefOrdinalByViewerDomain = new Map<string, number>();
 
@@ -369,7 +373,7 @@ export class ControllerReferenceSession {
     viewerFactionId: string,
     domain: ControllerReferenceDomain,
     authoritativeId: string,
-  ): string | undefined {
+  ): ControllerEntityRef | undefined {
     if (!this.viewers.has(viewerFactionId)) return undefined;
     const incarnation =
       this.domains[domain].currentByAuthoritativeId.get(authoritativeId);
@@ -383,16 +387,17 @@ export class ControllerReferenceSession {
     const existing = this.issuedRefByIdentity.get(identityKey);
     if (existing !== undefined) return existing;
 
-    let ref = this.nextReferenceToken(viewerFactionId, domain);
-    while (ref === authoritativeId) {
-      ref = this.nextReferenceToken(viewerFactionId, domain);
+    let token = this.nextReferenceToken(viewerFactionId, domain);
+    while (token === authoritativeId) {
+      token = this.nextReferenceToken(viewerFactionId, domain);
     }
-    if (this.issuedIdentityByRef.has(ref)) {
+    if (this.issuedIdentityByRef.has(token)) {
       throw new Error("controller reference token collision");
     }
+    const ref = Object.freeze({ type: domain, token }) as ControllerEntityRef;
     this.issuedRefByIdentity.set(identityKey, ref);
     this.issuedIdentityByRef.set(
-      ref,
+      token,
       Object.freeze({ viewerFactionId, domain, incarnation }),
     );
     return ref;
@@ -405,9 +410,16 @@ export class ControllerReferenceSession {
   resolve(
     viewerFactionId: string,
     domain: ControllerReferenceDomain,
-    ref: string,
+    ref: unknown,
   ): string | undefined {
-    const issued = this.issuedIdentityByRef.get(ref);
+    if (ref === null || typeof ref !== "object" || Array.isArray(ref)) {
+      return undefined;
+    }
+    const candidate = ref as { readonly type?: unknown; readonly token?: unknown };
+    if (candidate.type !== domain || typeof candidate.token !== "string") {
+      return undefined;
+    }
+    const issued = this.issuedIdentityByRef.get(candidate.token);
     if (
       issued === undefined ||
       issued.viewerFactionId !== viewerFactionId ||
