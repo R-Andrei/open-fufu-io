@@ -1109,16 +1109,19 @@ export type ControllerEvent =
       readonly type: "STRUCTURE_CHANGED";
       readonly structureId: StructureRef;
       readonly reason: string;
+      readonly originAction?: ActionRef;
     }
   | {
       readonly type: "UNIT_CHANGED";
       readonly unitId: UnitRef;
       readonly reason: string;
+      readonly originAction?: ActionRef;
     }
   | {
       readonly type: "OPERATION_CHANGED";
       readonly operationId: OperationRef;
       readonly reason: string;
+      readonly originAction?: ActionRef;
     }
   | {
       readonly type: "HOSTILE_SOURCE_REVEALED";
