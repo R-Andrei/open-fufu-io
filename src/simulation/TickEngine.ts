@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   DirectiveChanges,
   JsonValue,
   StrategicWeaponType,
@@ -276,6 +277,8 @@ export type SimulationAction =
 export interface AcceptedSimulationInput {
   readonly tick: number;
   readonly sequence: number;
+  /** Present only for an input admitted from one staged controller action. */
+  readonly originAction?: ActionRef;
   readonly action: SimulationAction;
 }
 
