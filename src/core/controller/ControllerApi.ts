@@ -1115,21 +1115,33 @@ export type ControllerEvent =
       readonly type: "STRUCTURE_CHANGED";
       readonly structureId: StructureRef;
       readonly reason: string;
+      /** Present only when this public transition was caused by a staged action. */
       readonly originAction?: ActionRef;
     }
   | {
       readonly type: "UNIT_CHANGED";
       readonly unitId: UnitRef;
       readonly reason: string;
+      /**
+       * Present only when this public transition was caused by a staged action.
+       * Delayed production retains the original ActionRef until materialization.
+       */
       readonly originAction?: ActionRef;
     }
   | {
       readonly type: "OPERATION_CHANGED";
       readonly operationId: OperationRef;
       readonly reason: string;
+      /** Present only when this public transition was caused by a staged action. */
       readonly originAction?: ActionRef;
     }
   | {
+      /**
+       * First acquisition of one canonical direct reveal for this viewer.
+       * Ordinary refreshes do not repeat the event; expiry followed by a later
+       * manifestation may produce a new acquisition. The Ref confers no
+       * visibility or liveness beyond the canonical observation rules.
+       */
       readonly type: "HOSTILE_SOURCE_REVEALED";
       readonly source: UnitRef | StructureRef | OperationRef;
     }
