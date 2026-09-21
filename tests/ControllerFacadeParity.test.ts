@@ -374,7 +374,11 @@ describe("issue #206 facade proof matrix", () => {
     }
   });
 
-  it("keeps the public SDK facade-only and removes exported raw routine command types", () => {
+  it("keeps the public SDK facade-only and makes the proof registry exhaustive over declared action/check methods", () => {
+    const registeredActionNames =
+      ACTION_ROWS.map((row) => JSON.stringify(row.name)).join(" | ") || "never";
+    const registeredCheckNames =
+      CHECK_ROWS.map((row) => JSON.stringify(row.name)).join(" | ") || "never";
     const fixture = [
       'import type {',
       '  ActionRef,',
@@ -387,9 +391,32 @@ describe("issue #206 facade proof matrix", () => {
       '  WeaponLaunchQuote,',
       '  RelinquishQuote,',
       '} from "../../src/core/controller/ControllerApi";',
+      `type RegisteredActionName = ${registeredActionNames};`,
+      `type RegisteredCheckName = ${registeredCheckNames};`,
+      'type Context = Parameters<OpenFufuController["decide"]>[0];',
+      'type MethodKeysReturning<T, R> = {',
+      '  [K in keyof T & string]-?: T[K] extends (...args: any[]) => infer O',
+      '    ? O extends R ? K : never',
+      '    : never;',
+      '}[keyof T & string];',
+      'type CheckMethodKeys<T> = Extract<keyof T & string, `check${string}`>;',
+      'type NestedActionNames<T> = {',
+      '  [K in keyof T & string]: MethodKeysReturning<T[K], ActionRef> extends infer M',
+      '    ? M extends string ? `${K}.${M}` : never',
+      '    : never;',
+      '}[keyof T & string];',
+      'type NestedCheckNames<T> = {',
+      '  [K in keyof T & string]: CheckMethodKeys<T[K]> extends infer M',
+      '    ? M extends string ? `${K}.${M}` : never',
+      '    : never;',
+      '}[keyof T & string];',
+      'type PublicActionName = MethodKeysReturning<Context, ActionRef> | NestedActionNames<Context>;',
+      'type PublicCheckName = CheckMethodKeys<Context> | NestedCheckNames<Context>;',
+      'type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
+      'const actionRegistryIsExact: Exact<PublicActionName, RegisteredActionName> = true;',
+      'const checkRegistryIsExact: Exact<PublicCheckName, RegisteredCheckName> = true;',
       '// @ts-expect-error raw routine command records are trusted implementation machinery only.',
       'import type { ControllerCommand } from "../../src/core/controller/ControllerApi";',
-      'type Context = Parameters<OpenFufuController["decide"]>[0];',
       'declare const context: Context;',
       'const build: ActionRef = context.structures.build("FORT", 0);',
       'const upgrade: ActionRef = context.structures.upgrade({ cellId: 0 });',
@@ -413,6 +440,7 @@ describe("issue #206 facade proof matrix", () => {
       'void recall; void launch; void relinquish; void signal; void capitulate;',
       'void checkBuild; void checkUpgrade; void checkUnit; void checkTransport;',
       'void checkWeapon; void checkRelinquish; void hasCommands;',
+      'void actionRegistryIsExact; void checkRegistryIsExact;',
     ].join("\n");
     expect(typecheckFixture(fixture)).toBe("");
   });
