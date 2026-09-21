@@ -171,9 +171,14 @@ const fixtureFreeFirstPurchaseQuote: StructureBuildQuote = {
 };
 void fixtureFreeFirstPurchaseQuote;
 
-const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
-const fixtureUpgradingCityRef =
-  "fixture:upgrading-city" as StructureView["ref"];
+const fixtureFreshCityRef = {
+  type: "STRUCTURE",
+  token: "fixture:fresh-city",
+} as StructureView["ref"];
+const fixtureUpgradingCityRef = {
+  type: "STRUCTURE",
+  token: "fixture:upgrading-city",
+} as StructureView["ref"];
 const fixtureOwnerRef = "fixture:faction-a" as StructureView["ownerId"];
 
 const fixtureFreshDirectLevel5City: StructureView = {
