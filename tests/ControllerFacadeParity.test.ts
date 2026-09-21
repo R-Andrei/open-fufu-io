@@ -2626,6 +2626,62 @@ describe("issue #206 Transport facade authoritative RED", () => {
     ]);
   });
 
+  it("delivers successful Transport creation with public UnitRef and exact originAction on the next decision", async () => {
+    const runtime = transportRuntime("issue207-transport-origin-event");
+    let originAction: string | undefined;
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.transports.embark(3, 5, 100);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    const after = runtime.tick();
+    const transport = after.mobileUnits.find(
+      (unit) => unit.type === "TRANSPORT_SHIP" && unit.ownerId === "alpha",
+    );
+    expect(transport).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    let betaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+          beta(context) {
+            betaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toHaveLength(1);
+    expect(alphaEvents[0]).toMatchObject({
+      type: "UNIT_CHANGED",
+      reason: "CREATED",
+      originAction,
+      unitId: { type: "UNIT" },
+    });
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(transport?.id);
+    expect(betaEvents).toEqual([]);
+  });
+
   it("rejects sibling embark oversubscription atomically without committing the first sibling", async () => {
     const runtime = transportRuntime("issue206-transport-embark-atomic");
     const before = runtime.snapshot();
