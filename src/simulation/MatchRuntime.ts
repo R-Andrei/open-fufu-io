@@ -955,30 +955,24 @@ function resolveAcceptedInputControllerEventDeliveries(
   );
   const deliveries = new Map<string, PendingControllerEventObservation[]>();
   const beforeUnitIds = new Set(state.mobileUnits.map((unit) => unit.id));
-  const availableCreatedTransports = nextState.transportOperationalStates
-    .filter((operation) => !beforeUnitIds.has(operation.unitId))
-    .map((operation) => ({
-      operation,
-      unit: nextState.mobileUnits.find((unit) => unit.id === operation.unitId),
-    }))
+  const createdTransports = nextState.mobileUnits
     .filter(
-      (
-        entry,
-      ): entry is {
-        operation: MatchState["transportOperationalStates"][number];
-        unit: MatchState["mobileUnits"][number];
-      } =>
-        entry.unit !== undefined &&
-        entry.unit.type === "TRANSPORT_SHIP",
+      (unit) =>
+        unit.type === "TRANSPORT_SHIP" &&
+        !beforeUnitIds.has(unit.id),
     )
     .sort((left, right) =>
-      left.unit.id < right.unit.id ? -1 : left.unit.id > right.unit.id ? 1 : 0,
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
     );
-  const usedTransportIds = new Set<string>();
+  let nextCreatedTransportIndex = 0;
 
   for (const input of [...inputs].sort(
     (left, right) => left.sequence - right.sequence,
   )) {
+    const createdTransport =
+      input.action.type === "EMBARK_TRANSPORT"
+        ? createdTransports[nextCreatedTransportIndex++]
+        : undefined;
     if (input.action.type === "CAPITULATE_FACTION") {
       activeById.set(input.action.factionId, false);
       continue;
@@ -1036,27 +1030,24 @@ function resolveAcceptedInputControllerEventDeliveries(
     }
 
     if (input.action.type === "EMBARK_TRANSPORT") {
-      const created = availableCreatedTransports.find(
-        (entry) =>
-          !usedTransportIds.has(entry.unit.id) &&
-          entry.unit.ownerId === input.action.ownerId &&
-          entry.operation.sourceCellId === input.action.sourceCellId &&
-          entry.operation.targetCellId === input.action.targetCellId &&
-          entry.operation.carriedPopulation === input.action.population,
-      );
-      if (created !== undefined) {
-        usedTransportIds.add(created.unit.id);
-        appendControllerEventDelivery(
-          deliveries,
-          input.action.ownerId,
-          Object.freeze({
-            type: "UNIT_CHANGED" as const,
-            unitId: created.unit.id,
-            reason: "CREATED",
-            originAction: input.originAction,
-          }),
+      if (
+        createdTransport === undefined ||
+        createdTransport.ownerId !== input.action.ownerId
+      ) {
+        throw new Error(
+          "accepted Transport embark did not materialize its ordered physical unit",
         );
       }
+      appendControllerEventDelivery(
+        deliveries,
+        input.action.ownerId,
+        Object.freeze({
+          type: "UNIT_CHANGED" as const,
+          unitId: createdTransport.id,
+          reason: "CREATED",
+          originAction: input.originAction,
+        }),
+      );
     }
   }
 
