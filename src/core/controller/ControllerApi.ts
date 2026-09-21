@@ -41,15 +41,26 @@ declare const actionRefBrand: unique symbol;
 /** Stable opaque match-global public faction identity. */
 export type FactionRef = string & { readonly [factionRefBrand]: "FactionRef" };
 /** Stable opaque viewer-scoped public mobile-unit incarnation identity. */
-export type UnitRef = string & { readonly [unitRefBrand]: "UnitRef" };
+export type UnitRef = Readonly<{
+  readonly type: "UNIT";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
+  readonly [unitRefBrand]: "UnitRef";
+}>;
 /** Stable opaque viewer-scoped public persistent-structure incarnation identity. */
-export type StructureRef = string & {
+export type StructureRef = Readonly<{
+  readonly type: "STRUCTURE";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
   readonly [structureRefBrand]: "StructureRef";
-};
+}>;
 /** Stable opaque viewer-scoped public operation identity. */
-export type OperationRef = string & {
+export type OperationRef = Readonly<{
+  readonly type: "OPERATION";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
   readonly [operationRefBrand]: "OperationRef";
-};
+}>;
 /** Opaque receipt for one action staged through the controller facade. */
 export type ActionRef = string & { readonly [actionRefBrand]: "ActionRef" };
 
