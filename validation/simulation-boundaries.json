@@ -33,7 +33,7 @@
     "src/simulation/SpawnModeResolution.ts": "SPAWN",
     "src/simulation/SpawnSemantics.ts": "SPAWN",
     "src/simulation/StrategicSpawn.ts": "SPAWN",
-    "src/simulation/StrategicWeapons.ts": "STRATEGIC_WEAPONS",
+    "src/simulation/StrategicWeapons.ts": "NAVAL",
     "src/simulation/Structures.ts": "STRUCTURES",
     "src/simulation/StructuresCore.ts": "STRUCTURES",
     "src/simulation/TankCombat.ts": "TANK",
