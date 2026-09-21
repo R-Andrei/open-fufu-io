@@ -8,6 +8,7 @@ import type {
   GrowthCalculation,
   HostilityMechanicsSpec,
   MechanicsApi,
+  OperationRef,
   PersistentDirective,
   PopulationView,
   PurchasableUnitType,
@@ -110,6 +111,18 @@ const fixtureFactoryRef = "factory-1" as StructureRef;
 const fixtureUnitRef = "unit-1" as UnitRef;
 const fixtureFactionARef = "faction-a" as FactionRef;
 const fixtureFactionBRef = "faction-b" as FactionRef;
+
+// #207: entity refs must expose a plain-JavaScript runtime discriminator.
+// The opaque identity payload remains deliberately unspecified here.
+type FixtureUnitRefType = UnitRef["type"];
+type FixtureStructureRefType = StructureRef["type"];
+type FixtureOperationRefType = OperationRef["type"];
+const fixtureUnitRefType: FixtureUnitRefType = "UNIT";
+const fixtureStructureRefType: FixtureStructureRefType = "STRUCTURE";
+const fixtureOperationRefType: FixtureOperationRefType = "OPERATION";
+void fixtureUnitRefType;
+void fixtureStructureRefType;
+void fixtureOperationRefType;
 
 const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void fixtureCapturedFactoryPath;
