@@ -211,6 +211,7 @@ function upgradeAction(match: MatchRuntime) {
 describe("controller-round transaction adversarial behavior", () => {
   it("delivers successful Structure creation with public Ref and exact originAction on the next decision", () => {
     const match = structureRuntime("issue207-structure-origin-event");
+    for (let tick = 0; tick < 250; tick += 1) match.tick();
     let originAction: string | undefined;
 
     const receipts = syncReceipts(
