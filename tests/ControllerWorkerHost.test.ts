@@ -8,6 +8,7 @@ import {
   type LawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import type { MatchState } from "../src/simulation/MatchState";
+import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
 import {
   ProductionControllerHost,
   PRODUCTION_CONTROLLER_LIMITS,
@@ -340,6 +341,39 @@ describe("production controller worker host", () => {
     expect(tooManyCells).toEqual({ ok: false, fault: { code: "RUNTIME_ERROR" } });
     expect(seenMemoryJson).toEqual(["{}", "{}", "{}"]);
   });
+
+  it("rejects staged-action overflow inside the worker before the IPC response crosses into the host", async () => {
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const overflowArtifact: ControllerRuntimeArtifact = Object.freeze({
+        moduleSource: `
+          export function decide(context) {
+            for (let index = 0; index < 65; index += 1) {
+              context.capitulate();
+            }
+            return {};
+          }
+        `,
+        entrypoints: Object.freeze({ decide: "decide" }),
+      });
+      const response = await pool.invoke({
+        factionId: "alpha",
+        artifact: overflowArtifact,
+        hook: "DECIDE",
+        entrypoint: "decide",
+        context: ordinaryObservation(),
+        memoryJson: "{}",
+        timeoutMs: PRODUCTION_CONTROLLER_LIMITS.decideTimeoutMs,
+        moduleEvaluationTimeoutMs:
+          PRODUCTION_CONTROLLER_LIMITS.moduleEvaluationTimeoutMs,
+        isolateMemoryMb: PRODUCTION_CONTROLLER_LIMITS.isolateMemoryMb,
+      });
+
+      expect(response).toEqual({ ok: false, fault: "INVALID_OUTPUT" });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
 
   it("enforces staged-action count and public-output ceilings before returning a worker result to simulation", async () => {
     const cases: ReadonlyArray<{
