@@ -16,6 +16,7 @@ import {
 } from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
+  CONTROLLER_EVENTS_PER_DECISION,
   CONTROLLER_MEMORY_MAX_BYTES,
   CONTROLLER_QUERY_LIMITS,
   ControllerMemoryLimitError,
@@ -41,7 +42,7 @@ export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
   policyRulesPerDecision: 256,
   debugItemsPerDecision: 256,
   logBytesPerDecision: 8 * 1024,
-  eventsPerDecision: 512,
+  eventsPerDecision: CONTROLLER_EVENTS_PER_DECISION,
   teamSignalPayloadBytes: CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
 });
 
