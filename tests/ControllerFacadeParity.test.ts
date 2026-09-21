@@ -689,7 +689,7 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
             ? canonical.job.remainingTicks
             : canonical.job.remainingTicks,
       });
-      expect(typeof quote.producerId).toBe("string");
+      expect(quote.producerId).toMatchObject({ type: "STRUCTURE" });
       const after = session.usage();
       expect(after.queries - before.queries).toBe(1);
       expect(
@@ -3016,8 +3016,8 @@ describe("issue #206 strategic weapon baseline RED", () => {
       targetCellId: 1,
       chargeConsumed: true,
     });
-    expect(typeof quote.launcherId).toBe("string");
-    expect(quote.launcherId).not.toBe("silo-alpha");
+    expect(quote.launcherId).toMatchObject({ type: "STRUCTURE" });
+    expect(quote.launcherId).not.toEqual("silo-alpha");
     const after = session.usage();
     expect(after.queries - before.queries).toBe(1);
     expect(after.materializedEntityViews - before.materializedEntityViews).toBe(0);
@@ -3052,7 +3052,7 @@ describe("issue #206 strategic weapon baseline RED", () => {
         targetCellId: 1,
         chargeConsumed: true,
       });
-      expect(typeof log.result.launcherId).toBe("string");
+      expect(log.result.launcherId).toMatchObject({ type: "STRUCTURE" });
       expect(result.usage?.queries).toBeUndefined();
       expect(session.usage().queries).toBe(1);
       expect(session.usage().materializedEntityViews).toBe(0);
