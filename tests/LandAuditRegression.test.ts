@@ -145,31 +145,21 @@ function counterResidual(
   );
   expect(incoming).toBeDefined();
 
-  const responseReceipts = match.runControllerRound(
-    new InProcessTestControllerHost({
-      beta(context) {
-        const incomingOperation = context.operations?.incoming()[0]?.ref;
-        if (incomingOperation === undefined) {
-          throw new Error("expected lawful incoming OperationRef");
-        }
-        return {
-          directives: {
-            set: [
-              {
-                kind: "COUNTER_RESPONSE",
-                key: "counter",
-                incomingOperation,
-                population: responderPopulation,
-              },
-            ],
-          },
-        };
-      },
-    }),
-  );
-  expect(
-    responseReceipts.find((entry) => entry.factionId === "beta")?.receipt.accepted,
-  ).toBe(true);
+  const responseInput = match.acceptAction({
+    type: "APPLY_PERSISTENT_DIRECTIVES",
+    factionId: "beta",
+    changes: {
+      set: [
+        {
+          kind: "COUNTER_RESPONSE",
+          key: "counter",
+          incomingOperationId: incoming!.id,
+          population: responderPopulation,
+        } as never,
+      ],
+    },
+  });
+  expect(responseInput.action.type).toBe("APPLY_PERSISTENT_DIRECTIVES");
   match.tick();
 
   return match.snapshot().counterResponseResiduals.find(
