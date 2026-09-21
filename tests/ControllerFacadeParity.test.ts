@@ -3955,4 +3955,51 @@ describe("issue #206 check* parity and shared-budget RED", () => {
       await pool.close();
     }
   }, 30_000);
+
+
+  it("orders a pending async entity read before a following synchronous check without deadlock in the production isolate", async () => {
+    const session = facadeSession("issue206-check-mixed-query-order");
+    const before = session.usage();
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export async function decide(context) {
+              const pendingStructure = context.structures.get({ cellId: 0 });
+              const quote = context.structures.checkBuild("FORT", 0);
+              const structure = await pendingStructure;
+              return {
+                log: JSON.stringify({
+                  structure: structure ?? null,
+                  quote,
+                }),
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        session,
+      );
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected mixed worker query success");
+      const log = JSON.parse(result.output?.log ?? "{}");
+      expect(log.structure).toBeNull();
+      expect(log.quote).toBeDefined();
+
+      const after = session.usage();
+      expect(after.queries - before.queries).toBe(2);
+      expect(
+        after.materializedEntityViews - before.materializedEntityViews,
+      ).toBe(0);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
 });
