@@ -1523,6 +1523,60 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
     expect(rejected.tick().tankProductionJobs).toEqual([]);
   });
 
+  it("delivers delayed Tank creation with the original ActionRef and public UnitRef", async () => {
+    const runtime = tankRuntime("issue207-tank-origin-event");
+    let originAction: string | undefined;
+
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.units.build("TANK", { cellId: 1 }, 3);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true, faulted: false });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    runtime.tick();
+    for (let tick = 0; tick < 49; tick += 1) runtime.tick();
+
+    const deployed = runtime.snapshot().mobileUnits.find(
+      (unit) => unit.ownerId === "alpha" && unit.type === "TANK",
+    );
+    expect(deployed).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toEqual([
+      expect.objectContaining({
+        type: "UNIT_CHANGED",
+        reason: "CREATED",
+        originAction,
+        unitId: expect.objectContaining({ type: "UNIT" }),
+      }),
+    ]);
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(deployed?.id);
+  });
+
   it("commits the same Tank build through the production isolate", async () => {
     const runtime = tankRuntime("issue206-tank-build-worker");
     const pool = new ControllerProcessWorkerPool({ size: 1 });
@@ -1845,6 +1899,61 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         remainingTicks: 50,
       }),
     ]);
+  });
+
+  it("delivers delayed Warship creation with the original ActionRef and public UnitRef", async () => {
+    const runtime = p29Runtime("issue207-warship-origin-event");
+    advanceP29RuntimeUntilFfy(runtime, 250_000);
+    let originAction: string | undefined;
+
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.units.build("WARSHIP", { cellId: 1 }, 2);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true, faulted: false });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    runtime.tick();
+    for (let tick = 0; tick < 49; tick += 1) runtime.tick();
+
+    const deployed = runtime.snapshot().mobileUnits.find(
+      (unit) => unit.ownerId === "alpha" && unit.type === "WARSHIP",
+    );
+    expect(deployed).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toEqual([
+      expect.objectContaining({
+        type: "UNIT_CHANGED",
+        reason: "CREATED",
+        originAction,
+        unitId: expect.objectContaining({ type: "UNIT" }),
+      }),
+    ]);
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(deployed?.id);
   });
 
   it("converts Warship move through both hosts and commits the requested Deep-Water destination", async () => {
