@@ -311,8 +311,14 @@ describe("controller local public spatial runtime", () => {
 
   it("bridges ref-valued faction, unit, and structure reads through copied production IPC", async () => {
     const factionRef = "ofr1:controller-worker-read:f:000000000001";
-    const unitRef = "ofr1:controller-worker-read:u:000000000001";
-    const structureRef = "ofr1:controller-worker-read:s:000000000001";
+    const unitRef = Object.freeze({
+      type: "UNIT" as const,
+      token: "ofr1:controller-worker-read:u:000000000001",
+    });
+    const structureRef = Object.freeze({
+      type: "STRUCTURE" as const,
+      token: "ofr1:controller-worker-read:s:000000000001",
+    });
     const unitView = Object.freeze({
       ref: unitRef,
       ownerId: "beta",
