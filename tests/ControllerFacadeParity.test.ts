@@ -876,8 +876,44 @@ describe("issue #206 team.signal authoritative RED", () => {
 
   it("projects hostile reveal facts through intrinsic Unit, Structure, and Operation Ref domains", () => {
     const seed = "issue207-hostile-source-domain-projection";
-    const base = facadeState(seed);
-    const sourceUnit = base.mobileUnits[0]!;
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 4,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "beta", "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "issue207-structure-source",
+            ownerId: "beta",
+            type: "FORT",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const createdUnit = createMobileUnit(
+      initial.map,
+      initial.factions.map((faction) => faction.id),
+      initial,
+      {
+        ownerId: "beta",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: 2,
+      },
+    );
+    const base = createProspectiveMatchState(initial, {
+      mobileUnits: createdUnit.mobileUnits,
+      nextMobileUnitOrdinal: createdUnit.nextMobileUnitOrdinal,
+    });
+    const sourceUnit = createdUnit.unit;
     const sourceStructure = base.structures[0]!;
     const sourceOperation = Object.freeze({
       id: "issue207-operation-source",
