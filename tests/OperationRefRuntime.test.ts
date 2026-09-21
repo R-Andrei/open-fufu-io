@@ -255,6 +255,56 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     ).toBe(false);
   });
 
+  it("delivers first Operation reveal once to the attacked viewer and suppresses ordinary refresh duplicates", () => {
+    const scenario = pressureScenario();
+    const first = scenario.match.tick();
+    expect(first.directReveals).toHaveLength(2);
+
+    let betaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    let gammaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    scenario.match.runControllerRound(
+      new InProcessTestControllerHost({
+        beta(context) {
+          betaEvents = context.events.sinceLastDecision;
+          return {};
+        },
+        gamma(context) {
+          gammaEvents = context.events.sinceLastDecision;
+          return {};
+        },
+      }),
+    );
+
+    expect(betaEvents).toHaveLength(2);
+    for (const event of betaEvents) {
+      expect(event).toMatchObject({
+        type: "HOSTILE_SOURCE_REVEALED",
+        source: { type: "OPERATION" },
+      });
+      const source = event.source as
+        | { readonly type?: unknown; readonly token?: unknown }
+        | undefined;
+      expect(scenario.operationIds).not.toContain(source?.token);
+    }
+    expect(gammaEvents).toEqual([]);
+
+    scenario.match.tick();
+    let refreshedBetaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    scenario.match.runControllerRound(
+      new InProcessTestControllerHost({
+        beta(context) {
+          refreshedBetaEvents = context.events.sinceLastDecision;
+          return {};
+        },
+      }),
+    );
+    expect(
+      refreshedBetaEvents.filter(
+        (event) => event.type === "HOSTILE_SOURCE_REVEALED",
+      ),
+    ).toEqual([]);
+  });
+
   it("projects self and manifested foreign operations through stable viewer-scoped refs without raw OperationIds", async () => {
     const scenario = pressureScenario();
     const advanced = scenario.engine.advance(
