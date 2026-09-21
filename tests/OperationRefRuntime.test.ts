@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 
+import type { OperationRef } from "../src/core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/ControllerProcessWorkerPool";
@@ -110,10 +111,14 @@ function pressureScenario() {
   });
 }
 
+type OperationReadView = Readonly<Record<string, unknown>> & {
+  readonly ref: OperationRef;
+};
+
 type OperationReadSurface = Readonly<{
-  get(ref: string): Readonly<Record<string, unknown>> | undefined;
-  own(): readonly Readonly<Record<string, unknown>>[];
-  incoming(): readonly Readonly<Record<string, unknown>>[];
+  get(ref: OperationRef): OperationReadView | undefined;
+  own(): readonly OperationReadView[];
+  incoming(): readonly OperationReadView[];
 }>;
 
 function operationsOf(
@@ -287,23 +292,29 @@ describe("OperationRef manifestation and lawful read vertical", () => {
     expect(alphaOwn).toHaveLength(2);
     expect(betaIncoming).toHaveLength(2);
     expect(gammaIncoming).toEqual([]);
-    expect(alphaOwn.map((view) => view.ref)).toEqual(
-      [...alphaOwn.map((view) => view.ref)].sort(),
+    expect(alphaOwn.map((view) => view.ref.token)).toEqual(
+      [...alphaOwn.map((view) => view.ref.token)].sort(),
     );
-    expect(betaIncoming.map((view) => view.ref)).toEqual(
-      [...betaIncoming.map((view) => view.ref)].sort(),
+    expect(betaIncoming.map((view) => view.ref.token)).toEqual(
+      [...betaIncoming.map((view) => view.ref.token)].sort(),
     );
 
     for (const view of [...alphaOwn, ...betaIncoming]) {
       expect(view).toHaveProperty("ref");
       expect(view).not.toHaveProperty("id");
-      expect(scenario.operationIds).not.toContain(view.ref);
+      expect(view.ref.type).toBe("OPERATION");
+      expect(scenario.operationIds).not.toContain(view.ref.token);
     }
 
-    const betaRef = betaIncoming[0]!.ref as string;
+    const betaRef = betaIncoming[0]!.ref;
     expect(operationsOf(beta).get(betaRef)).toEqual(betaIncoming[0]);
-    expect(operationsOf(beta).get(alphaOwn[0]!.ref as string)).toBeUndefined();
-    expect(operationsOf(beta).get("fabricated-operation-ref")).toBeUndefined();
+    expect(operationsOf(beta).get(alphaOwn[0]!.ref)).toBeUndefined();
+    expect(
+      operationsOf(beta).get({
+        type: "OPERATION",
+        token: "fabricated-operation-ref",
+      } as OperationRef),
+    ).toBeUndefined();
 
     const otherMatchReferences = new ControllerReferenceSession(
       "operation-ref-read-other-match",
@@ -315,8 +326,7 @@ describe("OperationRef manifestation and lawful read vertical", () => {
       CONTROLLER_QUERY_LIMITS,
       otherMatchReferences,
     );
-    const foreignMatchRef = operationsOf(otherMatchBeta).incoming()[0]!
-      .ref as string;
+    const foreignMatchRef = operationsOf(otherMatchBeta).incoming()[0]!.ref;
     expect(operationsOf(beta).get(foreignMatchRef)).toBeUndefined();
 
     const refreshed = Object.freeze({
@@ -461,8 +471,9 @@ describe("OperationRef manifestation and lawful read vertical", () => {
       const stored = JSON.parse(first.output?.log ?? "{}");
       expect(stored.phase).toBe("stored");
       expect(stored.refs).toHaveLength(2);
-      for (const ref of stored.refs as string[]) {
-        expect(scenario.operationIds).not.toContain(ref);
+      for (const ref of stored.refs as Array<{ type: string; token: string }>) {
+        expect(ref.type).toBe("OPERATION");
+        expect(scenario.operationIds).not.toContain(ref.token);
       }
 
       const priorPid = pool.workerProcessIds()[0];
