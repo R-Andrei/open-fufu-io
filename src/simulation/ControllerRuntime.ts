@@ -1532,6 +1532,7 @@ export function evaluateControllerRound(
       CONTROLLER_QUERY_LIMITS,
       controllerReferences,
       factionScores,
+      decisionNumber,
     );
 
     try {
