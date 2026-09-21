@@ -1693,6 +1693,7 @@ export function createControllerQuerySession(
   limits: ControllerQueryBudgetLimits,
   references?: ControllerQueryReferenceSession,
   factionScores?: ReadonlyMap<string, number>,
+  decisionNumber = 0,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
@@ -1952,7 +1953,11 @@ export function createControllerQuerySession(
   let nextActionOrdinal = 1;
   const stagedActions: ControllerStagedAction[] = [];
   const nextActionRef = (): ActionRef => {
-    const actionRef = `action_${nextActionOrdinal}` as ActionRef;
+    const actionRef = (
+      decisionNumber === 0
+        ? `action_${nextActionOrdinal}`
+        : `action_${decisionNumber}_${nextActionOrdinal}`
+    ) as ActionRef;
     nextActionOrdinal += 1;
     return actionRef;
   };
