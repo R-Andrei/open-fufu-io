@@ -107,8 +107,11 @@ void fixtureHeavy;
 void fixtureTrain;
 void fixtureTrade;
 
-const fixtureFactoryRef = "factory-1" as StructureRef;
-const fixtureUnitRef = "unit-1" as UnitRef;
+const fixtureFactoryRef = {
+  type: "STRUCTURE",
+  token: "factory-1",
+} as StructureRef;
+const fixtureUnitRef = { type: "UNIT", token: "unit-1" } as UnitRef;
 const fixtureFactionARef = "faction-a" as FactionRef;
 const fixtureFactionBRef = "faction-b" as FactionRef;
 
@@ -353,7 +356,7 @@ const p27AntiShipAttack: SamAntiShipAttackSpec = {
   requiresAtWar: false,
 };
 
-const p27SamRef = "sam-p27" as StructureRef;
+const p27SamRef = { type: "STRUCTURE", token: "sam-p27" } as StructureRef;
 const p27SamField: CellSelector = {
   kind: "STRUCTURE_FIELD_INSTANCE",
   structureId: p27SamRef,
