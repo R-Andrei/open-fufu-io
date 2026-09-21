@@ -3063,6 +3063,86 @@ describe("issue #206 Transport facade authoritative RED", () => {
     expect(betaEvents).toEqual([]);
   });
 
+  it("keeps lifecycle Ref and ActionRef correlation usable through production worker replacement", async () => {
+    const runtime = transportRuntime("issue207-event-worker-replacement");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export async function decide(context) {
+              if (context.memory.phase === undefined) {
+                const actionRef = context.transports.embark(3, 5, 100);
+                return {
+                  memory: { phase: "WAITING", actionRef },
+                };
+              }
+              if (context.memory.phase === "WAITING") {
+                const event = context.events.sinceLastDecision.find(
+                  (candidate) => candidate.type === "UNIT_CHANGED",
+                );
+                if (event === undefined) throw new Error("missing lifecycle event");
+                if (event.originAction !== context.memory.actionRef) {
+                  throw new Error("origin ActionRef mismatch");
+                }
+                if (event.unitId?.type !== "UNIT") {
+                  throw new Error("missing UnitRef discriminator");
+                }
+                return {
+                  memory: {
+                    phase: "STORED",
+                    actionRef: context.memory.actionRef,
+                    unitRef: event.unitId,
+                  },
+                };
+              }
+              const unit = await context.units.get(context.memory.unitRef);
+              if (unit === undefined || unit.ref?.type !== "UNIT") {
+                throw new Error("stored UnitRef did not survive worker replacement");
+              }
+              return {};
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+
+      const first = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        first.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+
+      runtime.tick();
+
+      const second = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        second.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+
+      const priorPid = pool.workerProcessIds()[0];
+      if (priorPid === undefined) throw new Error("expected worker pid");
+      process.kill(priorPid, "SIGKILL");
+      let replaced = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (pool.workerProcessIds()[0] !== priorPid) {
+          replaced = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(replaced).toBe(true);
+
+      runtime.tick();
+
+      const third = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        third.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects sibling embark oversubscription atomically without committing the first sibling", async () => {
     const runtime = transportRuntime("issue206-transport-embark-atomic");
     const before = runtime.snapshot();
