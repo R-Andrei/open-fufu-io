@@ -155,6 +155,14 @@ void fixtureStructureChangedWithOrigin;
 void fixtureUnitChangedWithOrigin;
 void fixtureOperationChangedWithOrigin;
 
+const fixtureEventBacklogOverflow: ControllerEvent = {
+  type: "EVENT_BACKLOG_OVERFLOW",
+  droppedCount: 1,
+  firstDroppedTick: 12,
+  lastDroppedTick: 12,
+};
+void fixtureEventBacklogOverflow;
+
 const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void fixtureCapturedFactoryPath;
 
