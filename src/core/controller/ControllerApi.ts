@@ -1149,6 +1149,12 @@ export type ControllerEvent =
       readonly fromFactionId: FactionRef;
       readonly channel: string;
       readonly payload: JsonValue;
+    }
+  | {
+      readonly type: "EVENT_BACKLOG_OVERFLOW";
+      readonly droppedCount: number;
+      readonly firstDroppedTick: number;
+      readonly lastDroppedTick: number;
     };
 
 export interface EventsApi {
