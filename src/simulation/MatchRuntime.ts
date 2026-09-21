@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   ControllerDecision,
   CounterResponseDirective,
   JsonValue,
@@ -646,6 +647,9 @@ function freezeAcceptedInput(
   return Object.freeze({
     tick: input.tick,
     sequence: input.sequence,
+    ...(input.originAction === undefined
+      ? {}
+      : { originAction: input.originAction }),
     action,
   });
 }
@@ -1046,7 +1050,10 @@ export class MatchRuntime {
     return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
-  acceptAction(action: SimulationAction): AcceptedSimulationInput {
+  private acceptActionWithOrigin(
+    action: SimulationAction,
+    originAction?: ActionRef,
+  ): AcceptedSimulationInput {
     if (this.controllerRoundInFlightTick !== undefined) {
       throw new Error("controller round is in progress for this simulation tick");
     }
@@ -1054,12 +1061,17 @@ export class MatchRuntime {
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
       sequence: this.nextSequence,
+      ...(originAction === undefined ? {} : { originAction }),
       action,
     });
     this.nextSequence += 1;
     this.pendingInputs.push(accepted);
     this.acceptedInputLog.push(accepted);
     return accepted;
+  }
+
+  acceptAction(action: SimulationAction): AcceptedSimulationInput {
+    return this.acceptActionWithOrigin(action);
   }
 
   private materializeControllerAction(
@@ -1122,6 +1134,7 @@ export class MatchRuntime {
         freezeAcceptedInput({
           tick: this.state.tick + 1,
           sequence,
+          ...(proposed.key === undefined ? {} : { originAction: proposed.key }),
           action,
         }),
       );
@@ -1332,7 +1345,10 @@ export class MatchRuntime {
       ) {
         const recorded = orderedInputs[cursor];
         if (recorded === undefined) break;
-        const regenerated = runtime.acceptAction(recorded.action);
+        const regenerated = runtime.acceptActionWithOrigin(
+          recorded.action,
+          recorded.originAction,
+        );
         if (
           regenerated.tick !== recorded.tick ||
           regenerated.sequence !== recorded.sequence
