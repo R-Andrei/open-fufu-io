@@ -338,7 +338,10 @@ describe("controller structure-field projection", () => {
     ) {
       throw new Error("expected public structure-field refs");
     }
-    const fabricatedFortRef = `${betaFortRef}:fabricated` as StructureRef;
+    const fabricatedFortRef = Object.freeze({
+      type: "STRUCTURE" as const,
+      token: `${betaFortRef.token}:fabricated`,
+    }) as StructureRef;
     const fortField = {
       kind: "STRUCTURE_FIELD_INSTANCE",
       structureId: betaFortRef,
