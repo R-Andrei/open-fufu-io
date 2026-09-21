@@ -19,6 +19,7 @@ import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
   evaluateControllerRound,
+  projectLawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import {
   createInitialMatchState,
@@ -871,6 +872,84 @@ describe("issue #206 team.signal authoritative RED", () => {
       ),
     );
     expect(betaLater).toEqual([]);
+  });
+
+  it("projects hostile reveal facts through intrinsic Unit, Structure, and Operation Ref domains", () => {
+    const seed = "issue207-hostile-source-domain-projection";
+    const base = facadeState(seed);
+    const sourceUnit = base.mobileUnits[0]!;
+    const sourceStructure = base.structures[0]!;
+    const sourceOperation = Object.freeze({
+      id: "issue207-operation-source",
+      controllerKey: "issue207-operation-directive",
+      kind: "ATTACK" as const,
+      ownerId: "beta",
+      targetFactionId: "alpha",
+      committedPopulation: 1,
+      source: Object.freeze({ kind: "CELLS" as const, ids: Object.freeze([1]) }),
+      target: Object.freeze({ kind: "CELLS" as const, ids: Object.freeze([0]) }),
+    });
+    const state = Object.freeze({
+      ...base,
+      operations: Object.freeze([sourceOperation]),
+      directReveals: Object.freeze([
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT" as const,
+          sourceId: sourceUnit.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "STRUCTURE" as const,
+          sourceId: sourceStructure.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "OPERATION" as const,
+          sourceId: sourceOperation.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+      ]),
+    });
+    const references = new ControllerReferenceSession(seed, state);
+
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      0,
+      undefined,
+      references,
+      [
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "UNIT",
+          sourceId: sourceUnit.id,
+        },
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "STRUCTURE",
+          sourceId: sourceStructure.id,
+        },
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "OPERATION",
+          sourceId: sourceOperation.id,
+        },
+      ] as never,
+    );
+
+    expect(
+      observation.events.sinceLastDecision.map((event) =>
+        event.type === "HOSTILE_SOURCE_REVEALED" ? event.source.type : event.type,
+      ),
+    ).toEqual(["UNIT", "STRUCTURE", "OPERATION"]);
+    for (const event of observation.events.sinceLastDecision) {
+      expect(JSON.stringify(event)).not.toContain(sourceUnit.id);
+      expect(JSON.stringify(event)).not.toContain(sourceStructure.id);
+      expect(JSON.stringify(event)).not.toContain(sourceOperation.id);
+    }
   });
 
   it("treats an unteamed sender with no eligible teammate as a lawful no-op", async () => {
