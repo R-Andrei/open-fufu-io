@@ -169,7 +169,7 @@ describe("issue #215 adversarial certification", () => {
     ).toThrow(/rank cap|maximum rank/i);
   });
 
-  it("binds Warship progression and P29 launcher state into canonical replay/fingerprint serialization", () => {
+  it("binds Warship progression and P29 launcher state into canonical replay serialization", () => {
     const initial = deployed(["P29"]);
     const unitId = initial.mobileUnits[0]!.id;
     const initialSerialization = canonicalMatchStateSerialization(initial);
