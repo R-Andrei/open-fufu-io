@@ -562,7 +562,7 @@ describe("simulation dependency firewall", () => {
     const policy = loadSimulationBoundaryPolicy();
 
     expect(validateSimulationBoundaryPolicy(graph, policy)).toEqual([]);
-    expect(graph.modules).toHaveLength(49);
+    expect(graph.modules).toHaveLength(50);
     expect(graph.edges).toHaveLength(194);
   });
 
