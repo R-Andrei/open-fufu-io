@@ -1159,6 +1159,14 @@ export class MatchRuntime {
     string,
     readonly PendingControllerEventObservation[]
   >();
+  private readonly pendingTankOriginByFactoryId = new Map<
+    string,
+    Readonly<{ ownerId: string; originAction: ActionRef }>
+  >();
+  private readonly pendingWarshipOriginByPortId = new Map<
+    string,
+    Readonly<{ ownerId: string; originAction: ActionRef }>
+  >();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
   private readonly controllerReferences?: ControllerReferenceSession;
@@ -1415,6 +1423,154 @@ export class MatchRuntime {
       });
   }
 
+  private resolveDelayedProductionControllerEventDeliveries(
+    previousState: MatchState,
+    nextState: MatchState,
+  ): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+    const deliveries = new Map<string, PendingControllerEventObservation[]>();
+    const previousUnitIds = new Set(
+      previousState.mobileUnits.map((unit) => unit.id),
+    );
+
+    for (const [factoryId, correlation] of [
+      ...this.pendingTankOriginByFactoryId,
+    ].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))) {
+      const previousJob = previousState.tankProductionJobs.find(
+        (job) => job.factoryId === factoryId,
+      );
+      const nextJob = nextState.tankProductionJobs.find(
+        (job) => job.factoryId === factoryId,
+      );
+      if (previousJob === undefined) {
+        this.pendingTankOriginByFactoryId.delete(factoryId);
+        continue;
+      }
+      if (nextJob !== undefined) continue;
+
+      const factory = nextState.structures.find(
+        (structure) =>
+          structure.id === factoryId &&
+          structure.type === "FACTORY" &&
+          structure.ownerId === correlation.ownerId,
+      );
+      const created =
+        factory?.outputCellId === undefined
+          ? undefined
+          : nextState.mobileUnits.find(
+              (unit) =>
+                !previousUnitIds.has(unit.id) &&
+                unit.type === "TANK" &&
+                unit.ownerId === correlation.ownerId &&
+                unit.cellId === factory.outputCellId,
+            );
+      if (created !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          correlation.ownerId,
+          Object.freeze({
+            type: "UNIT_CHANGED" as const,
+            unitId: created.id,
+            reason: "CREATED",
+            originAction: correlation.originAction,
+          }),
+        );
+      }
+      this.pendingTankOriginByFactoryId.delete(factoryId);
+    }
+
+    for (const [portId, correlation] of [
+      ...this.pendingWarshipOriginByPortId,
+    ].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))) {
+      const previousJob = previousState.warshipProductionJobs.find(
+        (job) => job.portId === portId,
+      );
+      const nextJob = nextState.warshipProductionJobs.find(
+        (job) => job.portId === portId,
+      );
+      if (previousJob === undefined) {
+        this.pendingWarshipOriginByPortId.delete(portId);
+        continue;
+      }
+      if (nextJob !== undefined) continue;
+
+      const port = nextState.structures.find(
+        (structure) =>
+          structure.id === portId &&
+          structure.type === "PORT" &&
+          structure.ownerId === correlation.ownerId,
+      );
+      const created =
+        port?.outputCellId === undefined
+          ? undefined
+          : nextState.mobileUnits.find(
+              (unit) =>
+                !previousUnitIds.has(unit.id) &&
+                unit.type === "WARSHIP" &&
+                unit.ownerId === correlation.ownerId &&
+                unit.cellId === port.outputCellId,
+            );
+      if (created !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          correlation.ownerId,
+          Object.freeze({
+            type: "UNIT_CHANGED" as const,
+            unitId: created.id,
+            reason: "CREATED",
+            originAction: correlation.originAction,
+          }),
+        );
+      }
+      this.pendingWarshipOriginByPortId.delete(portId);
+    }
+
+    return freezeControllerEventDeliveries(deliveries);
+  }
+
+  private registerAcceptedProductionOrigins(
+    nextState: MatchState,
+    inputs: readonly AcceptedSimulationInput[],
+  ): void {
+    for (const input of [...inputs].sort(
+      (left, right) => left.sequence - right.sequence,
+    )) {
+      if (input.originAction === undefined) continue;
+      if (
+        input.action.type === "START_TANK_PRODUCTION" &&
+        nextState.tankProductionJobs.some(
+          (job) =>
+            job.factoryId === input.action.factoryId &&
+            job.ownerId === input.action.ownerId,
+        )
+      ) {
+        this.pendingTankOriginByFactoryId.set(
+          input.action.factoryId,
+          Object.freeze({
+            ownerId: input.action.ownerId,
+            originAction: input.originAction,
+          }),
+        );
+        continue;
+      }
+      if (
+        input.action.type === "START_WARSHIP_PRODUCTION" &&
+        nextState.warshipProductionJobs.some(
+          (job) =>
+            job.portId === input.action.portId &&
+            job.ownerId === input.action.ownerId,
+        )
+      ) {
+        this.pendingWarshipOriginByPortId.set(
+          input.action.portId,
+          Object.freeze({
+            ownerId: input.action.ownerId,
+            originAction: input.originAction,
+          }),
+        );
+      }
+    }
+  }
+
   tick(): MatchState {
     if (this.controllerRoundInFlightTick !== undefined) {
       throw new Error("controller round is in progress for this simulation tick");
@@ -1433,7 +1589,12 @@ export class MatchRuntime {
         executing,
       ),
       resolveDirectRevealControllerEventDeliveries(previousState, nextState),
+      this.resolveDelayedProductionControllerEventDeliveries(
+        previousState,
+        nextState,
+      ),
     );
+    this.registerAcceptedProductionOrigins(nextState, executing);
     if (this.controllerReferences !== undefined) {
       for (const input of [...executing].sort(
         (left, right) => left.sequence - right.sequence,
