@@ -1920,14 +1920,29 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
     ]);
     expect(matchStateAtWar(executed, "alpha", "beta")).toBe(true);
   });
+  function p29FundingRules() {
+    const origin = originRuleProfileInput(["P29", "P53"]);
+    return compileRuleProfile(RULE_AXIS_REGISTRY, {
+      contributions: origin.contributions,
+      dynamicProviders: origin.dynamicProviders,
+      customDomains: origin.customDomains,
+    });
+  }
+
   function p29Runtime(seed: string) {
     return new MatchRuntime(
       createMicroSimulationSpec({
         seed,
-        width: 4,
+        width: 5,
         height: 1,
-        terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER", "PLAINS"],
-        initialOwners: [null, "alpha", null, "beta"],
+        terrain: [
+          "DEEP_WATER",
+          "PLAINS",
+          "DEEP_WATER",
+          "PLAINS",
+          "PLAINS",
+        ],
+        initialOwners: [null, "alpha", null, "alpha", "beta"],
         initialStructureGrants: [
           {
             structureId: "port-alpha",
@@ -1936,9 +1951,16 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
             cellId: 1,
             level: 1,
           },
+          {
+            structureId: "silo-alpha",
+            ownerId: "alpha",
+            type: "MISSILE_SILO",
+            cellId: 3,
+            level: 1,
+          },
         ],
         factions: [
-          { id: "alpha", rules: warshipRules(true) },
+          { id: "alpha", rules: p29FundingRules() },
           { id: "beta", rules: emptyRules() },
         ],
       }),
@@ -1964,7 +1986,7 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
   }
 
   function deployP29RuntimeWarship(runtime: MatchRuntime) {
-    advanceP29RuntimeUntilFfy(runtime, 2_000_000);
+    advanceP29RuntimeUntilFfy(runtime, 1_500_000);
     runtime.acceptAction({
       type: "START_WARSHIP_PRODUCTION",
       ownerId: "alpha",
@@ -1986,7 +2008,6 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         throw new Error("P29 fixture failed to deploy Warship");
       }
     }
-    advanceP29RuntimeUntilFfy(runtime, 3_000_000);
     const unit = runtime
       .snapshot()
       .mobileUnits.find(
@@ -2025,12 +2046,12 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         firstActionRef = context.weapons.launch(
           { ref: unitRef as never },
           "ATOM_BOMB",
-          3,
+          4,
         );
         secondActionRef = context.weapons.launch(
           { ref: unitRef as never },
           "ATOM_BOMB",
-          3,
+          4,
         );
         return {};
       },
@@ -2086,7 +2107,7 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         alpha: workerArtifact(
           "context.weapons.launch({ ref: " +
             JSON.stringify(unitRef) +
-            ' }, "ATOM_BOMB", 3)',
+            ' }, "ATOM_BOMB", 4)',
         ),
       });
       const receipts = await Promise.resolve(runtime.runControllerRound(host));
@@ -2099,7 +2120,7 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         ownerId: "alpha",
         launcherId: unit.id,
         weapon: "ATOM_BOMB",
-        targetCellId: 3,
+        targetCellId: 4,
       });
 
       const transitionTick = before.tick + 1;
