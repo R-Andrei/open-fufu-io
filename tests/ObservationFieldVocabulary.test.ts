@@ -2,6 +2,7 @@ import type {
   CellSelector,
   ControllerStructureFieldId,
   ObservationStructureEffect,
+  OperationRef,
 } from "../src/core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../src/core/controller/ControllerOutputValidation";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
@@ -50,7 +51,10 @@ describe("CounterResponse public identity validation", () => {
             {
               kind: "COUNTER_RESPONSE",
               key: "counter-ref",
-              incomingOperation: "ofr1:counter-response:o:000000000001",
+              incomingOperation: {
+                type: "OPERATION",
+                token: "ofr1:counter-response:o:000000000001",
+              },
               population: 10,
             },
           ],
@@ -134,7 +138,7 @@ describe("CounterResponse public identity validation", () => {
 
     match.tick();
 
-    let incomingOperationRef: string | undefined;
+    let incomingOperationRef: OperationRef | undefined;
     const counterHost: ControllerHost = {
       invoke(factionId, _observation, querySession) {
         if (factionId !== "beta") return Object.freeze({ ok: true as const });
@@ -169,7 +173,7 @@ describe("CounterResponse public identity validation", () => {
     };
     const counterReceipts = match.runControllerRound(counterHost);
     expect(counterReceipts).not.toBeInstanceOf(Promise);
-    expect(incomingOperationRef).toEqual(expect.any(String));
+    expect(incomingOperationRef).toMatchObject({ type: "OPERATION" });
     expect(
       (counterReceipts as readonly {
         factionId: string;

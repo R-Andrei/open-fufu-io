@@ -1,3 +1,4 @@
+import type { OperationRef, StructureRef, UnitRef } from "../src/core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
@@ -98,7 +99,7 @@ function expectResolvable(
   viewer: string,
   domain: ControllerReferenceDomain,
   authoritativeId: string,
-): string {
+): UnitRef | StructureRef | OperationRef {
   const ref = session.issue(viewer, domain, authoritativeId);
   expect(ref).toBeDefined();
   expect(session.resolve(viewer, domain, ref!)).toBe(authoritativeId);
@@ -144,6 +145,34 @@ describe("controller reference session", () => {
     expect(first.resolve("alpha", "STRUCTURE", "fabricated-ref")).toBeUndefined();
     expect(second.resolve("alpha", "STRUCTURE", alphaStructure)).toBeUndefined();
     expect(first.issue("alpha", "UNIT", "does-not-exist")).toBeUndefined();
+  });
+
+  it("issues JSON-safe entity ref objects with intrinsic runtime domain discrimination", () => {
+    const state = stateWithUnit(
+      withOperation(baseState("entity-ref-object-contract"), 2),
+    );
+    const session = new ControllerReferenceSession(
+      "entity-ref-object-contract",
+      state,
+    );
+    const rows = [
+      ["UNIT", state.mobileUnits[0]!.id],
+      ["STRUCTURE", state.structures[0]!.id],
+      ["OPERATION", state.operations[0]!.id],
+    ] as const;
+
+    for (const [domain, authoritativeId] of rows) {
+      const ref = session.issue("alpha", domain, authoritativeId);
+      expect(ref).toBeDefined();
+      expect(typeof ref).toBe("object");
+      expect(ref).toMatchObject({ type: domain });
+
+      const roundTripped = JSON.parse(JSON.stringify(ref));
+      expect(roundTripped).toEqual(ref);
+      expect(
+        session.resolve("alpha", domain, roundTripped as never),
+      ).toBe(authoritativeId);
+    }
   });
 
   it("uses FactionRef rather than authoritative faction ID in OWNER selectors", async () => {

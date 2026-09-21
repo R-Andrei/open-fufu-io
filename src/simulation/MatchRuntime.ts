@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   ControllerDecision,
   CounterResponseDirective,
   JsonValue,
@@ -15,12 +16,14 @@ import {
 } from "./ControllerQueryProjection";
 import { ControllerReferenceSession } from "./ControllerReferenceSession";
 import {
+  CONTROLLER_EVENTS_PER_DECISION,
+  CONTROLLER_PENDING_EVENTS_PER_FACTION,
   evaluateControllerRound,
   type ControllerHost,
   type ControllerHostInvocationResult,
   type ControllerProposedAction,
   type ControllerRoundEvaluation,
-  type PendingTeamSignalObservation,
+  type PendingControllerEventObservation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
@@ -646,6 +649,9 @@ function freezeAcceptedInput(
   return Object.freeze({
     tick: input.tick,
     sequence: input.sequence,
+    ...(input.originAction === undefined
+      ? {}
+      : { originAction: input.originAction }),
     action,
   });
 }
@@ -916,62 +922,226 @@ function controllerActionFailure(
   }
 }
 
-function resolvePendingTeamSignalDeliveries(
+function appendControllerEventDelivery(
+  deliveries: Map<string, PendingControllerEventObservation[]>,
+  factionId: string,
+  event: PendingControllerEventObservation,
+): void {
+  const existing = deliveries.get(factionId);
+  if (existing === undefined) {
+    deliveries.set(factionId, [event]);
+    return;
+  }
+  existing.push(event);
+}
+
+function freezeControllerEventDeliveries(
+  deliveries: Map<string, PendingControllerEventObservation[]>,
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  return new Map(
+    [...deliveries].map(([factionId, events]) => [
+      factionId,
+      Object.freeze([...events]),
+    ]),
+  );
+}
+
+function resolveAcceptedInputControllerEventDeliveries(
   state: MatchState,
+  nextState: MatchState,
   inputs: readonly AcceptedSimulationInput[],
-): ReadonlyMap<string, readonly PendingTeamSignalObservation[]> {
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
   const factionsById = new Map(state.factions.map((entry) => [entry.id, entry]));
   const activeById = new Map(
     state.factions.map((entry) => [entry.id, entry.status === "ACTIVE"]),
   );
-  const deliveries = new Map<string, PendingTeamSignalObservation[]>();
+  const deliveries = new Map<string, PendingControllerEventObservation[]>();
+  const beforeUnitIds = new Set(state.mobileUnits.map((unit) => unit.id));
+  const createdTransports = nextState.mobileUnits
+    .filter(
+      (unit) =>
+        unit.type === "TRANSPORT_SHIP" &&
+        !beforeUnitIds.has(unit.id),
+    )
+    .sort((left, right) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+  let nextCreatedTransportIndex = 0;
 
   for (const input of [...inputs].sort(
     (left, right) => left.sequence - right.sequence,
   )) {
+    const createdTransport =
+      input.action.type === "EMBARK_TRANSPORT"
+        ? createdTransports[nextCreatedTransportIndex++]
+        : undefined;
     if (input.action.type === "CAPITULATE_FACTION") {
       activeById.set(input.action.factionId, false);
       continue;
     }
-    if (input.action.type !== "TEAM_SIGNAL") continue;
 
-    const sender = factionsById.get(input.action.senderFactionId);
-    if (sender === undefined) {
-      throw new Error(
-        `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
-      );
+    if (input.action.type === "TEAM_SIGNAL") {
+      const sender = factionsById.get(input.action.senderFactionId);
+      if (sender === undefined) {
+        throw new Error(
+          `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
+        );
+      }
+      const fixedTeamId = sender.fixedTeamId;
+      if (fixedTeamId === undefined) continue;
+
+      const signal = Object.freeze({
+        senderFactionId: sender.id,
+        channel: input.action.channel,
+        payload: input.action.payload,
+      });
+      for (const recipient of state.factions) {
+        if (
+          recipient.id === sender.id ||
+          recipient.fixedTeamId !== fixedTeamId ||
+          activeById.get(recipient.id) !== true
+        ) {
+          continue;
+        }
+        appendControllerEventDelivery(deliveries, recipient.id, signal);
+      }
+      continue;
     }
-    const fixedTeamId = sender.fixedTeamId;
-    if (fixedTeamId === undefined) continue;
 
-    const signal = Object.freeze({
-      senderFactionId: sender.id,
-      channel: input.action.channel,
-      payload: input.action.payload,
-    });
-    for (const recipient of state.factions) {
+    if (input.originAction === undefined) continue;
+
+    if (input.action.type === "PURCHASE_STRUCTURE_BUILD") {
+      const structure = nextState.structures.find(
+        (candidate) =>
+          candidate.id === input.action.structureId &&
+          candidate.ownerId === input.action.ownerId,
+      );
+      if (structure !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          input.action.ownerId,
+          Object.freeze({
+            type: "STRUCTURE_CHANGED" as const,
+            structureId: structure.id,
+            reason: "CREATED",
+            originAction: input.originAction,
+          }),
+        );
+      }
+      continue;
+    }
+
+    if (input.action.type === "EMBARK_TRANSPORT") {
       if (
-        recipient.id === sender.id ||
-        recipient.fixedTeamId !== fixedTeamId ||
-        activeById.get(recipient.id) !== true
+        createdTransport === undefined ||
+        createdTransport.ownerId !== input.action.ownerId
       ) {
-        continue;
+        throw new Error(
+          "accepted Transport embark did not materialize its ordered physical unit",
+        );
       }
-      const existing = deliveries.get(recipient.id);
-      if (existing === undefined) {
-        deliveries.set(recipient.id, [signal]);
-      } else {
-        existing.push(signal);
-      }
+      appendControllerEventDelivery(
+        deliveries,
+        input.action.ownerId,
+        Object.freeze({
+          type: "UNIT_CHANGED" as const,
+          unitId: createdTransport.id,
+          reason: "CREATED",
+          originAction: input.originAction,
+        }),
+      );
     }
   }
 
-  return new Map(
-    [...deliveries].map(([factionId, signals]) => [
-      factionId,
-      Object.freeze([...signals]),
-    ]),
+  return freezeControllerEventDeliveries(deliveries);
+}
+
+function directRevealEventKey(
+  viewerFactionId: string,
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
+  sourceId: string,
+): string {
+  return JSON.stringify([viewerFactionId, sourceKind, sourceId]);
+}
+
+function directRevealSourceSurvives(
+  state: MatchState,
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
+  sourceId: string,
+): boolean {
+  switch (sourceKind) {
+    case "UNIT":
+      return state.mobileUnits.some((unit) => unit.id === sourceId);
+    case "STRUCTURE":
+      return state.structures.some((structure) => structure.id === sourceId);
+    case "OPERATION":
+      return state.operations.some((operation) => operation.id === sourceId);
+  }
+}
+
+function resolveDirectRevealControllerEventDeliveries(
+  state: MatchState,
+  nextState: MatchState,
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  const previouslyActiveAtResultTick = new Set(
+    state.directReveals
+      .filter((record) => nextState.tick < record.expiryExclusiveTick)
+      .map((record) =>
+        directRevealEventKey(
+          record.viewerFactionId,
+          record.sourceKind,
+          record.sourceId,
+        ),
+      ),
   );
+  const deliveries = new Map<string, PendingControllerEventObservation[]>();
+
+  for (const record of nextState.directReveals) {
+    if (nextState.tick >= record.expiryExclusiveTick) continue;
+    const key = directRevealEventKey(
+      record.viewerFactionId,
+      record.sourceKind,
+      record.sourceId,
+    );
+    if (previouslyActiveAtResultTick.has(key)) continue;
+    if (
+      !directRevealSourceSurvives(
+        nextState,
+        record.sourceKind,
+        record.sourceId,
+      )
+    ) {
+      continue;
+    }
+    appendControllerEventDelivery(
+      deliveries,
+      record.viewerFactionId,
+      Object.freeze({
+        type: "HOSTILE_SOURCE_REVEALED" as const,
+        sourceKind: record.sourceKind,
+        sourceId: record.sourceId,
+      }),
+    );
+  }
+
+  return freezeControllerEventDeliveries(deliveries);
+}
+
+function mergeControllerEventDeliveries(
+  ...sources: readonly ReadonlyMap<
+    string,
+    readonly PendingControllerEventObservation[]
+  >[]
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  const merged = new Map<string, PendingControllerEventObservation[]>();
+  for (const source of sources) {
+    for (const [factionId, events] of source) {
+      for (const event of events) {
+        appendControllerEventDelivery(merged, factionId, event);
+      }
+    }
+  }
+  return freezeControllerEventDeliveries(merged);
 }
 
 export class MatchRuntime {
@@ -987,9 +1157,25 @@ export class MatchRuntime {
   private controllerFaultCounts = new Map<string, number>();
   private controllerConsecutiveFaultCounts = new Map<string, number>();
   private controllerFaultedFactionIds = new Set<string>();
-  private readonly pendingTeamSignalsByFaction = new Map<
+  private readonly pendingControllerEventsByFaction = new Map<
     string,
-    readonly PendingTeamSignalObservation[]
+    readonly PendingControllerEventObservation[]
+  >();
+  private readonly pendingControllerEventOverflowByFaction = new Map<
+    string,
+    Readonly<{
+      droppedCount: number;
+      firstDroppedTick: number;
+      lastDroppedTick: number;
+    }>
+  >();
+  private readonly pendingTankOriginByFactoryId = new Map<
+    string,
+    Readonly<{ ownerId: string; originAction: ActionRef }>
+  >();
+  private readonly pendingWarshipOriginByPortId = new Map<
+    string,
+    Readonly<{ ownerId: string; originAction: ActionRef }>
   >();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
@@ -1046,7 +1232,10 @@ export class MatchRuntime {
     return this.engine.applyAcceptedInputs(this.state, this.pendingInputs);
   }
 
-  acceptAction(action: SimulationAction): AcceptedSimulationInput {
+  private acceptActionWithOrigin(
+    action: SimulationAction,
+    originAction?: ActionRef,
+  ): AcceptedSimulationInput {
     if (this.controllerRoundInFlightTick !== undefined) {
       throw new Error("controller round is in progress for this simulation tick");
     }
@@ -1054,12 +1243,17 @@ export class MatchRuntime {
     const accepted = freezeAcceptedInput({
       tick: this.state.tick + 1,
       sequence: this.nextSequence,
+      ...(originAction === undefined ? {} : { originAction }),
       action,
     });
     this.nextSequence += 1;
     this.pendingInputs.push(accepted);
     this.acceptedInputLog.push(accepted);
     return accepted;
+  }
+
+  acceptAction(action: SimulationAction): AcceptedSimulationInput {
+    return this.acceptActionWithOrigin(action);
   }
 
   private materializeControllerAction(
@@ -1122,6 +1316,7 @@ export class MatchRuntime {
         freezeAcceptedInput({
           tick: this.state.tick + 1,
           sequence,
+          ...(proposed.key === undefined ? {} : { originAction: proposed.key }),
           action,
         }),
       );
@@ -1131,6 +1326,118 @@ export class MatchRuntime {
     this.pendingInputs.push(...acceptedBatch);
     this.acceptedInputLog.push(...acceptedBatch);
     return undefined;
+  }
+
+  private pendingControllerEventsForDecision(): ReadonlyMap<
+    string,
+    readonly PendingControllerEventObservation[]
+  > {
+    const visible = new Map<
+      string,
+      readonly PendingControllerEventObservation[]
+    >();
+    for (const faction of this.state.factions) {
+      if (this.controllerFaultedFactionIds.has(faction.id)) continue;
+      const pending = this.pendingControllerEventsByFaction.get(faction.id);
+      if (pending === undefined || pending.length === 0) continue;
+      visible.set(
+        faction.id,
+        Object.freeze(pending.slice(0, CONTROLLER_EVENTS_PER_DECISION)),
+      );
+    }
+    return visible;
+  }
+
+  private consumeControllerEventsAfterDecision(
+    evaluated: ControllerRoundEvaluation,
+  ): void {
+    for (const faction of this.state.factions) {
+      if (evaluated.faultedFactionIds.has(faction.id)) {
+        this.pendingControllerEventsByFaction.delete(faction.id);
+        this.pendingControllerEventOverflowByFaction.delete(faction.id);
+        continue;
+      }
+
+      const existing =
+        this.pendingControllerEventsByFaction.get(faction.id) ??
+        Object.freeze([] as PendingControllerEventObservation[]);
+      const consumed = Math.min(
+        existing.length,
+        CONTROLLER_EVENTS_PER_DECISION,
+      );
+      const remaining = existing.slice(consumed);
+      const overflow =
+        this.pendingControllerEventOverflowByFaction.get(faction.id);
+      if (
+        overflow !== undefined &&
+        remaining.length < CONTROLLER_PENDING_EVENTS_PER_FACTION
+      ) {
+        remaining.push(
+          Object.freeze({
+            type: "EVENT_BACKLOG_OVERFLOW" as const,
+            droppedCount: overflow.droppedCount,
+            firstDroppedTick: overflow.firstDroppedTick,
+            lastDroppedTick: overflow.lastDroppedTick,
+          }),
+        );
+        this.pendingControllerEventOverflowByFaction.delete(faction.id);
+      }
+
+      if (remaining.length === 0) {
+        this.pendingControllerEventsByFaction.delete(faction.id);
+      } else {
+        this.pendingControllerEventsByFaction.set(
+          faction.id,
+          Object.freeze(remaining),
+        );
+      }
+    }
+  }
+
+  private enqueueControllerEvents(
+    factionId: string,
+    events: readonly PendingControllerEventObservation[],
+    tick: number,
+  ): void {
+    if (
+      events.length === 0 ||
+      this.controllerFaultedFactionIds.has(factionId)
+    ) {
+      return;
+    }
+
+    const pending = [
+      ...(this.pendingControllerEventsByFaction.get(factionId) ?? []),
+    ];
+    let overflow = this.pendingControllerEventOverflowByFaction.get(factionId);
+
+    for (const event of events) {
+      if (
+        overflow !== undefined ||
+        pending.length >= CONTROLLER_PENDING_EVENTS_PER_FACTION
+      ) {
+        overflow = Object.freeze({
+          droppedCount: Math.min(
+            Number.MAX_SAFE_INTEGER,
+            (overflow?.droppedCount ?? 0) + 1,
+          ),
+          firstDroppedTick: overflow?.firstDroppedTick ?? tick,
+          lastDroppedTick: tick,
+        });
+        continue;
+      }
+      pending.push(event);
+    }
+
+    if (pending.length > 0) {
+      this.pendingControllerEventsByFaction.set(
+        factionId,
+        Object.freeze(pending),
+      );
+    }
+    if (overflow !== undefined) {
+      this.pendingControllerEventOverflowByFaction.set(factionId, overflow);
+    }
   }
 
   private commitControllerRound(
@@ -1168,11 +1475,7 @@ export class MatchRuntime {
     for (const entry of frozenReceipts) {
       this.controllerReceipts.set(entry.factionId, entry.receipt);
     }
-    for (const faction of this.state.factions) {
-      if (!this.controllerFaultedFactionIds.has(faction.id)) {
-        this.pendingTeamSignalsByFaction.delete(faction.id);
-      }
-    }
+    this.consumeControllerEventsAfterDecision(evaluated);
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
     this.controllerConsecutiveFaultCounts = new Map(
       evaluated.consecutiveFaultCounts,
@@ -1211,7 +1514,7 @@ export class MatchRuntime {
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
         this.controllerReferences,
-        this.pendingTeamSignalsByFaction,
+        this.pendingControllerEventsForDecision(),
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
@@ -1238,6 +1541,154 @@ export class MatchRuntime {
       });
   }
 
+  private resolveDelayedProductionControllerEventDeliveries(
+    previousState: MatchState,
+    nextState: MatchState,
+  ): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+    const deliveries = new Map<string, PendingControllerEventObservation[]>();
+    const previousUnitIds = new Set(
+      previousState.mobileUnits.map((unit) => unit.id),
+    );
+
+    for (const [factoryId, correlation] of [
+      ...this.pendingTankOriginByFactoryId,
+    ].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))) {
+      const previousJob = previousState.tankProductionJobs.find(
+        (job) => job.factoryId === factoryId,
+      );
+      const nextJob = nextState.tankProductionJobs.find(
+        (job) => job.factoryId === factoryId,
+      );
+      if (previousJob === undefined) {
+        this.pendingTankOriginByFactoryId.delete(factoryId);
+        continue;
+      }
+      if (nextJob !== undefined) continue;
+
+      const factory = nextState.structures.find(
+        (structure) =>
+          structure.id === factoryId &&
+          structure.type === "FACTORY" &&
+          structure.ownerId === correlation.ownerId,
+      );
+      const created =
+        factory?.outputCellId === undefined
+          ? undefined
+          : nextState.mobileUnits.find(
+              (unit) =>
+                !previousUnitIds.has(unit.id) &&
+                unit.type === "TANK" &&
+                unit.ownerId === correlation.ownerId &&
+                unit.cellId === factory.outputCellId,
+            );
+      if (created !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          correlation.ownerId,
+          Object.freeze({
+            type: "UNIT_CHANGED" as const,
+            unitId: created.id,
+            reason: "CREATED",
+            originAction: correlation.originAction,
+          }),
+        );
+      }
+      this.pendingTankOriginByFactoryId.delete(factoryId);
+    }
+
+    for (const [portId, correlation] of [
+      ...this.pendingWarshipOriginByPortId,
+    ].sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))) {
+      const previousJob = previousState.warshipProductionJobs.find(
+        (job) => job.portId === portId,
+      );
+      const nextJob = nextState.warshipProductionJobs.find(
+        (job) => job.portId === portId,
+      );
+      if (previousJob === undefined) {
+        this.pendingWarshipOriginByPortId.delete(portId);
+        continue;
+      }
+      if (nextJob !== undefined) continue;
+
+      const port = nextState.structures.find(
+        (structure) =>
+          structure.id === portId &&
+          structure.type === "PORT" &&
+          structure.ownerId === correlation.ownerId,
+      );
+      const created =
+        port?.outputCellId === undefined
+          ? undefined
+          : nextState.mobileUnits.find(
+              (unit) =>
+                !previousUnitIds.has(unit.id) &&
+                unit.type === "WARSHIP" &&
+                unit.ownerId === correlation.ownerId &&
+                unit.cellId === port.outputCellId,
+            );
+      if (created !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          correlation.ownerId,
+          Object.freeze({
+            type: "UNIT_CHANGED" as const,
+            unitId: created.id,
+            reason: "CREATED",
+            originAction: correlation.originAction,
+          }),
+        );
+      }
+      this.pendingWarshipOriginByPortId.delete(portId);
+    }
+
+    return freezeControllerEventDeliveries(deliveries);
+  }
+
+  private registerAcceptedProductionOrigins(
+    nextState: MatchState,
+    inputs: readonly AcceptedSimulationInput[],
+  ): void {
+    for (const input of [...inputs].sort(
+      (left, right) => left.sequence - right.sequence,
+    )) {
+      if (input.originAction === undefined) continue;
+      if (
+        input.action.type === "START_TANK_PRODUCTION" &&
+        nextState.tankProductionJobs.some(
+          (job) =>
+            job.factoryId === input.action.factoryId &&
+            job.ownerId === input.action.ownerId,
+        )
+      ) {
+        this.pendingTankOriginByFactoryId.set(
+          input.action.factoryId,
+          Object.freeze({
+            ownerId: input.action.ownerId,
+            originAction: input.originAction,
+          }),
+        );
+        continue;
+      }
+      if (
+        input.action.type === "START_WARSHIP_PRODUCTION" &&
+        nextState.warshipProductionJobs.some(
+          (job) =>
+            job.portId === input.action.portId &&
+            job.ownerId === input.action.ownerId,
+        )
+      ) {
+        this.pendingWarshipOriginByPortId.set(
+          input.action.portId,
+          Object.freeze({
+            ownerId: input.action.ownerId,
+            originAction: input.originAction,
+          }),
+        );
+      }
+    }
+  }
+
   tick(): MatchState {
     if (this.controllerRoundInFlightTick !== undefined) {
       throw new Error("controller round is in progress for this simulation tick");
@@ -1247,11 +1698,21 @@ export class MatchRuntime {
     this.pendingInputs = this.pendingInputs.filter(
       (input) => input.tick !== nextTick,
     );
-    const teamSignalDeliveries = resolvePendingTeamSignalDeliveries(
-      this.state,
-      executing,
+    const previousState = this.state;
+    const nextState = this.engine.advance(previousState, executing);
+    const controllerEventDeliveries = mergeControllerEventDeliveries(
+      resolveAcceptedInputControllerEventDeliveries(
+        previousState,
+        nextState,
+        executing,
+      ),
+      resolveDirectRevealControllerEventDeliveries(previousState, nextState),
+      this.resolveDelayedProductionControllerEventDeliveries(
+        previousState,
+        nextState,
+      ),
     );
-    const nextState = this.engine.advance(this.state, executing);
+    this.registerAcceptedProductionOrigins(nextState, executing);
     if (this.controllerReferences !== undefined) {
       for (const input of [...executing].sort(
         (left, right) => left.sequence - right.sequence,
@@ -1276,14 +1737,8 @@ export class MatchRuntime {
       this.controllerReferences.reconcile(nextState);
     }
     this.state = nextState;
-    for (const [factionId, signals] of teamSignalDeliveries) {
-      const existing = this.pendingTeamSignalsByFaction.get(factionId);
-      this.pendingTeamSignalsByFaction.set(
-        factionId,
-        existing === undefined
-          ? signals
-          : Object.freeze([...existing, ...signals]),
-      );
+    for (const [factionId, events] of controllerEventDeliveries) {
+      this.enqueueControllerEvents(factionId, events, nextState.tick);
     }
     return this.state;
   }
@@ -1332,7 +1787,10 @@ export class MatchRuntime {
       ) {
         const recorded = orderedInputs[cursor];
         if (recorded === undefined) break;
-        const regenerated = runtime.acceptAction(recorded.action);
+        const regenerated = runtime.acceptActionWithOrigin(
+          recorded.action,
+          recorded.originAction,
+        );
         if (
           regenerated.tick !== recorded.tick ||
           regenerated.sequence !== recorded.sequence

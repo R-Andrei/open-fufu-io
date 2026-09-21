@@ -1,4 +1,5 @@
 import type {
+  ActionRef,
   ControllerDecision,
   ControllerEvent,
   ControllerMemory,
@@ -50,6 +51,8 @@ export {
 } from "./ControllerSpatialSurface";
 
 export const CONTROLLER_MEMORY_MAX_BYTES = 131_072;
+export const CONTROLLER_EVENTS_PER_DECISION = 512;
+export const CONTROLLER_PENDING_EVENTS_PER_FACTION = 4_096;
 const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
@@ -95,6 +98,38 @@ export interface PendingTeamSignalObservation {
   readonly channel: string;
   readonly payload: JsonValue;
 }
+
+export type PendingControllerEventObservation =
+  | PendingTeamSignalObservation
+  | Readonly<{
+      readonly type: "STRUCTURE_CHANGED";
+      readonly structureId: string;
+      readonly reason: string;
+      readonly originAction?: ActionRef;
+    }>
+  | Readonly<{
+      readonly type: "UNIT_CHANGED";
+      readonly unitId: string;
+      readonly reason: string;
+      readonly originAction?: ActionRef;
+    }>
+  | Readonly<{
+      readonly type: "OPERATION_CHANGED";
+      readonly operationId: string;
+      readonly reason: string;
+      readonly originAction?: ActionRef;
+    }>
+  | Readonly<{
+      readonly type: "HOSTILE_SOURCE_REVEALED";
+      readonly sourceKind: "UNIT" | "STRUCTURE" | "OPERATION";
+      readonly sourceId: string;
+    }>
+  | Readonly<{
+      readonly type: "EVENT_BACKLOG_OVERFLOW";
+      readonly droppedCount: number;
+      readonly firstDroppedTick: number;
+      readonly lastDroppedTick: number;
+    }>;
 
 export interface LawfulControllerObservation {
   readonly tick: number;
@@ -720,7 +755,8 @@ export type ControllerProposedSimulationAction =
   | DeferredControllerStructureUpgradeAction;
 
 export interface ControllerProposedAction {
-  readonly key?: string;
+  /** Present only for one staged facade action; directive bundles have no ActionRef. */
+  readonly key?: ActionRef;
   readonly action: ControllerProposedSimulationAction;
 }
 
@@ -829,13 +865,137 @@ function requireFactionRef(
   return ref;
 }
 
+function pendingSourceStillLawfullyRevealed(
+  state: MatchState,
+  viewerFactionId: string,
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
+  sourceId: string,
+): boolean {
+  const active = state.directReveals.some(
+    (record) =>
+      record.viewerFactionId === viewerFactionId &&
+      record.sourceKind === sourceKind &&
+      record.sourceId === sourceId &&
+      state.tick < record.expiryExclusiveTick,
+  );
+  if (!active) return false;
+  switch (sourceKind) {
+    case "UNIT":
+      return state.mobileUnits.some((unit) => unit.id === sourceId);
+    case "STRUCTURE":
+      return state.structures.some((structure) => structure.id === sourceId);
+    case "OPERATION":
+      return state.operations.some((operation) => operation.id === sourceId);
+  }
+}
+
+function projectPendingControllerEvent(
+  state: MatchState,
+  viewerFactionId: string,
+  controllerReferences: ControllerFactionReferenceSource,
+  pending: PendingControllerEventObservation,
+): ControllerEvent | undefined {
+  if (!("type" in pending)) {
+    return Object.freeze({
+      type: "TEAM_SIGNAL_RECEIVED" as const,
+      fromFactionId: requireFactionRef(
+        controllerReferences,
+        pending.senderFactionId,
+      ),
+      channel: pending.channel,
+      payload: cloneLegalValue(pending.payload),
+    });
+  }
+
+  switch (pending.type) {
+    case "STRUCTURE_CHANGED": {
+      const structureId = controllerReferences.issue(
+        viewerFactionId,
+        "STRUCTURE",
+        pending.structureId,
+      );
+      if (structureId?.type !== "STRUCTURE") return undefined;
+      return Object.freeze({
+        type: pending.type,
+        structureId,
+        reason: pending.reason,
+        ...(pending.originAction === undefined
+          ? {}
+          : { originAction: pending.originAction }),
+      });
+    }
+    case "UNIT_CHANGED": {
+      const unitId = controllerReferences.issue(
+        viewerFactionId,
+        "UNIT",
+        pending.unitId,
+      );
+      if (unitId?.type !== "UNIT") return undefined;
+      return Object.freeze({
+        type: pending.type,
+        unitId,
+        reason: pending.reason,
+        ...(pending.originAction === undefined
+          ? {}
+          : { originAction: pending.originAction }),
+      });
+    }
+    case "OPERATION_CHANGED": {
+      const operationId = controllerReferences.issue(
+        viewerFactionId,
+        "OPERATION",
+        pending.operationId,
+      );
+      if (operationId?.type !== "OPERATION") return undefined;
+      return Object.freeze({
+        type: pending.type,
+        operationId,
+        reason: pending.reason,
+        ...(pending.originAction === undefined
+          ? {}
+          : { originAction: pending.originAction }),
+      });
+    }
+    case "HOSTILE_SOURCE_REVEALED": {
+      if (
+        !pendingSourceStillLawfullyRevealed(
+          state,
+          viewerFactionId,
+          pending.sourceKind,
+          pending.sourceId,
+        )
+      ) {
+        return undefined;
+      }
+      const source = controllerReferences.issue(
+        viewerFactionId,
+        pending.sourceKind,
+        pending.sourceId,
+      );
+      if (source?.type !== pending.sourceKind) return undefined;
+      return Object.freeze({
+        type: pending.type,
+        source,
+      }) as ControllerEvent;
+    }
+    case "EVENT_BACKLOG_OVERFLOW":
+      return Object.freeze({
+        type: pending.type,
+        droppedCount: pending.droppedCount,
+        firstDroppedTick: pending.firstDroppedTick,
+        lastDroppedTick: pending.lastDroppedTick,
+      });
+  }
+}
+
 export function projectLawfulControllerObservation(
   state: MatchState,
   factionId: string,
   decisionNumber: number,
   lastDecision: DecisionReceipt | undefined,
   controllerReferences: ControllerFactionReferenceSource,
-  pendingTeamSignals: readonly PendingTeamSignalObservation[] = Object.freeze([]),
+  pendingControllerEvents: readonly PendingControllerEventObservation[] =
+    Object.freeze([]),
 ): LawfulControllerObservation {
   const me = state.factions.find((faction) => faction.id === factionId);
   if (me === undefined) {
@@ -862,18 +1022,17 @@ export function projectLawfulControllerObservation(
     passiveFfyPerSecond,
   });
   const sinceLastDecision = Object.freeze(
-    pendingTeamSignals.map(
-      (signal): ControllerEvent =>
-        Object.freeze({
-          type: "TEAM_SIGNAL_RECEIVED" as const,
-          fromFactionId: requireFactionRef(
-            controllerReferences,
-            signal.senderFactionId,
-          ),
-          channel: signal.channel,
-          payload: cloneLegalValue(signal.payload),
-        }),
-    ),
+    pendingControllerEvents
+      .slice(0, CONTROLLER_EVENTS_PER_DECISION)
+      .flatMap((pending) => {
+        const projected = projectPendingControllerEvent(
+          state,
+          factionId,
+          controllerReferences,
+          pending,
+        );
+        return projected === undefined ? [] : [projected];
+      }),
   );
   const events = Object.freeze({ sinceLastDecision });
 
@@ -1485,9 +1644,9 @@ export function evaluateControllerRound(
   previousConsecutiveFaultCounts: ReadonlyMap<string, number> = new Map(),
   previousFaultedFactionIds: ReadonlySet<string> = new Set(),
   controllerReferences?: Parameters<typeof createControllerQuerySession>[3],
-  pendingTeamSignalsByFaction: ReadonlyMap<
+  pendingControllerEventsByFaction: ReadonlyMap<
     string,
-    readonly PendingTeamSignalObservation[]
+    readonly PendingControllerEventObservation[]
   > = new Map(),
 ): ControllerRoundEvaluation | Promise<ControllerRoundEvaluation> {
   if (controllerReferences === undefined) {
@@ -1524,7 +1683,7 @@ export function evaluateControllerRound(
       decisionNumber,
       previousReceipts.get(factionId),
       controllerReferences,
-      pendingTeamSignalsByFaction.get(factionId) ?? Object.freeze([]),
+      pendingControllerEventsByFaction.get(factionId) ?? Object.freeze([]),
     );
     const querySession = createControllerQuerySession(
       state,
@@ -1532,6 +1691,7 @@ export function evaluateControllerRound(
       CONTROLLER_QUERY_LIMITS,
       controllerReferences,
       factionScores,
+      decisionNumber,
     );
 
     try {

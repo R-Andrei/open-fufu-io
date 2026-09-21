@@ -262,10 +262,22 @@ function isEntityFilterArgument(
   return isPlainRecord(value);
 }
 
+function isEntityRefArgument(
+  value: unknown,
+  type: "UNIT" | "STRUCTURE" | "OPERATION",
+): boolean {
+  return (
+    isPlainRecord(value) &&
+    value.type === type &&
+    typeof value.token === "string" &&
+    value.token.length > 0
+  );
+}
+
 function isUnitLocatorArgument(value: unknown): value is UnitLocator {
   return (
     isPlainRecord(value) &&
-    ((typeof value.ref === "string" &&
+    ((isEntityRefArgument(value.ref, "UNIT") &&
       !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
       (typeof value.cellId === "number" &&
         !Object.prototype.hasOwnProperty.call(value, "ref")))
@@ -273,7 +285,13 @@ function isUnitLocatorArgument(value: unknown): value is UnitLocator {
 }
 
 function isStructureLocatorArgument(value: unknown): value is StructureLocator {
-  return isUnitLocatorArgument(value) as boolean;
+  return (
+    isPlainRecord(value) &&
+    ((isEntityRefArgument(value.ref, "STRUCTURE") &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
 }
 
 function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {

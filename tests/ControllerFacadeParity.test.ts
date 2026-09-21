@@ -19,6 +19,7 @@ import {
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
   evaluateControllerRound,
+  projectLawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import {
   createInitialMatchState,
@@ -209,6 +210,19 @@ const CHECK_ROWS: readonly CheckRow[] = Object.freeze([
 
 function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+}
+
+function contextEvents(
+  context: unknown,
+): readonly Readonly<Record<string, unknown>>[] {
+  const events = (
+    context as {
+      readonly events?: {
+        readonly sinceLastDecision?: readonly Readonly<Record<string, unknown>>[];
+      };
+    }
+  ).events?.sinceLastDecision;
+  return events === undefined ? Object.freeze([]) : events;
 }
 
 function facadeState(seed: string) {
@@ -509,6 +523,47 @@ describe("issue #206 trusted action staging parity RED", () => {
     }
   }, 30_000);
 
+  it("does not reuse ActionRefs across production-worker controller decisions", async () => {
+    const seed = "issue207-action-ref-cross-decision-worker";
+    const rules = compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", rules },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    const artifact = workerArtifact('context.structures.build("CITY", 999999)');
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact,
+        beta: artifact,
+      });
+      const actionRefs: unknown[] = [];
+
+      for (let decision = 0; decision < 2; decision += 1) {
+        const receipts = await Promise.resolve(runtime.runControllerRound(host));
+        const alphaReceipt = receipts.find(
+          (entry) => entry.factionId === "alpha",
+        )?.receipt;
+        expect(alphaReceipt).toMatchObject({ accepted: false });
+        actionRefs.push(alphaReceipt?.failure?.key);
+        if (decision === 0) runtime.tick();
+      }
+
+      expect(actionRefs[0]).toBeDefined();
+      expect(actionRefs[1]).toBeDefined();
+      expect(actionRefs[1]).not.toBe(actionRefs[0]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects injected legacy raw command arrays in both execution paths", async () => {
     const inProcess = new InProcessTestControllerHost({
       alpha() {
@@ -648,7 +703,7 @@ describe("issue #206 units.checkBuild authoritative RED", () => {
             ? canonical.job.remainingTicks
             : canonical.job.remainingTicks,
       });
-      expect(typeof quote.producerId).toBe("string");
+      expect(quote.producerId).toMatchObject({ type: "STRUCTURE" });
       const after = session.usage();
       expect(after.queries - before.queries).toBe(1);
       expect(
@@ -716,17 +771,6 @@ describe("issue #206 team.signal authoritative RED", () => {
     });
   }
 
-  function contextEvents(context: unknown): readonly Readonly<Record<string, unknown>>[] {
-    const events = (
-      context as {
-        readonly events?: {
-          readonly sinceLastDecision?: readonly Readonly<Record<string, unknown>>[];
-        };
-      }
-    ).events?.sinceLastDecision;
-    return events === undefined ? Object.freeze([]) : events;
-  }
-
   function noOpArtifact(): ControllerRuntimeArtifact {
     return Object.freeze({
       moduleSource: "export function decide() { return {}; }",
@@ -744,6 +788,160 @@ describe("issue #206 team.signal authoritative RED", () => {
       entrypoints: Object.freeze({ decide: "decide" }),
     });
   }
+
+  function queueTrustedTeamSignals(
+    runtime: MatchRuntime,
+    count: number,
+  ): number {
+    let ordinal = 0;
+    while (ordinal < count) {
+      const end = Math.min(count, ordinal + 64);
+      for (; ordinal < end; ordinal += 1) {
+        runtime.acceptAction({
+          type: "TEAM_SIGNAL",
+          senderFactionId: "alpha",
+          channel: "bulk",
+          payload: { ordinal },
+        });
+      }
+      runtime.tick();
+    }
+    return runtime.snapshot().tick;
+  }
+
+  async function collectBetaEvents(
+    runtime: MatchRuntime,
+  ): Promise<readonly Readonly<Record<string, unknown>>[]> {
+    let events: readonly Readonly<Record<string, unknown>>[] = [];
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          beta(context) {
+            events = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "beta")?.receipt,
+    ).toMatchObject({ accepted: true });
+    return events;
+  }
+
+  function pendingEventCount(runtime: MatchRuntime, factionId: string): number {
+    const pending = (
+      runtime as unknown as {
+        readonly pendingControllerEventsByFaction: ReadonlyMap<
+          string,
+          readonly unknown[]
+        >;
+      }
+    ).pendingControllerEventsByFaction.get(factionId);
+    return pending?.length ?? 0;
+  }
+
+  it("caps event exposure at 512 and retains FIFO excess at 511/512/513", async () => {
+    for (const count of [511, 512, 513] as const) {
+      const runtime = teamSignalRuntime(`issue207-event-cap-${count}`);
+      queueTrustedTeamSignals(runtime, count);
+      const first = await collectBetaEvents(runtime);
+      expect(first).toHaveLength(Math.min(count, 512));
+      expect(
+        (first[0] as { payload?: { ordinal?: number } } | undefined)?.payload
+          ?.ordinal,
+      ).toBe(0);
+      expect(
+        (
+          first.at(-1) as
+            | { payload?: { ordinal?: number } }
+            | undefined
+        )?.payload?.ordinal,
+      ).toBe(Math.min(count, 512) - 1);
+
+      runtime.tick();
+      const second = await collectBetaEvents(runtime);
+      expect(second).toHaveLength(Math.max(0, count - 512));
+      if (count === 513) {
+        expect(second[0]).toMatchObject({
+          type: "TEAM_SIGNAL_RECEIVED",
+          channel: "bulk",
+          payload: { ordinal: 512 },
+        });
+      }
+    }
+  });
+
+  it("bounds pending events at 4096 and surfaces one FIFO overflow/resync event at 4095/4096/4097", async () => {
+    for (const count of [4095, 4096, 4097] as const) {
+      const runtime = teamSignalRuntime(`issue207-event-backlog-${count}`);
+      const lastQueuedTick = queueTrustedTeamSignals(runtime, count);
+      expect(pendingEventCount(runtime, "beta")).toBe(Math.min(count, 4096));
+
+      const batches: Array<readonly Readonly<Record<string, unknown>>[]> = [];
+      for (let decision = 0; decision < 9; decision += 1) {
+        batches.push(await collectBetaEvents(runtime));
+        if (decision < 8) runtime.tick();
+      }
+
+      const lengths = batches.map((batch) => batch.length);
+      if (count === 4095) {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 511, 0]);
+      } else if (count === 4096) {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 512, 0]);
+      } else {
+        expect(lengths).toEqual([512, 512, 512, 512, 512, 512, 512, 512, 1]);
+        expect(batches[8]).toEqual([
+          {
+            type: "EVENT_BACKLOG_OVERFLOW",
+            droppedCount: 1,
+            firstDroppedTick: lastQueuedTick,
+            lastDroppedTick: lastQueuedTick,
+          },
+        ]);
+        expect(
+          (
+            batches[7]?.at(-1) as
+              | { payload?: { ordinal?: number } }
+              | undefined
+          )?.payload?.ordinal,
+        ).toBe(4095);
+      }
+    }
+  });
+
+  it("does not retain pending events for a permanently faulted controller", async () => {
+    const runtime = teamSignalRuntime("issue207-faulted-event-consumer");
+    for (let fault = 1; fault <= 5; fault += 1) {
+      const receipts = await Promise.resolve(
+        runtime.runControllerRound(
+          new InProcessTestControllerHost({
+            beta() {
+              throw new Error("intentional controller fault");
+            },
+          }),
+        ),
+      );
+      expect(
+        receipts.find((entry) => entry.factionId === "beta")?.receipt,
+      ).toMatchObject({
+        accepted: false,
+        faultCount: fault,
+        faulted: fault === 5,
+      });
+      if (fault < 5) runtime.tick();
+    }
+
+    runtime.acceptAction({
+      type: "TEAM_SIGNAL",
+      senderFactionId: "alpha",
+      channel: "after-fault",
+      payload: { value: 1 },
+    });
+    runtime.tick();
+
+    expect(pendingEventCount(runtime, "beta")).toBe(0);
+  });
 
   it("delivers accepted signals only to other active fixed teammates on their next decision, in accepted-input order, then consumes them", async () => {
     const runtime = teamSignalRuntime("issue206-team-delivery");
@@ -830,6 +1028,120 @@ describe("issue #206 team.signal authoritative RED", () => {
       ),
     );
     expect(betaLater).toEqual([]);
+  });
+
+  it("projects hostile reveal facts through intrinsic Unit, Structure, and Operation Ref domains", () => {
+    const seed = "issue207-hostile-source-domain-projection";
+    const initial = createInitialMatchState(
+      createMicroSimulationSpec({
+        seed,
+        width: 4,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "beta", "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "issue207-structure-source",
+            ownerId: "beta",
+            type: "FORT",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: emptyRules() },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+    );
+    const createdUnit = createMobileUnit(
+      initial.map,
+      initial.factions.map((faction) => faction.id),
+      initial,
+      {
+        ownerId: "beta",
+        type: "TANK",
+        movementClass: "TANK",
+        cellId: 2,
+      },
+    );
+    const base = createProspectiveMatchState(initial, {
+      mobileUnits: createdUnit.mobileUnits,
+      nextMobileUnitOrdinal: createdUnit.nextMobileUnitOrdinal,
+    });
+    const sourceUnit = createdUnit.unit;
+    const sourceStructure = base.structures[0]!;
+    const sourceOperation = Object.freeze({
+      id: "issue207-operation-source",
+      controllerKey: "issue207-operation-directive",
+      kind: "ATTACK" as const,
+      ownerId: "beta",
+      targetFactionId: "alpha",
+      committedPopulation: 1,
+      source: Object.freeze({ kind: "CELLS" as const, ids: Object.freeze([1]) }),
+      target: Object.freeze({ kind: "CELLS" as const, ids: Object.freeze([0]) }),
+    });
+    const state = Object.freeze({
+      ...base,
+      operations: Object.freeze([sourceOperation]),
+      directReveals: Object.freeze([
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT" as const,
+          sourceId: sourceUnit.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "STRUCTURE" as const,
+          sourceId: sourceStructure.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "OPERATION" as const,
+          sourceId: sourceOperation.id,
+          expiryExclusiveTick: base.tick + 10,
+        }),
+      ]),
+    });
+    const references = new ControllerReferenceSession(seed, state);
+
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      0,
+      undefined,
+      references,
+      [
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "UNIT",
+          sourceId: sourceUnit.id,
+        },
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "STRUCTURE",
+          sourceId: sourceStructure.id,
+        },
+        {
+          type: "HOSTILE_SOURCE_REVEALED",
+          sourceKind: "OPERATION",
+          sourceId: sourceOperation.id,
+        },
+      ] as never,
+    );
+
+    expect(
+      observation.events.sinceLastDecision.map((event) =>
+        event.type === "HOSTILE_SOURCE_REVEALED" ? event.source.type : event.type,
+      ),
+    ).toEqual(["UNIT", "STRUCTURE", "OPERATION"]);
+    for (const event of observation.events.sinceLastDecision) {
+      expect(JSON.stringify(event)).not.toContain(sourceUnit.id);
+      expect(JSON.stringify(event)).not.toContain(sourceStructure.id);
+      expect(JSON.stringify(event)).not.toContain(sourceOperation.id);
+    }
   });
 
   it("treats an unteamed sender with no eligible teammate as a lawful no-op", async () => {
@@ -1365,6 +1677,60 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
     expect(rejected.tick().tankProductionJobs).toEqual([]);
   });
 
+  it("delivers delayed Tank creation with the original ActionRef and public UnitRef", async () => {
+    const runtime = tankRuntime("issue207-tank-origin-event");
+    let originAction: string | undefined;
+
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.units.build("TANK", { cellId: 1 }, 3);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true, faulted: false });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    runtime.tick();
+    for (let tick = 0; tick < 49; tick += 1) runtime.tick();
+
+    const deployed = runtime.snapshot().mobileUnits.find(
+      (unit) => unit.ownerId === "alpha" && unit.type === "TANK",
+    );
+    expect(deployed).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toEqual([
+      expect.objectContaining({
+        type: "UNIT_CHANGED",
+        reason: "CREATED",
+        originAction,
+        unitId: expect.objectContaining({ type: "UNIT" }),
+      }),
+    ]);
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(deployed?.id);
+  });
+
   it("commits the same Tank build through the production isolate", async () => {
     const runtime = tankRuntime("issue206-tank-build-worker");
     const pool = new ControllerProcessWorkerPool({ size: 1 });
@@ -1687,6 +2053,61 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
         remainingTicks: 50,
       }),
     ]);
+  });
+
+  it("delivers delayed Warship creation with the original ActionRef and public UnitRef", async () => {
+    const runtime = p29Runtime("issue207-warship-origin-event");
+    advanceP29RuntimeUntilFfy(runtime, 250_000);
+    let originAction: string | undefined;
+
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.units.build("WARSHIP", { cellId: 1 }, 2);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true, faulted: false });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    runtime.tick();
+    for (let tick = 0; tick < 49; tick += 1) runtime.tick();
+
+    const deployed = runtime.snapshot().mobileUnits.find(
+      (unit) => unit.ownerId === "alpha" && unit.type === "WARSHIP",
+    );
+    expect(deployed).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toEqual([
+      expect.objectContaining({
+        type: "UNIT_CHANGED",
+        reason: "CREATED",
+        originAction,
+        unitId: expect.objectContaining({ type: "UNIT" }),
+      }),
+    ]);
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(deployed?.id);
   });
 
   it("converts Warship move through both hosts and commits the requested Deep-Water destination", async () => {
@@ -2585,6 +3006,148 @@ describe("issue #206 Transport facade authoritative RED", () => {
     ]);
   });
 
+  it("delivers successful Transport creation with public UnitRef and exact originAction on the next decision", async () => {
+    const runtime = transportRuntime("issue207-transport-origin-event");
+    let originAction: string | undefined;
+    const receipts = await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.transports.embark(3, 5, 100);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({ accepted: true });
+    expect(originAction).toBeDefined();
+    expect(runtime.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    const after = runtime.tick();
+    const transport = after.mobileUnits.find(
+      (unit) => unit.type === "TRANSPORT_SHIP" && unit.ownerId === "alpha",
+    );
+    expect(transport).toBeDefined();
+    if (transport === undefined) throw new Error("expected created Transport");
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    let betaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = contextEvents(context);
+            return {};
+          },
+          beta(context) {
+            betaEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toHaveLength(1);
+    expect(alphaEvents[0]).toMatchObject({
+      type: "UNIT_CHANGED",
+      reason: "CREATED",
+      originAction,
+      unitId: { type: "UNIT" },
+    });
+    const unitRef = alphaEvents[0]?.unitId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(unitRef?.token).not.toBe(transport?.id);
+    expect(betaEvents).toEqual([]);
+  });
+
+  it("keeps lifecycle Ref and ActionRef correlation usable through production worker replacement", async () => {
+    const runtime = transportRuntime("issue207-event-worker-replacement");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export async function decide(context) {
+              if (context.memory.phase === undefined) {
+                const actionRef = context.transports.embark(3, 5, 100);
+                return {
+                  memory: { phase: "WAITING", actionRef },
+                };
+              }
+              if (context.memory.phase === "WAITING") {
+                const event = context.events.sinceLastDecision.find(
+                  (candidate) => candidate.type === "UNIT_CHANGED",
+                );
+                if (event === undefined) throw new Error("missing lifecycle event");
+                if (event.originAction !== context.memory.actionRef) {
+                  throw new Error("origin ActionRef mismatch");
+                }
+                if (event.unitId?.type !== "UNIT") {
+                  throw new Error("missing UnitRef discriminator");
+                }
+                return {
+                  memory: {
+                    phase: "STORED",
+                    actionRef: context.memory.actionRef,
+                    unitRef: event.unitId,
+                  },
+                };
+              }
+              if (
+                context.memory.unitRef?.type !== "UNIT" ||
+                typeof context.memory.unitRef.token !== "string" ||
+                typeof context.memory.actionRef !== "string"
+              ) {
+                throw new Error(
+                  "stored lifecycle correlation did not survive worker replacement",
+                );
+              }
+              return {};
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+
+      const first = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        first.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+
+      runtime.tick();
+
+      const second = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        second.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+
+      const priorPid = pool.workerProcessIds()[0];
+      if (priorPid === undefined) throw new Error("expected worker pid");
+      process.kill(priorPid, "SIGKILL");
+      let replaced = false;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (pool.workerProcessIds()[0] !== priorPid) {
+          replaced = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(replaced).toBe(true);
+
+      runtime.tick();
+
+      const third = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        third.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true, faulted: false });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects sibling embark oversubscription atomically without committing the first sibling", async () => {
     const runtime = transportRuntime("issue206-transport-embark-atomic");
     const before = runtime.snapshot();
@@ -2975,8 +3538,8 @@ describe("issue #206 strategic weapon baseline RED", () => {
       targetCellId: 1,
       chargeConsumed: true,
     });
-    expect(typeof quote.launcherId).toBe("string");
-    expect(quote.launcherId).not.toBe("silo-alpha");
+    expect(quote.launcherId).toMatchObject({ type: "STRUCTURE" });
+    expect(quote.launcherId).not.toEqual("silo-alpha");
     const after = session.usage();
     expect(after.queries - before.queries).toBe(1);
     expect(after.materializedEntityViews - before.materializedEntityViews).toBe(0);
@@ -3011,7 +3574,7 @@ describe("issue #206 strategic weapon baseline RED", () => {
         targetCellId: 1,
         chargeConsumed: true,
       });
-      expect(typeof log.result.launcherId).toBe("string");
+      expect(log.result.launcherId).toMatchObject({ type: "STRUCTURE" });
       expect(result.usage?.queries).toBeUndefined();
       expect(session.usage().queries).toBe(1);
       expect(session.usage().materializedEntityViews).toBe(0);

@@ -279,21 +279,50 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     expect(runtime.snapshot().factions[0]?.status).toBe("ACTIVE");
   });
 
-  it("materializes accepted staged controller actions before replay recording and regenerates exactly", () => {
+  it("does not reuse ActionRefs across in-process controller decisions", () => {
+    const runtime = twoFactionRuntime("action-ref-cross-decision-in-process");
+    const actionRefs: string[] = [];
+
+    for (let decision = 0; decision < 2; decision += 1) {
+      const receipts = runtime.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            actionRefs.push(context.structures!.build("CITY", 999_999));
+            return {};
+          },
+        }),
+      );
+      expect(
+        receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({
+        accepted: false,
+        failure: { key: actionRefs[decision] },
+      });
+      if (decision === 0) runtime.tick();
+    }
+
+    expect(actionRefs).toHaveLength(2);
+    expect(actionRefs[1]).not.toBe(actionRefs[0]);
+  });
+
+  it("materializes staged ActionRef origin before replay recording and regenerates it exactly", () => {
     const runtime = twoFactionRuntime("controller-replay");
+    let actionRef: string | undefined;
     runtime.runControllerRound(
       new InProcessTestControllerHost({
         alpha(context) {
-          context.capitulate!();
+          actionRef = context.capitulate!();
           return {};
         },
       }),
     );
 
+    expect(actionRef).toBeDefined();
     expect(runtime.acceptedInputs()).toEqual([
       {
         tick: 1,
         sequence: 0,
+        originAction: actionRef,
         action: { type: "CAPITULATE_FACTION", factionId: "alpha" },
       },
     ]);
@@ -307,6 +336,7 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     );
     expect(regenerated.snapshot()).toEqual(runtime.snapshot());
     expect(regenerated.stateFingerprint()).toBe(runtime.stateFingerprint());
+    expect(regenerated.acceptedInputs()).toEqual(runtime.acceptedInputs());
   });
 
   it("surfaces the previous decision receipt on the next eligible controller observation", () => {

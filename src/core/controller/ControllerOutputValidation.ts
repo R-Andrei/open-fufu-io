@@ -60,6 +60,19 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
+function isEntityRef(
+  value: unknown,
+  type: "UNIT" | "STRUCTURE" | "OPERATION",
+): boolean {
+  return (
+    isPlainRecord(value) &&
+    value.type === type &&
+    typeof value.token === "string" &&
+    value.token.length > 0
+  );
+}
+
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
@@ -118,7 +131,7 @@ function isCellSelector(value: unknown): boolean {
       );
     case "STRUCTURE_FIELD_INSTANCE":
       return (
-        typeof value.structureId === "string" &&
+        isEntityRef(value.structureId, "STRUCTURE") &&
         isVocabularyValue(STRUCTURE_FIELD_IDS, value.field)
       );
     case "UNION":
@@ -165,7 +178,7 @@ function isPersistentDirective(value: unknown): boolean {
       return isSpatialPolicy(value.priority);
     case "COUNTER_RESPONSE":
       return (
-        typeof value.incomingOperation === "string" &&
+        isEntityRef(value.incomingOperation, "OPERATION") &&
         value.incomingOperationId === undefined &&
         isFiniteNumber(value.population)
       );
@@ -182,10 +195,13 @@ function isDebugSubject(value: unknown): boolean {
     case "SEGMENT":
       return isFiniteNumber(value.id);
     case "FACTION":
-    case "OPERATION":
-    case "UNIT":
-    case "STRUCTURE":
       return typeof value.id === "string";
+    case "OPERATION":
+      return isEntityRef(value.id, "OPERATION");
+    case "UNIT":
+      return isEntityRef(value.id, "UNIT");
+    case "STRUCTURE":
+      return isEntityRef(value.id, "STRUCTURE");
     default:
       return false;
   }

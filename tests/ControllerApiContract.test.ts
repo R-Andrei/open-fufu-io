@@ -1,6 +1,7 @@
 import path from "node:path";
 import * as ts from "typescript";
 import type {
+  ActionRef,
   CaptureCalculation,
   ControllerEvent,
   FactionRef,
@@ -8,6 +9,7 @@ import type {
   GrowthCalculation,
   HostilityMechanicsSpec,
   MechanicsApi,
+  OperationRef,
   PersistentDirective,
   PopulationView,
   PurchasableUnitType,
@@ -106,10 +108,60 @@ void fixtureHeavy;
 void fixtureTrain;
 void fixtureTrade;
 
-const fixtureFactoryRef = "factory-1" as StructureRef;
-const fixtureUnitRef = "unit-1" as UnitRef;
+const fixtureFactoryRef = {
+  type: "STRUCTURE",
+  token: "factory-1",
+} as StructureRef;
+const fixtureUnitRef = { type: "UNIT", token: "unit-1" } as UnitRef;
 const fixtureFactionARef = "faction-a" as FactionRef;
 const fixtureFactionBRef = "faction-b" as FactionRef;
+
+// #207: entity refs must expose a plain-JavaScript runtime discriminator.
+// The opaque identity payload remains deliberately unspecified here.
+type FixtureUnitRefType = UnitRef["type"];
+type FixtureStructureRefType = StructureRef["type"];
+type FixtureOperationRefType = OperationRef["type"];
+const fixtureUnitRefType: FixtureUnitRefType = "UNIT";
+const fixtureStructureRefType: FixtureStructureRefType = "STRUCTURE";
+const fixtureOperationRefType: FixtureOperationRefType = "OPERATION";
+const fixtureOperationRef = {
+  type: "OPERATION",
+  token: "operation-1",
+} as OperationRef;
+const fixtureActionRef = "action-fixture" as ActionRef;
+void fixtureUnitRefType;
+void fixtureStructureRefType;
+void fixtureOperationRefType;
+
+const fixtureStructureChangedWithOrigin: ControllerEvent = {
+  type: "STRUCTURE_CHANGED",
+  structureId: fixtureFactoryRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+const fixtureUnitChangedWithOrigin: ControllerEvent = {
+  type: "UNIT_CHANGED",
+  unitId: fixtureUnitRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+const fixtureOperationChangedWithOrigin: ControllerEvent = {
+  type: "OPERATION_CHANGED",
+  operationId: fixtureOperationRef,
+  reason: "CREATED",
+  originAction: fixtureActionRef,
+};
+void fixtureStructureChangedWithOrigin;
+void fixtureUnitChangedWithOrigin;
+void fixtureOperationChangedWithOrigin;
+
+const fixtureEventBacklogOverflow: ControllerEvent = {
+  type: "EVENT_BACKLOG_OVERFLOW",
+  droppedCount: 1,
+  firstDroppedTick: 12,
+  lastDroppedTick: 12,
+};
+void fixtureEventBacklogOverflow;
 
 const fixtureCapturedFactoryPath: StructureAcquisitionPath = "CAPTURE_TRANSFER";
 void fixtureCapturedFactoryPath;
@@ -155,9 +207,14 @@ const fixtureFreeFirstPurchaseQuote: StructureBuildQuote = {
 };
 void fixtureFreeFirstPurchaseQuote;
 
-const fixtureFreshCityRef = "fixture:fresh-city" as StructureView["ref"];
-const fixtureUpgradingCityRef =
-  "fixture:upgrading-city" as StructureView["ref"];
+const fixtureFreshCityRef = {
+  type: "STRUCTURE",
+  token: "fixture:fresh-city",
+} as StructureView["ref"];
+const fixtureUpgradingCityRef = {
+  type: "STRUCTURE",
+  token: "fixture:upgrading-city",
+} as StructureView["ref"];
 const fixtureOwnerRef = "fixture:faction-a" as StructureView["ownerId"];
 
 const fixtureFreshDirectLevel5City: StructureView = {
@@ -340,7 +397,7 @@ const p27AntiShipAttack: SamAntiShipAttackSpec = {
   requiresAtWar: false,
 };
 
-const p27SamRef = "sam-p27" as StructureRef;
+const p27SamRef = { type: "STRUCTURE", token: "sam-p27" } as StructureRef;
 const p27SamField: CellSelector = {
   kind: "STRUCTURE_FIELD_INSTANCE",
   structureId: p27SamRef,

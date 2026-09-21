@@ -40,16 +40,33 @@ declare const actionRefBrand: unique symbol;
 
 /** Stable opaque match-global public faction identity. */
 export type FactionRef = string & { readonly [factionRefBrand]: "FactionRef" };
-/** Stable opaque viewer-scoped public mobile-unit incarnation identity. */
-export type UnitRef = string & { readonly [unitRefBrand]: "UnitRef" };
-/** Stable opaque viewer-scoped public persistent-structure incarnation identity. */
-export type StructureRef = string & {
+/**
+ * Stable opaque viewer-scoped public mobile-unit incarnation identity.
+ * Plain JavaScript may inspect `ref.type`; `token` is opaque and must not be parsed.
+ */
+export type UnitRef = Readonly<{
+  readonly type: "UNIT";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
+  readonly [unitRefBrand]: "UnitRef";
+}>;
+/**
+ * Stable opaque viewer-scoped public persistent-structure incarnation identity.
+ * Plain JavaScript may inspect `ref.type`; `token` is opaque and must not be parsed.
+ */
+export type StructureRef = Readonly<{
+  readonly type: "STRUCTURE";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
   readonly [structureRefBrand]: "StructureRef";
-};
+}>;
 /** Stable opaque viewer-scoped public operation identity. */
-export type OperationRef = string & {
+export type OperationRef = Readonly<{
+  readonly type: "OPERATION";
+  /** Opaque engine-owned identity token. */
+  readonly token: string;
   readonly [operationRefBrand]: "OperationRef";
-};
+}>;
 /** Opaque receipt for one action staged through the controller facade. */
 export type ActionRef = string & { readonly [actionRefBrand]: "ActionRef" };
 
@@ -1098,18 +1115,33 @@ export type ControllerEvent =
       readonly type: "STRUCTURE_CHANGED";
       readonly structureId: StructureRef;
       readonly reason: string;
+      /** Present only when this public transition was caused by a staged action. */
+      readonly originAction?: ActionRef;
     }
   | {
       readonly type: "UNIT_CHANGED";
       readonly unitId: UnitRef;
       readonly reason: string;
+      /**
+       * Present only when this public transition was caused by a staged action.
+       * Delayed production retains the original ActionRef until materialization.
+       */
+      readonly originAction?: ActionRef;
     }
   | {
       readonly type: "OPERATION_CHANGED";
       readonly operationId: OperationRef;
       readonly reason: string;
+      /** Present only when this public transition was caused by a staged action. */
+      readonly originAction?: ActionRef;
     }
   | {
+      /**
+       * First acquisition of one canonical direct reveal for this viewer.
+       * Ordinary refreshes do not repeat the event; expiry followed by a later
+       * manifestation may produce a new acquisition. The Ref confers no
+       * visibility or liveness beyond the canonical observation rules.
+       */
       readonly type: "HOSTILE_SOURCE_REVEALED";
       readonly source: UnitRef | StructureRef | OperationRef;
     }
@@ -1135,10 +1167,22 @@ export type ControllerEvent =
       readonly fromFactionId: FactionRef;
       readonly channel: string;
       readonly payload: JsonValue;
+    }
+  | {
+      readonly type: "EVENT_BACKLOG_OVERFLOW";
+      readonly droppedCount: number;
+      readonly firstDroppedTick: number;
+      readonly lastDroppedTick: number;
     };
 
 export interface EventsApi {
-  /** Events are requester-lawful projections and never act as a hidden-state side channel. */
+  /**
+   * Requester-lawful FIFO events since the prior decision.
+   *
+   * Delivery is resource-bounded. EVENT_BACKLOG_OVERFLOW explicitly marks that
+   * older event history exceeded the retained backlog and current lawful state
+   * should be re-read where needed.
+   */
   readonly sinceLastDecision: readonly ControllerEvent[];
 }
 

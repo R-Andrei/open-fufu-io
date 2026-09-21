@@ -15,6 +15,7 @@ import type {
   MechanicsApi,
   MobileUnitType,
   OperationKind,
+  OperationRef,
   OperationStatus,
   PublicFactionRelation,
   PurchasableUnitType,
@@ -247,7 +248,7 @@ export interface ControllerQueryUsage {
 }
 
 export interface ControllerOperationReadView {
-  readonly ref: string;
+  readonly ref: OperationRef;
   readonly directiveKey?: string;
   readonly kind: OperationKind;
   readonly ownerId: FactionReadView["ref"];
@@ -304,7 +305,7 @@ export interface ControllerQuerySession {
     proximity(ref: string): number | undefined;
   }>;
   readonly operations: Readonly<{
-    get(ref: string): ControllerOperationReadView | undefined;
+    get(ref: OperationRef): ControllerOperationReadView | undefined;
     own(): readonly ControllerOperationReadView[];
     incoming(): readonly ControllerOperationReadView[];
   }>;
@@ -436,7 +437,7 @@ interface StructureVisibilityContext {
   readonly remoteObservationFields: readonly StructureFieldSource[];
   readonly enemyBlackoutFields: readonly StructureFieldSource[];
   readonly resolveFactionRef?: (ref: string) => string | undefined;
-  readonly resolveStructureRef?: (ref: string) => string | undefined;
+  readonly resolveStructureRef?: (ref: StructureRef) => string | undefined;
 }
 
 interface ControllerQueryMobileUnitState {
@@ -452,11 +453,11 @@ export interface ControllerQueryReferenceSession {
     viewerFactionId: string,
     domain: "UNIT" | "STRUCTURE" | "OPERATION",
     authoritativeId: string,
-  ): string | undefined;
+  ): UnitRef | StructureRef | OperationRef | undefined;
   resolve(
     viewerFactionId: string,
     domain: "UNIT" | "STRUCTURE" | "OPERATION",
-    ref: string,
+    ref: unknown,
   ): string | undefined;
   issueFaction(factionId: string): FactionReadView["ref"] | undefined;
   resolveFaction(ref: string): string | undefined;
@@ -833,7 +834,7 @@ function createStructureVisibilityContext(
       ? {}
       : {
           resolveFactionRef: (ref: string) => references.resolveFaction(ref),
-          resolveStructureRef: (ref: string) =>
+          resolveStructureRef: (ref: StructureRef) =>
             references.resolve(requesterFactionId, "STRUCTURE", ref),
         }),
   });
@@ -1693,6 +1694,7 @@ export function createControllerQuerySession(
   limits: ControllerQueryBudgetLimits,
   references?: ControllerQueryReferenceSession,
   factionScores?: ReadonlyMap<string, number>,
+  decisionNumber = 0,
 ): ControllerQuerySession {
   if (!state.factions.some((faction) => faction.id === requesterFactionId)) {
     throw new Error(`unknown controller faction: ${requesterFactionId}`);
@@ -1952,7 +1954,11 @@ export function createControllerQuerySession(
   let nextActionOrdinal = 1;
   const stagedActions: ControllerStagedAction[] = [];
   const nextActionRef = (): ActionRef => {
-    const actionRef = `action_${nextActionOrdinal}` as ActionRef;
+    const actionRef = (
+      decisionNumber === 0
+        ? `action_${nextActionOrdinal}`
+        : `action_${decisionNumber}_${nextActionOrdinal}`
+    ) as ActionRef;
     nextActionOrdinal += 1;
     return actionRef;
   };
@@ -2561,13 +2567,24 @@ export function createControllerQuerySession(
     entries: publicOperationEntries,
   });
 
-  const getOperation = (ref: string): ControllerOperationReadView | undefined => {
+  const getOperation = (
+    ref: OperationRef,
+  ): ControllerOperationReadView | undefined => {
     beginQuery();
     if (references === undefined) return undefined;
-    const authoritativeId = references.resolve(requesterFactionId, "OPERATION", ref);
+    const authoritativeId = references.resolve(
+      requesterFactionId,
+      "OPERATION",
+      ref,
+    );
     if (authoritativeId === undefined) return undefined;
     return publicOperationEntries.find(
-      (entry) => entry.view.ref === ref,
+      (entry) =>
+        references.resolve(
+          requesterFactionId,
+          "OPERATION",
+          entry.view.ref,
+        ) === authoritativeId,
     )?.view;
   };
 

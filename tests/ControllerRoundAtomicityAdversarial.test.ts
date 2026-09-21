@@ -209,6 +209,65 @@ function upgradeAction(match: MatchRuntime) {
 }
 
 describe("controller-round transaction adversarial behavior", () => {
+  it("delivers successful Structure creation with public Ref and exact originAction on the next decision", () => {
+    const match = structureRuntime("issue207-structure-origin-event");
+    for (let tick = 0; tick < 250; tick += 1) match.tick();
+    let originAction: string | undefined;
+
+    const receipts = syncReceipts(
+      match.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            originAction = context.structures!.build("FORT", 0);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(receiptFor(receipts, "alpha")).toMatchObject({ accepted: true });
+    expect(originAction).toBeDefined();
+    expect(match.acceptedInputs().at(-1)?.originAction).toBe(originAction);
+
+    const after = match.tick();
+    const created = after.structures.find(
+      (structure) =>
+        structure.ownerId === "alpha" &&
+        structure.type === "FORT" &&
+        structure.cellId === 0,
+    );
+    expect(created).toBeDefined();
+
+    let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    let betaEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    syncReceipts(
+      match.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            alphaEvents = context.events.sinceLastDecision;
+            return {};
+          },
+          beta(context) {
+            betaEvents = context.events.sinceLastDecision;
+            return {};
+          },
+        }),
+      ),
+    );
+
+    expect(alphaEvents).toHaveLength(1);
+    expect(alphaEvents[0]).toMatchObject({
+      type: "STRUCTURE_CHANGED",
+      reason: "CREATED",
+      originAction,
+      structureId: { type: "STRUCTURE" },
+    });
+    const structureRef = alphaEvents[0]?.structureId as
+      | { readonly type?: unknown; readonly token?: unknown }
+      | undefined;
+    expect(structureRef?.token).not.toBe(created?.id);
+    expect(betaEvents).toEqual([]);
+  });
+
   it("rejects external authoritative input admission while an async controller round is pending", async () => {
     const match = runtime();
     let resolveAlpha!: (
