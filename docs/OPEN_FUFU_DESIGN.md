@@ -227,6 +227,8 @@ Current observation contains no engine-created `lastKnown` substitute for a subj
 
 The public controller contract expresses visibility primarily by lawful presence/absence of ordinary views rather than a global mutable `hidden` field. The internal projection reason is not itself required to be public. Origin-owned concealment transformations such as P45/P49 are defined by `ORIGIN_TRAIT_CATALOGUE.md`; Observation Post baseline behavior and authoritative structure-field geometry are owned by `TERRAIN_AND_STRUCTURES.md`.
 
+A controller-facing hostile-source acquisition event is a notification derived from that same canonical direct-reveal transition, not an independent visibility grant. It is emitted only for a viewer that newly acquires the direct reveal; ordinary refresh does not repeat it, while expiry followed by a later qualifying manifestation may create a new acquisition. The event carries the viewer's ordinary public source Ref, and retaining that Ref does not preserve visibility or liveness after the canonical reveal ends or the source ceases to exist.
+
 ## 5.2 Starter controller
 
 Every player begins with a minimal complete working controller. It should demonstrate lawful basic mechanics while remaining strategically weak and understandable.
