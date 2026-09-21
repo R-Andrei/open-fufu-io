@@ -725,10 +725,22 @@ function isEntityFilterArgument(
   return isPlainRecord(value);
 }
 
+function isEntityRefArgument(
+  value: unknown,
+  type: "UNIT" | "STRUCTURE" | "OPERATION",
+): boolean {
+  return (
+    isPlainRecord(value) &&
+    value.type === type &&
+    typeof value.token === "string" &&
+    value.token.length > 0
+  );
+}
+
 function isUnitLocatorArgument(value: unknown): value is UnitLocator {
   return (
     isPlainRecord(value) &&
-    ((typeof value.ref === "string" &&
+    ((isEntityRefArgument(value.ref, "UNIT") &&
       !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
       (typeof value.cellId === "number" &&
         !Object.prototype.hasOwnProperty.call(value, "ref")))
@@ -736,7 +748,13 @@ function isUnitLocatorArgument(value: unknown): value is UnitLocator {
 }
 
 function isStructureLocatorArgument(value: unknown): value is StructureLocator {
-  return isUnitLocatorArgument(value) as boolean;
+  return (
+    isPlainRecord(value) &&
+    ((isEntityRefArgument(value.ref, "STRUCTURE") &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
 }
 
 function isOptionalEntityFilterArgs(args: readonly unknown[]): boolean {
@@ -1134,7 +1152,12 @@ function validatePublicOperationSnapshot(value: WorkerPublicOperationSnapshot | 
   }
   return Object.freeze({
     entries: Object.freeze(value.entries.map((entry) => {
-      if (!isPlainRecord(entry) || (entry.direction !== "OWN" && entry.direction !== "INCOMING") || !isPlainRecord(entry.view) || typeof entry.view.ref !== "string") {
+      if (
+        !isPlainRecord(entry) ||
+        (entry.direction !== "OWN" && entry.direction !== "INCOMING") ||
+        !isPlainRecord(entry.view) ||
+        !isEntityRefArgument(entry.view.ref, "OPERATION")
+      ) {
         throw new Error("controller public operation entry is invalid");
       }
       return Object.freeze({ direction: entry.direction, view: Object.freeze({ ...entry.view }) });
@@ -1147,8 +1170,13 @@ function resolvePublicOperationRead(operations: WorkerPublicOperationSnapshot, v
   const args = value.args;
   switch (value.operation) {
     case "OPERATIONS_GET":
-      if (args.length !== 1 || typeof args[0] !== "string") break;
-      return operations.entries.find((entry) => entry.view.ref === args[0])?.view;
+      if (args.length !== 1 || !isEntityRefArgument(args[0], "OPERATION")) break;
+      return operations.entries.find(
+        (entry) =>
+          isEntityRefArgument(entry.view.ref, "OPERATION") &&
+          (entry.view.ref as { readonly token: string }).token ===
+            (args[0] as { readonly token: string }).token,
+      )?.view;
     case "OPERATIONS_OWN":
       if (args.length !== 0) break;
       return operations.entries.filter((entry) => entry.direction === "OWN").map((entry) => entry.view);
