@@ -696,9 +696,9 @@ A successfully committed controller team signal is addressed only to the sender'
 
 If the sender has no eligible active teammate — including when the sender has no fixed-team identity — the signal remains a lawful successful action and delivers nothing.
 
-Each eligible recipient receives one `TEAM_SIGNAL_RECEIVED` controller event carrying the sender's lawful public faction reference, submitted channel, and submitted JSON payload. The event becomes visible on that recipient's **next controller decision** after the accepted signal commits. After it has been exposed through `events.sinceLastDecision` for that decision, it is consumed and does not appear again merely because later decisions occur.
+Each eligible recipient receives one `TEAM_SIGNAL_RECEIVED` controller event carrying the sender's lawful public faction reference, submitted channel, and submitted JSON payload. Pending controller events are exposed in FIFO order on that recipient's eligible controller decisions, subject to the controller event-delivery budget. A signal is normally visible on the next decision after commit; when earlier pending events exhaust that decision's budget, the excess remains queued for a later decision. After an event has been exposed through `events.sinceLastDecision`, it is consumed and does not appear again merely because later decisions occur. If the bounded retained backlog itself is exceeded, the public controller contract surfaces an explicit overflow/resynchronization event rather than pretending that the missing history was delivered.
 
-When multiple accepted signals are pending for the same recipient, their public event order is the authoritative accepted-input order. Source collection order, worker scheduling, and recipient enumeration do not alter that ordering.
+When multiple accepted signals are pending for the same recipient, their public event order is the authoritative accepted-input order. Source collection order, worker scheduling, recipient enumeration, and delivery across multiple budget-limited decisions do not alter that ordering.
 
 Signal payloads use the existing controller-runtime `teamSignalPayloadBytes` bound and JSON-value contract. A payload that exceeds that bound is not a lawful committed signal.
 
