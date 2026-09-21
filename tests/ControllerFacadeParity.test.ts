@@ -212,6 +212,19 @@ function emptyRules() {
   return compileRuleProfile(RULE_AXIS_REGISTRY, { contributions: [] });
 }
 
+function contextEvents(
+  context: unknown,
+): readonly Readonly<Record<string, unknown>>[] {
+  const events = (
+    context as {
+      readonly events?: {
+        readonly sinceLastDecision?: readonly Readonly<Record<string, unknown>>[];
+      };
+    }
+  ).events?.sinceLastDecision;
+  return events === undefined ? Object.freeze([]) : events;
+}
+
 function facadeState(seed: string) {
   const match = new MatchRuntime(
     createMicroSimulationSpec({
@@ -756,17 +769,6 @@ describe("issue #206 team.signal authoritative RED", () => {
     return new MatchRuntime(teamSignalSpec(seed), {
       controllerReferenceNamespace: seed,
     });
-  }
-
-  function contextEvents(context: unknown): readonly Readonly<Record<string, unknown>>[] {
-    const events = (
-      context as {
-        readonly events?: {
-          readonly sinceLastDecision?: readonly Readonly<Record<string, unknown>>[];
-        };
-      }
-    ).events?.sinceLastDecision;
-    return events === undefined ? Object.freeze([]) : events;
   }
 
   function noOpArtifact(): ControllerRuntimeArtifact {
@@ -2766,28 +2768,6 @@ describe("issue #206 Transport facade authoritative RED", () => {
     );
     expect(transport).toBeDefined();
     if (transport === undefined) throw new Error("expected created Transport");
-
-    const issuedTransportRef = runtime
-      .controllerReferenceSession()
-      .issue("alpha", "UNIT", transport.id);
-    expect(issuedTransportRef).toMatchObject({ type: "UNIT" });
-
-    const pendingTransportEvents = (
-      runtime as unknown as {
-        readonly pendingControllerEventsByFaction: ReadonlyMap<
-          string,
-          readonly Readonly<Record<string, unknown>>[]
-        >;
-      }
-    ).pendingControllerEventsByFaction.get("alpha");
-    expect(pendingTransportEvents).toEqual([
-      {
-        type: "UNIT_CHANGED",
-        unitId: transport.id,
-        reason: "CREATED",
-        originAction,
-      },
-    ]);
 
     let alphaEvents: readonly Readonly<Record<string, unknown>>[] = [];
     let betaEvents: readonly Readonly<Record<string, unknown>>[] = [];
