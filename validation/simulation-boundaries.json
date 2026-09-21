@@ -331,6 +331,12 @@
       "rationale": "MatchRuntime validates accepted controller Transport embark/recall actions through Naval-owned atomic Transport transactions before TickEngine commit."
     },
     {
+      "from": "src/simulation/MatchRuntime.ts",
+      "to": "src/simulation/Warships.ts",
+      "classification": "ORCHESTRATION",
+      "rationale": "MatchRuntime validates accepted controller Warship build and strategic-move actions through the Naval-owned authoritative Warship production and destination transactions before TickEngine commit."
+    },
+    {
       "from": "src/simulation/MatchSpec.ts",
       "to": "src/simulation/MapArtifact.ts",
       "classification": "SHARED_CONTRACT",
