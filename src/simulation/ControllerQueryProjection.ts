@@ -2174,6 +2174,7 @@ export function createControllerQuerySession(
     const result = tryStartWarshipProduction(state, {
       ownerId: requesterFactionId,
       portId: structure.id,
+      strategicDestinationCellId: destination,
     });
     if (!result.ok) {
       return Object.freeze({
