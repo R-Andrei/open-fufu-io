@@ -1,3 +1,4 @@
+import type { OperationRef, StructureRef, UnitRef } from "../src/core/controller/ControllerApi";
 import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import { compileRuleProfile } from "../src/core/rules/RuleCompiler";
 import { createControllerQuerySession } from "../src/simulation/ControllerQueryProjection";
@@ -98,7 +99,7 @@ function expectResolvable(
   viewer: string,
   domain: ControllerReferenceDomain,
   authoritativeId: string,
-): string {
+): UnitRef | StructureRef | OperationRef {
   const ref = session.issue(viewer, domain, authoritativeId);
   expect(ref).toBeDefined();
   expect(session.resolve(viewer, domain, ref!)).toBe(authoritativeId);
