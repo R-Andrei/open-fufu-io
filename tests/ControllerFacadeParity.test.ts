@@ -1920,6 +1920,228 @@ describe("issue #206 Warship build/move + P29 facade RED", () => {
     ]);
     expect(matchStateAtWar(executed, "alpha", "beta")).toBe(true);
   });
+  function p29Runtime(seed: string) {
+    return new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 4,
+        height: 1,
+        terrain: ["DEEP_WATER", "PLAINS", "DEEP_WATER", "PLAINS"],
+        initialOwners: [null, "alpha", null, "beta"],
+        initialStructureGrants: [
+          {
+            structureId: "port-alpha",
+            ownerId: "alpha",
+            type: "PORT",
+            cellId: 1,
+            level: 1,
+          },
+        ],
+        factions: [
+          { id: "alpha", rules: warshipRules(true) },
+          { id: "beta", rules: emptyRules() },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+  }
+
+  function advanceP29RuntimeUntilFfy(
+    runtime: MatchRuntime,
+    minimum: number,
+  ): void {
+    let guard = 0;
+    while (
+      (runtime.snapshot().factions.find((faction) => faction.id === "alpha")
+        ?.ffy ?? 0) < minimum
+    ) {
+      runtime.tick();
+      guard += 1;
+      if (guard > 10_000) {
+        throw new Error("P29 fixture failed to accumulate FFY");
+      }
+    }
+  }
+
+  function deployP29RuntimeWarship(runtime: MatchRuntime) {
+    advanceP29RuntimeUntilFfy(runtime, 2_000_000);
+    runtime.acceptAction({
+      type: "START_WARSHIP_PRODUCTION",
+      ownerId: "alpha",
+      portId: "port-alpha",
+      strategicDestinationCellId: 2,
+    } as never);
+    let guard = 0;
+    while (
+      !runtime
+        .snapshot()
+        .mobileUnits.some(
+          (candidate) =>
+            candidate.ownerId === "alpha" && candidate.type === "WARSHIP",
+        )
+    ) {
+      runtime.tick();
+      guard += 1;
+      if (guard > 60) {
+        throw new Error("P29 fixture failed to deploy Warship");
+      }
+    }
+    advanceP29RuntimeUntilFfy(runtime, 3_000_000);
+    const unit = runtime
+      .snapshot()
+      .mobileUnits.find(
+        (candidate) =>
+          candidate.ownerId === "alpha" && candidate.type === "WARSHIP",
+      );
+    expect(unit).toBeDefined();
+    if (unit === undefined) throw new Error("expected deployed P29 Warship");
+    return unit;
+  }
+
+  it("rejects same-P29-Warship sibling Atom oversubscription atomically without accepting the first launch", async () => {
+    const seed = "issue206-p29-launch-atomic";
+    const runtime = p29Runtime(seed);
+    const unit = deployP29RuntimeWarship(runtime);
+    const unitRef = runtime
+      .controllerReferenceSession()
+      .issue("alpha", "UNIT", unit.id);
+    expect(unitRef).toBeDefined();
+    if (unitRef === undefined) throw new Error("expected P29 Warship UnitRef");
+
+    const before = runtime.snapshot();
+    const beforeInputs = runtime.acceptedInputs().length;
+    const beforeLauncher = before.warshipOperationalStates.find(
+      (entry) => entry.unitId === unit.id,
+    )?.strategicLauncher;
+    expect(beforeLauncher).toEqual({
+      acceptedLaunchCount: 0,
+      chargeSlots: [{ slotId: 0, state: "READY" }],
+    });
+
+    let firstActionRef: string | undefined;
+    let secondActionRef: string | undefined;
+    const host = new InProcessTestControllerHost({
+      alpha(context) {
+        firstActionRef = context.weapons.launch(
+          { ref: unitRef as never },
+          "ATOM_BOMB",
+          3,
+        );
+        secondActionRef = context.weapons.launch(
+          { ref: unitRef as never },
+          "ATOM_BOMB",
+          3,
+        );
+        return {};
+      },
+    });
+    const receipts = await Promise.resolve(runtime.runControllerRound(host));
+
+    expect(firstActionRef).toBeDefined();
+    expect(secondActionRef).toBeDefined();
+    expect(secondActionRef).not.toBe(firstActionRef);
+    expect(
+      receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+    ).toMatchObject({
+      accepted: false,
+      failure: {
+        code: "COMMITMENT_LIMIT",
+        key: secondActionRef,
+      },
+    });
+    expect(runtime.acceptedInputs()).toHaveLength(beforeInputs);
+    expect(runtime.snapshot()).toEqual(before);
+    expect(
+      runtime
+        .snapshot()
+        .warshipOperationalStates.find((entry) => entry.unitId === unit.id)
+        ?.strategicLauncher,
+    ).toEqual(beforeLauncher);
+    expect(
+      runtime
+        .snapshot()
+        .strategicProjectiles.filter(
+          (projectile) => projectile.launcherId === unit.id,
+        ),
+    ).toEqual([]);
+  });
+
+  it("commits an opaque P29 UnitRef Atom launch through the production isolate and authoritative tick", async () => {
+    const seed = "issue206-p29-launch-worker";
+    const runtime = p29Runtime(seed);
+    const unit = deployP29RuntimeWarship(runtime);
+    const unitRef = runtime
+      .controllerReferenceSession()
+      .issue("alpha", "UNIT", unit.id);
+    expect(unitRef).toBeDefined();
+    if (unitRef === undefined) throw new Error("expected P29 Warship UnitRef");
+
+    const before = runtime.snapshot();
+    const beforeFfy =
+      before.factions.find((faction) => faction.id === "alpha")?.ffy ?? 0;
+    const beforeInputs = runtime.acceptedInputs().length;
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: workerArtifact(
+          "context.weapons.launch({ ref: " +
+            JSON.stringify(unitRef) +
+            ' }, "ATOM_BOMB", 3)',
+        ),
+      });
+      const receipts = await Promise.resolve(runtime.runControllerRound(host));
+      expect(
+        receipts.find((entry) => entry.factionId === "alpha")?.receipt,
+      ).toMatchObject({ accepted: true });
+      expect(runtime.acceptedInputs()).toHaveLength(beforeInputs + 1);
+      expect(runtime.acceptedInputs().at(-1)?.action).toEqual({
+        type: "LAUNCH_STRATEGIC_WEAPON",
+        ownerId: "alpha",
+        launcherId: unit.id,
+        weapon: "ATOM_BOMB",
+        targetCellId: 3,
+      });
+
+      const transitionTick = before.tick + 1;
+      const after = runtime.tick();
+      expect(
+        after.factions.find((faction) => faction.id === "alpha")?.ffy,
+      ).toBe(beforeFfy - 1_000_000);
+      expect(
+        after.warshipOperationalStates.find(
+          (entry) => entry.unitId === unit.id,
+        )?.strategicLauncher,
+      ).toEqual({
+        acceptedLaunchCount: 1,
+        chargeSlots: [
+          {
+            slotId: 0,
+            state: "RECHARGING",
+            readyAtTick: transitionTick + 90,
+          },
+        ],
+      });
+      expect(
+        after.strategicProjectiles.find(
+          (projectile) => projectile.launcherId === unit.id,
+        ),
+      ).toMatchObject({
+        id: "strategic:" + unit.id + ":0",
+        ownerId: "alpha",
+        launcherId: unit.id,
+        weapon: "ATOM_BOMB",
+        launchCellId: unit.cellId,
+        targetCellId: 3,
+        targetFactionId: "beta",
+        acceptedLaunchOrdinal: 0,
+        consumedChargeSlotId: 0,
+      });
+      expect(matchStateAtWar(after, "alpha", "beta")).toBe(true);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
 });
 
 
