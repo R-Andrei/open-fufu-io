@@ -1024,7 +1024,7 @@ function evaluateProposal(
       continue;
     }
     if (staged.kind === "BUILD_UNIT") {
-      if (staged.unit !== "TANK") {
+      if (staged.unit !== "TANK" && staged.unit !== "WARSHIP") {
         return invalid("INVALID_COMMAND", staged.actionRef);
       }
       if (
@@ -1041,13 +1041,14 @@ function evaluateProposal(
               staged.producer.ref,
             )
           : undefined;
-      const factory =
+      const producerType = staged.unit === "TANK" ? "FACTORY" : "PORT";
+      const producer =
         resolvedProducerId !== undefined
           ? state.structures.find(
               (candidate) =>
                 candidate.id === resolvedProducerId &&
                 candidate.ownerId === factionId &&
-                candidate.type === "FACTORY",
+                candidate.type === producerType,
             )
           : "cellId" in staged.producer &&
               state.map.isValidCellId(staged.producer.cellId)
@@ -1055,21 +1056,29 @@ function evaluateProposal(
                 (candidate) =>
                   candidate.cellId === staged.producer.cellId &&
                   candidate.ownerId === factionId &&
-                  candidate.type === "FACTORY",
+                  candidate.type === producerType,
               )
             : undefined;
-      if (factory === undefined) {
+      if (producer === undefined) {
         return invalid("INVALID_PRODUCER", staged.actionRef);
       }
       actions.push(
         Object.freeze({
           key: staged.actionRef,
-          action: Object.freeze({
-            type: "START_TANK_PRODUCTION" as const,
-            ownerId: factionId,
-            factoryId: factory.id,
-            strategicDestinationCellId: staged.destination,
-          }),
+          action:
+            staged.unit === "TANK"
+              ? Object.freeze({
+                  type: "START_TANK_PRODUCTION" as const,
+                  ownerId: factionId,
+                  factoryId: producer.id,
+                  strategicDestinationCellId: staged.destination,
+                })
+              : Object.freeze({
+                  type: "START_WARSHIP_PRODUCTION" as const,
+                  ownerId: factionId,
+                  portId: producer.id,
+                  strategicDestinationCellId: staged.destination,
+                }),
         }),
       );
       continue;
@@ -1104,7 +1113,11 @@ function evaluateProposal(
       if (unit === undefined) {
         return invalid("INVALID_TARGET", staged.actionRef);
       }
-      if (unit.type !== "TANK" && unit.type !== "HEAVY_ARTILLERY") {
+      if (
+        unit.type !== "TANK" &&
+        unit.type !== "HEAVY_ARTILLERY" &&
+        unit.type !== "WARSHIP"
+      ) {
         return invalid("INVALID_COMMAND", staged.actionRef);
       }
       actions.push(

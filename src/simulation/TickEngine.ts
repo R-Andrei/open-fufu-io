@@ -127,6 +127,8 @@ import {
 import {
   advanceWarshipProductionPhase,
   advanceWarshipStrategicLauncherPhase,
+  trySetWarshipStrategicDestination,
+  tryStartWarshipProduction,
   warshipStrategicNavigationRoute,
   warshipTerrainMovementTiming,
 } from "./Warships";
@@ -202,6 +204,13 @@ export interface StartTankProductionAction {
   readonly strategicDestinationCellId: number;
 }
 
+export interface StartWarshipProductionAction {
+  readonly type: "START_WARSHIP_PRODUCTION";
+  readonly ownerId: string;
+  readonly portId: string;
+  readonly strategicDestinationCellId: number;
+}
+
 export interface SetUnitStrategicDestinationAction {
   readonly type: "SET_UNIT_STRATEGIC_DESTINATION";
   readonly ownerId: string;
@@ -256,6 +265,7 @@ export type SimulationAction =
   | PurchaseStructureBuildAction
   | PurchaseStructureUpgradeAction
   | StartTankProductionAction
+  | StartWarshipProductionAction
   | SetUnitStrategicDestinationAction
   | EmbarkTransportAction
   | ReturnTransportAction
@@ -1680,15 +1690,39 @@ export class TickEngine {
           working = started.state;
           break;
         }
-        case "SET_UNIT_STRATEGIC_DESTINATION": {
-          const moved = trySetTankStrategicDestination(working, {
+        case "START_WARSHIP_PRODUCTION": {
+          const started = tryStartWarshipProduction(working, {
             ownerId: action.ownerId,
-            unitId: action.unitId,
-            destinationCellId: action.destinationCellId,
+            portId: action.portId,
+            strategicDestinationCellId: action.strategicDestinationCellId,
           });
+          if (!started.ok) {
+            throw new Error(
+              `accepted Warship production became invalid: ${started.failure.code}`,
+            );
+          }
+          working = started.state;
+          break;
+        }
+        case "SET_UNIT_STRATEGIC_DESTINATION": {
+          const unit = working.mobileUnits.find(
+            (candidate) => candidate.id === action.unitId,
+          );
+          const moved =
+            unit?.type === "WARSHIP"
+              ? trySetWarshipStrategicDestination(working, {
+                  ownerId: action.ownerId,
+                  unitId: action.unitId,
+                  strategicDestinationCellId: action.destinationCellId,
+                })
+              : trySetTankStrategicDestination(working, {
+                  ownerId: action.ownerId,
+                  unitId: action.unitId,
+                  destinationCellId: action.destinationCellId,
+                });
           if (!moved.ok) {
             throw new Error(
-              `accepted Tank strategic destination became invalid: ${moved.failure.code}`,
+              `accepted unit strategic destination became invalid: ${moved.failure.code}`,
             );
           }
           working = moved.state;

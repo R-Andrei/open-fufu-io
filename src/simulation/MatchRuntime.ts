@@ -79,6 +79,11 @@ import {
   type StrategicLaunchFailureCode,
 } from "./StrategicWeapons";
 import {
+  trySetWarshipStrategicDestination,
+  tryStartWarshipProduction,
+  type WarshipStrategicMoveFailureCode,
+} from "./Warships";
+import {
   TickEngine,
   type AcceptedSimulationInput,
   type SimulationAction,
@@ -529,15 +534,38 @@ function validateAction(state: MatchState, action: SimulationAction): void {
       }
       break;
     }
-    case "SET_UNIT_STRATEGIC_DESTINATION": {
-      const moved = trySetTankStrategicDestination(state, {
+    case "START_WARSHIP_PRODUCTION": {
+      const started = tryStartWarshipProduction(state, {
         ownerId: action.ownerId,
-        unitId: action.unitId,
-        destinationCellId: action.destinationCellId,
+        portId: action.portId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
       });
+      if (!started.ok) {
+        throw new Error(
+          `invalid Warship production start: ${started.failure.code}`,
+        );
+      }
+      break;
+    }
+    case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const unit = state.mobileUnits.find(
+        (candidate) => candidate.id === action.unitId,
+      );
+      const moved =
+        unit?.type === "WARSHIP"
+          ? trySetWarshipStrategicDestination(state, {
+              ownerId: action.ownerId,
+              unitId: action.unitId,
+              strategicDestinationCellId: action.destinationCellId,
+            })
+          : trySetTankStrategicDestination(state, {
+              ownerId: action.ownerId,
+              unitId: action.unitId,
+              destinationCellId: action.destinationCellId,
+            });
       if (!moved.ok) {
         throw new Error(
-          `invalid Tank strategic destination: ${moved.failure.code}`,
+          `invalid unit strategic destination: ${moved.failure.code}`,
         );
       }
       break;
@@ -643,6 +671,20 @@ function mapTankStrategicDestinationFailure(
     case "UNKNOWN_OWNER":
     case "UNKNOWN_TANK":
     case "INVALID_DESTINATION":
+      return decisionFailure("INVALID_TARGET", key);
+  }
+}
+
+function mapWarshipStrategicDestinationFailure(
+  code: WarshipStrategicMoveFailureCode,
+  key?: string,
+): DecisionFailure {
+  switch (code) {
+    case "NOT_OWNER":
+      return decisionFailure("NOT_OWNER", key);
+    case "INVALID_REQUEST":
+    case "UNKNOWN_OWNER":
+    case "UNKNOWN_WARSHIP":
       return decisionFailure("INVALID_TARGET", key);
   }
 }
@@ -770,7 +812,36 @@ function controllerActionFailure(
             proposed.key,
           );
     }
+    case "START_WARSHIP_PRODUCTION": {
+      const started = tryStartWarshipProduction(state, {
+        ownerId: action.ownerId,
+        portId: action.portId,
+        strategicDestinationCellId: action.strategicDestinationCellId,
+      });
+      return started.ok
+        ? undefined
+        : decisionFailure(
+            controllerUnitBuildFailureCode(started.failure.code),
+            proposed.key,
+          );
+    }
     case "SET_UNIT_STRATEGIC_DESTINATION": {
+      const unit = state.mobileUnits.find(
+        (candidate) => candidate.id === action.unitId,
+      );
+      if (unit?.type === "WARSHIP") {
+        const moved = trySetWarshipStrategicDestination(state, {
+          ownerId: action.ownerId,
+          unitId: action.unitId,
+          strategicDestinationCellId: action.destinationCellId,
+        });
+        return moved.ok
+          ? undefined
+          : mapWarshipStrategicDestinationFailure(
+              moved.failure.code,
+              proposed.key,
+            );
+      }
       const moved = trySetTankStrategicDestination(state, {
         ownerId: action.ownerId,
         unitId: action.unitId,
