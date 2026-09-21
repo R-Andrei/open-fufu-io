@@ -146,6 +146,34 @@ describe("controller reference session", () => {
     expect(first.issue("alpha", "UNIT", "does-not-exist")).toBeUndefined();
   });
 
+  it("issues JSON-safe entity ref objects with intrinsic runtime domain discrimination", () => {
+    const state = stateWithUnit(
+      withOperation(baseState("entity-ref-object-contract"), 2),
+    );
+    const session = new ControllerReferenceSession(
+      "entity-ref-object-contract",
+      state,
+    );
+    const rows = [
+      ["UNIT", state.mobileUnits[0]!.id],
+      ["STRUCTURE", state.structures[0]!.id],
+      ["OPERATION", state.operations[0]!.id],
+    ] as const;
+
+    for (const [domain, authoritativeId] of rows) {
+      const ref = session.issue("alpha", domain, authoritativeId);
+      expect(ref).toBeDefined();
+      expect(typeof ref).toBe("object");
+      expect(ref).toMatchObject({ type: domain });
+
+      const roundTripped = JSON.parse(JSON.stringify(ref));
+      expect(roundTripped).toEqual(ref);
+      expect(
+        session.resolve("alpha", domain, roundTripped as never),
+      ).toBe(authoritativeId);
+    }
+  });
+
   it("uses FactionRef rather than authoritative faction ID in OWNER selectors", async () => {
     const state = baseState("owner-selector-faction-ref");
     const references = new ControllerReferenceSession(
