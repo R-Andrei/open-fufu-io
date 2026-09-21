@@ -21,7 +21,7 @@ import {
   type ControllerHostInvocationResult,
   type ControllerProposedAction,
   type ControllerRoundEvaluation,
-  type PendingTeamSignalObservation,
+  type PendingControllerEventObservation,
   type ControllerRoundReceipt,
 } from "./ControllerRuntime";
 import {
@@ -920,15 +920,61 @@ function controllerActionFailure(
   }
 }
 
-function resolvePendingTeamSignalDeliveries(
+function appendControllerEventDelivery(
+  deliveries: Map<string, PendingControllerEventObservation[]>,
+  factionId: string,
+  event: PendingControllerEventObservation,
+): void {
+  const existing = deliveries.get(factionId);
+  if (existing === undefined) {
+    deliveries.set(factionId, [event]);
+    return;
+  }
+  existing.push(event);
+}
+
+function freezeControllerEventDeliveries(
+  deliveries: Map<string, PendingControllerEventObservation[]>,
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  return new Map(
+    [...deliveries].map(([factionId, events]) => [
+      factionId,
+      Object.freeze([...events]),
+    ]),
+  );
+}
+
+function resolveAcceptedInputControllerEventDeliveries(
   state: MatchState,
+  nextState: MatchState,
   inputs: readonly AcceptedSimulationInput[],
-): ReadonlyMap<string, readonly PendingTeamSignalObservation[]> {
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
   const factionsById = new Map(state.factions.map((entry) => [entry.id, entry]));
   const activeById = new Map(
     state.factions.map((entry) => [entry.id, entry.status === "ACTIVE"]),
   );
-  const deliveries = new Map<string, PendingTeamSignalObservation[]>();
+  const deliveries = new Map<string, PendingControllerEventObservation[]>();
+  const beforeUnitIds = new Set(state.mobileUnits.map((unit) => unit.id));
+  const availableCreatedTransports = nextState.transportOperationalStates
+    .filter((operation) => !beforeUnitIds.has(operation.unitId))
+    .map((operation) => ({
+      operation,
+      unit: nextState.mobileUnits.find((unit) => unit.id === operation.unitId),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        operation: MatchState["transportOperationalStates"][number];
+        unit: MatchState["mobileUnits"][number];
+      } =>
+        entry.unit !== undefined &&
+        entry.unit.type === "TRANSPORT_SHIP",
+    )
+    .sort((left, right) =>
+      left.unit.id < right.unit.id ? -1 : left.unit.id > right.unit.id ? 1 : 0,
+    );
+  const usedTransportIds = new Set<string>();
 
   for (const input of [...inputs].sort(
     (left, right) => left.sequence - right.sequence,
@@ -937,45 +983,172 @@ function resolvePendingTeamSignalDeliveries(
       activeById.set(input.action.factionId, false);
       continue;
     }
-    if (input.action.type !== "TEAM_SIGNAL") continue;
 
-    const sender = factionsById.get(input.action.senderFactionId);
-    if (sender === undefined) {
-      throw new Error(
-        `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
-      );
-    }
-    const fixedTeamId = sender.fixedTeamId;
-    if (fixedTeamId === undefined) continue;
-
-    const signal = Object.freeze({
-      senderFactionId: sender.id,
-      channel: input.action.channel,
-      payload: input.action.payload,
-    });
-    for (const recipient of state.factions) {
-      if (
-        recipient.id === sender.id ||
-        recipient.fixedTeamId !== fixedTeamId ||
-        activeById.get(recipient.id) !== true
-      ) {
-        continue;
+    if (input.action.type === "TEAM_SIGNAL") {
+      const sender = factionsById.get(input.action.senderFactionId);
+      if (sender === undefined) {
+        throw new Error(
+          `accepted team signal has unknown sender: ${input.action.senderFactionId}`,
+        );
       }
-      const existing = deliveries.get(recipient.id);
-      if (existing === undefined) {
-        deliveries.set(recipient.id, [signal]);
-      } else {
-        existing.push(signal);
+      const fixedTeamId = sender.fixedTeamId;
+      if (fixedTeamId === undefined) continue;
+
+      const signal = Object.freeze({
+        senderFactionId: sender.id,
+        channel: input.action.channel,
+        payload: input.action.payload,
+      });
+      for (const recipient of state.factions) {
+        if (
+          recipient.id === sender.id ||
+          recipient.fixedTeamId !== fixedTeamId ||
+          activeById.get(recipient.id) !== true
+        ) {
+          continue;
+        }
+        appendControllerEventDelivery(deliveries, recipient.id, signal);
+      }
+      continue;
+    }
+
+    if (input.originAction === undefined) continue;
+
+    if (input.action.type === "PURCHASE_STRUCTURE_BUILD") {
+      const structure = nextState.structures.find(
+        (candidate) =>
+          candidate.id === input.action.structureId &&
+          candidate.ownerId === input.action.ownerId,
+      );
+      if (structure !== undefined) {
+        appendControllerEventDelivery(
+          deliveries,
+          input.action.ownerId,
+          Object.freeze({
+            type: "STRUCTURE_CHANGED" as const,
+            structureId: structure.id,
+            reason: "CREATED",
+            originAction: input.originAction,
+          }),
+        );
+      }
+      continue;
+    }
+
+    if (input.action.type === "EMBARK_TRANSPORT") {
+      const created = availableCreatedTransports.find(
+        (entry) =>
+          !usedTransportIds.has(entry.unit.id) &&
+          entry.unit.ownerId === input.action.ownerId &&
+          entry.operation.sourceCellId === input.action.sourceCellId &&
+          entry.operation.targetCellId === input.action.targetCellId &&
+          entry.operation.carriedPopulation === input.action.population,
+      );
+      if (created !== undefined) {
+        usedTransportIds.add(created.unit.id);
+        appendControllerEventDelivery(
+          deliveries,
+          input.action.ownerId,
+          Object.freeze({
+            type: "UNIT_CHANGED" as const,
+            unitId: created.unit.id,
+            reason: "CREATED",
+            originAction: input.originAction,
+          }),
+        );
       }
     }
   }
 
-  return new Map(
-    [...deliveries].map(([factionId, signals]) => [
-      factionId,
-      Object.freeze([...signals]),
-    ]),
+  return freezeControllerEventDeliveries(deliveries);
+}
+
+function directRevealEventKey(
+  viewerFactionId: string,
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
+  sourceId: string,
+): string {
+  return JSON.stringify([viewerFactionId, sourceKind, sourceId]);
+}
+
+function directRevealSourceSurvives(
+  state: MatchState,
+  sourceKind: "UNIT" | "STRUCTURE" | "OPERATION",
+  sourceId: string,
+): boolean {
+  switch (sourceKind) {
+    case "UNIT":
+      return state.mobileUnits.some((unit) => unit.id === sourceId);
+    case "STRUCTURE":
+      return state.structures.some((structure) => structure.id === sourceId);
+    case "OPERATION":
+      return state.operations.some((operation) => operation.id === sourceId);
+  }
+}
+
+function resolveDirectRevealControllerEventDeliveries(
+  state: MatchState,
+  nextState: MatchState,
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  const previouslyActiveAtResultTick = new Set(
+    state.directReveals
+      .filter((record) => nextState.tick < record.expiryExclusiveTick)
+      .map((record) =>
+        directRevealEventKey(
+          record.viewerFactionId,
+          record.sourceKind,
+          record.sourceId,
+        ),
+      ),
   );
+  const deliveries = new Map<string, PendingControllerEventObservation[]>();
+
+  for (const record of nextState.directReveals) {
+    if (nextState.tick >= record.expiryExclusiveTick) continue;
+    const key = directRevealEventKey(
+      record.viewerFactionId,
+      record.sourceKind,
+      record.sourceId,
+    );
+    if (previouslyActiveAtResultTick.has(key)) continue;
+    if (
+      !directRevealSourceSurvives(
+        nextState,
+        record.sourceKind,
+        record.sourceId,
+      )
+    ) {
+      continue;
+    }
+    appendControllerEventDelivery(
+      deliveries,
+      record.viewerFactionId,
+      Object.freeze({
+        type: "HOSTILE_SOURCE_REVEALED" as const,
+        sourceKind: record.sourceKind,
+        sourceId: record.sourceId,
+      }),
+    );
+  }
+
+  return freezeControllerEventDeliveries(deliveries);
+}
+
+function mergeControllerEventDeliveries(
+  ...sources: readonly ReadonlyMap<
+    string,
+    readonly PendingControllerEventObservation[]
+  >[]
+): ReadonlyMap<string, readonly PendingControllerEventObservation[]> {
+  const merged = new Map<string, PendingControllerEventObservation[]>();
+  for (const source of sources) {
+    for (const [factionId, events] of source) {
+      for (const event of events) {
+        appendControllerEventDelivery(merged, factionId, event);
+      }
+    }
+  }
+  return freezeControllerEventDeliveries(merged);
 }
 
 export class MatchRuntime {
@@ -991,9 +1164,9 @@ export class MatchRuntime {
   private controllerFaultCounts = new Map<string, number>();
   private controllerConsecutiveFaultCounts = new Map<string, number>();
   private controllerFaultedFactionIds = new Set<string>();
-  private readonly pendingTeamSignalsByFaction = new Map<
+  private readonly pendingControllerEventsByFaction = new Map<
     string,
-    readonly PendingTeamSignalObservation[]
+    readonly PendingControllerEventObservation[]
   >();
   private phase: MatchRuntimePhase = "ACTIVE";
   private spawnSnapshot?: SpawnSnapshot;
@@ -1183,7 +1356,7 @@ export class MatchRuntime {
     }
     for (const faction of this.state.factions) {
       if (!this.controllerFaultedFactionIds.has(faction.id)) {
-        this.pendingTeamSignalsByFaction.delete(faction.id);
+        this.pendingControllerEventsByFaction.delete(faction.id);
       }
     }
     this.controllerFaultCounts = new Map(evaluated.faultCounts);
@@ -1224,7 +1397,7 @@ export class MatchRuntime {
         this.controllerConsecutiveFaultCounts,
         this.controllerFaultedFactionIds,
         this.controllerReferences,
-        this.pendingTeamSignalsByFaction,
+        this.pendingControllerEventsByFaction,
       );
     } catch (error) {
       this.controllerRoundInFlightTick = undefined;
@@ -1260,11 +1433,16 @@ export class MatchRuntime {
     this.pendingInputs = this.pendingInputs.filter(
       (input) => input.tick !== nextTick,
     );
-    const teamSignalDeliveries = resolvePendingTeamSignalDeliveries(
-      this.state,
-      executing,
+    const previousState = this.state;
+    const nextState = this.engine.advance(previousState, executing);
+    const controllerEventDeliveries = mergeControllerEventDeliveries(
+      resolveAcceptedInputControllerEventDeliveries(
+        previousState,
+        nextState,
+        executing,
+      ),
+      resolveDirectRevealControllerEventDeliveries(previousState, nextState),
     );
-    const nextState = this.engine.advance(this.state, executing);
     if (this.controllerReferences !== undefined) {
       for (const input of [...executing].sort(
         (left, right) => left.sequence - right.sequence,
@@ -1289,13 +1467,13 @@ export class MatchRuntime {
       this.controllerReferences.reconcile(nextState);
     }
     this.state = nextState;
-    for (const [factionId, signals] of teamSignalDeliveries) {
-      const existing = this.pendingTeamSignalsByFaction.get(factionId);
-      this.pendingTeamSignalsByFaction.set(
+    for (const [factionId, events] of controllerEventDeliveries) {
+      const existing = this.pendingControllerEventsByFaction.get(factionId);
+      this.pendingControllerEventsByFaction.set(
         factionId,
         existing === undefined
-          ? signals
-          : Object.freeze([...existing, ...signals]),
+          ? events
+          : Object.freeze([...existing, ...events]),
       );
     }
     return this.state;
