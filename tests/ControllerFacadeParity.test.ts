@@ -71,6 +71,7 @@ const ISSUE225_REQUIRED_CONTEXT_KEYS = Object.freeze([
   "economy",
   "events",
   "factions",
+  "lastDecision",
   "limits",
   "map",
   "me",
@@ -621,7 +622,7 @@ describe("issue #225 final ControllerContext RED", () => {
         ),
       };
     };
-    const expectedKeys = [...ISSUE225_REQUIRED_CONTEXT_KEYS].sort();
+    const expectedKeys = ISSUE225_REQUIRED_CONTEXT_KEYS.filter((name) => name !== "lastDecision").sort();
     const expectedOperations = ["get", "own"];
     let inProcessShape: unknown;
 
@@ -722,6 +723,105 @@ describe("issue #225 final ControllerContext RED", () => {
     } finally {
       await pool.close();
     }
+  }, 20_000);
+});
+
+describe("issue #225 deterministic RandomApi RED", () => {
+  it("gives equivalent repeatable decision-scoped random streams in-process and in production", async () => {
+    const seed = "issue225-random-parity";
+    const makeInputs = () => {
+      const state = facadeState(seed);
+      const references = new ControllerReferenceSession(seed, state);
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          7,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+          undefined,
+          7,
+        ),
+      };
+    };
+    const readRandom = (context: RuntimeContext) => [
+      context.random.next(),
+      context.random.next(),
+      context.random.keyed("north"),
+      context.random.keyed("north"),
+      context.random.keyed("south"),
+    ];
+
+    let inProcessValues: unknown;
+    const local = makeInputs();
+    const localHost = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          inProcessValues = readRandom(context as unknown as RuntimeContext);
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      localHost.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessValues).toEqual(expect.any(Array));
+    const localNumbers = inProcessValues as number[];
+    expect(localNumbers).toHaveLength(5);
+    expect(localNumbers[0]).not.toBe(localNumbers[1]);
+    expect(localNumbers[2]).toBe(localNumbers[3]);
+    expect(localNumbers[2]).not.toBe(localNumbers[4]);
+    for (const value of localNumbers) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    }
+
+    const runWorker = async () => {
+      const worker = makeInputs();
+      const pool = new ControllerProcessWorkerPool({ size: 1 });
+      try {
+        const host = new ProductionControllerHost(pool, {
+          alpha: Object.freeze({
+            moduleSource: `
+              export function decide(context) {
+                return {
+                  log: JSON.stringify([
+                    context.random.next(),
+                    context.random.next(),
+                    context.random.keyed("north"),
+                    context.random.keyed("north"),
+                    context.random.keyed("south")
+                  ])
+                };
+              }
+            `,
+            entrypoints: Object.freeze({ decide: "decide" }),
+          }),
+        });
+        const result = await host.invoke(
+          "alpha",
+          worker.observation,
+          worker.session,
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return [];
+        return JSON.parse(result.output?.log ?? "[]") as number[];
+      } finally {
+        await pool.close();
+      }
+    };
+
+    const firstWorkerValues = await runWorker();
+    const replacementWorkerValues = await runWorker();
+    expect(firstWorkerValues).toEqual(localNumbers);
+    expect(replacementWorkerValues).toEqual(localNumbers);
   }, 20_000);
 });
 
