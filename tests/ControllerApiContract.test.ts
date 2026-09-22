@@ -8,7 +8,6 @@ import type {
   FactionsApi,
   GrowthCalculation,
   HostilityMechanicsSpec,
-  MechanicsApi,
   OperationRef,
   PersistentDirective,
   PopulationView,
@@ -84,11 +83,6 @@ const issue47RelinquishQuote: RelinquishQuote = {
   appliesFallout: true,
 };
 void issue47RelinquishQuote;
-
-const issue47RelinquishFromMechanics: ReturnType<
-  MechanicsApi["relinquishQuote"]
-> = issue47RelinquishQuote;
-void issue47RelinquishFromMechanics;
 
 // The historical ControllerApi type fixture used to live under tests/types, which
 // is not an owned mutable validation surface. Keep those compile-time obligations
@@ -451,31 +445,12 @@ const n13ZeroSurvivorLanding: TransportLandingCalculation = {
   createsAmphibiousCommitment: false,
 };
 
-declare const context: DecisionContext;
-const samSpec = context.mechanics.structureTypeSpec(
-  "SAM_LAUNCHER",
-  1,
-  context.me.id,
-);
-const antiShipCoveredCells = samSpec.antiShipAttack
-  ? context.cells.count({
-      kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: p27SamRef,
-      field: samSpec.antiShipAttack.eligibilityField,
-    })
-  : Promise.resolve(0);
-const landing = context.mechanics.transportLanding(5, context.me.id);
-const destruction = context.mechanics.transportDestructionSpec(context.me.id);
-
 void p27SamField;
 void p27SamSpec;
 void p28DestructionSpec;
 void n13LandingPolicy;
 void n13OddLanding;
 void n13ZeroSurvivorLanding;
-void antiShipCoveredCells;
-void landing.survivingPopulation;
-void destruction.creditedPopulationTransfer?.destination;
 `;
 
     const baseHost = ts.createCompilerHost(options);
@@ -616,7 +591,7 @@ const controller: OpenFufuController<FixtureMemory> = {
     context.segments.cellIds(0);
     await context.segments.list();
     return {
-      memory: { ...context.memory, marker: context.game.decisionNumber },
+      memory: { ...context.memory, marker: context.tick },
     };
   },
 };

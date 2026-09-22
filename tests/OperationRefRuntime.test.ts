@@ -483,14 +483,23 @@ describe("OperationRef manifestation and lawful read vertical", () => {
       moduleSource: `
         export function decide(context) {
           if (context.memory.operationRef === undefined) {
-            const incoming = context.operations.incoming();
-            if (incoming.length !== 2) throw new Error("expected two manifested operations");
-            if (incoming.some((view) => Object.prototype.hasOwnProperty.call(view, "id"))) {
+            const refs = context.events.sinceLastDecision
+              .filter((event) =>
+                event.type === "HOSTILE_SOURCE_REVEALED" &&
+                event.source?.type === "OPERATION"
+              )
+              .map((event) => event.source);
+            if (refs.length !== 2) throw new Error("expected two manifested operation events");
+            const views = refs.map((ref) => context.operations.get(ref));
+            if (views.some((view) => view === undefined)) {
+              throw new Error("event-acquired operation ref did not resolve");
+            }
+            if (views.some((view) => Object.prototype.hasOwnProperty.call(view, "id"))) {
               throw new Error("raw operation id crossed worker boundary");
             }
             return {
-              memory: { operationRef: incoming[0].ref },
-              log: JSON.stringify({ phase: "stored", refs: incoming.map((view) => view.ref) }),
+              memory: { operationRef: refs[0] },
+              log: JSON.stringify({ phase: "stored", refs }),
             };
           }
           const view = context.operations.get(context.memory.operationRef);
@@ -510,9 +519,24 @@ describe("OperationRef manifestation and lawful read vertical", () => {
 
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     const host = new ProductionControllerHost(pool, { beta: artifact });
-    const observation = Object.freeze({}) as unknown as Parameters<
-      ProductionControllerHost["invoke"]
-    >[1];
+    const acquisitionSession = querySession();
+    const acquisitionRefs = operationsOf(acquisitionSession)
+      .incoming()
+      .map((view) => view.ref);
+    const observation = Object.freeze({
+      tick: advanced.tick,
+      decisionNumber: 1,
+      events: Object.freeze({
+        sinceLastDecision: Object.freeze(
+          acquisitionRefs.map((source) =>
+            Object.freeze({
+              type: "HOSTILE_SOURCE_REVEALED" as const,
+              source,
+            }),
+          ),
+        ),
+      }),
+    }) as unknown as Parameters<ProductionControllerHost["invoke"]>[1];
     try {
       const first = await host.invoke("beta", observation, querySession());
       expect(first.ok).toBe(true);

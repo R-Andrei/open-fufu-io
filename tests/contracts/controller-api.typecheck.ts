@@ -65,29 +65,22 @@ export const controllerApiContractFixture: OpenFufuController<FixtureMemory> = {
     };
 
     const otherFaction = context.factions
-      .list()
+      .find()
       .find(
         (faction) =>
-          faction.id !== context.me.id && faction.status === "ACTIVE",
+          faction.ref !== context.me.id && faction.status === "ACTIVE",
       );
     const atWar = otherFaction
-      ? context.factions.atWar(context.me.id, otherFaction.id)
+      ? context.factions.atWar(context.me.id, otherFaction.ref)
       : false;
+    context.team.signal("contract-fixture", { atWar, tick: context.tick });
 
     return {
       memory: {
         ...context.memory,
-        lastDecisionNumber: context.game.decisionNumber,
+        lastDecisionNumber: context.tick,
       },
       directives: { set: [defensePriority] },
-      commands: [
-        {
-          kind: "TEAM_SIGNAL",
-          key: "fixture:signal",
-          channel: "contract-fixture",
-          payload: { atWar, tick: context.game.tick },
-        },
-      ],
       debug: [{ kind: "METRIC", name: "fixture.atWar", value: atWar }],
     };
   },

@@ -1,5 +1,6 @@
 import {
   factionRelationBetween } from "../core/FactionRelations";
+import { matchStateAtWar } from "./HostilityState";
 import type {
   CellId,
   CellSelector,
@@ -12,7 +13,6 @@ import type {
   FactionRef,
   FactionReadView,
   JsonValue,
-  MechanicsApi,
   MobileUnitType,
   OperationKind,
   OperationRef,
@@ -266,9 +266,13 @@ export interface ControllerPublicOperationSource {
   }>[];
 }
 
-export type ControllerConstructionMechanics = Readonly<
-  Pick<MechanicsApi, "structureBuildQuote" | "structureUpgradeQuote">
->;
+export interface ControllerConstructionMechanics {
+  structureBuildQuote(
+    structureType: StructureType,
+    cellId: CellId,
+  ): StructureBuildQuote;
+  structureUpgradeQuote(cellId: CellId): StructureUpgradeQuote;
+}
 
 /** Internal same-process source for cheap public spatial projection. */
 export interface ControllerPublicSpatialSource {
@@ -289,6 +293,7 @@ export interface ControllerPublicFactionSource {
     readonly origin?: FactionReadView["origin"];
     readonly score?: number;
     readonly teamId?: string;
+    readonly atWarWith: readonly FactionReadView["ref"][];
   }>[];
 }
 
@@ -303,6 +308,7 @@ export interface ControllerQuerySession {
     get(ref: string): FactionReadView | undefined;
     find(filter?: FactionFindFilter): readonly FactionReadView[];
     proximity(ref: string): number | undefined;
+    atWar(a: FactionRef, b: FactionRef): boolean;
   }>;
   readonly operations: Readonly<{
     get(ref: OperationRef): ControllerOperationReadView | undefined;
@@ -2441,6 +2447,13 @@ export function createControllerQuerySession(
           ...(faction.fixedTeamId === undefined
             ? {}
             : { teamId: faction.fixedTeamId }),
+          atWarWith: Object.freeze(
+            state.factions.flatMap((candidate) => {
+              if (!matchStateAtWar(state, faction.id, candidate.id)) return [];
+              const candidateRef = references.issueFaction(candidate.id);
+              return candidateRef === undefined ? [] : [candidateRef];
+            }),
+          ),
         }),
       ];
     }),
@@ -2516,6 +2529,15 @@ export function createControllerQuerySession(
     const targetFactionId = references.resolveFaction(ref);
     if (targetFactionId === undefined) return undefined;
     return factionProximityById(state, requesterFactionId, targetFactionId);
+  };
+
+  const factionAtWar = (a: FactionRef, b: FactionRef): boolean => {
+    beginQuery();
+    if (references === undefined) return false;
+    const factionAId = references.resolveFaction(a);
+    const factionBId = references.resolveFaction(b);
+    if (factionAId === undefined || factionBId === undefined) return false;
+    return matchStateAtWar(state, factionAId, factionBId);
   };
 
   const materializeOperation = (
@@ -2734,6 +2756,7 @@ export function createControllerQuerySession(
       get: getFaction,
       find: findFactions,
       proximity: factionProximity,
+      atWar: factionAtWar,
     }),
     operations: Object.freeze({
       get: getOperation,

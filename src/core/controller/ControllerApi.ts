@@ -224,7 +224,25 @@ export interface FactionView {
   readonly ffy?: number;
 }
 
-export interface SelfFactionView extends FactionView {
+export interface SelfFactionView {
+  readonly id: FactionRef;
+  readonly displayName: string;
+  readonly status: FactionStatus;
+  readonly teamId?: string;
+  readonly isMinorFaction: false;
+  readonly origin?: OriginView;
+  readonly territoryCells: number;
+  readonly population: number;
+  readonly capacity: number;
+  readonly populationState: PopulationView;
+  readonly ffy: number;
+}
+
+/**
+ * Strategic Spawn retains its separately owned modifier-introspection contract.
+ * Normal ControllerContext deliberately does not expose this unstructured sheet.
+ */
+export interface SpawnSelfFactionView extends FactionView {
   readonly isMinorFaction: false;
   readonly origin: OriginView;
   readonly populationState: PopulationView;
@@ -508,9 +526,8 @@ export interface FactionsApi {
 export interface OperationsApi {
   /** Hidden/unknown operations are indistinguishable and return undefined. */
   get(ref: OperationRef): OperationView | undefined;
+  /** Current authoritative views of this controller's own active operations. */
   own(): readonly OperationView[];
-  /** Contains only incoming operations lawfully visible to this requester. */
-  incoming(): readonly OperationView[];
 }
 
 export interface StructuresApi {
@@ -982,31 +999,6 @@ export interface MechanicsApi {
     factionId?: FactionRef,
   ): StrategicWeaponMechanicsSpec;
 
-  structureBuildQuote(
-    structureType: StructureType,
-    cellId: CellId,
-  ): StructureBuildQuote;
-  structureUpgradeQuote(cellId: CellId): StructureUpgradeQuote;
-  unitBuildQuote(
-    type: PurchasableUnitType,
-    producerId: StructureRef,
-    factionId?: FactionRef,
-  ): UnitBuildQuote;
-  moveUnitQuote(unitId: UnitRef, destination: CellId): MoveUnitQuote;
-  transportEmbarkQuote(
-    sourceCellId: CellId,
-    targetCellId: CellId,
-    population: number,
-    factionId?: FactionRef,
-  ): TransportEmbarkQuote;
-  weaponLaunchQuote(
-    launcherId: StructureRef | UnitRef,
-    type: StrategicWeaponType,
-    targetCellId: CellId,
-    targetFactionId?: FactionRef,
-  ): WeaponLaunchQuote;
-  /** Self-faction quote for the exact selected cells on the current immutable snapshot. */
-  relinquishQuote(cells: CellSelector): RelinquishQuote;
 }
 
 export interface RulesView {
@@ -1289,13 +1281,12 @@ export interface ControllerDecision<
 export interface ControllerContext<
   M extends ControllerMemory = ControllerMemory,
 > {
-  readonly game: GameView;
+  readonly tick: Tick;
   readonly me: SelfFactionView;
   readonly factions: FactionsApi;
   readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
-  readonly contacts: ContactsApi;
   readonly operations: OperationsApi;
   readonly structures: StructuresApi;
   readonly units: UnitsApi;
@@ -1304,10 +1295,7 @@ export interface ControllerContext<
   readonly territory: TerritoryApi;
   readonly team: TeamApi;
   capitulate(): ActionRef;
-  readonly navigation: NavigationApi;
   readonly economy: EconomyView;
-  readonly rules: RulesView;
-  readonly mechanics: MechanicsApi;
   readonly events: EventsApi;
   readonly lastDecision?: DecisionReceipt;
   readonly random: RandomApi;
@@ -1372,7 +1360,7 @@ export interface SpawnBaseContext<
   M extends ControllerMemory = ControllerMemory,
 > {
   readonly game: GameView;
-  readonly me: SelfFactionView;
+  readonly me: SpawnSelfFactionView;
   readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
