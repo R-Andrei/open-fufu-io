@@ -396,7 +396,7 @@ void ticksOptional;
     expect(hiddenQuote).toMatchObject({
       legal: false,
       cost: { ffySpent: 0, populationSpent: 0 },
-      cellId: 1,
+      cellId: -1,
     });
     expect(hiddenQuote).not.toHaveProperty("currentLevel");
     expect(hiddenQuote).not.toHaveProperty("resultingLevel");

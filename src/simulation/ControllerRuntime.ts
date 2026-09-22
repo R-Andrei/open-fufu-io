@@ -487,10 +487,18 @@ function projectInProcessObservation(
     factions: _trustedFactions,
     ...publicObservation
   } = observation;
+  // Normal MatchRuntime observations always provide publicMe. The fallback keeps
+  // intentionally minimal hand-authored InProcessTestControllerHost fixtures usable
+  // without changing the production/player-facing projection contract.
+  const effectivePublicMe =
+    publicMe ?? (observation.me as unknown as Readonly<SelfFactionView>);
   const common = Object.freeze({
     ...publicObservation,
-    me: publicMe,
-    random: createNormalControllerRandomApi(publicMe.id, decisionNumber),
+    me: effectivePublicMe,
+    random: createNormalControllerRandomApi(
+      effectivePublicMe?.id ?? observation.me?.ref,
+      decisionNumber,
+    ),
   });
   if (querySession === undefined) return common;
   return Object.freeze({

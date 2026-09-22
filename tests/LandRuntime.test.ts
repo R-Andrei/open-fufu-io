@@ -170,7 +170,7 @@ describe("land operations through authoritative MatchRuntime", () => {
           expect(observation.map?.terrainAt(1)).toBe("PLAINS");
           expect(observation.cells?.owner(1)).toBe(alphaRef);
           expect(observation.cells?.owner(1)).not.toBe("alpha");
-          expect(observation.me.population).toMatchObject({
+          expect(observation.me.populationState).toMatchObject({
             total: 1,
             available: 0,
             committedOffense: 1,
