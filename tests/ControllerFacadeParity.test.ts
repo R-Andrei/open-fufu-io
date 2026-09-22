@@ -632,17 +632,17 @@ describe("issue #225 final ControllerContext RED", () => {
           const value = context as unknown as RuntimeContext;
           inProcessShape = {
             keys: Object.keys(value).sort(),
-            operations: Object.keys(value.operations).sort(),
+            operations: Object.keys(value.operations ?? {}).sort(),
             self: {
               hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
                 value.me,
                 "effectiveModifiers",
               ),
-              populationKeys: Object.keys(value.me.populationState).sort(),
-              economyKeys: Object.keys(value.economy).sort(),
+              populationKeys: Object.keys(value.me?.populationState ?? {}).sort(),
+              economyKeys: Object.keys(value.economy ?? {}).sort(),
             },
-            random: Object.keys(value.random).sort(),
-            limits: Object.keys(value.limits).sort(),
+            random: Object.keys(value.random ?? {}).sort(),
+            limits: Object.keys(value.limits ?? {}).sort(),
           };
           return {};
         },
@@ -678,17 +678,17 @@ describe("issue #225 final ControllerContext RED", () => {
               return {
                 log: JSON.stringify({
                   keys: Object.keys(context).sort(),
-                  operations: Object.keys(context.operations).sort(),
+                  operations: Object.keys(context.operations ?? {}).sort(),
                   self: {
                     hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
                       context.me,
                       "effectiveModifiers"
                     ),
-                    populationKeys: Object.keys(context.me.populationState).sort(),
-                    economyKeys: Object.keys(context.economy).sort()
+                    populationKeys: Object.keys(context.me?.populationState ?? {}).sort(),
+                    economyKeys: Object.keys(context.economy ?? {}).sort()
                   },
-                  random: Object.keys(context.random).sort(),
-                  limits: Object.keys(context.limits).sort()
+                  random: Object.keys(context.random ?? {}).sort(),
+                  limits: Object.keys(context.limits ?? {}).sort()
                 })
               };
             }
