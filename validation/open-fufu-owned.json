@@ -796,12 +796,6 @@
       ]
     },
     {
-      "path": "tests/contracts/controller-api.typecheck.ts",
-      "validators": [
-        "tests/ControllerApiContract.test.ts"
-      ]
-    },
-    {
       "path": "tests/types/ControllerApiTypes.ts",
       "validators": [
         "tests/ControllerApiContract.test.ts"
