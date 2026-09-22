@@ -22,8 +22,10 @@ import {
   projectLawfulControllerObservation,
 } from "../src/simulation/ControllerRuntime";
 import {
+  createAdvancedMatchState,
   createInitialMatchState,
   createProspectiveMatchState,
+  type MatchState,
 } from "../src/simulation/MatchState";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
@@ -38,6 +40,7 @@ import { matchStateAtWar } from "../src/simulation/HostilityState";
 import { resolveTransportEndpointRouteForState } from "../src/simulation/Transports";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
 import { strategicBlastHash32 } from "../src/simulation/StrategicWeapons";
+import { resolveDirectRevealsFromLandOperationEvents } from "../src/simulation/VisibilityState";
 
 const ACTION_PROOFS = Object.freeze([
   "SDK",
@@ -223,6 +226,117 @@ function contextEvents(
     }
   ).events?.sinceLastDecision;
   return events === undefined ? Object.freeze([]) : events;
+}
+
+type Issue207RevealFixture = Readonly<{
+  spec: ReturnType<typeof createMicroSimulationSpec>;
+  state: MatchState;
+  sourceUnitId: string;
+  sourceStructureId: string;
+  sourceOperationId: string;
+}>;
+
+function issue207RevealFixture(seed: string): Issue207RevealFixture {
+  const spec = createMicroSimulationSpec({
+    seed,
+    width: 4,
+    height: 1,
+    terrain: ["PLAINS", "PLAINS", "PLAINS", "PLAINS"],
+    initialOwners: ["alpha", "beta", "beta", "beta"],
+    initialStructureGrants: [
+      {
+        structureId: `${seed}:structure-source`,
+        ownerId: "beta",
+        type: "FORT",
+        cellId: 1,
+        level: 1,
+      },
+    ],
+    factions: [
+      { id: "alpha", rules: emptyRules() },
+      { id: "beta", rules: emptyRules() },
+    ],
+  });
+  const initial = createInitialMatchState(spec);
+  const createdUnit = createMobileUnit(
+    initial.map,
+    initial.factions.map((faction) => faction.id),
+    initial,
+    {
+      ownerId: "beta",
+      type: "TANK",
+      movementClass: "TANK",
+      cellId: 2,
+    },
+  );
+  const sourceOperation = Object.freeze({
+    id: `${seed}:operation-source`,
+    controllerKey: `${seed}:operation-directive`,
+    kind: "ATTACK" as const,
+    ownerId: "beta",
+    targetFactionId: "alpha",
+    committedPopulation: 1,
+    source: Object.freeze({
+      kind: "CELLS" as const,
+      ids: Object.freeze([1]),
+    }),
+    target: Object.freeze({
+      kind: "CELLS" as const,
+      ids: Object.freeze([0]),
+    }),
+  });
+  const state = createProspectiveMatchState(initial, {
+    mobileUnits: createdUnit.mobileUnits,
+    nextMobileUnitOrdinal: createdUnit.nextMobileUnitOrdinal,
+    operations: Object.freeze([sourceOperation]),
+  });
+  return Object.freeze({
+    spec,
+    state,
+    sourceUnitId: createdUnit.unit.id,
+    sourceStructureId: state.structures[0]!.id,
+    sourceOperationId: sourceOperation.id,
+  });
+}
+
+function issue207ControlledTransitionEvents(
+  seed: string,
+  spec: ReturnType<typeof createMicroSimulationSpec>,
+  previousState: MatchState,
+  nextState: MatchState,
+): readonly Readonly<Record<string, unknown>>[] {
+  const runtime = new MatchRuntime(spec, {
+    controllerReferenceNamespace: seed,
+  });
+  const internals = runtime as unknown as {
+    state: MatchState;
+    engine: {
+      advance(
+        state: MatchState,
+        inputs: readonly unknown[],
+      ): MatchState;
+    };
+  };
+  internals.state = previousState;
+  internals.engine = {
+    advance(state, inputs) {
+      expect(state).toBe(previousState);
+      expect(inputs).toEqual([]);
+      return nextState;
+    },
+  };
+
+  runtime.tick();
+  let events: readonly Readonly<Record<string, unknown>>[] = [];
+  runtime.runControllerRound(
+    new InProcessTestControllerHost({
+      alpha(context) {
+        events = contextEvents(context);
+        return {};
+      },
+    }),
+  );
+  return events;
 }
 
 function facadeState(seed: string) {
@@ -1030,6 +1144,182 @@ describe("issue #206 team.signal authoritative RED", () => {
     expect(betaLater).toEqual([]);
   });
 
+  it("emits direct acquisition events for Unit, Structure, and Operation canonical reveal transitions", () => {
+    const seed = "issue207-cert-all-domain-transition";
+    const fixture = issue207RevealFixture(seed);
+    const nextTick = fixture.state.tick + 1;
+    const nextState = createAdvancedMatchState(fixture.state, {
+      directReveals: Object.freeze([
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT" as const,
+          sourceId: fixture.sourceUnitId,
+          expiryExclusiveTick: nextTick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "STRUCTURE" as const,
+          sourceId: fixture.sourceStructureId,
+          expiryExclusiveTick: nextTick + 10,
+        }),
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "OPERATION" as const,
+          sourceId: fixture.sourceOperationId,
+          expiryExclusiveTick: nextTick + 10,
+        }),
+      ]),
+    });
+
+    const events = issue207ControlledTransitionEvents(
+      seed,
+      fixture.spec,
+      fixture.state,
+      nextState,
+    );
+    const reveals = events.filter(
+      (event) => event.type === "HOSTILE_SOURCE_REVEALED",
+    );
+    expect(
+      reveals
+        .map((event) => (event.source as { type?: unknown } | undefined)?.type)
+        .sort(),
+    ).toEqual(["OPERATION", "STRUCTURE", "UNIT"]);
+    for (const event of reveals) {
+      const serialized = JSON.stringify(event);
+      expect(serialized).not.toContain(fixture.sourceUnitId);
+      expect(serialized).not.toContain(fixture.sourceStructureId);
+      expect(serialized).not.toContain(fixture.sourceOperationId);
+    }
+  });
+
+  it("emits a new hostile-source acquisition after exact expiry and later manifestation", () => {
+    const seed = "issue207-cert-expiry-reacquire";
+    const fixture = issue207RevealFixture(seed);
+    const nextTick = fixture.state.tick + 1;
+    const previousState = createProspectiveMatchState(fixture.state, {
+      directReveals: Object.freeze([
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "OPERATION" as const,
+          sourceId: fixture.sourceOperationId,
+          expiryExclusiveTick: nextTick,
+        }),
+      ]),
+    });
+    const directReveals = resolveDirectRevealsFromLandOperationEvents(
+      previousState,
+      [
+        {
+          tick: nextTick,
+          payload: {
+            operationId: fixture.sourceOperationId,
+            attackedFactionId: "alpha",
+          },
+        },
+      ],
+      nextTick,
+    );
+    const nextState = createAdvancedMatchState(previousState, {
+      directReveals,
+    });
+
+    const reveals = issue207ControlledTransitionEvents(
+      seed,
+      fixture.spec,
+      previousState,
+      nextState,
+    ).filter((event) => event.type === "HOSTILE_SOURCE_REVEALED");
+
+    expect(reveals).toHaveLength(1);
+    expect(reveals[0]).toMatchObject({
+      type: "HOSTILE_SOURCE_REVEALED",
+      source: { type: "OPERATION" },
+    });
+  });
+
+  it("coalesces plural same-source same-tick manifestations to one public acquisition event", () => {
+    const seed = "issue207-cert-same-tick-coalesce";
+    const fixture = issue207RevealFixture(seed);
+    const nextTick = fixture.state.tick + 1;
+    const duplicateManifestations = Object.freeze([
+      {
+        tick: nextTick,
+        payload: {
+          operationId: fixture.sourceOperationId,
+          attackedFactionId: "alpha",
+        },
+      },
+      {
+        tick: nextTick,
+        payload: {
+          operationId: fixture.sourceOperationId,
+          attackedFactionId: "alpha",
+        },
+      },
+    ]);
+    const directReveals = resolveDirectRevealsFromLandOperationEvents(
+      fixture.state,
+      duplicateManifestations,
+      nextTick,
+    );
+    expect(
+      directReveals.filter(
+        (record) =>
+          record.viewerFactionId === "alpha" &&
+          record.sourceKind === "OPERATION" &&
+          record.sourceId === fixture.sourceOperationId,
+      ),
+    ).toHaveLength(1);
+
+    const nextState = createAdvancedMatchState(fixture.state, {
+      directReveals,
+    });
+    const reveals = issue207ControlledTransitionEvents(
+      seed,
+      fixture.spec,
+      fixture.state,
+      nextState,
+    ).filter((event) => event.type === "HOSTILE_SOURCE_REVEALED");
+
+    expect(reveals).toHaveLength(1);
+    expect(reveals[0]).toMatchObject({
+      type: "HOSTILE_SOURCE_REVEALED",
+      source: { type: "OPERATION" },
+    });
+  });
+
+  it("suppresses a public reveal ghost when the final canonical source is destroyed", () => {
+    const seed = "issue207-cert-destroyed-source";
+    const fixture = issue207RevealFixture(seed);
+    const nextTick = fixture.state.tick + 1;
+    const nextState = createAdvancedMatchState(fixture.state, {
+      mobileUnits: Object.freeze(
+        fixture.state.mobileUnits.filter(
+          (unit) => unit.id !== fixture.sourceUnitId,
+        ),
+      ),
+      directReveals: Object.freeze([
+        Object.freeze({
+          viewerFactionId: "alpha",
+          sourceKind: "UNIT" as const,
+          sourceId: fixture.sourceUnitId,
+          expiryExclusiveTick: nextTick + 10,
+        }),
+      ]),
+    });
+
+    const events = issue207ControlledTransitionEvents(
+      seed,
+      fixture.spec,
+      fixture.state,
+      nextState,
+    );
+    expect(
+      events.filter((event) => event.type === "HOSTILE_SOURCE_REVEALED"),
+    ).toEqual([]);
+  });
+
   it("projects hostile reveal facts through intrinsic Unit, Structure, and Operation Ref domains", () => {
     const seed = "issue207-hostile-source-domain-projection";
     const initial = createInitialMatchState(
@@ -1656,10 +1946,12 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
     const rejected = tankRuntime("issue206-tank-build-atomic");
     const rejectedBefore = rejected.snapshot();
     const rejectedInputs = rejected.acceptedInputs().length;
+    let firstRejectedActionRef: string | undefined;
+    let secondRejectedActionRef: string | undefined;
     const siblingHost = new InProcessTestControllerHost({
       alpha(context) {
-        context.units.build("TANK", { cellId: 1 }, 2);
-        context.units.build("TANK", { cellId: 1 }, 3);
+        firstRejectedActionRef = context.units.build("TANK", { cellId: 1 }, 2);
+        secondRejectedActionRef = context.units.build("TANK", { cellId: 1 }, 3);
         return {};
       },
     });
@@ -1675,6 +1967,26 @@ describe("issue #206 Tank build and strategic-move authoritative RED", () => {
     expect(rejected.acceptedInputs()).toHaveLength(rejectedInputs);
     expect(rejected.snapshot()).toEqual(rejectedBefore);
     expect(rejected.tick().tankProductionJobs).toEqual([]);
+
+    let rejectionEvents: readonly Readonly<Record<string, unknown>>[] = [];
+    await Promise.resolve(
+      rejected.runControllerRound(
+        new InProcessTestControllerHost({
+          alpha(context) {
+            rejectionEvents = contextEvents(context);
+            return {};
+          },
+        }),
+      ),
+    );
+    expect(
+      rejectionEvents.filter(
+        (event) =>
+          event.type === "UNIT_CHANGED" &&
+          (event.originAction === firstRejectedActionRef ||
+            event.originAction === secondRejectedActionRef),
+      ),
+    ).toEqual([]);
   });
 
   it("delivers delayed Tank creation with the original ActionRef and public UnitRef", async () => {
