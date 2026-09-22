@@ -1382,6 +1382,110 @@ describe("issue #206 team.signal authoritative RED", () => {
     }
   });
 
+  it("re-emits a still-lawful hostile OperationRef after backlog overflow drops its first acquisition", async () => {
+    const seed = "issue225-operation-overflow-resync";
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "gamma"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", fixedTeamId: "team-b", rules },
+          { id: "gamma", fixedTeamId: "team-b", rules },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 2,
+    });
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "beta",
+      amount: 20,
+    });
+    runtime.tick();
+
+    let ordinal = 0;
+    while (ordinal < 4_096) {
+      const end = Math.min(4_096, ordinal + 64);
+      for (; ordinal < end; ordinal += 1) {
+        runtime.acceptAction({
+          type: "TEAM_SIGNAL",
+          senderFactionId: "gamma",
+          channel: "overflow-fill",
+          payload: { ordinal },
+        });
+      }
+      runtime.tick();
+    }
+    expect(pendingEventCount(runtime, "beta")).toBe(4_096);
+
+    runtime.acceptAction({
+      type: "APPLY_PERSISTENT_DIRECTIVES",
+      factionId: "alpha",
+      changes: {
+        set: [
+          {
+            kind: "LAND_OPERATION",
+            key: "overflow-attack",
+            operation: "ATTACK",
+            population: 1,
+            targetFactionId: "beta" as never,
+            source: { kind: "CELLS", ids: [0] },
+            target: { kind: "CELLS", ids: [1] },
+          },
+        ],
+      },
+    });
+    runtime.tick();
+
+    expect(
+      runtime.snapshot().directReveals.some(
+        (entry) =>
+          entry.viewerFactionId === "beta" &&
+          entry.sourceKind === "OPERATION" &&
+          runtime.snapshot().tick < entry.expiryExclusiveTick,
+      ),
+    ).toBe(true);
+
+    const observed: Readonly<Record<string, unknown>>[] = [];
+    let recoveredOperation = false;
+    for (let decision = 0; decision < 12 && !recoveredOperation; decision += 1) {
+      await Promise.resolve(
+        runtime.runControllerRound(
+          new InProcessTestControllerHost({
+            beta(context) {
+              for (const event of context.events.sinceLastDecision) {
+                observed.push(event as Readonly<Record<string, unknown>>);
+                if (
+                  event.type === "HOSTILE_SOURCE_REVEALED" &&
+                  event.source.type === "OPERATION" &&
+                  context.operations?.get(event.source) !== undefined
+                ) {
+                  recoveredOperation = true;
+                }
+              }
+              return {};
+            },
+          }),
+        ),
+      );
+      if (!recoveredOperation) runtime.tick();
+    }
+
+    expect(
+      observed.some((event) => event.type === "EVENT_BACKLOG_OVERFLOW"),
+    ).toBe(true);
+    expect(recoveredOperation).toBe(true);
+  });
+
   it("does not retain pending events for a permanently faulted controller", async () => {
     const runtime = teamSignalRuntime("issue207-faulted-event-consumer");
     for (let fault = 1; fault <= 5; fault += 1) {
