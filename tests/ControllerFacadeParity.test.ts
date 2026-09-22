@@ -65,6 +65,78 @@ const CHECK_PROOFS = Object.freeze([
   "RUNTIME_PARITY",
 ] as const);
 
+const ISSUE225_REQUIRED_CONTEXT_KEYS = Object.freeze([
+  "capitulate",
+  "cells",
+  "economy",
+  "events",
+  "factions",
+  "limits",
+  "map",
+  "me",
+  "memory",
+  "operations",
+  "random",
+  "segments",
+  "structures",
+  "team",
+  "territory",
+  "tick",
+  "transports",
+  "units",
+  "weapons",
+] as const);
+
+const ISSUE225_PUBLIC_CALLABLE_NAMES = Object.freeze([
+  "capitulate",
+  "cells.boundary",
+  "cells.count",
+  "cells.distance",
+  "cells.get",
+  "cells.neighbors",
+  "cells.owner",
+  "cells.query",
+  "factions.atWar",
+  "factions.find",
+  "factions.get",
+  "factions.proximity",
+  "map.cardinalNeighbors",
+  "map.cellIdAt",
+  "map.isValidCellId",
+  "map.positionOf",
+  "map.segmentIdOf",
+  "map.terrainAt",
+  "operations.get",
+  "operations.own",
+  "random.keyed",
+  "random.next",
+  "segments.cellIds",
+  "segments.cells",
+  "segments.get",
+  "segments.list",
+  "structures.build",
+  "structures.checkBuild",
+  "structures.checkUpgrade",
+  "structures.count",
+  "structures.find",
+  "structures.get",
+  "structures.upgrade",
+  "team.signal",
+  "territory.checkRelinquish",
+  "territory.relinquish",
+  "transports.checkEmbark",
+  "transports.embark",
+  "transports.recall",
+  "units.build",
+  "units.checkBuild",
+  "units.count",
+  "units.find",
+  "units.get",
+  "units.move",
+  "weapons.checkLaunch",
+  "weapons.launch",
+] as const);
+
 type RuntimeContext = Record<string, any>;
 
 type ActionRow = Readonly<{
@@ -468,6 +540,190 @@ function stagedActions(result: unknown): readonly unknown[] {
   const value = (result as { readonly stagedActions?: unknown }).stagedActions;
   return Array.isArray(value) ? value : [];
 }
+
+describe("issue #225 final ControllerContext RED", () => {
+  it("declares exactly the agreed normal V1 top-level and callable surface", () => {
+    const registeredContextKeys =
+      ISSUE225_REQUIRED_CONTEXT_KEYS.map((name) => JSON.stringify(name)).join(" | ") ||
+      "never";
+    const registeredCallableNames =
+      ISSUE225_PUBLIC_CALLABLE_NAMES.map((name) => JSON.stringify(name)).join(" | ") ||
+      "never";
+    const fixture = [
+      'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
+      'type Context = Parameters<OpenFufuController["decide"]>[0];',
+      `type RegisteredContextKey = ${registeredContextKeys};`,
+      `type RegisteredCallableName = ${registeredCallableNames};`,
+      'type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
+      'type PublicContextKey = keyof Context & string;',
+      'type MethodKeys<T> = {',
+      '  [K in keyof T & string]-?: T[K] extends (...args: any[]) => any ? K : never;',
+      '}[keyof T & string];',
+      'type NestedCallableNames<T> = {',
+      '  [K in keyof T & string]: T[K] extends (...args: any[]) => any',
+      '    ? K',
+      '    : MethodKeys<NonNullable<T[K]>> extends infer M',
+      '      ? M extends string ? `${K}.${M}` : never',
+      '      : never;',
+      '}[keyof T & string];',
+      'type PublicCallableName = NestedCallableNames<Context>;',
+      'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
+      'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
+      'declare const context: Context;',
+      'void context.tick;',
+      'void context.me.populationState.capacity;',
+      'void context.me.populationState.growthPerSecond;',
+      'void context.me.populationState.utilization;',
+      'void context.me.populationState.neutralSettlementHalfResidual;',
+      'void context.economy.ffy;',
+      'void context.economy.passiveFfyPerSecond;',
+      'void context.random.next();',
+      'void context.random.keyed("stable-purpose");',
+      'void context.limits.queriesPerDecision;',
+      '// @ts-expect-error broad GameView was removed from normal V1.',
+      'void context.game;',
+      '// @ts-expect-error ContactsApi was removed from normal V1.',
+      'void context.contacts;',
+      '// @ts-expect-error NavigationApi was removed from normal V1.',
+      'void context.navigation;',
+      '// @ts-expect-error broad MechanicsApi was removed from normal V1.',
+      'void context.mechanics;',
+      '// @ts-expect-error unstructured RulesView was removed from normal V1.',
+      'void context.rules;',
+      '// @ts-expect-error decisionNumber is not player-facing in normal V1.',
+      'void context.decisionNumber;',
+      '// @ts-expect-error generic modifier dictionaries are deferred from normal V1.',
+      'void context.me.effectiveModifiers;',
+      '// @ts-expect-error incoming hostile operation discovery is event-driven.',
+      'void context.operations.incoming();',
+      'void contextKeysAreExact; void callableRegistryIsExact;',
+    ].join("\n");
+    expect(typecheckFixture(fixture)).toBe("");
+  });
+
+  it("materializes the same agreed normal V1 context shape in-process and in the production isolate", async () => {
+    const makeInputs = (seed: string) => {
+      const state = facadeState(seed);
+      const references = new ControllerReferenceSession(seed, state);
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          1,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+        ),
+      };
+    };
+    const expectedKeys = [...ISSUE225_REQUIRED_CONTEXT_KEYS].sort();
+    const expectedOperations = ["get", "own"];
+    let inProcessShape: unknown;
+
+    const local = makeInputs("issue225-context-in-process");
+    const inProcess = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          const value = context as unknown as RuntimeContext;
+          inProcessShape = {
+            keys: Object.keys(value).sort(),
+            operations: Object.keys(value.operations).sort(),
+            self: {
+              hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
+                value.me,
+                "effectiveModifiers",
+              ),
+              populationKeys: Object.keys(value.me.populationState).sort(),
+              economyKeys: Object.keys(value.economy).sort(),
+            },
+            random: Object.keys(value.random).sort(),
+            limits: Object.keys(value.limits).sort(),
+          };
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      inProcess.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessShape).toMatchObject({
+      keys: expectedKeys,
+      operations: expectedOperations,
+      self: {
+        hasEffectiveModifiers: false,
+        populationKeys: expect.arrayContaining([
+          "capacity",
+          "growthPerSecond",
+          "utilization",
+          "neutralSettlementHalfResidual",
+        ]),
+        economyKeys: ["ffy", "passiveFfyPerSecond"],
+      },
+      random: ["keyed", "next"],
+    });
+
+    const worker = makeInputs("issue225-context-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              return {
+                log: JSON.stringify({
+                  keys: Object.keys(context).sort(),
+                  operations: Object.keys(context.operations).sort(),
+                  self: {
+                    hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
+                      context.me,
+                      "effectiveModifiers"
+                    ),
+                    populationKeys: Object.keys(context.me.populationState).sort(),
+                    economyKeys: Object.keys(context.economy).sort()
+                  },
+                  random: Object.keys(context.random).sort(),
+                  limits: Object.keys(context.limits).sort()
+                })
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        worker.observation,
+        worker.session,
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.output?.log ?? "{}")).toMatchObject({
+          keys: expectedKeys,
+          operations: expectedOperations,
+          self: {
+            hasEffectiveModifiers: false,
+            populationKeys: expect.arrayContaining([
+              "capacity",
+              "growthPerSecond",
+              "utilization",
+              "neutralSettlementHalfResidual",
+            ]),
+            economyKeys: ["ffy", "passiveFfyPerSecond"],
+          },
+          random: ["keyed", "next"],
+        });
+      }
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
 
 describe("issue #206 facade proof matrix", () => {
   it("registers exactly 10 routine actions with every required proof obligation", () => {
