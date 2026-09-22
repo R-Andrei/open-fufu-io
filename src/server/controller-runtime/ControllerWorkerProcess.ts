@@ -414,10 +414,18 @@ const invokeEntrypointSource = `
   const decisionNumber = globalThis.__openFufuInput.decisionNumber;
   const publicObservation = {};
   for (const key of primordials.keys(globalThis.__openFufuInput)) {
-    if (key !== "decisionNumber") {
+    if (
+      key !== "decisionNumber" &&
+      key !== "me" &&
+      key !== "factions" &&
+      key !== "publicMe"
+    ) {
       publicObservation[key] = globalThis.__openFufuInput[key];
     }
   }
+  const publicMe =
+    globalThis.__openFufuInput.publicMe ?? globalThis.__openFufuInput.me;
+  if (publicMe !== undefined) publicObservation.me = publicMe;
 
   const randomHash32 = (input, seed = 0x811c9dc5) => {
     let hash = seed >>> 0;
@@ -1158,8 +1166,9 @@ function validatePublicFactionSnapshot(
       (entry.ownerCode !== undefined &&
         (!Number.isSafeInteger(entry.ownerCode) || entry.ownerCode <= 0)) ||
       (entry.teamId !== undefined && typeof entry.teamId !== "string") ||
-      !Array.isArray(entry.atWarWith) ||
-      entry.atWarWith.some((ref) => typeof ref !== "string")
+      (entry.atWarWith !== undefined &&
+        (!Array.isArray(entry.atWarWith) ||
+          entry.atWarWith.some((ref) => typeof ref !== "string")))
     ) {
       throw new Error("controller public faction entry is invalid");
     }
@@ -1178,7 +1187,9 @@ function validatePublicFactionSnapshot(
         ? {}
         : { ownerCode: entry.ownerCode as number }),
       ...(entry.teamId === undefined ? {} : { teamId: entry.teamId as string }),
-      atWarWith: Object.freeze([...(entry.atWarWith as string[])]),
+      atWarWith: Object.freeze([
+        ...((entry.atWarWith as string[] | undefined) ?? []),
+      ]),
     });
   });
   if (

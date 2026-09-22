@@ -104,7 +104,7 @@ describe("land operations through authoritative MatchRuntime", () => {
           expect(observation.cells?.owner(1)).toBe(betaRef);
           expect(observation.cells?.owner(0)).not.toBe("alpha");
           expect(observation.cells?.owner(1)).not.toBe("beta");
-          expect(observation.me.population).toMatchObject({
+          expect(observation.me.populationState).toMatchObject({
             total: 2,
             available: 2,
             committedOffense: 0,
@@ -120,7 +120,7 @@ describe("land operations through authoritative MatchRuntime", () => {
                   kind: "LAND_OPERATION",
                   key: "alpha-attack",
                   operation: "ATTACK",
-                  population: observation.me.population.available,
+                  population: observation.me.populationState.available,
                   targetFactionId: "beta",
                   source: { kind: "CELLS", ids: [0] },
                   target: { kind: "CELLS", ids: [1] },

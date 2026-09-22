@@ -229,7 +229,7 @@ export interface SelfFactionView {
   readonly displayName: string;
   readonly status: FactionStatus;
   readonly teamId?: string;
-  readonly isMinorFaction: false;
+  readonly isMinorFaction: boolean;
   readonly origin?: OriginView;
   readonly territoryCells: number;
   readonly population: number;

@@ -102,9 +102,22 @@ export interface LawfulFactionObservation {
   readonly status: FactionStatus;
 }
 
-export type LawfulPopulationObservation = Readonly<PopulationView>;
+export type LawfulPopulationObservation = Readonly<
+  Pick<
+    PopulationView,
+    | "total"
+    | "available"
+    | "committedOffense"
+    | "committedCounterResponse"
+    | "aboardTransports"
+    | "neutralSettlementHalfResidual"
+  >
+>;
 
-export type LawfulSelfFactionObservation = Readonly<SelfFactionView>;
+export interface LawfulSelfFactionObservation extends LawfulFactionObservation {
+  readonly population: LawfulPopulationObservation;
+  readonly ffy: number;
+}
 
 export interface PendingTeamSignalObservation {
   readonly senderFactionId: string;
@@ -149,6 +162,9 @@ export interface LawfulControllerObservation {
   /** Trusted transport metadata used for ActionRef/random scoping; not player-facing. */
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
+  readonly factions: readonly LawfulFactionObservation[];
+  /** Full lawful self view reserved for normal public-context adapters. */
+  readonly publicMe: Readonly<SelfFactionView>;
   readonly economy: Readonly<EconomyView>;
   readonly events: Readonly<EventsApi>;
   readonly lastDecision?: DecisionReceipt;
@@ -156,7 +172,11 @@ export interface LawfulControllerObservation {
 }
 
 export type LawfulInProcessControllerObservation = Readonly<
-  Omit<LawfulControllerObservation, "decisionNumber"> & {
+  Omit<
+    LawfulControllerObservation,
+    "decisionNumber" | "me" | "factions" | "publicMe"
+  > & {
+    readonly me: Readonly<SelfFactionView>;
     readonly factions?: ControllerQuerySession["factions"];
     readonly map?: ControllerSpatialSurface["map"];
     readonly cells?: ControllerSpatialSurface["cells"];
@@ -460,13 +480,17 @@ function projectInProcessObservation(
   observation: LawfulControllerObservation,
   querySession?: ControllerQuerySession,
 ): LawfulInProcessControllerObservation {
-  const { decisionNumber, ...publicObservation } = observation;
+  const {
+    decisionNumber,
+    publicMe,
+    me: _trustedMe,
+    factions: _trustedFactions,
+    ...publicObservation
+  } = observation;
   const common = Object.freeze({
     ...publicObservation,
-    random: createNormalControllerRandomApi(
-      publicObservation.me?.id,
-      decisionNumber,
-    ),
+    me: publicMe,
+    random: createNormalControllerRandomApi(publicMe.id, decisionNumber),
   });
   if (querySession === undefined) return common;
   return Object.freeze({
@@ -875,7 +899,6 @@ function freezeFactionObservation(
 
 function freezePopulationObservation(
   population: PopulationState,
-  capacity: number,
 ): LawfulPopulationObservation {
   return Object.freeze({
     total: population.total,
@@ -883,35 +906,48 @@ function freezePopulationObservation(
     committedOffense: population.committedOffensive,
     committedCounterResponse: population.committedCounterResponse,
     aboardTransports: population.aboardTransports,
-    capacity,
-    // Ordinary automatic Population growth is not yet advanced by the current
-    // authoritative runtime. Report the truthful realized rate until that owner lands.
-    growthPerSecond: 0,
-    utilization: capacity === 0 ? 0 : population.total / capacity,
     neutralSettlementHalfResidual: population.neutralSettlementHalfResidual,
   });
 }
 
 function freezeSelfFactionObservation(
   ref: FactionRef,
+  status: FactionStatus,
+  ffy: number,
+  population: PopulationState,
+): LawfulSelfFactionObservation {
+  return Object.freeze({
+    ref,
+    status,
+    ffy,
+    population: freezePopulationObservation(population),
+  });
+}
+
+function freezePublicSelfFactionObservation(
+  ref: FactionRef,
   faction: MatchFactionState,
   capacity: number,
   territoryCells: number,
-): LawfulSelfFactionObservation {
-  if (faction.isMinorFaction) {
-    throw new Error("Minor Factions do not receive normal ControllerContext");
-  }
+): Readonly<SelfFactionView> {
   return Object.freeze({
     id: ref,
-    displayName: faction.displayName,
+    displayName: faction.displayName ?? faction.id,
     status: faction.status,
     ...(faction.fixedTeamId === undefined ? {} : { teamId: faction.fixedTeamId }),
-    isMinorFaction: false as const,
+    isMinorFaction: faction.isMinorFaction === true,
     ...(faction.origin === undefined ? {} : { origin: faction.origin }),
     territoryCells,
     population: faction.population.total,
     capacity,
-    populationState: freezePopulationObservation(faction.population, capacity),
+    populationState: Object.freeze({
+      ...freezePopulationObservation(faction.population),
+      capacity,
+      // Ordinary automatic Population growth is not yet advanced by the current
+      // authoritative runtime. Report the truthful realized rate until that owner lands.
+      growthPerSecond: 0,
+      utilization: capacity === 0 ? 0 : faction.population.total / capacity,
+    }),
     ffy: faction.ffy,
   });
 }
@@ -1089,10 +1125,10 @@ export function projectLawfulControllerObservation(
   if (capacity === undefined) {
     throw new Error(`missing Population Capacity projection for faction ${factionId}`);
   }
-  const territoryCells = state.ownership.reduce(
-    (count, ownerId) => count + (ownerId === factionId ? 1 : 0),
-    0,
-  );
+  let territoryCells = 0;
+  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+    if ((state.ownership[cellId] ?? null) === factionId) territoryCells += 1;
+  }
   const passiveFfyPerSecond =
     realizedPassiveFfyPerSecondByFaction(state).get(factionId);
   if (passiveFfyPerSecond === undefined) {
@@ -1117,11 +1153,29 @@ export function projectLawfulControllerObservation(
   );
   const events = Object.freeze({ sinceLastDecision });
 
+  const factions = Object.freeze(
+    [...state.factions]
+      .sort((left, right) => compareIds(left.id, right.id))
+      .map((faction) =>
+        freezeFactionObservation(
+          requireFactionRef(controllerReferences, faction.id),
+          faction.status,
+        ),
+      ),
+  );
+  const selfRef = requireFactionRef(controllerReferences, me.id);
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
     me: freezeSelfFactionObservation(
-      requireFactionRef(controllerReferences, me.id),
+      selfRef,
+      me.status,
+      me.ffy,
+      me.population,
+    ),
+    factions,
+    publicMe: freezePublicSelfFactionObservation(
+      selfRef,
       me,
       capacity,
       territoryCells,

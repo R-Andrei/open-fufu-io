@@ -168,36 +168,39 @@ describe("authoritative MatchRuntime walking skeleton", () => {
 
     expect(alphaObservation).toMatchObject({
       tick: 1,
-      decisionNumber: 0,
       me: {
-        ref: alphaRef,
+        id: alphaRef,
         status: "ACTIVE",
-        population: {
+        population: 0,
+        populationState: {
           total: 0,
           available: 0,
           committedOffense: 0,
           committedCounterResponse: 0,
           aboardTransports: 0,
+          capacity: 0,
+          growthPerSecond: 0,
+          utilization: 0,
           neutralSettlementHalfResidual: 0,
         },
       },
-      factions: [
-        { ref: alphaRef, status: "ACTIVE" },
-        { ref: betaRef, status: "ACTIVE" },
-      ],
     });
-    expect(alphaObservation?.me).not.toHaveProperty("id");
-    expect(alphaObservation?.factions.every((faction) => !("id" in faction))).toBe(
-      true,
-    );
+    expect(alphaObservation).not.toHaveProperty("decisionNumber");
+    expect(alphaObservation?.me).not.toHaveProperty("ref");
+    const publicFactions = alphaObservation?.factions?.find() ?? [];
+    expect(publicFactions.map((faction) => faction.ref)).toEqual([
+      alphaRef,
+      betaRef,
+    ]);
+    expect(publicFactions.every((faction) => !("id" in faction))).toBe(true);
     expect(alphaObservation?.map?.cellCount).toBe(4);
     expect(alphaObservation?.cells?.owner(0)).toBeNull();
     expect(alphaObservation?.segments?.cellIds(0)).toBeUndefined();
     expect(Object.isFrozen(alphaObservation)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.me)).toBe(true);
-    expect(Object.isFrozen(alphaObservation?.me.population)).toBe(true);
+    expect(Object.isFrozen(alphaObservation?.me.populationState)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.factions)).toBe(true);
-    expect(Object.isFrozen(alphaObservation?.factions[0])).toBe(true);
+    expect(publicFactions.every((faction) => Object.isFrozen(faction))).toBe(true);
     expect(Object.isFrozen(alphaObservation?.map)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.cells)).toBe(true);
     expect(Object.isFrozen(alphaObservation?.segments)).toBe(true);
@@ -213,14 +216,18 @@ describe("authoritative MatchRuntime walking skeleton", () => {
     const secondSeen: string[] = [];
 
     const controllers = {
-      beta(observation: LawfulControllerObservation) {
-        secondSeen.push(`beta:${observation.factions.map((f) => f.status).join(",")}`);
-        (observation as LawfulControllerObservation & { capitulate(): string }).capitulate();
+      beta(observation: LawfulInProcessControllerObservation) {
+        secondSeen.push(
+          `beta:${observation.factions?.find().map((f) => f.status).join(",")}`,
+        );
+        observation.capitulate?.();
         return {};
       },
-      alpha(observation: LawfulControllerObservation) {
-        firstSeen.push(`alpha:${observation.factions.map((f) => f.status).join(",")}`);
-        (observation as LawfulControllerObservation & { capitulate(): string }).capitulate();
+      alpha(observation: LawfulInProcessControllerObservation) {
+        firstSeen.push(
+          `alpha:${observation.factions?.find().map((f) => f.status).join(",")}`,
+        );
+        observation.capitulate?.();
         return {};
       },
     };

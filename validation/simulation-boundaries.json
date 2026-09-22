@@ -62,6 +62,12 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller faction projection reads the canonical current team-normalized atWar state for the public FactionsApi; it does not create or deliver hostility occurrences."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection reads current authoritative MatchState for requester-lawful observation; it does not convey an occurrence."
