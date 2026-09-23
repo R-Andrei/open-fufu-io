@@ -13,6 +13,7 @@ import type {
   PopulationView,
   PurchasableUnitType,
   RelinquishQuote,
+  SelfFactionView,
   SpawnInfluenceContext,
   StructureAcquisitionPath,
   StructureBuildQuote,
@@ -254,6 +255,16 @@ void fixtureLandingGrant;
 const fixtureWarQuery = (factions: FactionsApi): boolean =>
   factions.atWar(fixtureFactionARef, fixtureFactionBRef);
 void fixtureWarQuery;
+
+type IsExactlyFalse<T> = [T] extends [false]
+  ? [false] extends [T]
+    ? true
+    : false
+  : false;
+const fixtureNormalSelfIsMajorOnly: IsExactlyFalse<
+  SelfFactionView["isMinorFaction"]
+> = true;
+void fixtureNormalSelfIsMajorOnly;
 
 const fixtureHostilitySpec: HostilityMechanicsSpec = {
   atWarGraceTicks: 600,

@@ -61,6 +61,41 @@ function ordinaryObservation(): LawfulControllerObservation {
 }
 
 describe("authoritative MatchRuntime walking skeleton", () => {
+  it("does not invoke the normal ControllerContext for engine-owned Minor Factions", () => {
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed: "minor-controller-boundary",
+        factions: [
+          { id: "alpha", rules },
+          { id: "goon", rules, isMinorFaction: true },
+        ],
+      }),
+      { controllerReferenceNamespace: "minor-controller-boundary" },
+    );
+
+    let majorCalls = 0;
+    let minorCalls = 0;
+    const receipts = runtime.runControllerRound(
+      new InProcessTestControllerHost({
+        alpha() {
+          majorCalls += 1;
+          return {};
+        },
+        goon() {
+          minorCalls += 1;
+          return {};
+        },
+      }),
+    );
+
+    expect(receipts).not.toBeInstanceOf(Promise);
+    const synchronous = receipts as readonly { readonly factionId: string }[];
+    expect(majorCalls).toBe(1);
+    expect(minorCalls).toBe(0);
+    expect(synchronous.map((entry) => entry.factionId)).toEqual(["alpha"]);
+  });
+
   it("constructs a tiny deterministic match with two faction-local effective-rule profiles", () => {
     const alphaRules = emptyRules();
     const betaRules = emptyRules();
