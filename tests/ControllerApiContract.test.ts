@@ -328,6 +328,62 @@ function compilerOptions(): ts.CompilerOptions {
 }
 
 describe("Open Fufu Controller API contract", () => {
+  it("does not export the removed normal ContactsApi or NavigationApi aliases", () => {
+    const options = compilerOptions();
+    const virtualFixturePath = path.resolve(
+      "tests/contracts/issue225-removed-normal-apis.virtual.ts",
+    );
+    const virtualFixtureSource = `
+      // @ts-expect-error ContactsApi was removed from the V1 public normal controller API.
+      import type { ContactsApi } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error NavigationApi was removed from the V1 public normal controller API.
+      import type { NavigationApi } from "../../src/core/controller/ControllerApi";
+    `;
+
+    const baseHost = ts.createCompilerHost(options);
+    const isVirtualFixture = (fileName: string): boolean =>
+      path.resolve(fileName) === virtualFixturePath;
+    const host: ts.CompilerHost = {
+      ...baseHost,
+      fileExists(fileName) {
+        return isVirtualFixture(fileName) || baseHost.fileExists(fileName);
+      },
+      readFile(fileName) {
+        return isVirtualFixture(fileName)
+          ? virtualFixtureSource
+          : baseHost.readFile(fileName);
+      },
+      getSourceFile(
+        fileName,
+        languageVersion,
+        onError,
+        shouldCreateNewSourceFile,
+      ) {
+        if (isVirtualFixture(fileName)) {
+          return ts.createSourceFile(
+            fileName,
+            virtualFixtureSource,
+            languageVersion,
+            true,
+          );
+        }
+        return baseHost.getSourceFile(
+          fileName,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+      },
+    };
+
+    const program = ts.createProgram({
+      rootNames: [virtualFixturePath],
+      options,
+      host,
+    });
+    expect(formatDiagnostics(ts.getPreEmitDiagnostics(program))).toBe("");
+  });
+
   it("typechecks the owned contract fixtures without compiling inherited application code", () => {
     const options = compilerOptions();
     const fixturePaths = [path.resolve("tests/ControllerApiContract.test.ts")];
