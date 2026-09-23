@@ -339,7 +339,7 @@ function compilerOptions(): ts.CompilerOptions {
 }
 
 describe("Open Fufu Controller API contract", () => {
-  it("does not export the removed normal ContactsApi or NavigationApi aliases", () => {
+  it("does not export removed normal Contacts or Navigation API types", () => {
     const options = compilerOptions();
     const virtualFixturePath = path.resolve(
       "tests/contracts/issue225-removed-normal-apis.virtual.ts",
@@ -349,6 +349,12 @@ describe("Open Fufu Controller API contract", () => {
       import type { ContactsApi } from "../../src/core/controller/ControllerApi";
       // @ts-expect-error NavigationApi was removed from the V1 public normal controller API.
       import type { NavigationApi } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Contact snapshot types are not a standalone V1 public API.
+      import type { TerritorialContactView } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Operational Contact snapshot types are not a standalone V1 public API.
+      import type { OperationalContactView } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Operational Contact kind is internal without a public Contacts surface.
+      import type { OperationalContactKind } from "../../src/core/controller/ControllerApi";
     `;
 
     const baseHost = ts.createCompilerHost(options);
