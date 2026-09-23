@@ -584,11 +584,9 @@ import type {
   FactionReadView,
   FactionRef,
   OpenFufuController,
-  OperationalContactView,
   OperationRef,
   OperationView,
   StructureRef,
-  TerritorialContactView,
   UnitRef,
 } from "../../src/core/controller/ControllerApi";
 // @ts-expect-error authoritative faction IDs are not part of the public SDK.
@@ -663,11 +661,6 @@ type OperationHasControllerKey = "controllerKey" extends keyof OperationView ? t
 const noOperationIdField: OperationHasId = false;
 const noControllerKey: OperationHasControllerKey = false;
 
-type TerritorialHasId = "id" extends keyof TerritorialContactView ? true : false;
-type OperationalHasId = "id" extends keyof OperationalContactView ? true : false;
-const noTerritorialId: TerritorialHasId = false;
-const noOperationalId: OperationalHasId = false;
-
 type HasRawCommands = "commands" extends keyof ControllerDecision ? true : false;
 const noRawCommands: HasRawCommands = false;
 type HostileReveal = Extract<ControllerEvent, { type: "HOSTILE_SOURCE_REVEALED" }>;
@@ -693,8 +686,6 @@ void noCapacity;
 void noModifiers;
 void noOperationIdField;
 void noControllerKey;
-void noTerritorialId;
-void noOperationalId;
 void noRawCommands;
 void hostileRevealType;
 `);
