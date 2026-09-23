@@ -287,29 +287,6 @@ export interface SegmentView {
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
 }
 
-export interface TerritorialContactView {
-  readonly factionA: FactionRef;
-  readonly factionB: FactionRef;
-  readonly boundaryCellCount: number;
-  readonly componentCount: number;
-  readonly segmentIds: readonly SegmentId[];
-  readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
-}
-
-export type OperationalContactKind =
-  | "TERRITORIAL"
-  | "LAND_COMBAT"
-  | "NAVAL_ENCOUNTER"
-  | "AMPHIBIOUS";
-
-export interface OperationalContactView {
-  readonly factionA: FactionRef;
-  readonly factionB: FactionRef;
-  readonly kinds: readonly OperationalContactKind[];
-  readonly area: CellSelector;
-  readonly segmentIds: readonly SegmentId[];
-}
-
 export type OperationKind = "ATTACK" | "NEUTRAL_EXPANSION" | "COUNTER_RESPONSE";
 export type OperationStatus = "ACTIVE" | "STALLED" | "ENDING" | "ENDED";
 
