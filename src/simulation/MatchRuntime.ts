@@ -1167,6 +1167,8 @@ export class MatchRuntime {
       droppedCount: number;
       firstDroppedTick: number;
       lastDroppedTick: number;
+      resyncStarted?: boolean;
+      resyncAfterKey?: string;
     }>
   >();
   private readonly pendingTankOriginByFactoryId = new Map<
@@ -1348,6 +1350,46 @@ export class MatchRuntime {
     return visible;
   }
 
+  private activeDirectRevealResynchronizationEvents(
+    factionId: string,
+    afterKey: string | undefined,
+  ): readonly Readonly<{
+    key: string;
+    event: PendingControllerEventObservation;
+  }>[] {
+    return Object.freeze(
+      this.state.directReveals
+        .filter(
+          (record) =>
+            record.viewerFactionId === factionId &&
+            this.state.tick < record.expiryExclusiveTick &&
+            directRevealSourceSurvives(
+              this.state,
+              record.sourceKind,
+              record.sourceId,
+            ),
+        )
+        .map((record) =>
+          Object.freeze({
+            key: directRevealEventKey(
+              record.viewerFactionId,
+              record.sourceKind,
+              record.sourceId,
+            ),
+            event: Object.freeze({
+              type: "HOSTILE_SOURCE_REVEALED" as const,
+              sourceKind: record.sourceKind,
+              sourceId: record.sourceId,
+            }),
+          }),
+        )
+        .filter((entry) => afterKey === undefined || entry.key > afterKey)
+        .sort((left, right) =>
+          left.key === right.key ? 0 : left.key < right.key ? -1 : 1,
+        ),
+    );
+  }
+
   private consumeControllerEventsAfterDecision(
     evaluated: ControllerRoundEvaluation,
   ): void {
@@ -1372,15 +1414,40 @@ export class MatchRuntime {
         overflow !== undefined &&
         remaining.length < CONTROLLER_PENDING_EVENTS_PER_FACTION
       ) {
-        remaining.push(
-          Object.freeze({
-            type: "EVENT_BACKLOG_OVERFLOW" as const,
-            droppedCount: overflow.droppedCount,
-            firstDroppedTick: overflow.firstDroppedTick,
-            lastDroppedTick: overflow.lastDroppedTick,
-          }),
+        let resyncStarted = overflow.resyncStarted === true;
+        if (!resyncStarted) {
+          remaining.push(
+            Object.freeze({
+              type: "EVENT_BACKLOG_OVERFLOW" as const,
+              droppedCount: overflow.droppedCount,
+              firstDroppedTick: overflow.firstDroppedTick,
+              lastDroppedTick: overflow.lastDroppedTick,
+            }),
+          );
+          resyncStarted = true;
+        }
+
+        const available =
+          CONTROLLER_PENDING_EVENTS_PER_FACTION - remaining.length;
+        const candidates = this.activeDirectRevealResynchronizationEvents(
+          faction.id,
+          overflow.resyncAfterKey,
         );
-        this.pendingControllerEventOverflowByFaction.delete(faction.id);
+        const selected = candidates.slice(0, available);
+        for (const entry of selected) remaining.push(entry.event);
+
+        if (selected.length === candidates.length) {
+          this.pendingControllerEventOverflowByFaction.delete(faction.id);
+        } else {
+          this.pendingControllerEventOverflowByFaction.set(
+            faction.id,
+            Object.freeze({
+              ...overflow,
+              resyncStarted,
+              resyncAfterKey: selected.at(-1)?.key ?? overflow.resyncAfterKey,
+            }),
+          );
+        }
       }
 
       if (remaining.length === 0) {
@@ -1423,6 +1490,9 @@ export class MatchRuntime {
           ),
           firstDroppedTick: overflow?.firstDroppedTick ?? tick,
           lastDroppedTick: tick,
+          ...(overflow?.resyncStarted === true
+            ? { resyncStarted: true as const }
+            : {}),
         });
         continue;
       }
