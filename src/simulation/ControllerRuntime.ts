@@ -938,12 +938,15 @@ function freezePublicSelfFactionObservation(
   capacity: number,
   territoryCells: number,
 ): Readonly<SelfFactionView> {
+  if (faction.isMinorFaction) {
+    throw new Error("Minor Factions do not receive normal ControllerContext");
+  }
   return Object.freeze({
     id: ref,
     displayName: faction.displayName ?? faction.id,
     status: faction.status,
     ...(faction.fixedTeamId === undefined ? {} : { teamId: faction.fixedTeamId }),
-    isMinorFaction: faction.isMinorFaction === true,
+    isMinorFaction: false as const,
     ...(faction.origin === undefined ? {} : { origin: faction.origin }),
     territoryCells,
     population: faction.population.total,
@@ -1797,6 +1800,7 @@ export function evaluateControllerRound(
   }
 
   const orderedFactionIds = [...state.factions]
+    .filter((faction) => !faction.isMinorFaction)
     .map((faction) => faction.id)
     .sort(compareIds);
   const factionScores = new (class extends Map<string, number> {
