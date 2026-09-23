@@ -402,7 +402,7 @@ Offensive Population is attached primarily to operations rather than permanently
 
 Creating/changing/ending an operation's Population occurs immediately when a valid controller decision commits. V1 has no generic land Deployment/Redeployment delay system.
 
-Spatial intent may use target factions, Segments, Contacts, cells/areas, terrain, objectives, and strategy-neutral weights.
+Spatial intent may use target factions, Segments, cells/areas, terrain, objectives, and strategy-neutral weights. Controllers may derive territorial-contact abstractions from public ownership geometry when useful; V1 does not expose a server-owned Contacts query surface.
 
 The simulation resolves intent into legal **engagement lanes** for each tick. One lane is one attacking source cell pressing one adjacent target cell for that faction during that tick.
 
@@ -740,7 +740,7 @@ Origins may alter values or transform rules only through explicit rule-bearing t
 
 Exact trait definitions, costs, transformations, composition rules, and combination semantics are owned by [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). The curated Official Origin roster is owned by [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md).
 
-Origin mechanics must be surfaced through effective rules/mechanics so both player controllers and Official AI can reason about them without recreating hidden engine arithmetic.
+Origin mechanics must be surfaced through the lawful controller information boundary: public Origin/trait identity, concrete self/economy state, ordinary observations, and focused `check*` results where explicitly provided. Official AI receives the same information boundary and must estimate foreign effects from public information just as a player controller does.
 
 ---
 
