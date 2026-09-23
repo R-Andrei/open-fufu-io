@@ -202,9 +202,9 @@ export interface OriginView {
 export type ModifierValue = number | boolean | string;
 
 /**
- * Introspection for surfaced rule-bearing values that do not yet justify a
- * first-class typed field. Controllers should prefer typed MechanicsApi methods
- * whenever one exists rather than rebuilding formulas from these keys.
+ * Strategic Spawn-only introspection for surfaced rule-bearing values that do
+ * not yet justify a first-class typed field. Normal ControllerContext does not
+ * expose this unstructured sheet or a broad mechanics calculator.
  */
 export interface EffectiveModifierSheet {
   readonly values: Readonly<Record<string, ModifierValue>>;
@@ -501,20 +501,6 @@ export interface SegmentsApi {
   cellIds(id: SegmentId): readonly CellId[] | undefined;
 }
 
-export interface ContactsApi {
-  territorial(): readonly TerritorialContactView[];
-  territorialBetween(
-    a: FactionRef,
-    b: FactionRef,
-  ): readonly TerritorialContactView[];
-  /** Current operational contacts are already requester-lawful visibility projections. */
-  operational(): readonly OperationalContactView[];
-  operationalBetween(
-    a: FactionRef,
-    b: FactionRef,
-  ): readonly OperationalContactView[];
-}
-
 export interface FactionsApi {
   get(ref: FactionRef): FactionReadView | undefined;
   find(filter?: FactionFindFilter): readonly FactionReadView[];
@@ -595,20 +581,6 @@ export interface TerritoryApi {
 
 export interface TeamApi {
   signal(channel: string, payload: JsonValue): ActionRef;
-}
-
-export interface NavigationApi {
-  path(
-    from: CellId,
-    to: CellId,
-    movementClass: MovementClass,
-    maxCells?: number,
-  ): readonly CellId[] | undefined;
-  reachable(
-    from: CellId,
-    movementClass: MovementClass,
-    maxDistance: number,
-  ): CellSelector;
 }
 
 export interface EconomyView {

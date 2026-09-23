@@ -64,7 +64,7 @@ Inspect affected allowed-Origin pools; `CharacterProfile` valuation through Doct
 Ask whether:
 
 - character logic should instead be generic Origin/mechanics behavior;
-- an Origin mechanic is general enough and correctly surfaced through `EffectiveRulesView`;
+- an Origin mechanic is general enough and correctly surfaced through the lawful controller-visible state/check contract;
 - a mechanics change leaves stale higher-layer assumptions despite compilation/tests passing.
 
 ## Required completion evidence
