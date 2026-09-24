@@ -392,6 +392,20 @@ ActualGrowthPerSecond
 
 Newly grown Population enters Available Population.
 
+Ordinary growth is evaluated once per authoritative 10 Hz tick, at the end of that tick after autonomous simulation phases have resolved. It samples the final Population, Capacity, completed-City state, terrain shares, and effective growth rules for that tick. Therefore a Capacity change or City completion resolved during the tick participates in that tick's growth accrual, while any whole Population emitted by growth becomes available only for the following tick.
+
+Only `ACTIVE` factions accrue or emit ordinary growth. `CAPITULATED` and `DEFEATED` factions retain their existing Population and fractional growth carry but receive zero new ordinary growth.
+
+The recurring fractional materialization is deterministic:
+
+- **1,000,000,000 residual units = 1 Population**;
+- after exact-rational utilization/rule composition and deterministic finite evaluation of the base power term, the final non-negative per-tick growth amount is quantized **downward once** into residual units;
+- those units are added to the faction's persistent carry;
+- each complete 1,000,000,000 units emits one whole Population;
+- the remainder is persisted in `[0, 999,999,999]`; canonical zero may be omitted from materialized state;
+- the residual survives temporary growth ineligibility and is part of authoritative serialization/replay/fingerprinting;
+- precision below one residual unit is discarded rather than carried through another hidden accumulator.
+
 Origin-specific growth-profile transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`. Utilization evaluation follows the exact-rational materialization convention in `RULE_COMPOSITION.md`: `TotalPopulation / PopulationCapacity`, breakpoint comparisons, horizontal remaps, and piecewise interpolation remain exact rational arithmetic until the owning growth domain materializes the final finite gameplay number. The effective utilization multiplier used by the authoritative simulation is also the multiplier surfaced by controller mechanics; controllers and Official AI must not reconstruct a separate approximation.
 
 ---
