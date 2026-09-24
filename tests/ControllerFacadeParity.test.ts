@@ -27,6 +27,7 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "../src/simulation/MatchState";
+import { resolveOrdinaryPopulationGrowth } from "../src/simulation/Economy";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { tryStartTankProduction } from "../src/simulation/Tanks";
@@ -608,6 +609,11 @@ describe("issue #225 final ControllerContext RED", () => {
     const makeInputs = (seed: string) => {
       const state = facadeState(seed);
       const references = new ControllerReferenceSession(seed, state);
+      const expectedGrowthPerSecond =
+        resolveOrdinaryPopulationGrowth(state).get("alpha")?.growthPerSecond;
+      if (expectedGrowthPerSecond === undefined) {
+        throw new Error("missing authoritative alpha Population growth snapshot");
+      }
       return {
         observation: projectLawfulControllerObservation(
           state,
@@ -622,6 +628,7 @@ describe("issue #225 final ControllerContext RED", () => {
           CONTROLLER_QUERY_LIMITS,
           references,
         ),
+        expectedGrowthPerSecond,
       };
     };
     const expectedKeys = ISSUE225_REQUIRED_CONTEXT_KEYS.filter((name) => name !== "lastDecision").sort();
@@ -776,7 +783,7 @@ describe("issue #225 authoritative self growth projection RED", () => {
       localHost.invoke("alpha", local.observation, local.session),
     );
     expect(localResult.ok).toBe(true);
-    expect(inProcessRate).toBe(0.08);
+    expect(inProcessRate).toBe(local.expectedGrowthPerSecond);
 
     const worker = makeInputs("issue225-growth-worker");
     const pool = new ControllerProcessWorkerPool({ size: 1 });
@@ -800,7 +807,9 @@ describe("issue #225 authoritative self growth projection RED", () => {
       );
       expect(result.ok).toBe(true);
       if (result.ok) {
-        expect(JSON.parse(result.output?.log ?? "null")).toBe(0.08);
+        expect(JSON.parse(result.output?.log ?? "null")).toBe(
+          worker.expectedGrowthPerSecond,
+        );
       }
     } finally {
       await pool.close();
