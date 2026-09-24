@@ -5,7 +5,10 @@ import type {
   StrategicWeaponType,
   StructureType,
 } from "../core/controller/ControllerApi";
-import { resolvePassiveFfyTick } from "./Economy";
+import {
+  resolveOrdinaryPopulationGrowth,
+  resolvePassiveFfyTick,
+} from "./Economy";
 import { advanceHomingCombatProjectiles } from "./CombatProjectiles";
 import {
   applyFactoryTrainDestructionLifecycleEvents,
@@ -35,6 +38,7 @@ import {
   setMobileUnitStrategicDestination,
 } from "./MobileUnits";
 import {
+  accrueOrdinaryPopulationGrowthUnits,
   grantPopulation,
   removePopulation,
   repartitionPopulation,
@@ -1976,6 +1980,25 @@ export class TickEngine {
       trainEconomicUpdate === null
         ? produced
         : createProspectiveMatchState(produced, trainEconomicUpdate);
-    return settleTradeShipSignedFactsPhase(trainEconomicSettled);
+    const tradeEconomicSettled =
+      settleTradeShipSignedFactsPhase(trainEconomicSettled);
+    const growth = resolveOrdinaryPopulationGrowth(tradeEconomicSettled);
+    return createProspectiveMatchState(tradeEconomicSettled, {
+      factions: tradeEconomicSettled.factions.map((faction) => {
+        const snapshot = growth.get(faction.id);
+        if (snapshot === undefined) {
+          throw new Error(
+            `missing ordinary Population growth snapshot for faction ${faction.id}`,
+          );
+        }
+        return {
+          ...faction,
+          population: accrueOrdinaryPopulationGrowthUnits(
+            faction.population,
+            snapshot.growthUnitsPerTick,
+          ),
+        };
+      }),
+    });
   }
 }

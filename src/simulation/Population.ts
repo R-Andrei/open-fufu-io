@@ -6,6 +6,8 @@ export type PopulationBucket =
   | "COUNTER_RESPONSE"
   | "TRANSPORT";
 
+export const POPULATION_GROWTH_RESIDUAL_SCALE = 1_000_000_000;
+
 export interface PopulationState {
   readonly total: number;
   readonly available: number;
@@ -14,6 +16,8 @@ export interface PopulationState {
   readonly aboardTransports: number;
   readonly peakTotal: number;
   readonly neutralSettlementHalfResidual: 0 | 1;
+  /** Internal deterministic ordinary-growth carry; canonical zero is omitted. */
+  readonly growthResidualUnits?: number;
 }
 
 type MutablePopulationState = {
@@ -106,6 +110,16 @@ export function createPopulationState(input: PopulationState): PopulationState {
   ) {
     throw new Error("neutral settlement half residual must be 0 or 1");
   }
+  if (
+    input.growthResidualUnits !== undefined &&
+    (!Number.isSafeInteger(input.growthResidualUnits) ||
+      input.growthResidualUnits < 0 ||
+      input.growthResidualUnits >= POPULATION_GROWTH_RESIDUAL_SCALE)
+  ) {
+    throw new Error(
+      `ordinary Population growth residual must be an integer in 0..${POPULATION_GROWTH_RESIDUAL_SCALE - 1}`,
+    );
+  }
 
   const partitionTotal =
     BigInt(input.available) +
@@ -127,6 +141,9 @@ export function createPopulationState(input: PopulationState): PopulationState {
     aboardTransports: input.aboardTransports,
     peakTotal: input.peakTotal,
     neutralSettlementHalfResidual: input.neutralSettlementHalfResidual,
+    ...(input.growthResidualUnits === undefined || input.growthResidualUnits === 0
+      ? {}
+      : { growthResidualUnits: input.growthResidualUnits }),
   });
 }
 
@@ -246,4 +263,30 @@ export function populationRuleDynamicState(
   state: PopulationState,
 ): PopulationRuleDynamicState {
   return Object.freeze({ peakTotalPopulation: state.peakTotal });
+}
+
+
+export function accrueOrdinaryPopulationGrowthUnits(
+  state: PopulationState,
+  units: number,
+): PopulationState {
+  if (!Number.isSafeInteger(units) || units < 0) {
+    throw new Error("ordinary Population growth units must be a non-negative safe integer");
+  }
+  if (units === 0) return state;
+
+  const totalUnits =
+    BigInt(state.growthResidualUnits ?? 0) + BigInt(units);
+  const scale = BigInt(POPULATION_GROWTH_RESIDUAL_SCALE);
+  const emitted = totalUnits / scale;
+  const residual = Number(totalUnits % scale);
+  if (emitted > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new Error("ordinary Population growth emission exceeds the safe-integer range");
+  }
+
+  const grown = grantPopulation(state, Number(emitted));
+  return createPopulationState({
+    ...grown,
+    growthResidualUnits: residual,
+  });
 }
