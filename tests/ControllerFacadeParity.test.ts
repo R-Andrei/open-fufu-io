@@ -609,11 +609,6 @@ describe("issue #225 final ControllerContext RED", () => {
     const makeInputs = (seed: string) => {
       const state = facadeState(seed);
       const references = new ControllerReferenceSession(seed, state);
-      const expectedGrowthPerSecond =
-        resolveOrdinaryPopulationGrowth(state).get("alpha")?.growthPerSecond;
-      if (expectedGrowthPerSecond === undefined) {
-        throw new Error("missing authoritative alpha Population growth snapshot");
-      }
       return {
         observation: projectLawfulControllerObservation(
           state,
@@ -628,7 +623,6 @@ describe("issue #225 final ControllerContext RED", () => {
           CONTROLLER_QUERY_LIMITS,
           references,
         ),
-        expectedGrowthPerSecond,
       };
     };
     const expectedKeys = ISSUE225_REQUIRED_CONTEXT_KEYS.filter((name) => name !== "lastDecision").sort();
@@ -752,6 +746,11 @@ describe("issue #225 authoritative self growth projection RED", () => {
         }),
       );
       const references = new ControllerReferenceSession(seed, state);
+      const expectedGrowthPerSecond =
+        resolveOrdinaryPopulationGrowth(state).get("alpha")?.growthPerSecond;
+      if (expectedGrowthPerSecond === undefined) {
+        throw new Error("missing authoritative alpha Population growth snapshot");
+      }
       return {
         observation: projectLawfulControllerObservation(
           state,
@@ -766,6 +765,7 @@ describe("issue #225 authoritative self growth projection RED", () => {
           CONTROLLER_QUERY_LIMITS,
           references,
         ),
+        expectedGrowthPerSecond,
       };
     };
 
