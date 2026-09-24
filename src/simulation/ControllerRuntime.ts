@@ -41,6 +41,7 @@ import {
 import {
   ECONOMY_TICKS_PER_SECOND,
   resolveEffectivePopulationCapacities,
+  resolveOrdinaryPopulationGrowth,
   resolvePassiveFfyAwards,
 } from "./Economy";
 import { calculateFactionScore } from "./FactionScore";
@@ -65,6 +66,10 @@ const MAX_CONSECUTIVE_NORMAL_RUNTIME_FAULTS = 5;
 const MAX_TOTAL_NORMAL_RUNTIME_FAULTS = 20;
 const utf8Encoder = new TextEncoder();
 const passiveFfyPerSecondCache = new WeakMap<
+  MatchState,
+  ReadonlyMap<string, number>
+>();
+const populationGrowthPerSecondCache = new WeakMap<
   MatchState,
   ReadonlyMap<string, number>
 >();
@@ -937,6 +942,7 @@ function freezePublicSelfFactionObservation(
   faction: MatchFactionState,
   capacity: number,
   territoryCells: number,
+  growthPerSecond: number,
 ): Readonly<SelfFactionView> {
   if (faction.isMinorFaction) {
     throw new Error("Minor Factions do not receive normal ControllerContext");
@@ -954,9 +960,7 @@ function freezePublicSelfFactionObservation(
     populationState: Object.freeze({
       ...freezePopulationObservation(faction.population),
       capacity,
-      // Ordinary automatic Population growth is not yet advanced by the current
-      // authoritative runtime. Report the truthful realized rate until that owner lands.
-      growthPerSecond: 0,
+      growthPerSecond,
       utilization: capacity === 0 ? 0 : faction.population.total / capacity,
     }),
     ffy: faction.ffy,
@@ -980,6 +984,20 @@ function realizedPassiveFfyPerSecondByFaction(
     rates.set(factionId, perSecond);
   }
   passiveFfyPerSecondCache.set(state, rates);
+  return rates;
+}
+
+function realizedPopulationGrowthPerSecondByFaction(
+  state: MatchState,
+): ReadonlyMap<string, number> {
+  const cached = populationGrowthPerSecondCache.get(state);
+  if (cached !== undefined) return cached;
+
+  const rates = new Map<string, number>();
+  for (const [factionId, snapshot] of resolveOrdinaryPopulationGrowth(state)) {
+    rates.set(factionId, snapshot.growthPerSecond);
+  }
+  populationGrowthPerSecondCache.set(state, rates);
   return rates;
 }
 
@@ -1145,6 +1163,13 @@ export function projectLawfulControllerObservation(
   if (passiveFfyPerSecond === undefined) {
     throw new Error(`missing passive FFY projection for faction ${factionId}`);
   }
+  const growthPerSecond =
+    realizedPopulationGrowthPerSecondByFaction(state).get(factionId);
+  if (growthPerSecond === undefined) {
+    throw new Error(
+      `missing Population growth projection for faction ${factionId}`,
+    );
+  }
   const economy = Object.freeze({
     ffy: me.ffy,
     passiveFfyPerSecond,
@@ -1190,6 +1215,7 @@ export function projectLawfulControllerObservation(
       me,
       capacity,
       territoryCells,
+      growthPerSecond,
     ),
     economy,
     events,
