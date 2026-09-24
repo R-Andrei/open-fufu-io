@@ -163,6 +163,12 @@
       "rationale": "Economy derives values from current authoritative MatchState without treating current state as an event."
     },
     {
+      "from": "src/simulation/Economy.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Economy materializes ordinary Population-growth increments using the Population-owned deterministic residual-unit scale; mutation remains Population/TickEngine-owned."
+    },
+    {
       "from": "src/simulation/FactionScore.ts",
       "to": "src/simulation/StructuresCore.ts",
       "classification": "SHARED_CONTRACT",

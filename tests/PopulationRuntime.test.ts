@@ -8,6 +8,11 @@ import { RULE_AXIS_REGISTRY } from "../src/core/rules/RuleAxisRegistry";
 import type { RuleContribution } from "../src/core/rules/RuleComposition";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMicroSimulationSpec } from "../src/simulation/MicroSimulationHarness";
+import {
+  accrueOrdinaryPopulationGrowthUnits,
+  createPopulationState,
+  POPULATION_GROWTH_RESIDUAL_SCALE,
+} from "../src/simulation/Population";
 import type { StructureGrantRequest } from "../src/simulation/Structures";
 
 function rulesWith(
@@ -44,6 +49,7 @@ function economyRuntime(options: {
   readonly terrain?: readonly string[];
   readonly initialOwners?: readonly (string | null)[];
   readonly initialStructureGrants?: readonly StructureGrantRequest[];
+  readonly alphaIsMinorFaction?: boolean;
 } = {}) {
   const emptyRules = rulesWith();
   const seed = options.seed ?? "economy-runtime";
@@ -56,7 +62,13 @@ function economyRuntime(options: {
       initialOwners: options.initialOwners,
       initialStructureGrants: options.initialStructureGrants,
       factions: [
-        { id: "alpha", rules: options.alphaRules ?? emptyRules },
+        {
+          id: "alpha",
+          rules: options.alphaRules ?? emptyRules,
+          ...(options.alphaIsMinorFaction === undefined
+            ? {}
+            : { isMinorFaction: options.alphaIsMinorFaction }),
+        },
         { id: "beta", rules: emptyRules },
       ],
     }),
@@ -69,6 +81,20 @@ function factionFfy(match: MatchRuntime, factionId = "alpha"): number | undefine
     | { readonly ffy?: number }
     | undefined;
   return faction?.ffy;
+}
+
+function populationState(match: MatchRuntime, factionId = "alpha") {
+  const faction = match.snapshot().factions.find((entry) => entry.id === factionId);
+  if (faction === undefined) throw new Error(`missing faction ${factionId}`);
+  return faction.population;
+}
+
+function growthResidualUnits(match: MatchRuntime, factionId = "alpha"): number {
+  return (
+    populationState(match, factionId) as {
+      readonly growthResidualUnits?: number;
+    }
+  ).growthResidualUnits ?? 0;
 }
 
 describe("Population integration through MatchRuntime", () => {
@@ -211,6 +237,428 @@ describe("Population integration through MatchRuntime", () => {
       }),
     ).toThrow(/distinct factions/i);
     expect(match.acceptedInputs()).toEqual([]);
+  });
+});
+
+describe("ordinary Population growth integration through MatchRuntime", () => {
+  it("persists deterministic fractional growth and emits only complete Population", () => {
+    const match = economyRuntime({
+      seed: "population-growth-fractional",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    for (let tick = 0; tick < 124; tick += 1) match.tick();
+
+    expect(populationState(match)).toMatchObject({
+      total: 0,
+      available: 0,
+      peakTotal: 0,
+    });
+    expect(growthResidualUnits(match)).toBe(992_000_000);
+
+    match.tick();
+
+    expect(populationState(match)).toMatchObject({
+      total: 1,
+      available: 1,
+      peakTotal: 1,
+    });
+    expect(growthResidualUnits(match)).toBe(0);
+  });
+
+  it("keeps zero growth at zero Capacity and at/exceeding Capacity", () => {
+    const zeroCapacity = economyRuntime({
+      seed: "population-growth-zero-capacity",
+      width: 1,
+      height: 1,
+      terrain: ["TUNDRA"],
+      initialOwners: ["alpha"],
+    });
+    for (let tick = 0; tick < 200; tick += 1) zeroCapacity.tick();
+    expect(populationState(zeroCapacity).total).toBe(0);
+    expect(growthResidualUnits(zeroCapacity)).toBe(0);
+
+    const atCapacity = economyRuntime({
+      seed: "population-growth-at-capacity",
+      width: 1,
+      height: 1,
+      terrain: ["FOREST"],
+      initialOwners: ["alpha"],
+    });
+    atCapacity.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 1,
+    });
+    atCapacity.tick();
+    expect(populationState(atCapacity).total).toBe(1);
+    expect(growthResidualUnits(atCapacity)).toBe(0);
+  });
+
+  it("accrues ordinary growth only for ACTIVE factions", () => {
+    const match = economyRuntime({
+      seed: "population-growth-status",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    match.acceptAction({ type: "CAPITULATE_FACTION", factionId: "alpha" });
+    for (let tick = 0; tick < 125; tick += 1) match.tick();
+
+    expect(match.snapshot().factions[0]?.status).toBe("CAPITULATED");
+    expect(populationState(match).total).toBe(0);
+    expect(growthResidualUnits(match)).toBe(0);
+  });
+
+  it("uses the exact ordinary and P02 utilization profiles before finite materialization", () => {
+    const ordinary = economyRuntime({
+      seed: "population-growth-ordinary-profile",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    ordinary.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 4,
+    });
+    ordinary.tick();
+
+    const p02 = economyRuntime({
+      seed: "population-growth-p02-profile",
+      alphaRules: rulesWith(["P02"]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    p02.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 4,
+    });
+    p02.tick();
+
+    // Capacity 16 => base 0.4 Pop/s. At u=1/4, ordinary U=0.79;
+    // P02 remaps to ordinary u=1/3 => U=0.92.
+    expect(growthResidualUnits(ordinary)).toBe(31_600_000);
+    expect(growthResidualUnits(p02)).toBe(36_800_000);
+  });
+
+  it("uses P48 population-bearing Shallow Water in growth Capacity", () => {
+    const withoutP48 = economyRuntime({
+      seed: "population-growth-shallow-baseline",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "SHALLOW_WATER"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    withoutP48.tick();
+    expect(growthResidualUnits(withoutP48)).toBe(0);
+
+    const withP48 = economyRuntime({
+      seed: "population-growth-shallow-p48",
+      alphaRules: rulesWith(["P48"]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "SHALLOW_WATER"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    withP48.tick();
+
+    // Capacity 16 => base 0.4 Pop/s, zero-utilization U=0.20.
+    expect(growthResidualUnits(withP48)).toBe(8_000_000);
+  });
+
+  it("composes Plains share, completed City contribution, and global Growth Echo", () => {
+    const growthEcho = echoRuleContribution(
+      "population.growth",
+      "BENEFICIAL",
+      500,
+      "echo:test-population-growth",
+    );
+    const match = economyRuntime({
+      seed: "population-growth-explicit-modifiers",
+      alphaRules: rulesWith([], [growthEcho]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "PLAINS"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+      initialStructureGrants: [
+        {
+          structureId: "alpha-city",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+    });
+
+    match.tick();
+
+    // Base tick growth = 0.008 Pop. Explicit baseline multiplier is
+    // 1 + 6% Plains share + 1% completed L1 City = 1.07, then the
+    // global +5% Growth Echo scales the combined result => 1.1235.
+    expect(growthResidualUnits(match)).toBe(8_988_000);
+  });
+
+  it("serializes and regenerates the same fractional residual and fingerprint", () => {
+    const original = economyRuntime({
+      seed: "population-growth-replay",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    for (let tick = 0; tick < 37; tick += 1) original.tick();
+
+    expect(growthResidualUnits(original)).toBe(296_000_000);
+
+    const regenerated = MatchRuntime.regenerate(
+      original.spec,
+      original.acceptedInputs(),
+      original.snapshot().tick,
+      { controllerReferenceNamespace: original.spec.seed },
+    );
+
+    expect(growthResidualUnits(regenerated)).toBe(296_000_000);
+    expect(regenerated.snapshot()).toEqual(original.snapshot());
+    expect(regenerated.stateFingerprint()).toBe(original.stateFingerprint());
+  });
+});
+
+describe("ordinary Population growth certification boundaries", () => {
+  it("validates residual boundaries and preserves carry through zero-growth lifecycle periods", () => {
+    const base = createPopulationState({
+      total: 0,
+      available: 0,
+      committedOffensive: 0,
+      committedCounterResponse: 0,
+      aboardTransports: 0,
+      peakTotal: 0,
+      neutralSettlementHalfResidual: 0,
+      growthResidualUnits: POPULATION_GROWTH_RESIDUAL_SCALE - 1,
+    });
+    expect(base.growthResidualUnits).toBe(POPULATION_GROWTH_RESIDUAL_SCALE - 1);
+    expect(() =>
+      createPopulationState({
+        ...base,
+        growthResidualUnits: -1,
+      }),
+    ).toThrow(/growth residual/i);
+    expect(() =>
+      createPopulationState({
+        ...base,
+        growthResidualUnits: POPULATION_GROWTH_RESIDUAL_SCALE,
+      }),
+    ).toThrow(/growth residual/i);
+    expect(() =>
+      accrueOrdinaryPopulationGrowthUnits(
+        base,
+        Number.MAX_SAFE_INTEGER + 1,
+      ),
+    ).toThrow(/safe integer/i);
+
+    const match = economyRuntime({
+      seed: "population-growth-residual-preservation",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    for (let tick = 0; tick < 37; tick += 1) match.tick();
+    expect(growthResidualUnits(match)).toBe(296_000_000);
+
+    match.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 17,
+    });
+    match.tick();
+    expect(populationState(match).total).toBe(17);
+    expect(growthResidualUnits(match)).toBe(296_000_000);
+
+    match.acceptAction({ type: "CAPITULATE_FACTION", factionId: "alpha" });
+    match.tick();
+    expect(match.snapshot().factions[0]?.status).toBe("CAPITULATED");
+    expect(growthResidualUnits(match)).toBe(296_000_000);
+  });
+
+  it("applies ordinary growth to ACTIVE Minor Factions", () => {
+    const match = economyRuntime({
+      seed: "population-growth-active-minor",
+      alphaIsMinorFaction: true,
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    match.tick();
+
+    expect(match.snapshot().factions[0]?.isMinorFaction).toBe(true);
+    expect(match.snapshot().factions[0]?.status).toBe("ACTIVE");
+    expect(growthResidualUnits(match)).toBe(8_000_000);
+  });
+
+  it("proves the P02 plateau and upper remap branches exactly", () => {
+    const plateau = economyRuntime({
+      seed: "population-growth-p02-plateau",
+      alphaRules: rulesWith(["P02"]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    plateau.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 10,
+    });
+    plateau.tick();
+    expect(growthResidualUnits(plateau)).toBe(40_000_000);
+
+    const upper = economyRuntime({
+      seed: "population-growth-p02-upper",
+      alphaRules: rulesWith(["P02"]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+    upper.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 14,
+    });
+    upper.tick();
+    expect(growthResidualUnits(upper)).toBe(20_666_666);
+  });
+
+  it("uses P48 Capacity as the denominator of the Plains-share contribution", () => {
+    const match = economyRuntime({
+      seed: "population-growth-p48-plains-denominator",
+      alphaRules: rulesWith(["P48"]),
+      width: 16,
+      height: 1,
+      terrain: [
+        ...Array.from({ length: 8 }, () => "PLAINS"),
+        ...Array.from({ length: 8 }, () => "SHALLOW_WATER"),
+      ],
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    match.tick();
+
+    // Capacity 16, Plains share 8/16 => +3%, not +6%.
+    expect(growthResidualUnits(match)).toBe(8_240_000);
+  });
+
+  it("compounds N01 and City Echo only onto completed City contribution", () => {
+    const cityEcho = echoRuleContribution(
+      "city.growth_contribution",
+      "BENEFICIAL",
+      500,
+      "echo:cert-city-growth",
+    );
+    const match = economyRuntime({
+      seed: "population-growth-city-specialization",
+      alphaRules: rulesWith(["N01"], [cityEcho]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+      initialStructureGrants: [
+        {
+          structureId: "alpha-city",
+          ownerId: "alpha",
+          type: "CITY",
+          cellId: 0,
+          level: 1,
+        },
+      ],
+    });
+
+    match.tick();
+
+    // L1 City +1%; N01 ×0.80 then beneficial City Echo ×1.05 => +0.84%.
+    // Base tick growth is 0.008, so total is 0.0080672 Population.
+    expect(growthResidualUnits(match)).toBe(8_067_200);
+  });
+
+  it("samples a City completion in the same tick before growth accrual", () => {
+    const cheapCity = echoRuleContribution(
+      "structure.CITY.build_cost",
+      "BENEFICIAL",
+      7_500,
+      "echo:cert-cheap-city",
+    );
+    const match = economyRuntime({
+      seed: "population-growth-city-completion-order",
+      alphaRules: rulesWith([], [cheapCity]),
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    match.acceptAction({
+      type: "PURCHASE_STRUCTURE_BUILD",
+      structureId: "alpha-city",
+      ownerId: "alpha",
+      structureType: "CITY",
+      cellId: 0,
+    });
+    for (let tick = 0; tick < 49; tick += 1) match.tick();
+
+    const before = match.snapshot().structures.find(
+      (structure) => structure.id === "alpha-city",
+    );
+    expect(before?.completedLevel).toBeUndefined();
+    expect(growthResidualUnits(match)).toBe(392_000_000);
+
+    match.tick();
+
+    const completed = match.snapshot().structures.find(
+      (structure) => structure.id === "alpha-city",
+    );
+    expect(completed?.completedLevel).toBe(1);
+    // Completion happens before this tick's growth: +8.08m, not +8m.
+    expect(growthResidualUnits(match)).toBe(400_080_000);
+  });
+
+  it("invalidates cached Capacity/terrain shares when ownership changes", () => {
+    const match = economyRuntime({
+      seed: "population-growth-cache-ownership",
+      width: 16,
+      height: 1,
+      terrain: Array.from({ length: 16 }, () => "FOREST"),
+      initialOwners: Array.from({ length: 16 }, () => "alpha"),
+    });
+
+    match.tick();
+    expect(growthResidualUnits(match)).toBe(8_000_000);
+
+    match.acceptAction({
+      type: "RELINQUISH_TERRITORY",
+      ownerId: "alpha",
+      cellIds: [8, 9, 10, 11, 12, 13, 14, 15],
+    });
+    match.tick();
+
+    // A stale Capacity-16 cache would add another 8m. Capacity is now 8,
+    // so the second increment must differ and ownership must be reflected.
+    expect(
+      match.snapshot().ownership.filter((ownerId) => ownerId === "alpha"),
+    ).toHaveLength(8);
+    expect(growthResidualUnits(match)).not.toBe(16_000_000);
   });
 });
 
