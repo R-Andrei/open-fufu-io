@@ -2422,6 +2422,9 @@ export function canonicalMatchStateSerialization(state: MatchState): string {
         peakTotal: faction.population.peakTotal,
         neutralSettlementHalfResidual:
           faction.population.neutralSettlementHalfResidual,
+        ...(faction.population.growthResidualUnits === undefined
+          ? {}
+          : { growthResidualUnits: faction.population.growthResidualUnits }),
       },
       ffy: faction.ffy,
       lifetimeGrossPositiveFfyEarned: faction.lifetimeGrossPositiveFfyEarned,

@@ -1,11 +1,14 @@
+import { pow as deterministicPow } from "../core/DetMath";
 import { factionRelationBetween } from "../core/FactionRelations";
 import { RULE_AXIS_REGISTRY } from "../core/rules/RuleAxisRegistry";
 import type { CompiledRuleProfile } from "../core/rules/RuleCompiler";
 import {
   isTerrainScopeId,
+  rationalToFiniteNumber,
   reducePermissionRule,
   reducedRational,
   selectRuleContributionsForScope,
+  selectStructuralTransform,
   type RuleCondition,
 } from "../core/rules/RuleComposition";
 import {
@@ -24,6 +27,7 @@ import {
 } from "../core/rules/StructureFieldGeometry";
 import { landTerrainBaseSpec } from "./LandOperations";
 import type { MatchFactionState, MatchState } from "./MatchState";
+import { POPULATION_GROWTH_RESIDUAL_SCALE } from "./Population";
 
 export const STARTING_FFY = 25_000;
 export const BASELINE_PASSIVE_FFY_PER_SECOND = 1_000;
@@ -121,6 +125,7 @@ export type FfyDebitResult =
 interface PassiveTerrainCounts {
   readonly capacity: number;
   readonly desertPopulationBearingCells: number;
+  readonly plainsPopulationBearingCells: number;
 }
 
 
@@ -553,11 +558,19 @@ function derivePassiveTerrainCounts(
   );
   const mutable = new Map<
     string,
-    { capacity: number; desertPopulationBearingCells: number }
+    {
+      capacity: number;
+      desertPopulationBearingCells: number;
+      plainsPopulationBearingCells: number;
+    }
   >(
     state.factions.map((faction) => [
       faction.id,
-      { capacity: 0, desertPopulationBearingCells: 0 },
+      {
+        capacity: 0,
+        desertPopulationBearingCells: 0,
+        plainsPopulationBearingCells: 0,
+      },
     ]),
   );
   const populationBearingMemo = new Map<string, boolean>();
@@ -581,6 +594,7 @@ function derivePassiveTerrainCounts(
     const counts = mutable.get(ownerId)!;
     counts.capacity += 1;
     if (terrain === "DESERT") counts.desertPopulationBearingCells += 1;
+    if (terrain === "PLAINS") counts.plainsPopulationBearingCells += 1;
   }
 
   return new Map(
@@ -599,6 +613,287 @@ export function resolveEffectivePopulationCapacities(
       ([factionId, counts]) => [factionId, counts.capacity],
     ),
   );
+}
+
+
+interface GrowthExactRatio {
+  readonly numerator: bigint;
+  readonly denominator: bigint;
+}
+
+export interface OrdinaryPopulationGrowthSnapshot {
+  readonly growthPerSecond: number;
+  readonly growthUnitsPerTick: number;
+}
+
+const GROWTH_GLOBAL_SCOPE = Object.freeze({ kind: "GLOBAL" as const });
+const GROWTH_CITY_SCOPE = Object.freeze({
+  kind: "STRUCTURE" as const,
+  structure: "CITY" as const,
+});
+const GROWTH_TICKS_PER_SECOND = 10;
+
+function growthRatio(
+  numerator: bigint,
+  denominator: bigint,
+): GrowthExactRatio {
+  return reducedRational(numerator, denominator);
+}
+
+function addGrowthRatio(
+  left: GrowthExactRatio,
+  right: GrowthExactRatio,
+): GrowthExactRatio {
+  return growthRatio(
+    left.numerator * right.denominator + right.numerator * left.denominator,
+    left.denominator * right.denominator,
+  );
+}
+
+function subtractGrowthRatio(
+  left: GrowthExactRatio,
+  right: GrowthExactRatio,
+): GrowthExactRatio {
+  return growthRatio(
+    left.numerator * right.denominator - right.numerator * left.denominator,
+    left.denominator * right.denominator,
+  );
+}
+
+function multiplyGrowthRatio(
+  left: GrowthExactRatio,
+  right: GrowthExactRatio,
+): GrowthExactRatio {
+  return growthRatio(
+    left.numerator * right.numerator,
+    left.denominator * right.denominator,
+  );
+}
+
+function compareGrowthRatio(
+  left: GrowthExactRatio,
+  right: GrowthExactRatio,
+): number {
+  const delta =
+    left.numerator * right.denominator - right.numerator * left.denominator;
+  return delta < 0n ? -1 : delta > 0n ? 1 : 0;
+}
+
+const ORDINARY_GROWTH_PROFILE = Object.freeze([
+  Object.freeze({ u: growthRatio(0n, 1n), m: growthRatio(20n, 100n) }),
+  Object.freeze({ u: growthRatio(1n, 10n), m: growthRatio(45n, 100n) }),
+  Object.freeze({ u: growthRatio(2n, 10n), m: growthRatio(70n, 100n) }),
+  Object.freeze({ u: growthRatio(3n, 10n), m: growthRatio(88n, 100n) }),
+  Object.freeze({ u: growthRatio(4n, 10n), m: growthRatio(100n, 100n) }),
+  Object.freeze({ u: growthRatio(5n, 10n), m: growthRatio(100n, 100n) }),
+  Object.freeze({ u: growthRatio(6n, 10n), m: growthRatio(100n, 100n) }),
+  Object.freeze({ u: growthRatio(7n, 10n), m: growthRatio(85n, 100n) }),
+  Object.freeze({ u: growthRatio(8n, 10n), m: growthRatio(60n, 100n) }),
+  Object.freeze({ u: growthRatio(9n, 10n), m: growthRatio(35n, 100n) }),
+  Object.freeze({ u: growthRatio(10n, 10n), m: growthRatio(0n, 1n) }),
+]);
+
+function interpolateOrdinaryGrowthProfile(
+  utilization: GrowthExactRatio,
+): GrowthExactRatio {
+  if (compareGrowthRatio(utilization, growthRatio(1n, 1n)) >= 0) {
+    return growthRatio(0n, 1n);
+  }
+
+  for (let index = 1; index < ORDINARY_GROWTH_PROFILE.length; index += 1) {
+    const right = ORDINARY_GROWTH_PROFILE[index]!;
+    if (compareGrowthRatio(utilization, right.u) > 0) continue;
+    const left = ORDINARY_GROWTH_PROFILE[index - 1]!;
+    const span = subtractGrowthRatio(right.u, left.u);
+    const offset = subtractGrowthRatio(utilization, left.u);
+    const t = growthRatio(
+      offset.numerator * span.denominator,
+      offset.denominator * span.numerator,
+    );
+    return addGrowthRatio(
+      left.m,
+      multiplyGrowthRatio(subtractGrowthRatio(right.m, left.m), t),
+    );
+  }
+
+  return growthRatio(0n, 1n);
+}
+
+function populationGrowthProfile(
+  faction: MatchFactionState,
+): string | undefined {
+  return selectStructuralTransform(
+    RULE_AXIS_REGISTRY.POPULATION_GROWTH_UTILIZATION_PROFILE,
+    selectRuleContributionsForScope(
+      "POPULATION_GROWTH_UTILIZATION_PROFILE",
+      GROWTH_GLOBAL_SCOPE,
+      faction.rules.contributions,
+    ),
+  );
+}
+
+function growthUtilizationMultiplier(
+  faction: MatchFactionState,
+  capacity: number,
+): GrowthExactRatio {
+  if (capacity <= 0 || faction.population.total >= capacity) {
+    return growthRatio(0n, 1n);
+  }
+  const utilization = growthRatio(
+    BigInt(faction.population.total),
+    BigInt(capacity),
+  );
+  const profile = populationGrowthProfile(faction);
+  if (profile === undefined) {
+    return interpolateOrdinaryGrowthProfile(utilization);
+  }
+  if (profile !== "ORIGIN_P02_30_70") {
+    throw new Error(`unsupported Population growth utilization profile ${profile}`);
+  }
+
+  const threeTenths = growthRatio(3n, 10n);
+  const sevenTenths = growthRatio(7n, 10n);
+  if (compareGrowthRatio(utilization, threeTenths) < 0) {
+    return interpolateOrdinaryGrowthProfile(
+      multiplyGrowthRatio(utilization, growthRatio(4n, 3n)),
+    );
+  }
+  if (compareGrowthRatio(utilization, sevenTenths) <= 0) {
+    return growthRatio(1n, 1n);
+  }
+  return interpolateOrdinaryGrowthProfile(
+    addGrowthRatio(
+      growthRatio(3n, 5n),
+      multiplyGrowthRatio(
+        subtractGrowthRatio(utilization, sevenTenths),
+        growthRatio(4n, 3n),
+      ),
+    ),
+  );
+}
+
+function exactScaleRatio(scale: ExactRuleScaleFactor): GrowthExactRatio {
+  return growthRatio(scale.numerator, scale.denominator);
+}
+
+function explicitPopulationGrowthMultiplier(
+  state: MatchState,
+  faction: MatchFactionState,
+  terrain: PassiveTerrainCounts,
+): GrowthExactRatio {
+  if (terrain.capacity <= 0) return growthRatio(1n, 1n);
+  const dynamicState = ffyRuleDynamicState(state, faction.id);
+  const cityScale = exactScaleRatio(
+    materializeCompiledScalarScaleFactor(
+      faction.rules,
+      RULE_AXIS_REGISTRY,
+      "CITY_GROWTH_CONTRIBUTION",
+      GROWTH_CITY_SCOPE,
+      dynamicState,
+    ),
+  );
+
+  let cityContribution = growthRatio(0n, 1n);
+  for (const structure of state.structures) {
+    if (
+      structure.ownerId !== faction.id ||
+      structure.type !== "CITY" ||
+      structure.completedLevel === undefined
+    ) {
+      continue;
+    }
+    cityContribution = addGrowthRatio(
+      cityContribution,
+      multiplyGrowthRatio(
+        growthRatio(BigInt(structure.completedLevel), 100n),
+        cityScale,
+      ),
+    );
+  }
+
+  const plainsContribution = growthRatio(
+    6n * BigInt(terrain.plainsPopulationBearingCells),
+    100n * BigInt(terrain.capacity),
+  );
+  const baseline = addGrowthRatio(
+    growthRatio(1n, 1n),
+    addGrowthRatio(cityContribution, plainsContribution),
+  );
+  const globalScale = exactScaleRatio(
+    materializeCompiledScalarScaleFactor(
+      faction.rules,
+      RULE_AXIS_REGISTRY,
+      "POPULATION_GROWTH",
+      GROWTH_GLOBAL_SCOPE,
+      dynamicState,
+    ),
+  );
+  return multiplyGrowthRatio(baseline, globalScale);
+}
+
+export function resolveOrdinaryPopulationGrowth(
+  state: MatchState,
+): ReadonlyMap<string, OrdinaryPopulationGrowthSnapshot> {
+  const terrainCounts = derivePassiveTerrainCounts(state);
+  const result = new Map<string, OrdinaryPopulationGrowthSnapshot>();
+
+  for (const faction of state.factions) {
+    if (faction.status !== "ACTIVE") {
+      result.set(
+        faction.id,
+        Object.freeze({ growthPerSecond: 0, growthUnitsPerTick: 0 }),
+      );
+      continue;
+    }
+
+    const terrain = terrainCounts.get(faction.id);
+    if (terrain === undefined) {
+      throw new Error(`missing Population growth terrain counts for faction ${faction.id}`);
+    }
+    const utilization = growthUtilizationMultiplier(faction, terrain.capacity);
+    if (utilization.numerator === 0n) {
+      result.set(
+        faction.id,
+        Object.freeze({ growthPerSecond: 0, growthUnitsPerTick: 0 }),
+      );
+      continue;
+    }
+
+    const explicit = explicitPopulationGrowthMultiplier(state, faction, terrain);
+    const explicitFinite = rationalToFiniteNumber(
+      explicit.numerator,
+      explicit.denominator,
+    );
+    const utilizationFinite = rationalToFiniteNumber(
+      utilization.numerator,
+      utilization.denominator,
+    );
+    const growthPerSecond =
+      0.05 *
+      deterministicPow(terrain.capacity, 0.75) *
+      utilizationFinite *
+      explicitFinite;
+    if (!Number.isFinite(growthPerSecond) || growthPerSecond < 0) {
+      throw new Error("ordinary Population growth materialized to an invalid rate");
+    }
+
+    const growthUnitsPerTick = Math.floor(
+      (growthPerSecond / GROWTH_TICKS_PER_SECOND) *
+        POPULATION_GROWTH_RESIDUAL_SCALE,
+    );
+    if (!Number.isSafeInteger(growthUnitsPerTick) || growthUnitsPerTick < 0) {
+      throw new Error(
+        "ordinary Population growth residual increment exceeds the safe-integer range",
+      );
+    }
+
+    result.set(
+      faction.id,
+      Object.freeze({ growthPerSecond, growthUnitsPerTick }),
+    );
+  }
+
+  return result;
 }
 
 function structureCounts(state: MatchState): {
