@@ -128,6 +128,17 @@ interface PassiveTerrainCounts {
   readonly plainsPopulationBearingCells: number;
 }
 
+interface PassiveTerrainCountsCacheEntry {
+  readonly map: MatchState["map"];
+  readonly factionRules: readonly Readonly<{
+    id: string;
+    rules: CompiledRuleProfile;
+  }>[];
+  readonly counts: ReadonlyMap<string, PassiveTerrainCounts>;
+}
+
+const PASSIVE_TERRAIN_COUNTS_BY_OWNERSHIP =
+  new WeakMap<object, PassiveTerrainCountsCacheEntry>();
 
 type EventInsideFieldCondition = Extract<
   RuleCondition,
@@ -553,6 +564,21 @@ function effectivePopulationBearingForTerrain(
 function derivePassiveTerrainCounts(
   state: MatchState,
 ): ReadonlyMap<string, PassiveTerrainCounts> {
+  const ownershipKey = state.ownership as object;
+  const cached = PASSIVE_TERRAIN_COUNTS_BY_OWNERSHIP.get(ownershipKey);
+  if (
+    cached !== undefined &&
+    cached.map === state.map &&
+    cached.factionRules.length === state.factions.length &&
+    cached.factionRules.every(
+      (entry, index) =>
+        entry.id === state.factions[index]?.id &&
+        entry.rules === state.factions[index]?.rules,
+    )
+  ) {
+    return cached.counts;
+  }
+
   const factionsById = new Map(
     state.factions.map((faction) => [faction.id, faction] as const),
   );
@@ -597,12 +623,25 @@ function derivePassiveTerrainCounts(
     if (terrain === "PLAINS") counts.plainsPopulationBearingCells += 1;
   }
 
-  return new Map(
+  const counts = new Map(
     [...mutable.entries()].map(([factionId, counts]) => [
       factionId,
       Object.freeze({ ...counts }),
     ]),
   );
+  PASSIVE_TERRAIN_COUNTS_BY_OWNERSHIP.set(
+    ownershipKey,
+    Object.freeze({
+      map: state.map,
+      factionRules: Object.freeze(
+        state.factions.map((faction) =>
+          Object.freeze({ id: faction.id, rules: faction.rules }),
+        ),
+      ),
+      counts,
+    }),
+  );
+  return counts;
 }
 
 export function resolveEffectivePopulationCapacities(
