@@ -479,10 +479,10 @@ describe("ordinary Population growth certification boundaries", () => {
     match.acceptAction({
       type: "GRANT_POPULATION",
       factionId: "alpha",
-      amount: 16,
+      amount: 17,
     });
     match.tick();
-    expect(populationState(match).total).toBe(16);
+    expect(populationState(match).total).toBe(17);
     expect(growthResidualUnits(match)).toBe(296_000_000);
 
     match.acceptAction({ type: "CAPITULATE_FACTION", factionId: "alpha" });
