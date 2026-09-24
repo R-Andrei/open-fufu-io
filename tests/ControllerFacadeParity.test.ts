@@ -728,6 +728,86 @@ describe("issue #225 final ControllerContext RED", () => {
   }, 20_000);
 });
 
+describe("issue #225 authoritative self growth projection RED", () => {
+  it("projects the shared authoritative growthPerSecond identically in-process and in the production isolate", async () => {
+    const makeInputs = (seed: string) => {
+      const state = createInitialMatchState(
+        createMicroSimulationSpec({
+          seed,
+          width: 16,
+          height: 1,
+          terrain: Array.from({ length: 16 }, () => "FOREST"),
+          initialOwners: Array.from({ length: 16 }, () => "alpha"),
+          factions: [
+            { id: "alpha", rules: emptyRules() },
+            { id: "beta", rules: emptyRules() },
+          ],
+        }),
+      );
+      const references = new ControllerReferenceSession(seed, state);
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          1,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+        ),
+      };
+    };
+
+    let inProcessRate: number | undefined;
+    const local = makeInputs("issue225-growth-in-process");
+    const localHost = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          inProcessRate = context.me.populationState.growthPerSecond;
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      localHost.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessRate).toBe(0.08);
+
+    const worker = makeInputs("issue225-growth-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              return {
+                log: JSON.stringify(context.me.populationState.growthPerSecond)
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        worker.observation,
+        worker.session,
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.output?.log ?? "null")).toBe(0.08);
+      }
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
+
 describe("issue #225 deterministic RandomApi RED", () => {
   it("gives equivalent repeatable decision-scoped random streams in-process and in production", async () => {
     const seed = "issue225-random-parity";
