@@ -562,6 +562,7 @@ describe("issue #225 final ControllerContext RED", () => {
       '  T extends unknown',
       '    ? [T] extends [Seen] ? never',
       '      : T extends (...args: any[]) => any ? Prefix',
+      '      : T extends string | number | boolean | bigint | symbol ? never',
       '      : T extends readonly unknown[] ? never',
       '      : T extends object',
       '        ? string extends keyof T ? never',
