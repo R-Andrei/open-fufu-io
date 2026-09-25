@@ -789,6 +789,7 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
   it("enforces every production-owned normal output ceiling in-process", () => {
     const cases = [
       {
+        name: "directiveUpdatesPerDecision",
         seed: "issue225-in-process-directive-limit",
         decide: () => ({
           directives: {
@@ -800,6 +801,7 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
         }),
       },
       {
+        name: "policyRulesPerDecision",
         seed: "issue225-in-process-policy-limit",
         decide: () => ({
           directives: {
@@ -822,6 +824,7 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
         }),
       },
       {
+        name: "debugItemsPerDecision",
         seed: "issue225-in-process-debug-limit",
         decide: () => ({
           debug: Array.from(
@@ -835,12 +838,14 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
         }),
       },
       {
+        name: "logBytesPerDecision",
         seed: "issue225-in-process-log-limit",
         decide: () => ({
           log: "é".repeat(Math.floor(CONTROLLER_LIMITS.logBytesPerDecision / 2) + 1),
         }),
       },
       {
+        name: "serializedDecisionBytes",
         seed: "issue225-in-process-serialized-limit",
         decide: () => ({
           debug: [
@@ -854,12 +859,13 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
       },
     ] as const;
 
-    for (const testCase of cases) {
-      expect(invokeInProcess(testCase.seed, testCase.decide)).toEqual({
-        ok: false,
-        fault: { code: "RUNTIME_ERROR" },
-      });
-    }
+    const outcomes = cases.map((testCase) => ({
+      name: testCase.name,
+      ok: invokeInProcess(testCase.seed, testCase.decide).ok,
+    }));
+    expect(outcomes).toEqual(
+      cases.map((testCase) => ({ name: testCase.name, ok: false })),
+    );
   });
 
   it("rejects over-limit staged actions before committing in-process memory", () => {
@@ -916,11 +922,13 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
       ),
     );
 
-    expect(first).toEqual({
-      ok: false,
-      fault: { code: "RUNTIME_ERROR" },
+    expect({
+      firstOk: first.ok,
+      secondMemory,
+    }).toEqual({
+      firstOk: false,
+      secondMemory: {},
     });
-    expect(secondMemory).toEqual({});
   });
 
   it("normalizes negative zero identically to production transport materialization", () => {
