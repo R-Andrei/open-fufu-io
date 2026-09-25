@@ -9,7 +9,7 @@
 // This is the single canonical code-readable source for all Official-AI
 // Origin trait support, additive trait-combination support, and semantic
 // support-suppression rules. Mechanical values remain authoritative in the
-// Origin/game rules and final EffectiveRulesView.
+// Origin/game rules and authoritative simulation rule materializers.
 //
 // Internal range constants exist only to keep this large catalogue readable.
 // New accepted batches are appended here; do not create batch shard files.

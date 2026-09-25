@@ -36,9 +36,9 @@ interface UpgradeQuote {
   readonly buildTicks?: number;
 }
 
-interface ConstructionMechanicsSurface {
-  structureBuildQuote(structure: string, cellId: number): BuildQuote;
-  structureUpgradeQuote(cellId: number): UpgradeQuote;
+interface ConstructionCheckSurface {
+  checkBuild(structure: string, cellId: number): BuildQuote;
+  checkUpgrade(locator: Readonly<{ readonly cellId: number }>): UpgradeQuote;
 }
 
 function emptyRules() {
@@ -171,19 +171,18 @@ function alphaReceipt(receipts: readonly ControllerRoundReceipt[]) {
 
 function quoteForAlpha<T>(
   match: MatchRuntime,
-  read: (mechanics: ConstructionMechanicsSurface) => T,
+  read: (structures: ConstructionCheckSurface) => T,
 ): T {
   let quote: T | undefined;
   const receipts = syncReceipts(
     match.runControllerRound(
       new InProcessTestControllerHost({
         alpha(observation) {
-          const mechanics = (
-            observation as unknown as {
-              readonly mechanics: ConstructionMechanicsSurface;
-            }
-          ).mechanics;
-          quote = read(mechanics);
+          const structures = observation.structures;
+          if (structures === undefined) {
+            throw new Error("missing public StructuresApi");
+          }
+          quote = read(structures as unknown as ConstructionCheckSurface);
           return {};
         },
       }),
@@ -322,8 +321,8 @@ void ticksOptional;
     const match = structureRuntime("controller-build-quote-unaffordable-red");
     const before = match.stateFingerprint();
 
-    const quote = quoteForAlpha(match, (mechanics) =>
-      mechanics.structureBuildQuote("FORT", 0),
+    const quote = quoteForAlpha(match, (structures) =>
+      structures.checkBuild("FORT", 0),
     );
 
     expect(quote).toEqual({
@@ -346,8 +345,8 @@ void ticksOptional;
   it("quotes an affordable self build and upgrade from the immutable decision snapshot", () => {
     const buildMatch = structureRuntime("controller-build-quote-affordable-red");
     for (let tick = 0; tick < 250; tick += 1) buildMatch.tick();
-    const buildQuote = quoteForAlpha(buildMatch, (mechanics) =>
-      mechanics.structureBuildQuote("FORT", 0),
+    const buildQuote = quoteForAlpha(buildMatch, (structures) =>
+      structures.checkBuild("FORT", 0),
     );
     expect(buildQuote).toEqual({
       legal: true,
@@ -366,8 +365,8 @@ void ticksOptional;
       "controller-upgrade-quote-affordable-red",
     );
     for (let tick = 0; tick < 750; tick += 1) upgradeMatch.tick();
-    const upgradeQuote = quoteForAlpha(upgradeMatch, (mechanics) =>
-      mechanics.structureUpgradeQuote(0),
+    const upgradeQuote = quoteForAlpha(upgradeMatch, (structures) =>
+      structures.checkUpgrade({ cellId: 0 }),
     );
     expect(upgradeQuote).toEqual({
       legal: true,
@@ -386,18 +385,18 @@ void ticksOptional;
   it("keeps a hidden foreign structure indistinguishable from an empty target cell", () => {
     const hiddenQuote = quoteForAlpha(
       hiddenForeignFortRuntime("controller-hidden-upgrade-quote-red"),
-      (mechanics) => mechanics.structureUpgradeQuote(1),
+      (structures) => structures.checkUpgrade({ cellId: 1 }),
     );
     const emptyQuote = quoteForAlpha(
       structureRuntime("controller-empty-upgrade-quote-red"),
-      (mechanics) => mechanics.structureUpgradeQuote(1),
+      (structures) => structures.checkUpgrade({ cellId: 1 }),
     );
 
     expect(hiddenQuote).toEqual(emptyQuote);
     expect(hiddenQuote).toMatchObject({
       legal: false,
       cost: { ffySpent: 0, populationSpent: 0 },
-      cellId: 1,
+      cellId: -1,
     });
     expect(hiddenQuote).not.toHaveProperty("currentLevel");
     expect(hiddenQuote).not.toHaveProperty("resultingLevel");
@@ -407,7 +406,7 @@ void ticksOptional;
   it("returns precise NOT_OWNER when the foreign structure is lawfully observed", () => {
     const quote = quoteForAlpha(
       observedForeignFortRuntime("controller-visible-foreign-upgrade-quote-red"),
-      (mechanics) => mechanics.structureUpgradeQuote(10),
+      (structures) => structures.checkUpgrade({ cellId: 10 }),
     );
 
     expect(quote).toMatchObject({
@@ -422,7 +421,7 @@ void ticksOptional;
   it("does not invent a level beyond L5 in a MAX_LEVEL quote", () => {
     const quote = quoteForAlpha(
       grantedFortRuntime("controller-max-level-upgrade-quote-red", 5),
-      (mechanics) => mechanics.structureUpgradeQuote(0),
+      (structures) => structures.checkUpgrade({ cellId: 0 }),
     );
 
     expect(quote).toMatchObject({
@@ -443,8 +442,8 @@ void ticksOptional;
     ).toMatchObject({ accepted: true });
     match.tick();
 
-    const quote = quoteForAlpha(match, (mechanics) =>
-      mechanics.structureUpgradeQuote(0),
+    const quote = quoteForAlpha(match, (structures) =>
+      structures.checkUpgrade({ cellId: 0 }),
     );
     expect(quote).toMatchObject({
       legal: false,

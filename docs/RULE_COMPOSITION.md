@@ -947,9 +947,9 @@ Singleton stages are validated against **scope and typed-condition-conjunction o
 
 Runtime scope/condition payloads use exact discriminated-union shapes. Unknown extra fields are rejected rather than being semantically ignored while still changing serialized bytes. Field conditions require registered `field` and `affiliation` values; affiliation omission and legacy version-2 `SAM` field IDs are invalid rather than defaulted or aliased. Set-valued capability/component operands are sorted and deduplicated canonically.
 
-Controllers should consume materialized typed effective mechanics/quotes and authoritative field selectors such as the existing `MechanicsApi`/`CellSelector` contracts. They should not reconstruct raw precedence or structure-field rasterization from Pxx/Nxx/Echo lists.
+Normal controllers consume deliberate public self/economy fields, lawful observations, public Origin/trait identity, authoritative field selectors, and the focused `check*` contracts exposed by `ControllerApi.ts`. They do not receive compiled rule precedence, a generic normal-context `EffectiveModifierSheet`, or a broad `MechanicsApi` oracle, and they should not reconstruct structure-field rasterization from Pxx/Nxx/Echo lists. Strategic Spawn retains its separately owned modifier-introspection contract where that phase explicitly exposes one.
 
-The generic `EffectiveModifierSheet` may remain useful for introspection/less common surfaced values, but first-class mechanics should prefer typed effective specs and action quotes.
+Official AI follows the same lawful information boundary as a player controller; internal rule materializers remain authoritative simulation machinery, not a private exact-opponent mechanics service for AI planning.
 
 ---
 

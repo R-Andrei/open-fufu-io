@@ -155,6 +155,7 @@ type WorkerPublicFactionEntry = Readonly<{
   score?: number;
   ownerCode?: number;
   teamId?: string;
+  atWarWith?: readonly string[];
 }>;
 
 type WorkerPublicFactionSnapshot = Readonly<{
@@ -748,6 +749,7 @@ export class ControllerProcessWorkerPool implements ControllerWorkerPool {
             ...(entry.score === undefined ? {} : { score: entry.score }),
             ...(ownerCode === undefined ? {} : { ownerCode }),
             ...(entry.teamId === undefined ? {} : { teamId: entry.teamId }),
+            atWarWith: Object.freeze([...(entry.atWarWith ?? [])]),
           });
         }),
       ),

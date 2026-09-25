@@ -114,6 +114,7 @@ type WorkerPublicFactionEntry = Readonly<{
   score?: number;
   ownerCode?: number;
   teamId?: string;
+  atWarWith: readonly string[];
 }>;
 
 type WorkerPublicFactionSnapshot = Readonly<{
@@ -298,7 +299,9 @@ const hardenGlobalSource = `
       setAdd: __openFufuSetAdd,
       setDelete: __openFufuSetDelete,
       promiseResolve: __openFufuPromiseResolve,
-      promiseThen: __openFufuPromiseThen
+      promiseThen: __openFufuPromiseThen,
+      mathImul: Math.imul,
+      stringCharCodeAt: Function.prototype.call.bind(String.prototype.charCodeAt)
     });
 
     __openFufuDefineProperty(globalThis, "__openFufuPrimordials", {
@@ -408,10 +411,44 @@ const invokeEntrypointSource = `
     }
   };
 
+  const decisionNumber = globalThis.__openFufuInput.decisionNumber;
+  const publicObservation = {};
+  for (const key of primordials.keys(globalThis.__openFufuInput)) {
+    if (
+      key !== "decisionNumber" &&
+      key !== "me" &&
+      key !== "factions" &&
+      key !== "publicMe"
+    ) {
+      publicObservation[key] = globalThis.__openFufuInput[key];
+    }
+  }
+  const publicMe =
+    globalThis.__openFufuInput.publicMe ?? globalThis.__openFufuInput.me;
+  if (publicMe !== undefined) publicObservation.me = publicMe;
+
+  const randomHash32 = (input, seed = 0x811c9dc5) => {
+    let hash = seed >>> 0;
+    for (let index = 0; index < input.length; index += 1) {
+      hash ^= primordials.stringCharCodeAt(input, index);
+      hash = primordials.mathImul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+  };
+  const randomIdentity =
+    publicObservation.me !== undefined &&
+    publicObservation.me !== null &&
+    typeof publicObservation.me.id === "string"
+      ? publicObservation.me.id
+      : "unbound";
+  const randomBaseSeed = randomHash32(randomIdentity + "\\0" + decisionNumber);
+  let randomOrdinal = 0;
+  const randomUnit = (label) =>
+    randomHash32(label, randomBaseSeed) / 0x100000000;
+
   let nextActionOrdinal = 1;
   const stagedActions = [];
   const stageAction = (kind, payload = {}) => {
-    const decisionNumber = globalThis.__openFufuInput.decisionNumber;
     const actionRef =
       decisionNumber === undefined || decisionNumber === 0
         ? "action_" + nextActionOrdinal
@@ -499,7 +536,19 @@ const invokeEntrypointSource = `
   const hasEntityReads = $4 === true;
   const hasOperationReads = $6 === true;
   const input = deepFreeze({
-    ...globalThis.__openFufuInput,
+    ...publicObservation,
+    random: {
+      next: () => {
+        randomOrdinal += 1;
+        return randomUnit("N\\0" + randomOrdinal);
+      },
+      keyed: (key) => {
+        if (typeof key !== "string") {
+          throw new TypeError("controller random key must be a string");
+        }
+        return randomUnit("K\\0" + key);
+      }
+    },
     ...(hasLocalSpatial
       ? {
           map: {
@@ -544,8 +593,7 @@ const invokeEntrypointSource = `
       ? {
           operations: {
             get: (ref) => localOperation("OPERATIONS_GET", [ref]),
-            own: () => localOperation("OPERATIONS_OWN", []),
-            incoming: () => localOperation("OPERATIONS_INCOMING", [])
+            own: () => localOperation("OPERATIONS_OWN", [])
           }
         }
       : {}),
@@ -557,7 +605,8 @@ const invokeEntrypointSource = `
               filter === undefined
                 ? localFaction("FACTIONS_FIND", [])
                 : localFaction("FACTIONS_FIND", [filter]),
-            proximity: (ref) => localFaction("FACTIONS_PROXIMITY", [ref])
+            proximity: (ref) => localFaction("FACTIONS_PROXIMITY", [ref]),
+            atWar: (a, b) => localFaction("FACTIONS_AT_WAR", [a, b])
           },
           units: {
             get: (locator) => hostQuery("UNITS_GET", [locator]),
@@ -1095,6 +1144,7 @@ function validatePublicFactionSnapshot(
       "score",
       "ownerCode",
       "teamId",
+      "atWarWith",
     ]);
     if (Object.keys(entry).some((key) => !allowed.has(key))) {
       throw new Error("controller public faction entry exposes unsupported identity data");
@@ -1115,7 +1165,10 @@ function validatePublicFactionSnapshot(
         (typeof entry.score !== "number" || !Number.isFinite(entry.score))) ||
       (entry.ownerCode !== undefined &&
         (!Number.isSafeInteger(entry.ownerCode) || entry.ownerCode <= 0)) ||
-      (entry.teamId !== undefined && typeof entry.teamId !== "string")
+      (entry.teamId !== undefined && typeof entry.teamId !== "string") ||
+      (entry.atWarWith !== undefined &&
+        (!Array.isArray(entry.atWarWith) ||
+          entry.atWarWith.some((ref) => typeof ref !== "string")))
     ) {
       throw new Error("controller public faction entry is invalid");
     }
@@ -1134,8 +1187,18 @@ function validatePublicFactionSnapshot(
         ? {}
         : { ownerCode: entry.ownerCode as number }),
       ...(entry.teamId === undefined ? {} : { teamId: entry.teamId as string }),
+      atWarWith: Object.freeze([
+        ...((entry.atWarWith as string[] | undefined) ?? []),
+      ]),
     });
   });
+  if (
+    entries.some((entry) =>
+      entry.atWarWith.some((ref) => !refs.has(ref)),
+    )
+  ) {
+    throw new Error("controller public faction at-war ref is invalid");
+  }
 
   return Object.freeze({
     ...(value.requesterOwnerCode === undefined
@@ -1391,6 +1454,17 @@ function resolvePublicFactionRead(
       const target = factions.entries.find((candidate) => candidate.ref === args[0]);
       if (target === undefined) return undefined;
       return factionProximity(activePublicSpatial(cacheKey), factions, target);
+    }
+    case "FACTIONS_AT_WAR": {
+      if (
+        args.length !== 2 ||
+        typeof args[0] !== "string" ||
+        typeof args[1] !== "string"
+      ) break;
+      const left = factions.entries.find((candidate) => candidate.ref === args[0]);
+      const right = factions.entries.find((candidate) => candidate.ref === args[1]);
+      if (left === undefined || right === undefined) return false;
+      return left.atWarWith.includes(right.ref);
     }
   }
   throw new Error("invalid controller local faction request");

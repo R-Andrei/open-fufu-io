@@ -100,9 +100,9 @@ Character intelligence begins **after** the Origin roll.
 
 ---
 
-## 3. Effective rules remain the mechanical source of truth
+## 3. Authoritative rules remain the mechanical source of truth
 
-Official AI must not rebuild Origin arithmetic in a parallel AI rules engine.
+Official AI must not rebuild Origin arithmetic in a parallel AI rules engine, but it also must not receive a private exact-mechanics/effective-rules oracle that a player controller lacks.
 
 Conceptually:
 
@@ -111,12 +111,15 @@ ruleset
 + Origin traits
 + Echoes
 + terrain / structures / situational rules
-→ final EffectiveRulesView
+→ authoritative simulation mechanics
+→ lawful public observations, self/economy fields, focused check* results,
+  and public Origin/trait identity
+→ Official AI reasoning
 ```
 
-AI support reads the final values.
+AI support consumes those lawful surfaced inputs plus declarative strategic support metadata.
 
-Do not copy damage, cost, range, growth multipliers, settlement cost, blast radius, charge capacity, structure level values, or similar arithmetic into AI support merely so the AI can know them. Support stores strategic semantics that numbers/legality alone do not express cleanly.
+Do not copy damage, cost, range, growth multipliers, settlement cost, blast radius, charge capacity, structure level values, or similar arithmetic into AI support merely so the AI can know them exactly. Support stores strategic semantics that lawful observations/legality alone do not express cleanly; when a player controller must estimate a foreign mechanic from public information, Official AI must do the same.
 
 ---
 
@@ -130,7 +133,7 @@ type OriginSupportMode =
 
 ### `GENERIC`
 
-Shared evaluators/planners can use the mechanic coherently from final effective mechanics plus declarative support metadata. No bespoke evaluator/planner hook is required.
+Shared evaluators/planners can use the mechanic coherently from lawful surfaced state/check results plus declarative support metadata. No bespoke evaluator/planner hook is required.
 
 ### `EXTENDED`
 
@@ -552,10 +555,10 @@ Conceptually:
 
 ```ts
 interface OriginSupportContext {
-  effectiveRules: EffectiveRulesView;
   evaluators: EvaluatorProfile;
   planners: PlannerProfile;
   origin: OriginStrategicProfile;
+  // Mechanical inputs arrive through the ordinary lawful controller observation.
 }
 ```
 
@@ -645,7 +648,7 @@ interface CharacterOriginOverride {
 Preferred hierarchy:
 
 ```text
-final effective mechanics
+lawful public observations + public Origin/trait information
 → trait support
 → support suppression
 → combination support

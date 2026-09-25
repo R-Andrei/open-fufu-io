@@ -75,7 +75,7 @@ design/official-ai/*.config.ts
   exact concrete AI mappings and registered support-hook identities
 ```
 
-Gameplay mechanics remain authoritative in the canonical gameplay/rules documents. These configuration files must not duplicate mechanical arithmetic that belongs to `EffectiveRulesView` or other game-rule sources of truth.
+Gameplay mechanics remain authoritative in the canonical gameplay/rules documents and simulation rule materializers. These configuration files must not duplicate that mechanical arithmetic or become a private mechanics oracle for Official AI.
 
 ## Origin composition order
 

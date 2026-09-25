@@ -28,7 +28,7 @@ The game should reward programming and strategy rather than manual reaction spee
 The controller surface must support both:
 
 - a low entry floor where a player can modify a simple working controller without computational geometry or cell-by-cell micromanagement; and
-- a high skill ceiling where advanced controllers can reason directly about cells, Segments, Contacts, frontage, statistics, optimization, weighting, and custom abstractions.
+- a high skill ceiling where advanced controllers can reason directly about cells, Segments, public ownership/terrain, derived territorial relationships/frontage, statistics, optimization, weighting, and custom abstractions.
 
 The engine should expose strategy-neutral primitives rather than privileged policies such as `blitzkrieg()` or `turtle()`.
 
@@ -163,7 +163,7 @@ The public TypeScript surface is owned by [`../src/core/controller/ControllerApi
 
 Controllers receive immutable deterministic observations and submit declarative desired directives/commands. They do not receive mutable canonical engine objects or unrestricted engine internals.
 
-The conceptual read surface includes game state, factions, cells, Segments, Contacts, operations, structures, units, navigation, economy, rules/mechanics, events, deterministic random, limits, and previous-decision status.
+The normal V1 read surface includes the current tick; lawful self/faction, map/cell/Segment, known-operation, structure, and unit observations; economy; events; deterministic random; limits; and previous-decision status. Server-owned Contacts, pathfinding answers, raw/effective-rule dictionaries, and broad mechanics calculators are not normal public read APIs. Controllers may derive strategic abstractions from lawful observations and use the focused public `check*` methods where those are explicitly provided.
 
 The conceptual action surface includes lawful primitives for:
 
@@ -273,7 +273,7 @@ Segments are immutable deterministic map-compiled strategic regions used for que
 
 ## 6.4 Fronts
 
-There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, Contacts, factions, terrain, ownership, and visibility.
+There is no engine-level canonical `Front` object that dictates strategy. Controllers may derive fronts from cells, Segments, factions, terrain, ownership, visibility, and territorial relationships they derive from public ownership geometry.
 
 ## 6.5 Physical navigation
 
@@ -406,7 +406,7 @@ The recurring fractional materialization is deterministic:
 - the residual survives temporary growth ineligibility and is part of authoritative serialization/replay/fingerprinting;
 - precision below one residual unit is discarded rather than carried through another hidden accumulator.
 
-Origin-specific growth-profile transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`. Utilization evaluation follows the exact-rational materialization convention in `RULE_COMPOSITION.md`: `TotalPopulation / PopulationCapacity`, breakpoint comparisons, horizontal remaps, and piecewise interpolation remain exact rational arithmetic until the owning growth domain materializes the final finite gameplay number. The effective utilization multiplier used by the authoritative simulation is also the multiplier surfaced by controller mechanics; controllers and Official AI must not reconstruct a separate approximation.
+Origin-specific growth-profile transformations are owned by `ORIGIN_TRAIT_CATALOGUE.md`. Utilization evaluation follows the exact-rational materialization convention in `RULE_COMPOSITION.md`: `TotalPopulation / PopulationCapacity`, breakpoint comparisons, horizontal remaps, and piecewise interpolation remain exact rational arithmetic until the owning growth domain materializes the final finite gameplay number. The authoritative simulation owns the effective multiplier. Normal controllers and Official AI receive the same lawful self utilization/growth projection and must not gain a separate private broad-mechanics oracle.
 
 ---
 
@@ -416,7 +416,7 @@ Offensive Population is attached primarily to operations rather than permanently
 
 Creating/changing/ending an operation's Population occurs immediately when a valid controller decision commits. V1 has no generic land Deployment/Redeployment delay system.
 
-Spatial intent may use target factions, Segments, Contacts, cells/areas, terrain, objectives, and strategy-neutral weights.
+Spatial intent may use target factions, Segments, cells/areas, terrain, objectives, and strategy-neutral weights. Controllers may derive territorial-contact abstractions from public ownership geometry when useful; V1 does not expose a server-owned Contacts query surface.
 
 The simulation resolves intent into legal **engagement lanes** for each tick. One lane is one attacking source cell pressing one adjacent target cell for that faction during that tick.
 
@@ -563,7 +563,7 @@ The resolver stops there. It never drains offensive commitments that produced no
 
 The extra consequence is capture-triggered. Deliberate relinquishment or a separate mechanic that neutralizes territory without a hostile successful capture does not generate it. A rule that changes capture speed/timing without changing the eventual successful hostile capture does not suppress it.
 
-The same requested amount and debit order must be surfaced through controller mechanics and consumed by Official AI forecasting; neither layer may invent a different casualty source. In the current public controller contract, the debit-pool label `WINNING_OFFENSIVE_COMMITMENTS` denotes this aggregate qualifying-winning-commitment source class.
+The authoritative resolver above is the sole owner of that requested amount and debit order. Controllers and Official AI may reason about the consequence from the same lawful observations and public rule-bearing Origin information, but neither receives a private broad-mechanics calculator for this exact casualty projection.
 
 ---
 
@@ -754,7 +754,7 @@ Origins may alter values or transform rules only through explicit rule-bearing t
 
 Exact trait definitions, costs, transformations, composition rules, and combination semantics are owned by [`ORIGIN_TRAIT_CATALOGUE.md`](./ORIGIN_TRAIT_CATALOGUE.md). The curated Official Origin roster is owned by [`OFFICIAL_ORIGINS.md`](./OFFICIAL_ORIGINS.md).
 
-Origin mechanics must be surfaced through effective rules/mechanics so both player controllers and Official AI can reason about them without recreating hidden engine arithmetic.
+Origin mechanics must be surfaced through the lawful controller information boundary: public Origin/trait identity, concrete self/economy state, ordinary observations, and focused `check*` results where explicitly provided. Official AI receives the same information boundary and must estimate foreign effects from public information just as a player controller does.
 
 ---
 

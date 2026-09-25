@@ -163,13 +163,13 @@ This is a design decomposition, not a required class hierarchy.
 
 These components should normally be shared across Official AI controllers:
 
-- **WorldIndex** — indexes factions, Segments, Contacts, structures, units, operations, and other observations;
-- **GeographyAnalyzer** — reusable topology, border, connectivity, terrain, coast, and route facts;
-- **MechanicsEstimator** — safe use of public mechanics calculations and effective rules;
+- **WorldIndex** — indexes lawful factions, Segments, structures, units, known operations, event history, and territorial relationships derived from public ownership/terrain observations;
+- **GeographyAnalyzer** — reusable topology, border, connectivity, terrain, coast, and controller-derived route approximations from public map/cell information;
+- **MechanicsInterpreter** — reasons from public Origin/trait identity plus lawful self/economy state and focused public `check*` results; it is not a private broad-mechanics/effective-rules oracle;
 - **HistoryTracker** — compact deterministic event/history retention in controller memory;
 - **VisibilityTracker** — distinguishes current observation from stale/unknown information.
 
-Information collection and basic state organization are specifically *not* intended to become one implementation per character.
+Information collection and basic state organization are specifically *not* intended to become one implementation per character. Official AI must stay inside the same controller-visible information boundary as a player controller; authoritative internal simulation calculators do not become extra AI observation APIs.
 
 ---
 

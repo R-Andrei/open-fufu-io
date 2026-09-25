@@ -27,6 +27,7 @@ import {
   createProspectiveMatchState,
   type MatchState,
 } from "../src/simulation/MatchState";
+import { resolveOrdinaryPopulationGrowth } from "../src/simulation/Economy";
 import { MatchRuntime } from "../src/simulation/MatchRuntime";
 import { createMobileUnit } from "../src/simulation/MobileUnits";
 import { tryStartTankProduction } from "../src/simulation/Tanks";
@@ -63,6 +64,79 @@ const CHECK_PROOFS = Object.freeze([
   "MATERIALIZATION_BUDGET",
   "LOCATOR_VISIBILITY",
   "RUNTIME_PARITY",
+] as const);
+
+const ISSUE225_REQUIRED_CONTEXT_KEYS = Object.freeze([
+  "capitulate",
+  "cells",
+  "economy",
+  "events",
+  "factions",
+  "lastDecision",
+  "limits",
+  "map",
+  "me",
+  "memory",
+  "operations",
+  "random",
+  "segments",
+  "structures",
+  "team",
+  "territory",
+  "tick",
+  "transports",
+  "units",
+  "weapons",
+] as const);
+
+const ISSUE225_PUBLIC_CALLABLE_NAMES = Object.freeze([
+  "capitulate",
+  "cells.boundary",
+  "cells.count",
+  "cells.distance",
+  "cells.get",
+  "cells.neighbors",
+  "cells.owner",
+  "cells.query",
+  "factions.atWar",
+  "factions.find",
+  "factions.get",
+  "factions.proximity",
+  "map.cardinalNeighbors",
+  "map.cellIdAt",
+  "map.isValidCellId",
+  "map.positionOf",
+  "map.segmentIdOf",
+  "map.terrainAt",
+  "operations.get",
+  "operations.own",
+  "random.keyed",
+  "random.next",
+  "segments.cellIds",
+  "segments.cells",
+  "segments.get",
+  "segments.list",
+  "structures.build",
+  "structures.checkBuild",
+  "structures.checkUpgrade",
+  "structures.count",
+  "structures.find",
+  "structures.get",
+  "structures.upgrade",
+  "team.signal",
+  "territory.checkRelinquish",
+  "territory.relinquish",
+  "transports.checkEmbark",
+  "transports.embark",
+  "transports.recall",
+  "units.build",
+  "units.checkBuild",
+  "units.count",
+  "units.find",
+  "units.get",
+  "units.move",
+  "weapons.checkLaunch",
+  "weapons.launch",
 ] as const);
 
 type RuntimeContext = Record<string, any>;
@@ -468,6 +542,391 @@ function stagedActions(result: unknown): readonly unknown[] {
   const value = (result as { readonly stagedActions?: unknown }).stagedActions;
   return Array.isArray(value) ? value : [];
 }
+
+describe("issue #225 final ControllerContext RED", () => {
+  it("declares exactly the agreed normal V1 top-level and callable surface", () => {
+    const registeredContextKeys =
+      ISSUE225_REQUIRED_CONTEXT_KEYS.map((name) => JSON.stringify(name)).join(" | ") ||
+      "never";
+    const registeredCallableNames =
+      ISSUE225_PUBLIC_CALLABLE_NAMES.map((name) => JSON.stringify(name)).join(" | ") ||
+      "never";
+    const fixture = [
+      'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
+      'type Context = Parameters<OpenFufuController["decide"]>[0];',
+      `type RegisteredContextKey = ${registeredContextKeys};`,
+      `type RegisteredCallableName = ${registeredCallableNames};`,
+      'type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
+      'type PublicContextKey = keyof Context & string;',
+      'type CallablePaths<T, Prefix extends string = "", Seen = never> =',
+      '  T extends unknown',
+      '    ? [T] extends [Seen] ? never',
+      '      : T extends (...args: any[]) => any ? Prefix',
+      '      : T extends string | number | boolean | bigint | symbol ? never',
+      '      : T extends readonly unknown[] ? never',
+      '      : T extends object',
+      '        ? string extends keyof T ? never',
+      '          : {',
+      '              [K in keyof T & string]-?: CallablePaths<',
+      '                NonNullable<T[K]>,',
+      '                Prefix extends "" ? K : `${Prefix}.${K}`,',
+      '                Seen | T',
+      '              >;',
+      '            }[keyof T & string]',
+      '        : never',
+      '    : never;',
+      'type PublicCallableName = CallablePaths<Context>;',
+      'type SyntheticNestedContext = Context & {',
+      '  readonly me: Context["me"] & {',
+      '    readonly nestedProof: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticNestedCallableName = CallablePaths<SyntheticNestedContext>;',
+      'const syntheticNestedCallableIsDetected: "me.nestedProof.deeper" extends SyntheticNestedCallableName ? true : false = true;',
+      'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
+      'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
+      'declare const context: Context;',
+      'void context.tick;',
+      'void context.me.populationState.capacity;',
+      'void context.me.populationState.growthPerSecond;',
+      'void context.me.populationState.utilization;',
+      'void context.me.populationState.neutralSettlementHalfResidual;',
+      'void context.economy.ffy;',
+      'void context.economy.passiveFfyPerSecond;',
+      'void context.random.next();',
+      'void context.random.keyed("stable-purpose");',
+      'void context.limits.queriesPerDecision;',
+      '// @ts-expect-error broad GameView was removed from normal V1.',
+      'void context.game;',
+      '// @ts-expect-error ContactsApi was removed from normal V1.',
+      'void context.contacts;',
+      '// @ts-expect-error NavigationApi was removed from normal V1.',
+      'void context.navigation;',
+      '// @ts-expect-error broad MechanicsApi was removed from normal V1.',
+      'void context.mechanics;',
+      '// @ts-expect-error unstructured RulesView was removed from normal V1.',
+      'void context.rules;',
+      '// @ts-expect-error decisionNumber is not player-facing in normal V1.',
+      'void context.decisionNumber;',
+      '// @ts-expect-error generic modifier dictionaries are deferred from normal V1.',
+      'void context.me.effectiveModifiers;',
+      '// @ts-expect-error incoming hostile operation discovery is event-driven.',
+      'void context.operations.incoming();',
+      'void contextKeysAreExact; void callableRegistryIsExact;',
+    ].join("\n");
+    expect(typecheckFixture(fixture)).toBe("");
+  });
+
+  it("materializes the same agreed normal V1 context shape in-process and in the production isolate", async () => {
+    const makeInputs = (seed: string) => {
+      const state = facadeState(seed);
+      const references = new ControllerReferenceSession(seed, state);
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          1,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+        ),
+      };
+    };
+    const expectedKeys = ISSUE225_REQUIRED_CONTEXT_KEYS.filter((name) => name !== "lastDecision").sort();
+    const expectedOperations = ["get", "own"];
+    let inProcessShape: unknown;
+
+    const local = makeInputs("issue225-context-in-process");
+    const inProcess = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          const value = context as unknown as RuntimeContext;
+          inProcessShape = {
+            keys: Object.keys(value).sort(),
+            operations: Object.keys(value.operations ?? {}).sort(),
+            self: {
+              hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
+                value.me,
+                "effectiveModifiers",
+              ),
+              populationKeys: Object.keys(value.me?.populationState ?? {}).sort(),
+              economyKeys: Object.keys(value.economy ?? {}).sort(),
+            },
+            random: Object.keys(value.random ?? {}).sort(),
+            limits: Object.keys(value.limits ?? {}).sort(),
+          };
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      inProcess.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessShape).toMatchObject({
+      keys: expectedKeys,
+      operations: expectedOperations,
+      self: {
+        hasEffectiveModifiers: false,
+        populationKeys: expect.arrayContaining([
+          "capacity",
+          "growthPerSecond",
+          "utilization",
+          "neutralSettlementHalfResidual",
+        ]),
+        economyKeys: ["ffy", "passiveFfyPerSecond"],
+      },
+      random: ["keyed", "next"],
+    });
+
+    const worker = makeInputs("issue225-context-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              return {
+                log: JSON.stringify({
+                  keys: Object.keys(context).sort(),
+                  operations: Object.keys(context.operations ?? {}).sort(),
+                  self: {
+                    hasEffectiveModifiers: Object.prototype.hasOwnProperty.call(
+                      context.me,
+                      "effectiveModifiers"
+                    ),
+                    populationKeys: Object.keys(context.me?.populationState ?? {}).sort(),
+                    economyKeys: Object.keys(context.economy ?? {}).sort()
+                  },
+                  random: Object.keys(context.random ?? {}).sort(),
+                  limits: Object.keys(context.limits ?? {}).sort()
+                })
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        worker.observation,
+        worker.session,
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.output?.log ?? "{}")).toMatchObject({
+          keys: expectedKeys,
+          operations: expectedOperations,
+          self: {
+            hasEffectiveModifiers: false,
+            populationKeys: expect.arrayContaining([
+              "capacity",
+              "growthPerSecond",
+              "utilization",
+              "neutralSettlementHalfResidual",
+            ]),
+            economyKeys: ["ffy", "passiveFfyPerSecond"],
+          },
+          random: ["keyed", "next"],
+        });
+      }
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
+
+describe("issue #225 authoritative self growth projection RED", () => {
+  it("projects the shared authoritative growthPerSecond identically in-process and in the production isolate", async () => {
+    const makeInputs = (seed: string) => {
+      const state = createInitialMatchState(
+        createMicroSimulationSpec({
+          seed,
+          width: 16,
+          height: 1,
+          terrain: Array.from({ length: 16 }, () => "FOREST"),
+          initialOwners: Array.from({ length: 16 }, () => "alpha"),
+          factions: [
+            { id: "alpha", rules: emptyRules() },
+            { id: "beta", rules: emptyRules() },
+          ],
+        }),
+      );
+      const references = new ControllerReferenceSession(seed, state);
+      const expectedGrowthPerSecond =
+        resolveOrdinaryPopulationGrowth(state).get("alpha")?.growthPerSecond;
+      if (expectedGrowthPerSecond === undefined) {
+        throw new Error("missing authoritative alpha Population growth snapshot");
+      }
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          1,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+        ),
+        expectedGrowthPerSecond,
+      };
+    };
+
+    let inProcessRate: number | undefined;
+    const local = makeInputs("issue225-growth-in-process");
+    const localHost = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          inProcessRate = context.me.populationState.growthPerSecond;
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      localHost.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessRate).toBe(local.expectedGrowthPerSecond);
+
+    const worker = makeInputs("issue225-growth-worker");
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              return {
+                log: JSON.stringify(context.me.populationState.growthPerSecond)
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        worker.observation,
+        worker.session,
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(JSON.parse(result.output?.log ?? "null")).toBe(
+          worker.expectedGrowthPerSecond,
+        );
+      }
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
+
+describe("issue #225 deterministic RandomApi RED", () => {
+  it("gives equivalent repeatable decision-scoped random streams in-process and in production", async () => {
+    const seed = "issue225-random-parity";
+    const makeInputs = () => {
+      const state = facadeState(seed);
+      const references = new ControllerReferenceSession(seed, state);
+      return {
+        observation: projectLawfulControllerObservation(
+          state,
+          "alpha",
+          7,
+          undefined,
+          references,
+        ),
+        session: createControllerQuerySession(
+          state,
+          "alpha",
+          CONTROLLER_QUERY_LIMITS,
+          references,
+          undefined,
+          7,
+        ),
+      };
+    };
+    const readRandom = (context: RuntimeContext) => [
+      context.random.next(),
+      context.random.next(),
+      context.random.keyed("north"),
+      context.random.keyed("north"),
+      context.random.keyed("south"),
+    ];
+
+    let inProcessValues: unknown;
+    const local = makeInputs();
+    const localHost = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          inProcessValues = readRandom(context as unknown as RuntimeContext);
+          return {};
+        },
+      },
+    });
+    const localResult = await Promise.resolve(
+      localHost.invoke("alpha", local.observation, local.session),
+    );
+    expect(localResult.ok).toBe(true);
+    expect(inProcessValues).toEqual(expect.any(Array));
+    const localNumbers = inProcessValues as number[];
+    expect(localNumbers).toHaveLength(5);
+    expect(localNumbers[0]).not.toBe(localNumbers[1]);
+    expect(localNumbers[2]).toBe(localNumbers[3]);
+    expect(localNumbers[2]).not.toBe(localNumbers[4]);
+    for (const value of localNumbers) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThan(1);
+    }
+
+    const runWorker = async () => {
+      const worker = makeInputs();
+      const pool = new ControllerProcessWorkerPool({ size: 1 });
+      try {
+        const host = new ProductionControllerHost(pool, {
+          alpha: Object.freeze({
+            moduleSource: `
+              export function decide(context) {
+                return {
+                  log: JSON.stringify([
+                    context.random.next(),
+                    context.random.next(),
+                    context.random.keyed("north"),
+                    context.random.keyed("north"),
+                    context.random.keyed("south")
+                  ])
+                };
+              }
+            `,
+            entrypoints: Object.freeze({ decide: "decide" }),
+          }),
+        });
+        const result = await host.invoke(
+          "alpha",
+          worker.observation,
+          worker.session,
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return [];
+        return JSON.parse(result.output?.log ?? "[]") as number[];
+      } finally {
+        await pool.close();
+      }
+    };
+
+    const firstWorkerValues = await runWorker();
+    const replacementWorkerValues = await runWorker();
+    expect(firstWorkerValues).toEqual(localNumbers);
+    expect(replacementWorkerValues).toEqual(localNumbers);
+  }, 20_000);
+});
 
 describe("issue #206 facade proof matrix", () => {
   it("registers exactly 10 routine actions with every required proof obligation", () => {
@@ -1022,6 +1481,110 @@ describe("issue #206 team.signal authoritative RED", () => {
         ).toBe(4095);
       }
     }
+  });
+
+  it("re-emits a still-lawful hostile OperationRef after backlog overflow drops its first acquisition", async () => {
+    const seed = "issue225-operation-overflow-resync";
+    const rules = emptyRules();
+    const runtime = new MatchRuntime(
+      createMicroSimulationSpec({
+        seed,
+        width: 3,
+        height: 1,
+        terrain: ["PLAINS", "PLAINS", "PLAINS"],
+        initialOwners: ["alpha", "beta", "gamma"],
+        factions: [
+          { id: "alpha", rules },
+          { id: "beta", fixedTeamId: "team-b", rules },
+          { id: "gamma", fixedTeamId: "team-b", rules },
+        ],
+      }),
+      { controllerReferenceNamespace: seed },
+    );
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "alpha",
+      amount: 2,
+    });
+    runtime.acceptAction({
+      type: "GRANT_POPULATION",
+      factionId: "beta",
+      amount: 20,
+    });
+    runtime.tick();
+
+    let ordinal = 0;
+    while (ordinal < 4_096) {
+      const end = Math.min(4_096, ordinal + 64);
+      for (; ordinal < end; ordinal += 1) {
+        runtime.acceptAction({
+          type: "TEAM_SIGNAL",
+          senderFactionId: "gamma",
+          channel: "overflow-fill",
+          payload: { ordinal },
+        });
+      }
+      runtime.tick();
+    }
+    expect(pendingEventCount(runtime, "beta")).toBe(4_096);
+
+    runtime.acceptAction({
+      type: "APPLY_PERSISTENT_DIRECTIVES",
+      factionId: "alpha",
+      changes: {
+        set: [
+          {
+            kind: "LAND_OPERATION",
+            key: "overflow-attack",
+            operation: "ATTACK",
+            population: 1,
+            targetFactionId: "beta" as never,
+            source: { kind: "CELLS", ids: [0] },
+            target: { kind: "CELLS", ids: [1] },
+          },
+        ],
+      },
+    });
+    runtime.tick();
+
+    expect(
+      runtime.snapshot().directReveals.some(
+        (entry) =>
+          entry.viewerFactionId === "beta" &&
+          entry.sourceKind === "OPERATION" &&
+          runtime.snapshot().tick < entry.expiryExclusiveTick,
+      ),
+    ).toBe(true);
+
+    const observed: Readonly<Record<string, unknown>>[] = [];
+    let recoveredOperation = false;
+    for (let decision = 0; decision < 12 && !recoveredOperation; decision += 1) {
+      await Promise.resolve(
+        runtime.runControllerRound(
+          new InProcessTestControllerHost({
+            beta(context) {
+              for (const event of context.events.sinceLastDecision) {
+                observed.push(event as Readonly<Record<string, unknown>>);
+                if (
+                  event.type === "HOSTILE_SOURCE_REVEALED" &&
+                  event.source.type === "OPERATION" &&
+                  context.operations?.get(event.source) !== undefined
+                ) {
+                  recoveredOperation = true;
+                }
+              }
+              return {};
+            },
+          }),
+        ),
+      );
+      if (!recoveredOperation) runtime.tick();
+    }
+
+    expect(
+      observed.some((event) => event.type === "EVENT_BACKLOG_OVERFLOW"),
+    ).toBe(true);
+    expect(recoveredOperation).toBe(true);
   });
 
   it("does not retain pending events for a permanently faulted controller", async () => {

@@ -8,12 +8,12 @@ import type {
   FactionsApi,
   GrowthCalculation,
   HostilityMechanicsSpec,
-  MechanicsApi,
   OperationRef,
   PersistentDirective,
   PopulationView,
   PurchasableUnitType,
   RelinquishQuote,
+  SelfFactionView,
   SpawnInfluenceContext,
   StructureAcquisitionPath,
   StructureBuildQuote,
@@ -84,11 +84,6 @@ const issue47RelinquishQuote: RelinquishQuote = {
   appliesFallout: true,
 };
 void issue47RelinquishQuote;
-
-const issue47RelinquishFromMechanics: ReturnType<
-  MechanicsApi["relinquishQuote"]
-> = issue47RelinquishQuote;
-void issue47RelinquishFromMechanics;
 
 // The historical ControllerApi type fixture used to live under tests/types, which
 // is not an owned mutable validation surface. Keep those compile-time obligations
@@ -261,6 +256,16 @@ const fixtureWarQuery = (factions: FactionsApi): boolean =>
   factions.atWar(fixtureFactionARef, fixtureFactionBRef);
 void fixtureWarQuery;
 
+type IsExactlyFalse<T> = [T] extends [false]
+  ? [false] extends [T]
+    ? true
+    : false
+  : false;
+const fixtureNormalSelfIsMajorOnly: IsExactlyFalse<
+  SelfFactionView["isMinorFaction"]
+> = true;
+void fixtureNormalSelfIsMajorOnly;
+
 const fixtureHostilitySpec: HostilityMechanicsSpec = {
   atWarGraceTicks: 600,
 };
@@ -334,6 +339,68 @@ function compilerOptions(): ts.CompilerOptions {
 }
 
 describe("Open Fufu Controller API contract", () => {
+  it("does not export removed normal Contacts or Navigation API types", () => {
+    const options = compilerOptions();
+    const virtualFixturePath = path.resolve(
+      "tests/contracts/issue225-removed-normal-apis.virtual.ts",
+    );
+    const virtualFixtureSource = `
+      // @ts-expect-error ContactsApi was removed from the V1 public normal controller API.
+      import type { ContactsApi } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error NavigationApi was removed from the V1 public normal controller API.
+      import type { NavigationApi } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Contact snapshot types are not a standalone V1 public API.
+      import type { TerritorialContactView } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Operational Contact snapshot types are not a standalone V1 public API.
+      import type { OperationalContactView } from "../../src/core/controller/ControllerApi";
+      // @ts-expect-error Operational Contact kind is internal without a public Contacts surface.
+      import type { OperationalContactKind } from "../../src/core/controller/ControllerApi";
+    `;
+
+    const baseHost = ts.createCompilerHost(options);
+    const isVirtualFixture = (fileName: string): boolean =>
+      path.resolve(fileName) === virtualFixturePath;
+    const host: ts.CompilerHost = {
+      ...baseHost,
+      fileExists(fileName) {
+        return isVirtualFixture(fileName) || baseHost.fileExists(fileName);
+      },
+      readFile(fileName) {
+        return isVirtualFixture(fileName)
+          ? virtualFixtureSource
+          : baseHost.readFile(fileName);
+      },
+      getSourceFile(
+        fileName,
+        languageVersion,
+        onError,
+        shouldCreateNewSourceFile,
+      ) {
+        if (isVirtualFixture(fileName)) {
+          return ts.createSourceFile(
+            fileName,
+            virtualFixtureSource,
+            languageVersion,
+            true,
+          );
+        }
+        return baseHost.getSourceFile(
+          fileName,
+          languageVersion,
+          onError,
+          shouldCreateNewSourceFile,
+        );
+      },
+    };
+
+    const program = ts.createProgram({
+      rootNames: [virtualFixturePath],
+      options,
+      host,
+    });
+    expect(formatDiagnostics(ts.getPreEmitDiagnostics(program))).toBe("");
+  });
+
   it("typechecks the owned contract fixtures without compiling inherited application code", () => {
     const options = compilerOptions();
     const fixturePaths = [path.resolve("tests/ControllerApiContract.test.ts")];
@@ -451,31 +518,12 @@ const n13ZeroSurvivorLanding: TransportLandingCalculation = {
   createsAmphibiousCommitment: false,
 };
 
-declare const context: DecisionContext;
-const samSpec = context.mechanics.structureTypeSpec(
-  "SAM_LAUNCHER",
-  1,
-  context.me.id,
-);
-const antiShipCoveredCells = samSpec.antiShipAttack
-  ? context.cells.count({
-      kind: "STRUCTURE_FIELD_INSTANCE",
-      structureId: p27SamRef,
-      field: samSpec.antiShipAttack.eligibilityField,
-    })
-  : Promise.resolve(0);
-const landing = context.mechanics.transportLanding(5, context.me.id);
-const destruction = context.mechanics.transportDestructionSpec(context.me.id);
-
 void p27SamField;
 void p27SamSpec;
 void p28DestructionSpec;
 void n13LandingPolicy;
 void n13OddLanding;
 void n13ZeroSurvivorLanding;
-void antiShipCoveredCells;
-void landing.survivingPopulation;
-void destruction.creditedPopulationTransfer?.destination;
 `;
 
     const baseHost = ts.createCompilerHost(options);
@@ -616,7 +664,7 @@ const controller: OpenFufuController<FixtureMemory> = {
     context.segments.cellIds(0);
     await context.segments.list();
     return {
-      memory: { ...context.memory, marker: context.game.decisionNumber },
+      memory: { ...context.memory, marker: context.tick },
     };
   },
 };

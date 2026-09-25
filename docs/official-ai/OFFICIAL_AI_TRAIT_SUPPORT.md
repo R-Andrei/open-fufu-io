@@ -490,7 +490,7 @@ The current V1 sweep identified:
 - **P45 + P49:** Forest concealment and Observation-post blackouts create layered counterintelligence geometry;
 - **P39 + P54:** both split starting footprints use star geometry; Strategic Spawn evaluates the paired star placement, while Random/Fixed consume the resolved split-star state without inventing a spawn-position choice.
 
-Strong but straightforward arithmetic inheritance does **not** need its own combination entry. If final effective mechanics and existing support already produce the correct result, adding a named combination would only duplicate knowledge.
+Strong but straightforward arithmetic inheritance does **not** need its own combination entry. If the lawful surfaced mechanic/state plus existing support already lead to the correct strategy, adding a named combination would only duplicate knowledge.
 
 ## Support suppression
 

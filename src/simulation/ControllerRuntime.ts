@@ -2,6 +2,7 @@ import type {
   ActionRef,
   ControllerDecision,
   ControllerEvent,
+  ControllerLimitsView,
   ControllerMemory,
   DecisionFailure,
   DecisionReceipt,
@@ -11,6 +12,8 @@ import type {
   FactionStatus,
   JsonValue,
   PopulationView,
+  RandomApi,
+  SelfFactionView,
   SpawnInfluenceContext,
   SpawnInfluenceDecision,
   SpawnOriginContext,
@@ -23,6 +26,7 @@ import {
   type ControllerOutputKind,
 } from "../core/controller/ControllerOutputValidation";
 import {
+  CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
   controllerTeamSignalPayloadIsValid,
   createControllerQuerySession,
   materializeControllerTeamSignalPayload,
@@ -34,13 +38,18 @@ import {
   createControllerSpatialSurface,
   type ControllerSpatialSurface,
 } from "./ControllerSpatialSurface";
-import { ECONOMY_TICKS_PER_SECOND, resolvePassiveFfyAwards } from "./Economy";
+import {
+  ECONOMY_TICKS_PER_SECOND,
+  resolveEffectivePopulationCapacities,
+  resolveOrdinaryPopulationGrowth,
+  resolvePassiveFfyAwards,
+} from "./Economy";
 import { calculateFactionScore } from "./FactionScore";
 import {
   materializeDirectiveChanges,
   tryApplyPersistentDirectiveChanges,
 } from "./LandOperations";
-import type { MatchState } from "./MatchState";
+import type { MatchFactionState, MatchState } from "./MatchState";
 import type { PopulationState } from "./Population";
 import type { SimulationAction } from "./TickEngine";
 
@@ -60,11 +69,33 @@ const passiveFfyPerSecondCache = new WeakMap<
   MatchState,
   ReadonlyMap<string, number>
 >();
+const populationGrowthPerSecondCache = new WeakMap<
+  MatchState,
+  ReadonlyMap<string, number>
+>();
 
 export const CONTROLLER_QUERY_LIMITS = Object.freeze({
   queriesPerDecision: 128,
   materializedCellsPerDecision: 25_000,
+  materializedEntityViewsPerDecision: 512,
 });
+
+export const CONTROLLER_LIMITS = Object.freeze({
+  persistentMemoryBytes: CONTROLLER_MEMORY_MAX_BYTES,
+  serializedDecisionBytes: 256 * 1024,
+  queriesPerDecision: CONTROLLER_QUERY_LIMITS.queriesPerDecision,
+  materializedCellsPerDecision:
+    CONTROLLER_QUERY_LIMITS.materializedCellsPerDecision,
+  materializedEntityViewsPerDecision:
+    CONTROLLER_QUERY_LIMITS.materializedEntityViewsPerDecision,
+  directiveUpdatesPerDecision: 128,
+  actionsPerDecision: 64,
+  policyRulesPerDecision: 256,
+  debugItemsPerDecision: 256,
+  logBytesPerDecision: 8 * 1024,
+  eventsPerDecision: CONTROLLER_EVENTS_PER_DECISION,
+  teamSignalPayloadBytes: CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
+} satisfies ControllerLimitsView);
 
 type ControllerHostFaultClassification = "INVALID_OUTPUT";
 type ControllerFactionReferenceSource = NonNullable<
@@ -133,31 +164,46 @@ export type PendingControllerEventObservation =
 
 export interface LawfulControllerObservation {
   readonly tick: number;
+  /** Trusted transport metadata used for ActionRef/random scoping; not player-facing. */
   readonly decisionNumber: number;
   readonly me: LawfulSelfFactionObservation;
   readonly factions: readonly LawfulFactionObservation[];
+  /** Full lawful self view reserved for normal public-context adapters. */
+  readonly publicMe: Readonly<SelfFactionView>;
   readonly economy: Readonly<EconomyView>;
   readonly events: Readonly<EventsApi>;
   readonly lastDecision?: DecisionReceipt;
+  readonly limits: Readonly<ControllerLimitsView>;
 }
 
-export interface LawfulInProcessControllerObservation extends LawfulControllerObservation {
-  readonly map?: ControllerSpatialSurface["map"];
-  readonly cells?: ControllerSpatialSurface["cells"];
-  readonly segments?: ControllerSpatialSurface["segments"];
-  readonly mechanics?: ControllerQuerySession["mechanics"];
-  readonly structures?: ControllerQuerySession["structures"];
-  readonly units?: ControllerQuerySession["units"];
-  readonly transports?: ControllerQuerySession["transports"];
-  readonly weapons?: ControllerQuerySession["weapons"];
-  readonly territory?: ControllerQuerySession["territory"];
-  readonly team?: ControllerQuerySession["team"];
-  readonly capitulate?: ControllerQuerySession["capitulate"];
-}
+export type LawfulInProcessControllerObservation = Readonly<
+  Omit<
+    LawfulControllerObservation,
+    "decisionNumber" | "me" | "factions" | "publicMe"
+  > & {
+    readonly me: Readonly<SelfFactionView>;
+    readonly factions?: ControllerQuerySession["factions"];
+    readonly map?: ControllerSpatialSurface["map"];
+    readonly cells?: ControllerSpatialSurface["cells"];
+    readonly segments?: ControllerSpatialSurface["segments"];
+    readonly operations?: Readonly<
+      Pick<ControllerQuerySession["operations"], "get" | "own">
+    >;
+    readonly structures?: ControllerQuerySession["structures"];
+    readonly units?: ControllerQuerySession["units"];
+    readonly transports?: ControllerQuerySession["transports"];
+    readonly weapons?: ControllerQuerySession["weapons"];
+    readonly territory?: ControllerQuerySession["territory"];
+    readonly team?: ControllerQuerySession["team"];
+    readonly capitulate?: ControllerQuerySession["capitulate"];
+    readonly random: RandomApi;
+  }
+>;
 
-export interface HostedLawfulControllerObservation extends LawfulInProcessControllerObservation {
-  readonly memory: Readonly<ControllerMemory>;
-}
+export type HostedLawfulControllerObservation =
+  LawfulInProcessControllerObservation & {
+    readonly memory: Readonly<ControllerMemory>;
+  };
 
 export type ControllerHostFaultCode =
   | "RUNTIME_ERROR"
@@ -402,15 +448,72 @@ function projectHostedContext<T extends object>(
   };
 }
 
+function controllerRandomHash32(input: string, seed = 0x811c9dc5): number {
+  let hash = seed >>> 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function createNormalControllerRandomApi(
+  factionRef: string | undefined,
+  decisionNumber: number,
+): RandomApi {
+  const baseSeed = controllerRandomHash32(
+    `${factionRef ?? "unbound"}\0${decisionNumber}`,
+  );
+  let nextOrdinal = 0;
+  const unit = (label: string): number =>
+    controllerRandomHash32(label, baseSeed) / 0x1_0000_0000;
+  return Object.freeze({
+    next(): number {
+      nextOrdinal += 1;
+      return unit(`N\0${nextOrdinal}`);
+    },
+    keyed(key: string): number {
+      if (typeof key !== "string") {
+        throw new TypeError("controller random key must be a string");
+      }
+      return unit(`K\0${key}`);
+    },
+  });
+}
+
 function projectInProcessObservation(
   observation: LawfulControllerObservation,
   querySession?: ControllerQuerySession,
 ): LawfulInProcessControllerObservation {
-  if (querySession === undefined) return observation;
+  const {
+    decisionNumber,
+    publicMe,
+    me: _trustedMe,
+    factions: _trustedFactions,
+    ...publicObservation
+  } = observation;
+  // Normal MatchRuntime observations always provide publicMe. The fallback keeps
+  // intentionally minimal hand-authored InProcessTestControllerHost fixtures usable
+  // without changing the production/player-facing projection contract.
+  const effectivePublicMe =
+    publicMe ?? (observation.me as unknown as Readonly<SelfFactionView>);
+  const common = Object.freeze({
+    ...publicObservation,
+    me: effectivePublicMe,
+    random: createNormalControllerRandomApi(
+      effectivePublicMe?.id ?? observation.me?.ref,
+      decisionNumber,
+    ),
+  });
+  if (querySession === undefined) return common;
   return Object.freeze({
-    ...observation,
+    ...common,
     ...createControllerSpatialSurface(querySession),
-    mechanics: querySession.mechanics,
+    factions: querySession.factions,
+    operations: Object.freeze({
+      get: querySession.operations.get,
+      own: querySession.operations.own,
+    }),
     structures: querySession.structures,
     units: querySession.units,
     transports: querySession.transports,
@@ -834,6 +937,36 @@ function freezeSelfFactionObservation(
   });
 }
 
+function freezePublicSelfFactionObservation(
+  ref: FactionRef,
+  faction: MatchFactionState,
+  capacity: number,
+  territoryCells: number,
+  growthPerSecond: number,
+): Readonly<SelfFactionView> {
+  if (faction.isMinorFaction) {
+    throw new Error("Minor Factions do not receive normal ControllerContext");
+  }
+  return Object.freeze({
+    id: ref,
+    displayName: faction.displayName ?? faction.id,
+    status: faction.status,
+    ...(faction.fixedTeamId === undefined ? {} : { teamId: faction.fixedTeamId }),
+    isMinorFaction: false as const,
+    ...(faction.origin === undefined ? {} : { origin: faction.origin }),
+    territoryCells,
+    population: faction.population.total,
+    capacity,
+    populationState: Object.freeze({
+      ...freezePopulationObservation(faction.population),
+      capacity,
+      growthPerSecond,
+      utilization: capacity === 0 ? 0 : faction.population.total / capacity,
+    }),
+    ffy: faction.ffy,
+  });
+}
+
 function realizedPassiveFfyPerSecondByFaction(
   state: MatchState,
 ): ReadonlyMap<string, number> {
@@ -851,6 +984,20 @@ function realizedPassiveFfyPerSecondByFaction(
     rates.set(factionId, perSecond);
   }
   passiveFfyPerSecondCache.set(state, rates);
+  return rates;
+}
+
+function realizedPopulationGrowthPerSecondByFaction(
+  state: MatchState,
+): ReadonlyMap<string, number> {
+  const cached = populationGrowthPerSecondCache.get(state);
+  if (cached !== undefined) return cached;
+
+  const rates = new Map<string, number>();
+  for (const [factionId, snapshot] of resolveOrdinaryPopulationGrowth(state)) {
+    rates.set(factionId, snapshot.growthPerSecond);
+  }
+  populationGrowthPerSecondCache.set(state, rates);
   return rates;
 }
 
@@ -1002,20 +1149,26 @@ export function projectLawfulControllerObservation(
     throw new Error(`unknown controller faction: ${factionId}`);
   }
 
-  const factions = Object.freeze(
-    [...state.factions]
-      .sort((left, right) => compareIds(left.id, right.id))
-      .map((faction) =>
-        freezeFactionObservation(
-          requireFactionRef(controllerReferences, faction.id),
-          faction.status,
-        ),
-      ),
-  );
+  const capacities = resolveEffectivePopulationCapacities(state);
+  const capacity = capacities.get(factionId);
+  if (capacity === undefined) {
+    throw new Error(`missing Population Capacity projection for faction ${factionId}`);
+  }
+  let territoryCells = 0;
+  for (let cellId = 0; cellId < state.map.cellCount; cellId += 1) {
+    if ((state.ownership[cellId] ?? null) === factionId) territoryCells += 1;
+  }
   const passiveFfyPerSecond =
     realizedPassiveFfyPerSecondByFaction(state).get(factionId);
   if (passiveFfyPerSecond === undefined) {
     throw new Error(`missing passive FFY projection for faction ${factionId}`);
+  }
+  const growthPerSecond =
+    realizedPopulationGrowthPerSecondByFaction(state).get(factionId);
+  if (growthPerSecond === undefined) {
+    throw new Error(
+      `missing Population growth projection for faction ${factionId}`,
+    );
   }
   const economy = Object.freeze({
     ffy: me.ffy,
@@ -1036,18 +1189,37 @@ export function projectLawfulControllerObservation(
   );
   const events = Object.freeze({ sinceLastDecision });
 
+  const factions = Object.freeze(
+    [...state.factions]
+      .sort((left, right) => compareIds(left.id, right.id))
+      .map((faction) =>
+        freezeFactionObservation(
+          requireFactionRef(controllerReferences, faction.id),
+          faction.status,
+        ),
+      ),
+  );
+  const selfRef = requireFactionRef(controllerReferences, me.id);
   return Object.freeze({
     tick: state.tick,
     decisionNumber,
     me: freezeSelfFactionObservation(
-      requireFactionRef(controllerReferences, me.id),
+      selfRef,
       me.status,
       me.ffy,
       me.population,
     ),
     factions,
+    publicMe: freezePublicSelfFactionObservation(
+      selfRef,
+      me,
+      capacity,
+      territoryCells,
+      growthPerSecond,
+    ),
     economy,
     events,
+    limits: CONTROLLER_LIMITS,
     ...(lastDecision === undefined ? {} : { lastDecision }),
   });
 }
@@ -1654,6 +1826,7 @@ export function evaluateControllerRound(
   }
 
   const orderedFactionIds = [...state.factions]
+    .filter((faction) => !faction.isMinorFaction)
     .map((faction) => faction.id)
     .sort(compareIds);
   const factionScores = new (class extends Map<string, number> {

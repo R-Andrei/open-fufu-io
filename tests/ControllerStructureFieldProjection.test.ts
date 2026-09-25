@@ -49,30 +49,13 @@ describe("controller structure-field projection", () => {
     );
     expect(structuresApi).not.toContain("structureId");
 
-    const buildQuoteStart = source.indexOf("structureBuildQuote(");
-    const buildQuoteEnd = source.indexOf(
-      "): StructureBuildQuote;",
-      buildQuoteStart,
+    expect(structuresApi).toContain(
+      "checkBuild(type: StructureType, cellId: CellId): StructureBuildQuote;",
     );
-    const buildQuote = source.slice(
-      buildQuoteStart,
-      buildQuoteEnd + "): StructureBuildQuote;".length,
+    expect(structuresApi).toContain(
+      "checkUpgrade(locator: StructureLocator): StructureUpgradeQuote;",
     );
-    expect(buildQuote).toContain("structureType: StructureType");
-    expect(buildQuote).toContain("cellId: CellId");
-    expect(buildQuote).not.toContain("factionId");
-
-    const upgradeQuoteStart = source.indexOf("structureUpgradeQuote(");
-    const upgradeQuoteEnd = source.indexOf(
-      "): StructureUpgradeQuote;",
-      upgradeQuoteStart,
-    );
-    const upgradeQuote = source.slice(
-      upgradeQuoteStart,
-      upgradeQuoteEnd + "): StructureUpgradeQuote;".length,
-    );
-    expect(upgradeQuote).toContain("cellId: CellId");
-    expect(upgradeQuote).not.toContain("structureId");
+    expect(structuresApi).not.toContain("factionId");
 
     const failureCodeStart = source.indexOf("export type DecisionFailureCode");
     const failureCodeEnd = source.indexOf(

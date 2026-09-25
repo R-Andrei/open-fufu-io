@@ -9,16 +9,13 @@ import type {
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
 import {
-  CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
   controllerTeamSignalPayloadIsValid,
   type ControllerQuerySession,
   type ControllerStagedAction,
 } from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
-  CONTROLLER_EVENTS_PER_DECISION,
-  CONTROLLER_MEMORY_MAX_BYTES,
-  CONTROLLER_QUERY_LIMITS,
+  CONTROLLER_LIMITS,
   ControllerMemoryLimitError,
   type ControllerHost,
   type ControllerHostFault,
@@ -28,22 +25,11 @@ import {
 } from "../../simulation/ControllerRuntime";
 
 export const PRODUCTION_CONTROLLER_LIMITS = Object.freeze({
-  persistentMemoryBytes: CONTROLLER_MEMORY_MAX_BYTES,
+  ...CONTROLLER_LIMITS,
   isolateMemoryMb: 32,
   decideTimeoutMs: 20,
   spawnHookTimeoutMs: 50,
   moduleEvaluationTimeoutMs: 100,
-  serializedDecisionBytes: 256 * 1024,
-  queriesPerDecision: CONTROLLER_QUERY_LIMITS.queriesPerDecision,
-  materializedCellsPerDecision:
-    CONTROLLER_QUERY_LIMITS.materializedCellsPerDecision,
-  directiveUpdatesPerDecision: 128,
-  actionsPerDecision: 64,
-  policyRulesPerDecision: 256,
-  debugItemsPerDecision: 256,
-  logBytesPerDecision: 8 * 1024,
-  eventsPerDecision: CONTROLLER_EVENTS_PER_DECISION,
-  teamSignalPayloadBytes: CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES,
 });
 
 export interface ControllerRuntimeArtifact {

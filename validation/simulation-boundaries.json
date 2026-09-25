@@ -62,6 +62,18 @@
     },
     {
       "from": "src/simulation/ControllerQueryProjection.ts",
+      "to": "src/simulation/HostilityState.ts",
+      "classification": "CURRENT_STATE_READ",
+      "rationale": "Controller faction projection reads the canonical current team-normalized atWar state for the public FactionsApi; it does not create or deliver hostility occurrences."
+    },
+    {
+      "from": "src/simulation/Economy.ts",
+      "to": "src/simulation/Population.ts",
+      "classification": "SHARED_CONTRACT",
+      "rationale": "Economy materializes ordinary Population-growth increments using the Population-owned deterministic residual-unit scale; mutation remains Population/TickEngine-owned."
+    },
+    {
+      "from": "src/simulation/ControllerQueryProjection.ts",
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Controller query projection reads current authoritative MatchState for requester-lawful observation; it does not convey an occurrence."
@@ -161,12 +173,6 @@
       "to": "src/simulation/MatchState.ts",
       "classification": "CURRENT_STATE_READ",
       "rationale": "Economy derives values from current authoritative MatchState without treating current state as an event."
-    },
-    {
-      "from": "src/simulation/Economy.ts",
-      "to": "src/simulation/Population.ts",
-      "classification": "SHARED_CONTRACT",
-      "rationale": "Economy materializes ordinary Population-growth increments using the Population-owned deterministic residual-unit scale; mutation remains Population/TickEngine-owned."
     },
     {
       "from": "src/simulation/FactionScore.ts",

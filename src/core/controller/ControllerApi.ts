@@ -202,9 +202,9 @@ export interface OriginView {
 export type ModifierValue = number | boolean | string;
 
 /**
- * Introspection for surfaced rule-bearing values that do not yet justify a
- * first-class typed field. Controllers should prefer typed MechanicsApi methods
- * whenever one exists rather than rebuilding formulas from these keys.
+ * Strategic Spawn-only introspection for surfaced rule-bearing values that do
+ * not yet justify a first-class typed field. Normal ControllerContext does not
+ * expose this unstructured sheet or a broad mechanics calculator.
  */
 export interface EffectiveModifierSheet {
   readonly values: Readonly<Record<string, ModifierValue>>;
@@ -224,7 +224,25 @@ export interface FactionView {
   readonly ffy?: number;
 }
 
-export interface SelfFactionView extends FactionView {
+export interface SelfFactionView {
+  readonly id: FactionRef;
+  readonly displayName: string;
+  readonly status: FactionStatus;
+  readonly teamId?: string;
+  readonly isMinorFaction: false;
+  readonly origin?: OriginView;
+  readonly territoryCells: number;
+  readonly population: number;
+  readonly capacity: number;
+  readonly populationState: PopulationView;
+  readonly ffy: number;
+}
+
+/**
+ * Strategic Spawn retains its separately owned modifier-introspection contract.
+ * Normal ControllerContext deliberately does not expose this unstructured sheet.
+ */
+export interface SpawnSelfFactionView extends FactionView {
   readonly isMinorFaction: false;
   readonly origin: OriginView;
   readonly populationState: PopulationView;
@@ -267,29 +285,6 @@ export interface SegmentView {
   readonly ownerShares: Readonly<Record<FactionRef, number>>;
   readonly adjacentSegmentIds: readonly SegmentId[];
   readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
-}
-
-export interface TerritorialContactView {
-  readonly factionA: FactionRef;
-  readonly factionB: FactionRef;
-  readonly boundaryCellCount: number;
-  readonly componentCount: number;
-  readonly segmentIds: readonly SegmentId[];
-  readonly terrainCounts: Readonly<Partial<Record<TerrainType, number>>>;
-}
-
-export type OperationalContactKind =
-  | "TERRITORIAL"
-  | "LAND_COMBAT"
-  | "NAVAL_ENCOUNTER"
-  | "AMPHIBIOUS";
-
-export interface OperationalContactView {
-  readonly factionA: FactionRef;
-  readonly factionB: FactionRef;
-  readonly kinds: readonly OperationalContactKind[];
-  readonly area: CellSelector;
-  readonly segmentIds: readonly SegmentId[];
 }
 
 export type OperationKind = "ATTACK" | "NEUTRAL_EXPANSION" | "COUNTER_RESPONSE";
@@ -483,20 +478,6 @@ export interface SegmentsApi {
   cellIds(id: SegmentId): readonly CellId[] | undefined;
 }
 
-export interface ContactsApi {
-  territorial(): readonly TerritorialContactView[];
-  territorialBetween(
-    a: FactionRef,
-    b: FactionRef,
-  ): readonly TerritorialContactView[];
-  /** Current operational contacts are already requester-lawful visibility projections. */
-  operational(): readonly OperationalContactView[];
-  operationalBetween(
-    a: FactionRef,
-    b: FactionRef,
-  ): readonly OperationalContactView[];
-}
-
 export interface FactionsApi {
   get(ref: FactionRef): FactionReadView | undefined;
   find(filter?: FactionFindFilter): readonly FactionReadView[];
@@ -508,9 +489,8 @@ export interface FactionsApi {
 export interface OperationsApi {
   /** Hidden/unknown operations are indistinguishable and return undefined. */
   get(ref: OperationRef): OperationView | undefined;
+  /** Current authoritative views of this controller's own active operations. */
   own(): readonly OperationView[];
-  /** Contains only incoming operations lawfully visible to this requester. */
-  incoming(): readonly OperationView[];
 }
 
 export interface StructuresApi {
@@ -578,20 +558,6 @@ export interface TerritoryApi {
 
 export interface TeamApi {
   signal(channel: string, payload: JsonValue): ActionRef;
-}
-
-export interface NavigationApi {
-  path(
-    from: CellId,
-    to: CellId,
-    movementClass: MovementClass,
-    maxCells?: number,
-  ): readonly CellId[] | undefined;
-  reachable(
-    from: CellId,
-    movementClass: MovementClass,
-    maxDistance: number,
-  ): CellSelector;
 }
 
 export interface EconomyView {
@@ -982,31 +948,6 @@ export interface MechanicsApi {
     factionId?: FactionRef,
   ): StrategicWeaponMechanicsSpec;
 
-  structureBuildQuote(
-    structureType: StructureType,
-    cellId: CellId,
-  ): StructureBuildQuote;
-  structureUpgradeQuote(cellId: CellId): StructureUpgradeQuote;
-  unitBuildQuote(
-    type: PurchasableUnitType,
-    producerId: StructureRef,
-    factionId?: FactionRef,
-  ): UnitBuildQuote;
-  moveUnitQuote(unitId: UnitRef, destination: CellId): MoveUnitQuote;
-  transportEmbarkQuote(
-    sourceCellId: CellId,
-    targetCellId: CellId,
-    population: number,
-    factionId?: FactionRef,
-  ): TransportEmbarkQuote;
-  weaponLaunchQuote(
-    launcherId: StructureRef | UnitRef,
-    type: StrategicWeaponType,
-    targetCellId: CellId,
-    targetFactionId?: FactionRef,
-  ): WeaponLaunchQuote;
-  /** Self-faction quote for the exact selected cells on the current immutable snapshot. */
-  relinquishQuote(cells: CellSelector): RelinquishQuote;
 }
 
 export interface RulesView {
@@ -1289,13 +1230,12 @@ export interface ControllerDecision<
 export interface ControllerContext<
   M extends ControllerMemory = ControllerMemory,
 > {
-  readonly game: GameView;
+  readonly tick: Tick;
   readonly me: SelfFactionView;
   readonly factions: FactionsApi;
   readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
-  readonly contacts: ContactsApi;
   readonly operations: OperationsApi;
   readonly structures: StructuresApi;
   readonly units: UnitsApi;
@@ -1304,10 +1244,7 @@ export interface ControllerContext<
   readonly territory: TerritoryApi;
   readonly team: TeamApi;
   capitulate(): ActionRef;
-  readonly navigation: NavigationApi;
   readonly economy: EconomyView;
-  readonly rules: RulesView;
-  readonly mechanics: MechanicsApi;
   readonly events: EventsApi;
   readonly lastDecision?: DecisionReceipt;
   readonly random: RandomApi;
@@ -1372,7 +1309,7 @@ export interface SpawnBaseContext<
   M extends ControllerMemory = ControllerMemory,
 > {
   readonly game: GameView;
-  readonly me: SelfFactionView;
+  readonly me: SpawnSelfFactionView;
   readonly map: MapApi;
   readonly cells: CellsApi;
   readonly segments: SegmentsApi;
