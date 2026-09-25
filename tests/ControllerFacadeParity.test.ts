@@ -8,6 +8,7 @@ import { ControllerProcessWorkerPool } from "../src/server/controller-runtime/Co
 import {
   PRODUCTION_CONTROLLER_LIMITS,
   ProductionControllerHost,
+  validateProductionControllerOutput,
   type ControllerRuntimeArtifact,
 } from "../src/server/controller-runtime/ProductionControllerHost";
 import {
@@ -16,6 +17,7 @@ import {
 } from "../src/simulation/ControllerQueryProjection";
 import { ControllerReferenceSession } from "../src/simulation/ControllerReferenceSession";
 import {
+  CONTROLLER_LIMITS,
   CONTROLLER_QUERY_LIMITS,
   InProcessTestControllerHost,
   evaluateControllerRound,
@@ -563,9 +565,13 @@ describe("issue #225 final ControllerContext RED", () => {
       '    ? [T] extends [Seen] ? never',
       '      : T extends (...args: any[]) => any ? Prefix',
       '      : T extends string | number | boolean | bigint | symbol ? never',
-      '      : T extends readonly unknown[] ? never',
+      '      : T extends readonly (infer Element)[]',
+      '        ? CallablePaths<NonNullable<Element>, Prefix, Seen | T>',
       '      : T extends object',
-      '        ? string extends keyof T ? never',
+      '        ? string extends keyof T',
+      '          ? T extends { readonly [key: string]: infer Value }',
+      '            ? CallablePaths<NonNullable<Value>, Prefix, Seen | T>',
+      '            : never',
       '          : {',
       '              [K in keyof T & string]-?: CallablePaths<',
       '                NonNullable<T[K]>,',
@@ -583,6 +589,20 @@ describe("issue #225 final ControllerContext RED", () => {
       '};',
       'type SyntheticNestedCallableName = CallablePaths<SyntheticNestedContext>;',
       'const syntheticNestedCallableIsDetected: "me.nestedProof.deeper" extends SyntheticNestedCallableName ? true : false = true;',
+      'type SyntheticArrayContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedList: readonly { deeper(): void }[];',
+      '  };',
+      '};',
+      'type SyntheticArrayCallableName = CallablePaths<SyntheticArrayContext>;',
+      'const syntheticArrayCallableIsDetected: "events.nestedList.deeper" extends SyntheticArrayCallableName ? true : false = true;',
+      'type SyntheticDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedDictionary: Readonly<Record<string, { deeper(): void }>>;',
+      '  };',
+      '};',
+      'type SyntheticDictionaryCallableName = CallablePaths<SyntheticDictionaryContext>;',
+      'const syntheticDictionaryCallableIsDetected: "events.nestedDictionary.deeper" extends SyntheticDictionaryCallableName ? true : false = true;',
       'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
       'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
       'declare const context: Context;',
@@ -739,6 +759,238 @@ describe("issue #225 final ControllerContext RED", () => {
       await pool.close();
     }
   }, 20_000);
+});
+
+
+describe("issue #225 host-boundary parity re-audit RED", () => {
+  const invokeInProcess = (
+    seed: string,
+    decide: Parameters<ConstructorParameters<typeof InProcessTestControllerHost>[0]["alpha"]["decide"]>[0] extends never
+      ? never
+      : NonNullable<Exclude<ConstructorParameters<typeof InProcessTestControllerHost>[0]["alpha"], Function>["decide"]>,
+  ) => {
+    const state = facadeState(seed);
+    const references = new ControllerReferenceSession(seed, state);
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      1,
+      undefined,
+      references,
+    );
+    const session = createControllerQuerySession(
+      state,
+      "alpha",
+      CONTROLLER_QUERY_LIMITS,
+      references,
+    );
+    const host = new InProcessTestControllerHost({
+      alpha: { decide },
+    });
+    return host.invoke("alpha", observation, session);
+  };
+
+  it("enforces every production-owned normal output ceiling in-process", () => {
+    const cases = [
+      {
+        name: "directiveUpdatesPerDecision",
+        seed: "issue225-in-process-directive-limit",
+        decide: () => ({
+          directives: {
+            end: Array.from(
+              { length: CONTROLLER_LIMITS.directiveUpdatesPerDecision + 1 },
+              (_, index) => `directive-${index}`,
+            ),
+          },
+        }),
+      },
+      {
+        name: "policyRulesPerDecision",
+        seed: "issue225-in-process-policy-limit",
+        decide: () => ({
+          directives: {
+            set: [
+              {
+                kind: "DEFENSE_PRIORITY" as const,
+                key: "over-policy-limit",
+                priority: {
+                  rules: Array.from(
+                    { length: CONTROLLER_LIMITS.policyRulesPerDecision + 1 },
+                    () => ({
+                      selector: { kind: "CELLS" as const, ids: [0] },
+                      weight: 1,
+                    }),
+                  ),
+                },
+              },
+            ],
+          },
+        }),
+      },
+      {
+        name: "debugItemsPerDecision",
+        seed: "issue225-in-process-debug-limit",
+        decide: () => ({
+          debug: Array.from(
+            { length: CONTROLLER_LIMITS.debugItemsPerDecision + 1 },
+            (_, index) => ({
+              kind: "METRIC" as const,
+              name: `metric-${index}`,
+              value: index,
+            }),
+          ),
+        }),
+      },
+      {
+        name: "logBytesPerDecision",
+        seed: "issue225-in-process-log-limit",
+        decide: () => ({
+          log: "é".repeat(Math.floor(CONTROLLER_LIMITS.logBytesPerDecision / 2) + 1),
+        }),
+      },
+      {
+        name: "serializedDecisionBytes",
+        seed: "issue225-in-process-serialized-limit",
+        decide: () => ({
+          debug: [
+            {
+              kind: "POINT" as const,
+              cellId: 0,
+              label: "x".repeat(CONTROLLER_LIMITS.serializedDecisionBytes),
+            },
+          ],
+        }),
+      },
+    ] as const;
+
+    const outcomes = cases.map((testCase) => ({
+      name: testCase.name,
+      ok: invokeInProcess(testCase.seed, testCase.decide).ok,
+    }));
+    expect(outcomes).toEqual(
+      cases.map((testCase) => ({ name: testCase.name, ok: false })),
+    );
+  });
+
+  it("rejects over-limit staged actions before committing in-process memory", () => {
+    const seed = "issue225-in-process-action-limit-memory";
+    const state = facadeState(seed);
+    const references = new ControllerReferenceSession(seed, state);
+    const observation = projectLawfulControllerObservation(
+      state,
+      "alpha",
+      1,
+      undefined,
+      references,
+    );
+    let invocation = 0;
+    let secondMemory: unknown;
+    const host = new InProcessTestControllerHost({
+      alpha: {
+        decide(context) {
+          invocation += 1;
+          if (invocation === 1) {
+            for (
+              let index = 0;
+              index < CONTROLLER_LIMITS.actionsPerDecision + 1;
+              index += 1
+            ) {
+              context.capitulate();
+            }
+            return { memory: { mustNotCommit: true } };
+          }
+          secondMemory = { ...context.memory };
+          return {};
+        },
+      },
+    });
+
+    const first = host.invoke(
+      "alpha",
+      observation,
+      createControllerQuerySession(
+        state,
+        "alpha",
+        CONTROLLER_QUERY_LIMITS,
+        references,
+      ),
+    );
+    host.invoke(
+      "alpha",
+      observation,
+      createControllerQuerySession(
+        state,
+        "alpha",
+        CONTROLLER_QUERY_LIMITS,
+        references,
+      ),
+    );
+
+    expect({
+      firstOk: first.ok,
+      secondMemory,
+    }).toEqual({
+      firstOk: false,
+      secondMemory: {},
+    });
+  });
+
+  it("normalizes negative zero identically to production transport materialization", () => {
+    const decision = {
+      debug: [
+        {
+          kind: "METRIC" as const,
+          name: "negative-zero",
+          value: -0,
+        },
+      ],
+    };
+    const production = validateProductionControllerOutput("DECIDE", decision);
+    expect(production.ok).toBe(true);
+    if (!production.ok || production.output === undefined) {
+      throw new Error("expected valid production output");
+    }
+    const productionValue = (
+      production.output.debug?.[0] as { readonly value?: number } | undefined
+    )?.value;
+    expect(Object.is(productionValue, -0)).toBe(false);
+
+    const inProcess = invokeInProcess(
+      "issue225-in-process-negative-zero",
+      () => decision,
+    );
+    expect(inProcess.ok).toBe(true);
+    if (!inProcess.ok || inProcess.output === undefined) {
+      throw new Error("expected valid in-process output");
+    }
+    const inProcessValue = (
+      inProcess.output.debug?.[0] as { readonly value?: number } | undefined
+    )?.value;
+    expect(Object.is(inProcessValue, -0)).toBe(false);
+  });
+
+  it("rejects the stale raw incomingOperationId form in-process", () => {
+    const result = invokeInProcess(
+      "issue225-in-process-raw-operation-id",
+      () =>
+        ({
+          directives: {
+            set: [
+              {
+                kind: "COUNTER_RESPONSE",
+                key: "legacy-raw-id",
+                incomingOperationId: "authoritative-operation-id",
+                population: 1,
+              },
+            ],
+          },
+        }) as never,
+    );
+    expect(result).toEqual({
+      ok: false,
+      fault: { code: "RUNTIME_ERROR" },
+    });
+  });
 });
 
 describe("issue #225 authoritative self growth projection RED", () => {

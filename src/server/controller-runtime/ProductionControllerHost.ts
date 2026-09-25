@@ -9,13 +9,15 @@ import type {
 } from "../../core/controller/ControllerApi";
 import { controllerOutputHasExpectedStructure } from "../../core/controller/ControllerOutputValidation";
 import {
-  controllerTeamSignalPayloadIsValid,
   type ControllerQuerySession,
   type ControllerStagedAction,
 } from "../../simulation/ControllerQueryProjection";
 import {
   canonicalizeControllerMemory,
   CONTROLLER_LIMITS,
+  controllerOutputWithinResourceCeilings,
+  controllerSerializedOutputWithinResourceCeiling,
+  controllerStagedActionsWithinResourceCeilings,
   ControllerMemoryLimitError,
   type ControllerHost,
   type ControllerHostFault,
@@ -112,7 +114,6 @@ export type ProductionControllerOutputValidationResult =
 
 class InvalidTransportValueError extends Error {}
 
-const utf8Encoder = new TextEncoder();
 const controllerWorkerFaults = new Set<ControllerWorkerFault>([
   "RUNTIME_ERROR",
   "INVALID_OUTPUT",
@@ -287,81 +288,8 @@ export function isControllerWorkerResponse(
   return false;
 }
 
-function spatialPolicyRuleCount(value: unknown): number {
-  if (!isPlainRecord(value)) return 0;
-  return Array.isArray(value.rules) ? value.rules.length : 0;
-}
-
-function directivePolicyRuleCount(value: unknown): number {
-  if (!isPlainRecord(value)) return 0;
-  if (value.kind === "LAND_OPERATION") {
-    return (
-      spatialPolicyRuleCount(value.engagementPriority) +
-      spatialPolicyRuleCount(value.pressureWeight)
-    );
-  }
-  if (value.kind === "DEFENSE_PRIORITY") {
-    return spatialPolicyRuleCount(value.priority);
-  }
-  return 0;
-}
-
-function teamSignalPayloadWithinLimit(command: unknown): boolean {
-  if (!isPlainRecord(command) || command.kind !== "TEAM_SIGNAL") return true;
-  return controllerTeamSignalPayloadIsValid(command.payload);
-}
-
-export function stagedActionsWithinResourceCeilings(
-  actions: readonly unknown[],
-): boolean {
-  if (actions.length > PRODUCTION_CONTROLLER_LIMITS.actionsPerDecision) return false;
-  return actions.every(teamSignalPayloadWithinLimit);
-}
-
-function outputWithinResourceCeilings(output: OutputRecord): boolean {
-  if (Object.prototype.hasOwnProperty.call(output, "directives")) {
-    if (!isPlainRecord(output.directives)) return false;
-    const set = output.directives.set;
-    const end = output.directives.end;
-    if (set !== undefined && !Array.isArray(set)) return false;
-    if (end !== undefined && !Array.isArray(end)) return false;
-    const updates =
-      (Array.isArray(set) ? set.length : 0) +
-      (Array.isArray(end) ? end.length : 0);
-    if (updates > PRODUCTION_CONTROLLER_LIMITS.directiveUpdatesPerDecision) {
-      return false;
-    }
-
-    if (Array.isArray(set)) {
-      let policyRules = 0;
-      for (const directive of set) {
-        policyRules += directivePolicyRuleCount(directive);
-        if (policyRules > PRODUCTION_CONTROLLER_LIMITS.policyRulesPerDecision) {
-          return false;
-        }
-      }
-    }
-  }
-
-  if (Object.prototype.hasOwnProperty.call(output, "debug")) {
-    if (!Array.isArray(output.debug)) return false;
-    if (output.debug.length > PRODUCTION_CONTROLLER_LIMITS.debugItemsPerDecision) {
-      return false;
-    }
-  }
-
-  if (Object.prototype.hasOwnProperty.call(output, "log")) {
-    if (typeof output.log !== "string") return false;
-    if (
-      utf8Encoder.encode(output.log).byteLength >
-      PRODUCTION_CONTROLLER_LIMITS.logBytesPerDecision
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
+export const stagedActionsWithinResourceCeilings =
+  controllerStagedActionsWithinResourceCeilings;
 
 export function validateProductionControllerOutput(
   hook: ControllerWorkerHook,
@@ -381,10 +309,10 @@ export function validateProductionControllerOutput(
     return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
   }
 
-  const serialized = JSON.stringify(materialized);
   if (
-    utf8Encoder.encode(serialized).byteLength >
-    PRODUCTION_CONTROLLER_LIMITS.serializedDecisionBytes
+    !controllerSerializedOutputWithinResourceCeiling(
+      materialized as Record<string, unknown>,
+    )
   ) {
     return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
   }
@@ -409,7 +337,7 @@ export function validateProductionControllerOutput(
     }
   }
 
-  if (!outputWithinResourceCeilings(output)) {
+  if (!controllerOutputWithinResourceCeilings(output)) {
     return Object.freeze({ ok: false as const, fault: "INVALID_OUTPUT" as const });
   }
 

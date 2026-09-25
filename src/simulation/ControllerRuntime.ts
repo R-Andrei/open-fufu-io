@@ -288,6 +288,89 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function spatialPolicyRuleCount(value: unknown): number {
+  if (!isPlainRecord(value)) return 0;
+  return Array.isArray(value.rules) ? value.rules.length : 0;
+}
+
+function directivePolicyRuleCount(value: unknown): number {
+  if (!isPlainRecord(value)) return 0;
+  if (value.kind === "LAND_OPERATION") {
+    return (
+      spatialPolicyRuleCount(value.engagementPriority) +
+      spatialPolicyRuleCount(value.pressureWeight)
+    );
+  }
+  if (value.kind === "DEFENSE_PRIORITY") {
+    return spatialPolicyRuleCount(value.priority);
+  }
+  return 0;
+}
+
+function teamSignalPayloadWithinLimit(action: unknown): boolean {
+  if (!isPlainRecord(action) || action.kind !== "TEAM_SIGNAL") return true;
+  return controllerTeamSignalPayloadIsValid(action.payload);
+}
+
+export function controllerStagedActionsWithinResourceCeilings(
+  actions: readonly unknown[],
+): boolean {
+  if (actions.length > CONTROLLER_LIMITS.actionsPerDecision) return false;
+  return actions.every(teamSignalPayloadWithinLimit);
+}
+
+export function controllerOutputWithinResourceCeilings(
+  output: Readonly<Record<string, unknown>>,
+): boolean {
+  if (Object.prototype.hasOwnProperty.call(output, "directives")) {
+    if (!isPlainRecord(output.directives)) return false;
+    const set = output.directives.set;
+    const end = output.directives.end;
+    if (set !== undefined && !Array.isArray(set)) return false;
+    if (end !== undefined && !Array.isArray(end)) return false;
+    const updates =
+      (Array.isArray(set) ? set.length : 0) +
+      (Array.isArray(end) ? end.length : 0);
+    if (updates > CONTROLLER_LIMITS.directiveUpdatesPerDecision) return false;
+
+    if (Array.isArray(set)) {
+      let policyRules = 0;
+      for (const directive of set) {
+        policyRules += directivePolicyRuleCount(directive);
+        if (policyRules > CONTROLLER_LIMITS.policyRulesPerDecision) return false;
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(output, "debug")) {
+    if (!Array.isArray(output.debug)) return false;
+    if (output.debug.length > CONTROLLER_LIMITS.debugItemsPerDecision) {
+      return false;
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(output, "log")) {
+    if (typeof output.log !== "string") return false;
+    if (
+      utf8Encoder.encode(output.log).byteLength >
+      CONTROLLER_LIMITS.logBytesPerDecision
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function controllerSerializedOutputWithinResourceCeiling(
+  output: Readonly<Record<string, unknown>>,
+): boolean {
+  return (
+    utf8Encoder.encode(JSON.stringify(output)).byteLength <=
+    CONTROLLER_LIMITS.serializedDecisionBytes
+  );
+}
+
 function canonicalizeMemoryValue(
   value: unknown,
   ancestors: Set<object>,
@@ -540,7 +623,7 @@ function materializeControllerValue(
           "controller output number must be finite",
         );
       }
-      return value;
+      return Object.is(value, -0) ? 0 : value;
     case "object":
       break;
     default:
@@ -587,43 +670,6 @@ function materializeControllerValue(
   } finally {
     ancestors.delete(value);
   }
-}
-
-function trustedInProcessOutputHasExpectedStructure(
-  outputKind: ControllerOutputKind,
-  output: Record<string, unknown>,
-): boolean {
-  if (controllerOutputHasExpectedStructure(outputKind, output)) return true;
-  if (outputKind !== "DECIDE" || !isPlainRecord(output.directives)) return false;
-  const set = output.directives.set;
-  if (!Array.isArray(set)) return false;
-
-  let normalizedLegacyCounterResponse = false;
-  const normalizedSet = set.map((directive) => {
-    if (
-      !isPlainRecord(directive) ||
-      directive.kind !== "COUNTER_RESPONSE" ||
-      directive.incomingOperation !== undefined ||
-      typeof directive.incomingOperationId !== "string"
-    ) {
-      return directive;
-    }
-    normalizedLegacyCounterResponse = true;
-    const { incomingOperationId, ...rest } = directive;
-    return Object.freeze({
-      ...rest,
-      incomingOperation: incomingOperationId,
-    });
-  });
-  if (!normalizedLegacyCounterResponse) return false;
-
-  return controllerOutputHasExpectedStructure(outputKind, {
-    ...output,
-    directives: {
-      ...output.directives,
-      set: normalizedSet,
-    },
-  });
 }
 
 function hostSuccess<T>(
@@ -700,6 +746,10 @@ export class InProcessTestControllerHost implements ControllerHost {
       querySession,
     );
 
+    const stagedActionsWithinLimits = (): boolean =>
+      controllerStagedActionsWithinResourceCeilings(
+        querySession?.consumeStagedActions() ?? Object.freeze([]),
+      );
     const attachStagedActions = (
       result: ControllerHostInvocationResult<ControllerDecision>,
     ): ControllerHostInvocationResult<ControllerDecision> => {
@@ -716,6 +766,7 @@ export class InProcessTestControllerHost implements ControllerHost {
           factionId,
           "DECIDE",
           () => registration(inProcessObservation),
+          stagedActionsWithinLimits,
         ),
       );
     }
@@ -728,6 +779,7 @@ export class InProcessTestControllerHost implements ControllerHost {
           registration.decide?.(
             projectHostedContext(inProcessObservation, memory),
           ),
+        stagedActionsWithinLimits,
       ),
     );
   }
@@ -790,6 +842,7 @@ export class InProcessTestControllerHost implements ControllerHost {
     factionId: string,
     outputKind: ControllerOutputKind,
     invoke: (memory: Readonly<ControllerMemory>) => T | void,
+    beforeCommit?: () => boolean,
   ): ControllerHostInvocationResult<T> {
     let output: T | void;
     try {
@@ -798,7 +851,12 @@ export class InProcessTestControllerHost implements ControllerHost {
       return hostFault("RUNTIME_ERROR");
     }
 
-    if (output === undefined) return hostSuccess();
+    if (output === undefined) {
+      if (beforeCommit !== undefined && !beforeCommit()) {
+        return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
+      }
+      return hostSuccess();
+    }
     if (!isPlainRecord(output)) {
       return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
     }
@@ -809,10 +867,17 @@ export class InProcessTestControllerHost implements ControllerHost {
         new Set<object>(),
       ) as T;
       if (
-        !trustedInProcessOutputHasExpectedStructure(
+        !controllerOutputHasExpectedStructure(
           outputKind,
           materialized as Record<string, unknown>,
-        )
+        ) ||
+        !controllerSerializedOutputWithinResourceCeiling(
+          materialized as Record<string, unknown>,
+        ) ||
+        !controllerOutputWithinResourceCeilings(
+          materialized as Record<string, unknown>,
+        ) ||
+        (beforeCommit !== undefined && !beforeCommit())
       ) {
         return hostFault("RUNTIME_ERROR", "INVALID_OUTPUT");
       }
