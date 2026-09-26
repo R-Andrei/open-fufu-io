@@ -1076,7 +1076,7 @@ describe("issue #225 malformed read/check parity RED", () => {
     expect(
       await workerLog(
         "issue225-malformed-local-worker",
-        \`
+        `
           export function decide(context) {
             const caught = (fn) => {
               try { fn(); return false; } catch { return true; }
@@ -1091,7 +1091,7 @@ describe("issue #225 malformed read/check parity RED", () => {
               }),
             };
           }
-        \`,
+        `,
       ),
     ).toEqual(inProcess);
   }, 20_000);
@@ -1118,7 +1118,7 @@ describe("issue #225 malformed read/check parity RED", () => {
     expect(
       await workerLog(
         "issue225-malformed-async-worker",
-        \`
+        `
           export async function decide(context) {
             const caught = async (fn) => {
               try { await fn(); return false; } catch { return true; }
@@ -1134,7 +1134,7 @@ describe("issue #225 malformed read/check parity RED", () => {
               }),
             };
           }
-        \`,
+        `,
       ),
     ).toEqual(inProcess);
   }, 20_000);
@@ -1173,7 +1173,7 @@ describe("issue #225 malformed read/check parity RED", () => {
     expect(
       await workerLog(
         "issue225-malformed-check-worker",
-        \`
+        `
           export function decide(context) {
             const caught = (fn) => {
               try { fn(); return false; } catch { return true; }
@@ -1189,7 +1189,7 @@ describe("issue #225 malformed read/check parity RED", () => {
               }),
             };
           }
-        \`,
+        `,
       ),
     ).toEqual(inProcess);
   }, 20_000);
