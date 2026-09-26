@@ -603,6 +603,13 @@ describe("issue #225 final ControllerContext RED", () => {
       '};',
       'type SyntheticDictionaryCallableName = CallablePaths<SyntheticDictionaryContext>;',
       'const syntheticDictionaryCallableIsDetected: "events.nestedDictionary.deeper" extends SyntheticDictionaryCallableName ? true : false = true;',
+      'type SyntheticNumericDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedByIndex: { readonly [index: number]: { deeper(): void } };',
+      '  };',
+      '};',
+      'type SyntheticNumericDictionaryCallableName = CallablePaths<SyntheticNumericDictionaryContext>;',
+      'const syntheticNumericDictionaryCallableIsDetected: "events.nestedByIndex.deeper" extends SyntheticNumericDictionaryCallableName ? true : false = true;',
       'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
       'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
       'declare const context: Context;',
@@ -2540,6 +2547,138 @@ describe("issue #206 team.signal atomic rejection proof", () => {
       });
       expect(production.acceptedInputs()).toHaveLength(productionInputs);
       expect(production.snapshot()).toEqual(productionBefore);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("throws an oversized team.signal before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-caught-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("oversize", "a".repeat(1_023));
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-caught-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let caught = false;
+              try {
+                context.team.signal("oversize", "a".repeat(1023));
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects malformed staged action data before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-malformed-action-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.structures.build("FORT", Number.NaN as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-malformed-action-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let caught = false;
+              try {
+                context.structures.build("FORT", Number.NaN);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
     } finally {
       await pool.close();
     }
