@@ -487,14 +487,23 @@ const invokeEntrypointSource = `
 
   let nextActionOrdinal = 1;
   const stagedActions = [];
+  const stagedValidationErrors = new primordials.SetCtor();
   const stageAction = (kind, payload = {}) => {
-    const materializedPayload = materialize(payload);
+    let materializedPayload;
+    try {
+      materializedPayload = materialize(payload);
+    } catch (error) {
+      primordials.setAdd(stagedValidationErrors, error);
+      throw error;
+    }
     if (kind === "TEAM_SIGNAL") {
       const serializedPayload = primordials.jsonStringify(
         materializedPayload.payload
       );
       if (utf8ByteLength(serializedPayload) > $8) {
-        throw new RangeError("team signal payload exceeds byte limit");
+        const error = new RangeError("team signal payload exceeds byte limit");
+        primordials.setAdd(stagedValidationErrors, error);
+        throw error;
       }
     }
 
@@ -738,8 +747,13 @@ const invokeEntrypointSource = `
     let output;
     try {
       output = await $0(input);
-    } catch {
-      return { status: "RUNTIME_ERROR", queries: queryCount };
+    } catch (error) {
+      return {
+        status: primordials.setHas(stagedValidationErrors, error)
+          ? "INVALID_OUTPUT"
+          : "RUNTIME_ERROR",
+        queries: queryCount
+      };
     }
 
     if (output === undefined) {
