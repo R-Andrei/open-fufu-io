@@ -303,6 +303,7 @@ const hardenGlobalSource = `
       setDelete: __openFufuSetDelete,
       promiseResolve: __openFufuPromiseResolve,
       promiseThen: __openFufuPromiseThen,
+      jsonStringify: JSON.stringify,
       mathImul: Math.imul,
       stringCharCodeAt: Function.prototype.call.bind(String.prototype.charCodeAt)
     });
@@ -457,9 +458,46 @@ const invokeEntrypointSource = `
   const randomUnit = (label) =>
     randomHash32(label, randomBaseSeed) / 0x100000000;
 
+  const utf8ByteLength = (value) => {
+    let bytes = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      const code = primordials.stringCharCodeAt(value, index);
+      if (code < 0x80) {
+        bytes += 1;
+      } else if (code < 0x800) {
+        bytes += 2;
+      } else if (
+        code >= 0xd800 &&
+        code <= 0xdbff &&
+        index + 1 < value.length
+      ) {
+        const next = primordials.stringCharCodeAt(value, index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          bytes += 4;
+          index += 1;
+        } else {
+          bytes += 3;
+        }
+      } else {
+        bytes += 3;
+      }
+    }
+    return bytes;
+  };
+
   let nextActionOrdinal = 1;
   const stagedActions = [];
   const stageAction = (kind, payload = {}) => {
+    const materializedPayload = materialize(payload);
+    if (kind === "TEAM_SIGNAL") {
+      const serializedPayload = primordials.jsonStringify(
+        materializedPayload.payload
+      );
+      if (utf8ByteLength(serializedPayload) > $8) {
+        throw new RangeError("team signal payload exceeds byte limit");
+      }
+    }
+
     const actionRef =
       decisionNumber === undefined || decisionNumber === 0
         ? "action_" + nextActionOrdinal
@@ -468,7 +506,7 @@ const invokeEntrypointSource = `
     const action = deepFreeze({
       kind,
       actionRef,
-      ...materialize(payload)
+      ...materializedPayload
     });
     stagedActions.push(action);
     return actionRef;
@@ -1728,6 +1766,7 @@ async function executeRequest(
           PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
           publicOperations !== undefined,
           syncQueryReference,
+          PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes,
         ],
         {
           timeout: request.timeoutMs,

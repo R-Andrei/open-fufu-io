@@ -100,7 +100,7 @@ const MAX_ENTITY_FIND_RESULTS = 128;
 export const CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES = 1_024;
 const teamSignalUtf8Encoder = new TextEncoder();
 
-function materializeTeamSignalJsonValue(
+function materializeControllerJsonValue(
   value: unknown,
   ancestors: Set<object>,
 ): JsonValue {
@@ -109,15 +109,15 @@ function materializeTeamSignalJsonValue(
   }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
-      throw new TypeError("team signal payload numbers must be finite");
+      throw new TypeError("controller staged data numbers must be finite");
     }
     return Object.is(value, -0) ? 0 : value;
   }
   if (typeof value !== "object") {
-    throw new TypeError("team signal payload must be JSON-shaped");
+    throw new TypeError("controller staged data must be JSON-shaped");
   }
   if (ancestors.has(value)) {
-    throw new TypeError("team signal payload must be acyclic");
+    throw new TypeError("controller staged data must be acyclic");
   }
   ancestors.add(value);
   try {
@@ -125,9 +125,9 @@ function materializeTeamSignalJsonValue(
       const copy: JsonValue[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
-          throw new TypeError("team signal payload arrays must not be sparse");
+          throw new TypeError("controller staged data arrays must not be sparse");
         }
-        copy.push(materializeTeamSignalJsonValue(value[index], ancestors));
+        copy.push(materializeControllerJsonValue(value[index], ancestors));
       }
       return Object.freeze(copy);
     }
@@ -136,11 +136,11 @@ function materializeTeamSignalJsonValue(
       (prototype !== Object.prototype && prototype !== null) ||
       Object.getOwnPropertySymbols(value).length !== 0
     ) {
-      throw new TypeError("team signal payload objects must be plain records");
+      throw new TypeError("controller staged data objects must be plain records");
     }
     const copy: Record<string, JsonValue> = {};
     for (const key of Object.keys(value).sort()) {
-      copy[key] = materializeTeamSignalJsonValue(
+      copy[key] = materializeControllerJsonValue(
         (value as Record<string, unknown>)[key],
         ancestors,
       );
@@ -154,7 +154,7 @@ function materializeTeamSignalJsonValue(
 export function materializeControllerTeamSignalPayload(
   value: unknown,
 ): JsonValue {
-  const payload = materializeTeamSignalJsonValue(value, new Set<object>());
+  const payload = materializeControllerJsonValue(value, new Set<object>());
   const serialized = JSON.stringify(payload);
   if (
     teamSignalUtf8Encoder.encode(serialized).byteLength >
@@ -1968,11 +1968,21 @@ export function createControllerQuerySession(
     nextActionOrdinal += 1;
     return actionRef;
   };
+  const validationActionRef = "__open_fufu_validation_action__" as ActionRef;
   const stage = (
-    materialize: (actionRef: ActionRef) => ControllerStagedAction,
+    build: (actionRef: ActionRef) => ControllerStagedAction,
   ): ActionRef => {
+    const candidate = materializeControllerJsonValue(
+      build(validationActionRef),
+      new Set<object>(),
+    ) as unknown as Readonly<Record<string, JsonValue>>;
     const actionRef = nextActionRef();
-    stagedActions.push(Object.freeze(materialize(actionRef)));
+    stagedActions.push(
+      Object.freeze({
+        ...candidate,
+        actionRef,
+      }) as unknown as ControllerStagedAction,
+    );
     return actionRef;
   };
   const stageStructureBuild = (type: StructureType, cellId: CellId): ActionRef =>
