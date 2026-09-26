@@ -1013,6 +1013,188 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
   });
 });
 
+
+describe("issue #225 malformed read/check parity RED", () => {
+  const caughtSync = (invoke: () => unknown): boolean => {
+    try {
+      invoke();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const caughtAsync = async (invoke: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await invoke();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const workerLog = async (
+    seed: string,
+    moduleSource: string,
+  ): Promise<Record<string, boolean>> => {
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected malformed-call probe to be caught");
+      return JSON.parse(result.output?.log ?? "{}") as Record<string, boolean>;
+    } finally {
+      await pool.close();
+    }
+  };
+
+  it("rejects malformed synchronous faction/operation reads identically", async () => {
+    const session = facadeSession("issue225-malformed-local-in");
+    const inProcess = {
+      factionGet: caughtSync(() => session.factions.get(123 as never)),
+      factionFind: caughtSync(() => session.factions.find(123 as never)),
+      factionProximity: caughtSync(() => session.factions.proximity(123 as never)),
+      factionAtWar: caughtSync(() => session.factions.atWar(123 as never, 456 as never)),
+      operationGet: caughtSync(() => session.operations.get("bad-ref" as never)),
+    };
+    expect(inProcess).toEqual({
+      factionGet: true,
+      factionFind: true,
+      factionProximity: true,
+      factionAtWar: true,
+      operationGet: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-local-worker",
+        \`
+          export function decide(context) {
+            const caught = (fn) => {
+              try { fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                factionGet: caught(() => context.factions.get(123)),
+                factionFind: caught(() => context.factions.find(123)),
+                factionProximity: caught(() => context.factions.proximity(123)),
+                factionAtWar: caught(() => context.factions.atWar(123, 456)),
+                operationGet: caught(() => context.operations.get("bad-ref")),
+              }),
+            };
+          }
+        \`,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("rejects malformed asynchronous cell/entity reads identically", async () => {
+    const session = facadeSession("issue225-malformed-async-in");
+    const inProcess = {
+      cellGet: await caughtAsync(() => session.cells.get("bad" as never)),
+      segmentGet: await caughtAsync(() => session.segments.get("bad" as never)),
+      unitGet: await caughtAsync(() => session.units.get("bad" as never)),
+      unitFind: await caughtAsync(() => session.units.find(123 as never)),
+      structureGet: await caughtAsync(() => session.structures.get("bad" as never)),
+      structureFind: await caughtAsync(() => session.structures.find(123 as never)),
+    };
+    expect(inProcess).toEqual({
+      cellGet: true,
+      segmentGet: true,
+      unitGet: true,
+      unitFind: true,
+      structureGet: true,
+      structureFind: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-async-worker",
+        \`
+          export async function decide(context) {
+            const caught = async (fn) => {
+              try { await fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                cellGet: await caught(() => context.cells.get("bad")),
+                segmentGet: await caught(() => context.segments.get("bad")),
+                unitGet: await caught(() => context.units.get("bad")),
+                unitFind: await caught(() => context.units.find(123)),
+                structureGet: await caught(() => context.structures.get("bad")),
+                structureFind: await caught(() => context.structures.find(123)),
+              }),
+            };
+          }
+        \`,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("rejects malformed synchronous check calls identically", async () => {
+    const session = facadeSession("issue225-malformed-check-in");
+    const inProcess = {
+      structureBuild: caughtSync(() =>
+        session.structures.checkBuild("FORT", "bad" as never),
+      ),
+      structureUpgrade: caughtSync(() =>
+        session.structures.checkUpgrade("bad" as never),
+      ),
+      unitBuild: caughtSync(() =>
+        session.units.checkBuild("TANK", "bad" as never, 0),
+      ),
+      transportEmbark: caughtSync(() =>
+        session.transports.checkEmbark("bad" as never, 0, 1),
+      ),
+      weaponLaunch: caughtSync(() =>
+        session.weapons.checkLaunch("bad" as never, "ATOM_BOMB", 0),
+      ),
+      relinquish: caughtSync(() =>
+        session.territory.checkRelinquish("bad" as never),
+      ),
+    };
+    expect(inProcess).toEqual({
+      structureBuild: true,
+      structureUpgrade: true,
+      unitBuild: true,
+      transportEmbark: true,
+      weaponLaunch: true,
+      relinquish: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-check-worker",
+        \`
+          export function decide(context) {
+            const caught = (fn) => {
+              try { fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                structureBuild: caught(() => context.structures.checkBuild("FORT", "bad")),
+                structureUpgrade: caught(() => context.structures.checkUpgrade("bad")),
+                unitBuild: caught(() => context.units.checkBuild("TANK", "bad", 0)),
+                transportEmbark: caught(() => context.transports.checkEmbark("bad", 0, 1)),
+                weaponLaunch: caught(() => context.weapons.checkLaunch("bad", "ATOM_BOMB", 0)),
+                relinquish: caught(() => context.territory.checkRelinquish("bad")),
+              }),
+            };
+          }
+        \`,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+});
+
 describe("issue #225 authoritative self growth projection RED", () => {
   it("projects the shared authoritative growthPerSecond identically in-process and in the production isolate", async () => {
     const makeInputs = (seed: string) => {
