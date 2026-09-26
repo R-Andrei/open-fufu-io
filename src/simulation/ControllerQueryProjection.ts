@@ -1607,6 +1607,61 @@ function orderedComponents(
   return Object.freeze(components);
 }
 
+function isControllerCallRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isControllerSelectorArgument(value: unknown): value is CellSelector {
+  return isControllerCallRecord(value) && typeof value.kind === "string";
+}
+
+function isControllerEntityFilterArgument(
+  value: unknown,
+): value is UnitFindFilter | StructureFindFilter {
+  return isControllerCallRecord(value);
+}
+
+function isControllerEntityRefArgument(
+  value: unknown,
+  type: "UNIT" | "STRUCTURE" | "OPERATION",
+): boolean {
+  return (
+    isControllerCallRecord(value) &&
+    value.type === type &&
+    typeof value.token === "string" &&
+    value.token.length > 0
+  );
+}
+
+function isControllerUnitLocatorArgument(value: unknown): value is UnitLocator {
+  return (
+    isControllerCallRecord(value) &&
+    ((isControllerEntityRefArgument(value.ref, "UNIT") &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
+}
+
+function isControllerStructureLocatorArgument(
+  value: unknown,
+): value is StructureLocator {
+  return (
+    isControllerCallRecord(value) &&
+    ((isControllerEntityRefArgument(value.ref, "STRUCTURE") &&
+      !Object.prototype.hasOwnProperty.call(value, "cellId")) ||
+      (typeof value.cellId === "number" &&
+        !Object.prototype.hasOwnProperty.call(value, "ref")))
+  );
+}
+
+function requireControllerCall(
+  condition: boolean,
+  message: string,
+): asserts condition {
+  if (!condition) throw new TypeError(message);
+}
+
 function entityFindLimit(limit: number | undefined): number {
   if (limit === undefined) return MAX_ENTITY_FIND_RESULTS;
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_ENTITY_FIND_RESULTS) {
@@ -1824,7 +1879,11 @@ export function createControllerQuerySession(
 
   const getUnit = async (locator: UnitLocator): Promise<UnitView | undefined> => {
     beginQuery();
-    if (references === undefined || locator === null || typeof locator !== "object") {
+    requireControllerCall(
+      isControllerUnitLocatorArgument(locator),
+      "invalid controller unit locator",
+    );
+    if (references === undefined) {
       return undefined;
     }
     const authoritativeId =
@@ -1855,6 +1914,10 @@ export function createControllerQuerySession(
     filter?: UnitFindFilter,
   ): Promise<QueryPage<UnitView>> => {
     beginQuery();
+    requireControllerCall(
+      filter === undefined || isControllerEntityFilterArgument(filter),
+      "invalid controller unit filter",
+    );
     const limit = entityFindLimit(filter?.limit);
     if (references === undefined) {
       return Object.freeze({ items: Object.freeze([]), truncated: false });
@@ -1879,6 +1942,10 @@ export function createControllerQuerySession(
 
   const countUnits = async (filter?: UnitFindFilter): Promise<number> => {
     beginQuery();
+    requireControllerCall(
+      filter === undefined || isControllerEntityFilterArgument(filter),
+      "invalid controller unit filter",
+    );
     entityFindLimit(filter?.limit);
     return visibleUnits(filter).length;
   };
@@ -1887,7 +1954,11 @@ export function createControllerQuerySession(
     locator: StructureLocator,
   ): Promise<StructureView | undefined> => {
     beginQuery();
-    if (references === undefined || locator === null || typeof locator !== "object") {
+    requireControllerCall(
+      isControllerStructureLocatorArgument(locator),
+      "invalid controller structure locator",
+    );
+    if (references === undefined) {
       return undefined;
     }
     const authoritativeId =
@@ -1923,6 +1994,10 @@ export function createControllerQuerySession(
     filter?: StructureFindFilter,
   ): Promise<QueryPage<StructureView>> => {
     beginQuery();
+    requireControllerCall(
+      filter === undefined || isControllerEntityFilterArgument(filter),
+      "invalid controller structure filter",
+    );
     const limit = entityFindLimit(filter?.limit);
     if (references === undefined) {
       return Object.freeze({ items: Object.freeze([]), truncated: false });
@@ -1953,6 +2028,10 @@ export function createControllerQuerySession(
     filter?: StructureFindFilter,
   ): Promise<number> => {
     beginQuery();
+    requireControllerCall(
+      filter === undefined || isControllerEntityFilterArgument(filter),
+      "invalid controller structure filter",
+    );
     entityFindLimit(filter?.limit);
     return visibleStructures(filter).length;
   };
@@ -2071,17 +2150,21 @@ export function createControllerQuerySession(
     }));
   const checkStructureBuild = (type: StructureType, cellId: CellId): StructureBuildQuote => {
     beginQuery();
+    requireControllerCall(
+      typeof type === "string" && typeof cellId === "number",
+      "invalid controller structure-build check arguments",
+    );
     return mechanics.structureBuildQuote(type, cellId);
   };
   const checkStructureUpgrade = (
     locator: StructureLocator,
   ): StructureUpgradeQuote => {
     beginQuery();
-    if (
-      references === undefined ||
-      locator === null ||
-      typeof locator !== "object"
-    ) {
+    requireControllerCall(
+      isControllerStructureLocatorArgument(locator),
+      "invalid controller structure-upgrade check locator",
+    );
+    if (references === undefined) {
       return mechanics.structureUpgradeQuote(-1);
     }
     const authoritativeId =
@@ -2108,6 +2191,12 @@ export function createControllerQuerySession(
     destination: CellId,
   ): UnitBuildQuote => {
     beginQuery();
+    requireControllerCall(
+      (type === "TANK" || type === "WARSHIP") &&
+        isControllerStructureLocatorArgument(producer) &&
+        typeof destination === "number",
+      "invalid controller unit-build check arguments",
+    );
 
     const unavailable = (
       failureCode: DecisionFailure["code"] = "INVALID_PRODUCER",
@@ -2119,11 +2208,7 @@ export function createControllerQuerySession(
         requestedUnit: type,
       });
 
-    if (
-      references === undefined ||
-      producer === null ||
-      typeof producer !== "object"
-    ) {
+    if (references === undefined) {
       return unavailable();
     }
 
@@ -2232,6 +2317,12 @@ export function createControllerQuerySession(
     population: number,
   ): TransportEmbarkQuote => {
     beginQuery();
+    requireControllerCall(
+      typeof sourceCellId === "number" &&
+        typeof targetCellId === "number" &&
+        typeof population === "number",
+      "invalid controller transport-embark check arguments",
+    );
     const result = quoteTransportEmbark(state, {
       ownerId: requesterFactionId,
       sourceCellId,
@@ -2262,6 +2353,10 @@ export function createControllerQuerySession(
   };
   const checkRelinquish = (cells: CellSelector): RelinquishQuote => {
     beginQuery();
+    requireControllerCall(
+      isControllerSelectorArgument(cells),
+      "invalid controller relinquish check selector",
+    );
     const cellIds = orderedSelectorCellIds(state, visibility, cells);
     const selectedCellCount = cellIds.length;
     const populationBearingCellCount = cellIds.filter(
@@ -2307,6 +2402,16 @@ export function createControllerQuerySession(
     targetFaction?: FactionRef,
   ): WeaponLaunchQuote => {
     beginQuery();
+    requireControllerCall(
+      (isControllerStructureLocatorArgument(launcher) ||
+        isControllerUnitLocatorArgument(launcher)) &&
+        (weapon === "ATOM_BOMB" ||
+          weapon === "HYDROGEN_BOMB" ||
+          weapon === "MIRV") &&
+        typeof targetCellId === "number" &&
+        (targetFaction === undefined || typeof targetFaction === "string"),
+      "invalid controller weapon-launch check arguments",
+    );
 
     const unavailable = (
       failureCode: DecisionFailure["code"],
@@ -2321,11 +2426,7 @@ export function createControllerQuerySession(
         chargeConsumed: false,
       });
 
-    if (
-      references === undefined ||
-      launcher === null ||
-      typeof launcher !== "object"
-    ) {
+    if (references === undefined) {
       return unavailable("INVALID_LAUNCHER");
     }
 
@@ -2496,6 +2597,10 @@ export function createControllerQuerySession(
 
   const findFactions = (filter?: FactionFindFilter): readonly FactionReadView[] => {
     beginQuery();
+    requireControllerCall(
+      filter === undefined || isControllerCallRecord(filter),
+      "invalid controller faction filter",
+    );
     const views = state.factions.flatMap((faction) => {
       const view = materializeFaction(faction);
       if (view === undefined) return [];
@@ -2526,6 +2631,7 @@ export function createControllerQuerySession(
 
   const getFaction = (ref: string): FactionReadView | undefined => {
     beginQuery();
+    requireControllerCall(typeof ref === "string", "invalid controller faction ref");
     if (references === undefined) return undefined;
     const id = references.resolveFaction(ref);
     if (id === undefined) return undefined;
@@ -2535,6 +2641,7 @@ export function createControllerQuerySession(
 
   const factionProximity = (ref: string): number | undefined => {
     beginQuery();
+    requireControllerCall(typeof ref === "string", "invalid controller faction ref");
     if (references === undefined) return undefined;
     const targetFactionId = references.resolveFaction(ref);
     if (targetFactionId === undefined) return undefined;
@@ -2543,6 +2650,10 @@ export function createControllerQuerySession(
 
   const factionAtWar = (a: FactionRef, b: FactionRef): boolean => {
     beginQuery();
+    requireControllerCall(
+      typeof a === "string" && typeof b === "string",
+      "invalid controller faction refs",
+    );
     if (references === undefined) return false;
     const factionAId = references.resolveFaction(a);
     const factionBId = references.resolveFaction(b);
@@ -2603,6 +2714,10 @@ export function createControllerQuerySession(
     ref: OperationRef,
   ): ControllerOperationReadView | undefined => {
     beginQuery();
+    requireControllerCall(
+      isControllerEntityRefArgument(ref, "OPERATION"),
+      "invalid controller operation ref",
+    );
     if (references === undefined) return undefined;
     const authoritativeId = references.resolve(
       requesterFactionId,
@@ -2640,6 +2755,7 @@ export function createControllerQuerySession(
 
   const get = async (id: CellId): Promise<CellView | undefined> => {
     beginQuery();
+    requireControllerCall(typeof id === "number", "invalid controller cell id");
     if (!state.map.isValidCellId(id)) return undefined;
     if (remainingMaterialization() === 0) {
       throw new Error("controller materialization budget exhausted");
@@ -2655,6 +2771,11 @@ export function createControllerQuerySession(
     limit?: number,
   ): Promise<QueryPage<CellView>> => {
     beginQuery();
+    requireControllerCall(
+      isControllerSelectorArgument(selector) &&
+        (limit === undefined || typeof limit === "number"),
+      "invalid controller cell query arguments",
+    );
     const requested = requestedMaterialization(limit);
     return materializePage(
       boundedOrderedSelectorCellIds(
@@ -2669,11 +2790,16 @@ export function createControllerQuerySession(
 
   const count = async (selector: CellSelector): Promise<number> => {
     beginQuery();
+    requireControllerCall(
+      isControllerSelectorArgument(selector),
+      "invalid controller cell selector",
+    );
     return countSelectorCells(state, visibility, selector);
   };
 
   const neighbors = async (id: CellId): Promise<readonly CellId[]> => {
     beginQuery();
+    requireControllerCall(typeof id === "number", "invalid controller cell id");
     return state.map.cardinalNeighbors(id);
   };
 
@@ -2682,6 +2808,11 @@ export function createControllerQuerySession(
     limit?: number,
   ): Promise<QueryPage<CellView>> => {
     beginQuery();
+    requireControllerCall(
+      isControllerSelectorArgument(selector) &&
+        (limit === undefined || typeof limit === "number"),
+      "invalid controller boundary arguments",
+    );
     const requested = requestedMaterialization(limit);
     return materializePage(
       boundedOrderedBoundaryIds(
@@ -2717,6 +2848,10 @@ export function createControllerQuerySession(
 
   const distance = async (a: CellId, b: CellId): Promise<number> => {
     beginQuery();
+    requireControllerCall(
+      typeof a === "number" && typeof b === "number",
+      "invalid controller cell distance arguments",
+    );
     const left = state.map.positionOf(a);
     const right = state.map.positionOf(b);
     return Math.hypot(left.x - right.x, left.y - right.y);
@@ -2726,6 +2861,7 @@ export function createControllerQuerySession(
     id: SegmentId,
   ): Promise<SegmentView | undefined> => {
     beginQuery();
+    requireControllerCall(typeof id === "number", "invalid controller segment id");
     return materializeSegmentView(state, id);
   };
 
