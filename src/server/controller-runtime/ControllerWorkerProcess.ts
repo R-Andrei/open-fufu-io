@@ -293,6 +293,9 @@ const hardenGlobalSource = `
       isArray: Array.isArray,
       numberIsFinite: __openFufuNumberIsFinite,
       reflectOwnKeys: Reflect.ownKeys,
+      getPrototypeOf: Object.getPrototypeOf,
+      objectPrototype: Object.prototype,
+      getOwnPropertySymbols: Object.getOwnPropertySymbols,
       hasOwn: __openFufuHasOwn,
       SetCtor: Set,
       setHas: __openFufuSetHas,
@@ -399,6 +402,14 @@ const invokeEntrypointSource = `
           copy.push(materialize(value[index], ancestors));
         }
         return copy;
+      }
+
+      const prototype = primordials.getPrototypeOf(value);
+      if (
+        (prototype !== primordials.objectPrototype && prototype !== null) ||
+        primordials.getOwnPropertySymbols(value).length !== 0
+      ) {
+        throw new TypeError("result objects must be plain records");
       }
 
       const copy = {};
