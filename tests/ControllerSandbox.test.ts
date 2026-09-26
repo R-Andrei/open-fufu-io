@@ -567,6 +567,68 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("rejects canonically forbidden memory shapes inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const cases = [
+        {
+          name: "symbol-keyed",
+          source: `
+            const value = { visible: 1 };
+            value[Symbol("hidden")] = 2;
+            return { memory: { bad: value } };
+          `,
+        },
+        {
+          name: "class-instance",
+          source: `
+            class Box {
+              constructor() { this.visible = 1; }
+            }
+            return { memory: { bad: new Box() } };
+          `,
+        },
+        {
+          name: "Map",
+          source: `return { memory: { bad: new Map([["x", 1]]) } };`,
+        },
+        {
+          name: "Set",
+          source: `return { memory: { bad: new Set([1]) } };`,
+        },
+        {
+          name: "RegExp",
+          source: `return { memory: { bad: /x/ } };`,
+        },
+        {
+          name: "typed-array",
+          source: `return { memory: { bad: new Uint8Array([1, 2]) } };`,
+        },
+      ] as const;
+
+      for (const entry of cases) {
+        const host = new ProductionControllerHost(pool, {
+          alpha: artifact(`
+            export function decide() {
+              ${entry.source}
+            }
+          `),
+        });
+        const result = await host.invoke("alpha", ordinaryObservation());
+        expect(result.ok, entry.name + " must be rejected").toBe(false);
+      }
+
+      expect(
+        await healthyHost(pool, "after-forbidden-memory-shapes").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-forbidden-memory-shapes" },
+      });
+    });
+  }, 20_000);
+
   it("rejects module imports and malformed non-data output without exposing host references", async () => {
     await withPool(async (pool) => {
       const importing = new ProductionControllerHost(pool, {

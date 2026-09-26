@@ -293,6 +293,9 @@ const hardenGlobalSource = `
       isArray: Array.isArray,
       numberIsFinite: __openFufuNumberIsFinite,
       reflectOwnKeys: Reflect.ownKeys,
+      getPrototypeOf: Object.getPrototypeOf,
+      objectPrototype: Object.prototype,
+      getOwnPropertySymbols: Object.getOwnPropertySymbols,
       hasOwn: __openFufuHasOwn,
       SetCtor: Set,
       setHas: __openFufuSetHas,
@@ -300,6 +303,7 @@ const hardenGlobalSource = `
       setDelete: __openFufuSetDelete,
       promiseResolve: __openFufuPromiseResolve,
       promiseThen: __openFufuPromiseThen,
+      jsonStringify: JSON.stringify,
       mathImul: Math.imul,
       stringCharCodeAt: Function.prototype.call.bind(String.prototype.charCodeAt)
     });
@@ -401,6 +405,14 @@ const invokeEntrypointSource = `
         return copy;
       }
 
+      const prototype = primordials.getPrototypeOf(value);
+      if (
+        (prototype !== primordials.objectPrototype && prototype !== null) ||
+        primordials.getOwnPropertySymbols(value).length !== 0
+      ) {
+        throw new TypeError("result objects must be plain records");
+      }
+
       const copy = {};
       for (const key of primordials.keys(value)) {
         copy[key] = materialize(value[key], ancestors);
@@ -446,9 +458,55 @@ const invokeEntrypointSource = `
   const randomUnit = (label) =>
     randomHash32(label, randomBaseSeed) / 0x100000000;
 
+  const utf8ByteLength = (value) => {
+    let bytes = 0;
+    for (let index = 0; index < value.length; index += 1) {
+      const code = primordials.stringCharCodeAt(value, index);
+      if (code < 0x80) {
+        bytes += 1;
+      } else if (code < 0x800) {
+        bytes += 2;
+      } else if (
+        code >= 0xd800 &&
+        code <= 0xdbff &&
+        index + 1 < value.length
+      ) {
+        const next = primordials.stringCharCodeAt(value, index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          bytes += 4;
+          index += 1;
+        } else {
+          bytes += 3;
+        }
+      } else {
+        bytes += 3;
+      }
+    }
+    return bytes;
+  };
+
   let nextActionOrdinal = 1;
   const stagedActions = [];
+  const stagedValidationErrors = new primordials.SetCtor();
   const stageAction = (kind, payload = {}) => {
+    let materializedPayload;
+    try {
+      materializedPayload = materialize(payload);
+    } catch (error) {
+      primordials.setAdd(stagedValidationErrors, error);
+      throw error;
+    }
+    if (kind === "TEAM_SIGNAL") {
+      const serializedPayload = primordials.jsonStringify(
+        materializedPayload.payload
+      );
+      if (utf8ByteLength(serializedPayload) > $8) {
+        const error = new RangeError("team signal payload exceeds byte limit");
+        primordials.setAdd(stagedValidationErrors, error);
+        throw error;
+      }
+    }
+
     const actionRef =
       decisionNumber === undefined || decisionNumber === 0
         ? "action_" + nextActionOrdinal
@@ -457,7 +515,7 @@ const invokeEntrypointSource = `
     const action = deepFreeze({
       kind,
       actionRef,
-      ...materialize(payload)
+      ...materializedPayload
     });
     stagedActions.push(action);
     return actionRef;
@@ -469,10 +527,135 @@ const invokeEntrypointSource = `
     queryCount += 1;
   };
 
+  const isCallRecord = (value) =>
+    value !== null &&
+    typeof value === "object" &&
+    !primordials.isArray(value);
+  const isSelectorArg = (value) =>
+    isCallRecord(value) && typeof value.kind === "string";
+  const isEntityRefArg = (value, type) =>
+    isCallRecord(value) &&
+    value.type === type &&
+    typeof value.token === "string" &&
+    value.token.length > 0;
+  const isUnitLocatorArg = (value) =>
+    isCallRecord(value) &&
+    ((isEntityRefArg(value.ref, "UNIT") && !primordials.hasOwn(value, "cellId")) ||
+      (typeof value.cellId === "number" && !primordials.hasOwn(value, "ref")));
+  const isStructureLocatorArg = (value) =>
+    isCallRecord(value) &&
+    ((isEntityRefArg(value.ref, "STRUCTURE") && !primordials.hasOwn(value, "cellId")) ||
+      (typeof value.cellId === "number" && !primordials.hasOwn(value, "ref")));
+  const isOptionalFilterArgs = (args) =>
+    args.length === 0 || (args.length === 1 && isCallRecord(args[0]));
+  const validHostQueryArgs = (operation, args) => {
+    switch (operation) {
+      case "CELLS_GET":
+      case "CELLS_NEIGHBORS":
+      case "SEGMENTS_GET":
+        return args.length === 1 && typeof args[0] === "number";
+      case "CELLS_QUERY":
+      case "CELLS_BOUNDARY":
+        return (
+          (args.length === 1 || args.length === 2) &&
+          isSelectorArg(args[0]) &&
+          (args.length === 1 || typeof args[1] === "number")
+        );
+      case "CELLS_COUNT":
+        return args.length === 1 && isSelectorArg(args[0]);
+      case "CELLS_DISTANCE":
+        return (
+          args.length === 2 &&
+          typeof args[0] === "number" &&
+          typeof args[1] === "number"
+        );
+      case "SEGMENTS_LIST":
+        return args.length === 0;
+      case "UNITS_GET":
+        return args.length === 1 && isUnitLocatorArg(args[0]);
+      case "UNITS_FIND":
+      case "UNITS_COUNT":
+      case "STRUCTURES_FIND":
+      case "STRUCTURES_COUNT":
+        return isOptionalFilterArgs(args);
+      case "UNITS_CHECK_BUILD":
+        return (
+          args.length === 3 &&
+          (args[0] === "TANK" || args[0] === "WARSHIP") &&
+          isStructureLocatorArg(args[1]) &&
+          typeof args[2] === "number"
+        );
+      case "STRUCTURES_GET":
+      case "STRUCTURES_CHECK_UPGRADE":
+        return args.length === 1 && isStructureLocatorArg(args[0]);
+      case "STRUCTURES_CHECK_BUILD":
+        return (
+          args.length === 2 &&
+          typeof args[0] === "string" &&
+          typeof args[1] === "number"
+        );
+      case "TRANSPORTS_CHECK_EMBARK":
+        return (
+          args.length === 3 &&
+          typeof args[0] === "number" &&
+          typeof args[1] === "number" &&
+          typeof args[2] === "number"
+        );
+      case "TERRITORY_CHECK_RELINQUISH":
+        return args.length === 1 && isSelectorArg(args[0]);
+      case "WEAPONS_CHECK_LAUNCH":
+        return (
+          (args.length === 3 || args.length === 4) &&
+          (isStructureLocatorArg(args[0]) || isUnitLocatorArg(args[0])) &&
+          (args[1] === "ATOM_BOMB" ||
+            args[1] === "HYDROGEN_BOMB" ||
+            args[1] === "MIRV") &&
+          typeof args[2] === "number" &&
+          (args.length === 3 || typeof args[3] === "string")
+        );
+      default:
+        return false;
+    }
+  };
+  const validLocalFactionArgs = (operation, args) => {
+    switch (operation) {
+      case "FACTIONS_GET":
+      case "FACTIONS_PROXIMITY":
+        return args.length === 1 && typeof args[0] === "string";
+      case "FACTIONS_FIND":
+        return (
+          args.length === 0 ||
+          (args.length === 1 && isCallRecord(args[0]))
+        );
+      case "FACTIONS_AT_WAR":
+        return (
+          args.length === 2 &&
+          typeof args[0] === "string" &&
+          typeof args[1] === "string"
+        );
+      default:
+        return false;
+    }
+  };
+  const validLocalOperationArgs = (operation, args) => {
+    switch (operation) {
+      case "OPERATIONS_GET":
+        return args.length === 1 && isEntityRefArg(args[0], "OPERATION");
+      case "OPERATIONS_OWN":
+        return args.length === 0;
+      default:
+        return false;
+    }
+  };
+  const requireCallArgs = (valid) => {
+    if (!valid) throw new TypeError("invalid controller call arguments");
+  };
+
   let hostQuerySequence = 0;
   let hostQuerySettlement = primordials.promiseResolve();
   const hostQuery = (operation, args) => {
     consumeQuery();
+    requireCallArgs(validHostQueryArgs(operation, args));
     hostQuerySequence += 1;
     const bridgeResult = $1.apply(
       undefined,
@@ -500,6 +683,7 @@ const invokeEntrypointSource = `
 
   const hostCheck = (operation, args) => {
     consumeQuery();
+    requireCallArgs(validHostQueryArgs(operation, args));
     hostQuerySequence += 1;
     const value = $7.applySyncPromise(
       undefined,
@@ -525,10 +709,12 @@ const invokeEntrypointSource = `
   const localSpatial = (operation, args) => localRead(operation, args);
   const localFaction = (operation, args) => {
     consumeQuery();
+    requireCallArgs(validLocalFactionArgs(operation, args));
     return localRead(operation, args);
   };
   const localOperation = (operation, args) => {
     consumeQuery();
+    requireCallArgs(validLocalOperationArgs(operation, args));
     return localRead(operation, args);
   };
 
@@ -689,8 +875,13 @@ const invokeEntrypointSource = `
     let output;
     try {
       output = await $0(input);
-    } catch {
-      return { status: "RUNTIME_ERROR", queries: queryCount };
+    } catch (error) {
+      return {
+        status: primordials.setHas(stagedValidationErrors, error)
+          ? "INVALID_OUTPUT"
+          : "RUNTIME_ERROR",
+        queries: queryCount
+      };
     }
 
     if (output === undefined) {
@@ -1717,6 +1908,7 @@ async function executeRequest(
           PRODUCTION_CONTROLLER_LIMITS.queriesPerDecision,
           publicOperations !== undefined,
           syncQueryReference,
+          PRODUCTION_CONTROLLER_LIMITS.teamSignalPayloadBytes,
         ],
         {
           timeout: request.timeoutMs,
