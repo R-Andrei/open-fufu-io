@@ -3158,6 +3158,88 @@ describe("issue #206 team.signal atomic rejection proof", () => {
     }
   }, 20_000);
 
+  it("rejects extra string-keyed array team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    const makePayload = () => {
+      const payload: unknown[] = [1];
+      Object.defineProperty(payload, "extra", {
+        value: 2,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+      return payload;
+    };
+
+    const inSession = facadeSession("issue225-extra-array-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("bad-extra-array", makePayload() as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-extra-array-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = [1];
+              Object.defineProperty(payload, "extra", {
+                value: 2,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              let caught = false;
+              try {
+                context.team.signal("bad-extra-array", payload);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects Array subclass team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
     class PayloadArray extends Array<unknown> {}
 

@@ -663,6 +663,38 @@ describe("production controller sandbox process", () => {
     });
   }, 20_000);
 
+  it("rejects extra string-keyed Array properties inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            const value = [1];
+            Object.defineProperty(value, "extra", {
+              value: 2,
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return { memory: { bad: value } };
+          }
+        `),
+      });
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+      expect(
+        await healthyHost(pool, "after-extra-array-key").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-extra-array-key" },
+      });
+    });
+  }, 20_000);
+
   it("preserves valid __proto__ JSON keys through real-isolate output materialization", async () => {
     await withPool(async (pool) => {
       const host = new ProductionControllerHost(pool, {

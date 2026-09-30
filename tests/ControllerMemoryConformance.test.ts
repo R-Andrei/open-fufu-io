@@ -64,6 +64,17 @@ function symbolKeyedArray(): unknown[] {
   return value;
 }
 
+function extraStringKeyedArray(): unknown[] {
+  const value: unknown[] = [1];
+  Object.defineProperty(value, "extra", {
+    value: 2,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return value;
+}
+
 class ControllerMemoryArraySubclass extends Array<unknown> {}
 
 class RecordingPool implements ControllerWorkerPool {
@@ -145,6 +156,12 @@ describe("canonical controller-memory conformance", () => {
       canonicalizeControllerMemory({
         bad: new ControllerMemoryArraySubclass(1, 2),
       }),
+    ).toThrow();
+  });
+
+  it("rejects extra string-keyed array properties instead of silently dropping them", () => {
+    expect(() =>
+      canonicalizeControllerMemory({ bad: extraStringKeyedArray() }),
     ).toThrow();
   });
 
