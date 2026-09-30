@@ -472,11 +472,17 @@ function compilerOptions(): ts.CompilerOptions {
   return parsed.options;
 }
 
-function virtualTypeProgram(source: string): Readonly<{
+type VirtualTypeProgram = Readonly<{
   program: ts.Program;
   checker: ts.TypeChecker;
   sourceFile: ts.SourceFile;
-}> {
+}>;
+
+const virtualTypeProgramCache = new Map<string, VirtualTypeProgram>();
+
+function virtualTypeProgram(source: string): VirtualTypeProgram {
+  const cached = virtualTypeProgramCache.get(source);
+  if (cached !== undefined) return cached;
   const options = compilerOptions();
   const virtualPath = path.resolve(
     "tests/contracts/issue206-controller-facade.virtual.ts",
@@ -512,11 +518,13 @@ function virtualTypeProgram(source: string): Readonly<{
   const program = ts.createProgram({ rootNames: [virtualPath], options, host });
   const sourceFile = program.getSourceFile(virtualPath);
   if (sourceFile === undefined) throw new Error("virtual controller fixture missing");
-  return Object.freeze({
+  const result = Object.freeze({
     program,
     checker: program.getTypeChecker(),
     sourceFile,
   });
+  virtualTypeProgramCache.set(source, result);
+  return result;
 }
 
 function typecheckFixture(source: string): string {
