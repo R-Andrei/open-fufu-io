@@ -134,10 +134,13 @@ describe("canonical controller-memory conformance", () => {
     expect(() => canonicalizeControllerMemory(symbolKeyedMemory())).toThrow();
   });
 
-  it("rejects symbol-keyed arrays and Array subclasses instead of silently canonicalizing them", () => {
+  it("rejects symbol-keyed arrays instead of silently canonicalizing them", () => {
     expect(() =>
       canonicalizeControllerMemory({ bad: symbolKeyedArray() }),
     ).toThrow();
+  });
+
+  it("rejects Array subclasses instead of silently canonicalizing class instances", () => {
     expect(() =>
       canonicalizeControllerMemory({
         bad: new ControllerMemoryArraySubclass(1, 2),

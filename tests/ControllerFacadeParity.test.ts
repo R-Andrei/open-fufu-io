@@ -3158,6 +3158,73 @@ describe("issue #206 team.signal atomic rejection proof", () => {
     }
   }, 20_000);
 
+  it("rejects Array subclass team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    class PayloadArray extends Array<unknown> {}
+
+    const inSession = facadeSession("issue225-array-subclass-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("bad-array-subclass", new PayloadArray(1, 2) as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-array-subclass-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              class PayloadArray extends Array {}
+              let caught = false;
+              try {
+                context.team.signal("bad-array-subclass", new PayloadArray(1, 2));
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects malformed staged action data before consuming an ActionRef in both normal hosts", async () => {
     const inSession = facadeSession("issue225-malformed-action-in");
     let inCaught = false;

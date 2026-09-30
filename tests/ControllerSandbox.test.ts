@@ -611,13 +611,6 @@ describe("production controller sandbox process", () => {
             return { memory: { bad: value } };
           `,
         },
-        {
-          name: "Array-subclass",
-          source: `
-            class Box extends Array {}
-            return { memory: { bad: new Box(1, 2) } };
-          `,
-        },
       ] as const;
 
       for (const entry of cases) {
@@ -640,6 +633,32 @@ describe("production controller sandbox process", () => {
       ).toEqual({
         ok: true,
         output: { log: "after-forbidden-memory-shapes" },
+      });
+    });
+  }, 20_000);
+
+  it("rejects Array subclass memory inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            class Box extends Array {}
+            return { memory: { bad: new Box(1, 2) } };
+          }
+        `),
+      });
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+      expect(
+        await healthyHost(pool, "after-array-subclass").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-array-subclass" },
       });
     });
   }, 20_000);
