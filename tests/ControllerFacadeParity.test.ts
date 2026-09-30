@@ -1330,7 +1330,17 @@ describe("issue #225 malformed read/check parity RED", () => {
         }
       `,
     );
-    expect(worker).toEqual({ first, exhausted });
+    expect(worker.first).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    });
+    expect(worker.exhausted).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+      message: "controller query budget exhausted",
+    });
   }, 20_000);
 
   it("rejects malformed synchronous check calls identically", async () => {
