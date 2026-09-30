@@ -472,7 +472,11 @@ function compilerOptions(): ts.CompilerOptions {
   return parsed.options;
 }
 
-function typecheckFixture(source: string): string {
+function virtualTypeProgram(source: string): Readonly<{
+  program: ts.Program;
+  checker: ts.TypeChecker;
+  sourceFile: ts.SourceFile;
+}> {
   const options = compilerOptions();
   const virtualPath = path.resolve(
     "tests/contracts/issue206-controller-facade.virtual.ts",
@@ -506,7 +510,124 @@ function typecheckFixture(source: string): string {
     },
   };
   const program = ts.createProgram({ rootNames: [virtualPath], options, host });
-  return formatDiagnostics(ts.getPreEmitDiagnostics(program));
+  const sourceFile = program.getSourceFile(virtualPath);
+  if (sourceFile === undefined) throw new Error("virtual controller fixture missing");
+  return Object.freeze({
+    program,
+    checker: program.getTypeChecker(),
+    sourceFile,
+  });
+}
+
+function typecheckFixture(source: string): string {
+  return formatDiagnostics(
+    ts.getPreEmitDiagnostics(virtualTypeProgram(source).program),
+  );
+}
+
+function callablePathsFixture(
+  source: string,
+  aliasName: string,
+): readonly string[] {
+  const { program, checker, sourceFile } = virtualTypeProgram(source);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  if (diagnostics.length > 0) {
+    throw new Error(formatDiagnostics(diagnostics));
+  }
+
+  const alias = sourceFile.statements.find(
+    (statement): statement is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(statement) && statement.name.text === aliasName,
+  );
+  if (alias === undefined) {
+    throw new Error(`missing callable fixture alias ${aliasName}`);
+  }
+
+  const defaultLibDirectory = path.dirname(
+    path.resolve(ts.getDefaultLibFilePath(program.getCompilerOptions())),
+  );
+  const isStandardLibraryDeclaration = (declaration: ts.Declaration): boolean => {
+    const fileName = path.resolve(declaration.getSourceFile().fileName);
+    return (
+      fileName === defaultLibDirectory ||
+      fileName.startsWith(defaultLibDirectory + path.sep)
+    );
+  };
+  const segmentFor = (property: ts.Symbol): string => {
+    const name = property.getName();
+    return name.startsWith("__@") ? `[symbol:${name}]` : name;
+  };
+  const paths = new Set<string>();
+  const stack = new Set<ts.Type>();
+  const primitiveFlags =
+    ts.TypeFlags.StringLike |
+    ts.TypeFlags.NumberLike |
+    ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.BigIntLike |
+    ts.TypeFlags.ESSymbolLike |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Never |
+    ts.TypeFlags.Void;
+
+  const visit = (type: ts.Type, prefix: string): void => {
+    if ((type.flags & ts.TypeFlags.Any) !== 0) {
+      paths.add(prefix === "" ? "[any]" : `${prefix}.[any]`);
+      return;
+    }
+    if ((type.flags & ts.TypeFlags.Unknown) !== 0) {
+      paths.add(prefix === "" ? "[unknown]" : `${prefix}.[unknown]`);
+      return;
+    }
+    if ((type.flags & primitiveFlags) !== 0 || stack.has(type)) return;
+
+    stack.add(type);
+    try {
+      if (type.isUnionOrIntersection()) {
+        for (const part of type.types) visit(part, prefix);
+      }
+
+      if (
+        checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0
+      ) {
+        paths.add(prefix === "" ? "[call]" : prefix);
+      }
+      if (
+        checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0
+      ) {
+        paths.add(prefix === "" ? "[construct]" : `${prefix}.[construct]`);
+      }
+
+      for (const property of checker.getPropertiesOfType(type)) {
+        const declarations = property.getDeclarations() ?? [];
+        if (
+          declarations.length > 0 &&
+          declarations.every(isStandardLibraryDeclaration)
+        ) {
+          continue;
+        }
+        const location = declarations[0] ?? sourceFile;
+        const propertyType = checker.getTypeOfSymbolAtLocation(
+          property,
+          location,
+        );
+        const segment = segmentFor(property);
+        visit(
+          propertyType,
+          prefix === "" ? segment : `${prefix}.${segment}`,
+        );
+      }
+
+      for (const indexInfo of checker.getIndexInfosOfType(type)) {
+        visit(indexInfo.type, prefix);
+      }
+    } finally {
+      stack.delete(type);
+    }
+  };
+
+  visit(checker.getTypeFromTypeNode(alias.type), "");
+  return Object.freeze([...paths].sort());
 }
 
 function workerArtifact(expression: string): ControllerRuntimeArtifact {
@@ -550,124 +671,15 @@ describe("issue #225 final ControllerContext RED", () => {
     const registeredContextKeys =
       ISSUE225_REQUIRED_CONTEXT_KEYS.map((name) => JSON.stringify(name)).join(" | ") ||
       "never";
-    const registeredCallableNames =
-      ISSUE225_PUBLIC_CALLABLE_NAMES.map((name) => JSON.stringify(name)).join(" | ") ||
-      "never";
-    const fixture = [
+    const contractFixture = [
       'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
       'type Context = Parameters<OpenFufuController["decide"]>[0];',
       `type RegisteredContextKey = ${registeredContextKeys};`,
-      `type RegisteredCallableName = ${registeredCallableNames};`,
       'type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
-      'type SeenCandidate<T, Candidate> = Candidate extends unknown ? Exact<T, Candidate> : never;',
-      'type HasSeen<T, Seen> = true extends SeenCandidate<T, Seen> ? true : false;',
       'type PublicContextKey = keyof Context & string;',
-      'type SymbolCallablePaths<T, Prefix extends string, Seen> =',
-      '  T extends object',
-      '    ? {',
-      '        [K in keyof T & symbol]-?: CallablePaths<',
-      '          NonNullable<T[K]>,',
-      '          Prefix extends "" ? "[symbol]" : `${Prefix}.[symbol]`,',
-      '          Seen | T',
-      '        >;',
-      '      }[keyof T & symbol]',
-      '    : never;',
-      'type CallablePaths<T, Prefix extends string = "", Seen = never> =',
-      '  T extends unknown',
-      '    ? HasSeen<T, Seen> extends true ? never',
-      '      : T extends (...args: any[]) => any ? Prefix',
-      '      : T extends string | number | boolean | bigint | symbol ? never',
-      '      : T extends readonly (infer Element)[]',
-      '        ? CallablePaths<NonNullable<Element>, Prefix, Seen | T>',
-      '      : T extends object',
-      '        ? SymbolCallablePaths<T, Prefix, Seen> | (',
-      '            string extends keyof T',
-      '              ? T extends { readonly [key: string]: infer Value }',
-      '                ? CallablePaths<NonNullable<Value>, Prefix, Seen | T>',
-      '                : never',
-      '              : number extends keyof T',
-      '                ? T extends { readonly [key: number]: infer Value }',
-      '                  ? CallablePaths<NonNullable<Value>, Prefix, Seen | T>',
-      '                  : never',
-      '                : {',
-      '                    [K in keyof T & (string | number)]-?: CallablePaths<',
-      '                      NonNullable<T[K]>,',
-      '                      Prefix extends "" ? `${K}` : `${Prefix}.${K}`,',
-      '                      Seen | T',
-      '                    >;',
-      '                  }[keyof T & (string | number)]',
-      '          )',
-      '        : never',
-      '    : never;',
-      'type PublicCallableName = CallablePaths<Context>;',
-      'type SyntheticNestedContext = Context & {',
-      '  readonly me: Context["me"] & {',
-      '    readonly nestedProof: { deeper(): void };',
-      '  };',
-      '};',
-      'type SyntheticNestedCallableName = CallablePaths<SyntheticNestedContext>;',
-      'const syntheticNestedCallableIsDetected: "me.nestedProof.deeper" extends SyntheticNestedCallableName ? true : false = true;',
-      'type SyntheticArrayContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedList: readonly { deeper(): void }[];',
-      '  };',
-      '};',
-      'type SyntheticArrayCallableName = CallablePaths<SyntheticArrayContext>;',
-      'const syntheticArrayCallableIsDetected: "events.nestedList.deeper" extends SyntheticArrayCallableName ? true : false = true;',
-      'type SyntheticDictionaryContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedDictionary: Readonly<Record<string, { deeper(): void }>>;',
-      '  };',
-      '};',
-      'type SyntheticDictionaryCallableName = CallablePaths<SyntheticDictionaryContext>;',
-      'const syntheticDictionaryCallableIsDetected: "events.nestedDictionary.deeper" extends SyntheticDictionaryCallableName ? true : false = true;',
-      'type SyntheticNumericDictionaryContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedByIndex: { readonly [index: number]: { deeper(): void } };',
-      '  };',
-      '};',
-      'type SyntheticNumericDictionaryCallableName = CallablePaths<SyntheticNumericDictionaryContext>;',
-      'const syntheticNumericDictionaryCallableIsDetected: "events.nestedByIndex.deeper" extends SyntheticNumericDictionaryCallableName ? true : false = true;',
-      'type SyntheticNumericPropertyContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedNumericProperty: { readonly 0: { deeper(): void } };',
-      '  };',
-      '};',
-      'type SyntheticNumericPropertyCallableName = CallablePaths<SyntheticNumericPropertyContext>;',
-      'const syntheticNumericPropertyCallableIsDetected: "events.nestedNumericProperty.0.deeper" extends SyntheticNumericPropertyCallableName ? true : false = true;',
-      'declare const syntheticCallableSymbol: unique symbol;',
-      'type SyntheticSymbolContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
-      '  };',
-      '};',
-      'type SyntheticSymbolCallableName = CallablePaths<SyntheticSymbolContext>;',
-      'const syntheticSymbolCallableIsDetected: Exact<SyntheticSymbolCallableName, PublicCallableName> = false;',
-      'declare const syntheticCallableSymbol2: unique symbol;',
-      'type SyntheticTwoSymbolContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
-      '    readonly [syntheticCallableSymbol2]: { deeper(): void };',
-      '  };',
-      '};',
-      'type SyntheticTwoSymbolCallableName = CallablePaths<SyntheticTwoSymbolContext>;',
-      'const secondSymbolCallableChangesSet: Exact<SyntheticSymbolCallableName, SyntheticTwoSymbolCallableName> = false;',
-      'type SyntheticCallableOwnedContext = Omit<Context, "random"> & {',
-      '  readonly random: Omit<Context["random"], "next"> & {',
-      '    readonly next: Context["random"]["next"] & { helper(): void };',
-      '  };',
-      '};',
-      'type SyntheticCallableOwnedName = CallablePaths<SyntheticCallableOwnedContext>;',
-      'const callableOwnedHelperChangesSet: Exact<SyntheticCallableOwnedName, PublicCallableName> = false;',
-      'type SyntheticCustomArrayContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedCustomArray: (readonly { value: number }[]) & { helper(): void };',
-      '  };',
-      '};',
-      'type SyntheticCustomArrayCallableName = CallablePaths<SyntheticCustomArrayContext>;',
-      'const customArrayHelperChangesSet: Exact<SyntheticCustomArrayCallableName, PublicCallableName> = false;',
+      'type NonStringContextKey = Exclude<keyof Context, string>;',
       'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
-      'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
+      'const nonStringContextKeysAreAbsent: Exact<NonStringContextKey, never> = true;',
       'declare const context: Context;',
       'void context.tick;',
       'void context.me.populationState.capacity;',
@@ -695,9 +707,128 @@ describe("issue #225 final ControllerContext RED", () => {
       'void context.me.effectiveModifiers;',
       '// @ts-expect-error incoming hostile operation discovery is event-driven.',
       'void context.operations.incoming();',
-      'void contextKeysAreExact; void callableRegistryIsExact;',
+      'void contextKeysAreExact; void nonStringContextKeysAreAbsent;',
     ].join("\n");
-    expect(typecheckFixture(fixture)).toBe("");
+    expect(typecheckFixture(contractFixture)).toBe("");
+
+    const callableFixture = [
+      'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
+      'type Context = Parameters<OpenFufuController["decide"]>[0];',
+      'type SyntheticNestedContext = Context & {',
+      '  readonly me: Context["me"] & {',
+      '    readonly nestedProof: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticArrayContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedList: readonly { deeper(): void }[];',
+      '  };',
+      '};',
+      'type SyntheticDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedDictionary: Readonly<Record<string, { deeper(): void }>>;',
+      '  };',
+      '};',
+      'type SyntheticNumericDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedByIndex: { readonly [index: number]: { deeper(): void } };',
+      '  };',
+      '};',
+      'type SyntheticNumericPropertyContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedNumericProperty: { readonly 0: { deeper(): void } };',
+      '  };',
+      '};',
+      'declare const syntheticCallableSymbol: unique symbol;',
+      'declare const syntheticCallableSymbol2: unique symbol;',
+      'type SyntheticSymbolContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticTwoSymbolContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
+      '    readonly [syntheticCallableSymbol2]: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticCallableOwnedContext = Omit<Context, "random"> & {',
+      '  readonly random: Omit<Context["random"], "next"> & {',
+      '    readonly next: Context["random"]["next"] & { helper(): void };',
+      '  };',
+      '};',
+      'type SyntheticCustomArrayContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedCustomArray: (readonly { value: number }[]) & { helper(): void };',
+      '  };',
+      '};',
+      'type SyntheticIndexedExplicitContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedIndexedExplicit: Readonly<Record<string, { value: number }>> & {',
+      '      readonly special: { value: number; helper(): void };',
+      '    };',
+      '  };',
+      '};',
+    ].join("\n");
+
+    const base = callablePathsFixture(callableFixture, "Context");
+    expect(base).toEqual([...ISSUE225_PUBLIC_CALLABLE_NAMES].sort());
+
+    const nested = callablePathsFixture(callableFixture, "SyntheticNestedContext");
+    expect(nested).toContain("me.nestedProof.deeper");
+
+    const array = callablePathsFixture(callableFixture, "SyntheticArrayContext");
+    expect(array).toContain("events.nestedList.deeper");
+
+    const dictionary = callablePathsFixture(
+      callableFixture,
+      "SyntheticDictionaryContext",
+    );
+    expect(dictionary).toContain("events.nestedDictionary.deeper");
+
+    const numericDictionary = callablePathsFixture(
+      callableFixture,
+      "SyntheticNumericDictionaryContext",
+    );
+    expect(numericDictionary).toContain("events.nestedByIndex.deeper");
+
+    const numericProperty = callablePathsFixture(
+      callableFixture,
+      "SyntheticNumericPropertyContext",
+    );
+    expect(numericProperty).toContain("events.nestedNumericProperty.0.deeper");
+
+    const oneSymbol = callablePathsFixture(
+      callableFixture,
+      "SyntheticSymbolContext",
+    );
+    const twoSymbols = callablePathsFixture(
+      callableFixture,
+      "SyntheticTwoSymbolContext",
+    );
+    expect(oneSymbol).not.toEqual(base);
+    expect(twoSymbols).not.toEqual(oneSymbol);
+    expect(twoSymbols.length).toBe(oneSymbol.length + 1);
+
+    const callableOwned = callablePathsFixture(
+      callableFixture,
+      "SyntheticCallableOwnedContext",
+    );
+    expect(callableOwned).toContain("random.next.helper");
+
+    const customArray = callablePathsFixture(
+      callableFixture,
+      "SyntheticCustomArrayContext",
+    );
+    expect(customArray).toContain("events.nestedCustomArray.helper");
+
+    const indexedExplicit = callablePathsFixture(
+      callableFixture,
+      "SyntheticIndexedExplicitContext",
+    );
+    expect(indexedExplicit).toContain(
+      "events.nestedIndexedExplicit.special.helper",
+    );
   });
 
   it("materializes the same agreed normal V1 context shape in-process and in the production isolate", async () => {
