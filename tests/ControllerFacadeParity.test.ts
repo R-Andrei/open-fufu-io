@@ -1034,7 +1034,7 @@ describe("issue #225 malformed read/check parity RED", () => {
   const workerLog = async (
     seed: string,
     moduleSource: string,
-  ): Promise<Record<string, boolean>> => {
+  ): Promise<Record<string, unknown>> => {
     const pool = new ControllerProcessWorkerPool({ size: 1 });
     try {
       const host = new ProductionControllerHost(pool, {
@@ -1137,6 +1137,200 @@ describe("issue #225 malformed read/check parity RED", () => {
         `,
       ),
     ).toEqual(inProcess);
+  }, 20_000);
+
+  it("preserves Promise rejection shape for every malformed asynchronous query family", async () => {
+    const inspectAsyncShape = async (invoke: () => unknown) => {
+      let value: unknown;
+      try {
+        value = invoke();
+      } catch {
+        return { syncThrew: true, thenable: false, rejected: false };
+      }
+      const thenable =
+        value !== null &&
+        (typeof value === "object" || typeof value === "function") &&
+        typeof (value as PromiseLike<unknown>).then === "function";
+      if (!thenable) {
+        return { syncThrew: false, thenable: false, rejected: false };
+      }
+      try {
+        await (value as PromiseLike<unknown>);
+        return { syncThrew: false, thenable: true, rejected: false };
+      } catch {
+        return { syncThrew: false, thenable: true, rejected: true };
+      }
+    };
+    const expected = {
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    };
+    const session = facadeSession("issue225-async-shape-in");
+    const inProcess = {
+      cellGet: await inspectAsyncShape(() => session.cells.get("bad" as never)),
+      cellQuery: await inspectAsyncShape(() => session.cells.query("bad" as never)),
+      cellCount: await inspectAsyncShape(() => session.cells.count("bad" as never)),
+      cellNeighbors: await inspectAsyncShape(() => session.cells.neighbors("bad" as never)),
+      cellBoundary: await inspectAsyncShape(() => session.cells.boundary("bad" as never)),
+      cellDistance: await inspectAsyncShape(() => session.cells.distance("bad" as never, 0)),
+      segmentGet: await inspectAsyncShape(() => session.segments.get("bad" as never)),
+      unitGet: await inspectAsyncShape(() => session.units.get("bad" as never)),
+      unitFind: await inspectAsyncShape(() => session.units.find(123 as never)),
+      unitCount: await inspectAsyncShape(() => session.units.count(123 as never)),
+      structureGet: await inspectAsyncShape(() => session.structures.get("bad" as never)),
+      structureFind: await inspectAsyncShape(() => session.structures.find(123 as never)),
+      structureCount: await inspectAsyncShape(() => session.structures.count(123 as never)),
+    };
+    expect(inProcess).toEqual(
+      Object.fromEntries(Object.keys(inProcess).map((key) => [key, expected])),
+    );
+
+    expect(
+      await workerLog(
+        "issue225-async-shape-worker",
+        `
+          export async function decide(context) {
+            const inspect = async (fn) => {
+              let value;
+              try {
+                value = fn();
+              } catch {
+                return { syncThrew: true, thenable: false, rejected: false };
+              }
+              const thenable =
+                value !== null &&
+                (typeof value === "object" || typeof value === "function") &&
+                typeof value.then === "function";
+              if (!thenable) {
+                return { syncThrew: false, thenable: false, rejected: false };
+              }
+              try {
+                await value;
+                return { syncThrew: false, thenable: true, rejected: false };
+              } catch {
+                return { syncThrew: false, thenable: true, rejected: true };
+              }
+            };
+            return {
+              log: JSON.stringify({
+                cellGet: await inspect(() => context.cells.get("bad")),
+                cellQuery: await inspect(() => context.cells.query("bad")),
+                cellCount: await inspect(() => context.cells.count("bad")),
+                cellNeighbors: await inspect(() => context.cells.neighbors("bad")),
+                cellBoundary: await inspect(() => context.cells.boundary("bad")),
+                cellDistance: await inspect(() => context.cells.distance("bad", 0)),
+                segmentGet: await inspect(() => context.segments.get("bad")),
+                unitGet: await inspect(() => context.units.get("bad")),
+                unitFind: await inspect(() => context.units.find(123)),
+                unitCount: await inspect(() => context.units.count(123)),
+                structureGet: await inspect(() => context.structures.get("bad")),
+                structureFind: await inspect(() => context.structures.find(123)),
+                structureCount: await inspect(() => context.structures.count(123)),
+              }),
+            };
+          }
+        `,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("keeps malformed async calls Promise-shaped through exact query-budget exhaustion", async () => {
+    const inspectAsyncShape = async (invoke: () => unknown) => {
+      let value: unknown;
+      try {
+        value = invoke();
+      } catch (error) {
+        return {
+          syncThrew: true,
+          thenable: false,
+          rejected: false,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const thenable =
+        value !== null &&
+        (typeof value === "object" || typeof value === "function") &&
+        typeof (value as PromiseLike<unknown>).then === "function";
+      if (!thenable) {
+        return { syncThrew: false, thenable: false, rejected: false, message: "" };
+      }
+      try {
+        await (value as PromiseLike<unknown>);
+        return { syncThrew: false, thenable: true, rejected: false, message: "" };
+      } catch (error) {
+        return {
+          syncThrew: false,
+          thenable: true,
+          rejected: true,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    };
+
+    const session = facadeSession("issue225-async-budget-in");
+    const first = await inspectAsyncShape(() => session.cells.get("bad" as never));
+    for (let index = 1; index < CONTROLLER_QUERY_LIMITS.queriesPerDecision; index += 1) {
+      await inspectAsyncShape(() => session.cells.get("bad" as never));
+    }
+    const exhausted = await inspectAsyncShape(() => session.cells.get("bad" as never));
+    expect(first).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    });
+    expect(exhausted).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+      message: "controller query budget exhausted",
+    });
+
+    const worker = await workerLog(
+      "issue225-async-budget-worker",
+      `
+        export async function decide(context) {
+          const inspect = async (fn) => {
+            let value;
+            try {
+              value = fn();
+            } catch (error) {
+              return {
+                syncThrew: true,
+                thenable: false,
+                rejected: false,
+                message: String(error?.message ?? error),
+              };
+            }
+            const thenable =
+              value !== null &&
+              (typeof value === "object" || typeof value === "function") &&
+              typeof value.then === "function";
+            if (!thenable) {
+              return { syncThrew: false, thenable: false, rejected: false, message: "" };
+            }
+            try {
+              await value;
+              return { syncThrew: false, thenable: true, rejected: false, message: "" };
+            } catch (error) {
+              return {
+                syncThrew: false,
+                thenable: true,
+                rejected: true,
+                message: String(error?.message ?? error),
+              };
+            }
+          };
+          const first = await inspect(() => context.cells.get("bad"));
+          for (let index = 1; index < 128; index += 1) {
+            await inspect(() => context.cells.get("bad"));
+          }
+          const exhausted = await inspect(() => context.cells.get("bad"));
+          return { log: JSON.stringify({ first, exhausted }) };
+        }
+      `,
+    );
+    expect(worker).toEqual({ first, exhausted });
   }, 20_000);
 
   it("rejects malformed synchronous check calls identically", async () => {
