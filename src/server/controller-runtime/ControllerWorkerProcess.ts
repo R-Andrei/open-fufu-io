@@ -650,12 +650,23 @@ const invokeEntrypointSource = `
   const requireCallArgs = (valid) => {
     if (!valid) throw new TypeError("invalid controller call arguments");
   };
+  const rejectHostQuery = (error) =>
+    primordials.promiseThen(
+      primordials.promiseResolve(),
+      () => {
+        throw error;
+      }
+    );
 
   let hostQuerySequence = 0;
   let hostQuerySettlement = primordials.promiseResolve();
   const hostQuery = (operation, args) => {
-    consumeQuery();
-    requireCallArgs(validHostQueryArgs(operation, args));
+    try {
+      consumeQuery();
+      requireCallArgs(validHostQueryArgs(operation, args));
+    } catch (error) {
+      return rejectHostQuery(error);
+    }
     hostQuerySequence += 1;
     const bridgeResult = $1.apply(
       undefined,
