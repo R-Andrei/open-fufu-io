@@ -288,6 +288,29 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function isPlainArray(value: unknown): value is unknown[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    return false;
+  }
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === "length") continue;
+    const index = Number(key);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= value.length ||
+      String(index) !== key
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function spatialPolicyRuleCount(value: unknown): number {
   if (!isPlainRecord(value)) return 0;
   return Array.isArray(value.rules) ? value.rules.length : 0;
@@ -404,6 +427,11 @@ function canonicalizeMemoryValue(
 
   try {
     if (Array.isArray(value)) {
+      if (!isPlainArray(value)) {
+        throw new InvalidControllerValueError(
+          "controller memory arrays must be ordinary Arrays without extra own properties",
+        );
+      }
       const entries: string[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
@@ -639,6 +667,11 @@ function materializeControllerValue(
 
   try {
     if (Array.isArray(value)) {
+      if (!isPlainArray(value)) {
+        throw new InvalidControllerValueError(
+          "controller output arrays must be ordinary Arrays without extra own properties",
+        );
+      }
       const clone: unknown[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {

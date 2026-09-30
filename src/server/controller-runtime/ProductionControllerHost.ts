@@ -134,6 +134,29 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   );
 }
 
+function isPlainArray(value: unknown): value is unknown[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    return false;
+  }
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === "length") continue;
+    const index = Number(key);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= value.length ||
+      String(index) !== key
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function cloneFrozenTransportValue(
   value: unknown,
   ancestors = new Set<object>(),
@@ -162,6 +185,11 @@ function cloneFrozenTransportValue(
 
   try {
     if (Array.isArray(value)) {
+      if (!isPlainArray(value)) {
+        throw new InvalidTransportValueError(
+          "transport arrays must be ordinary Arrays without extra own properties",
+        );
+      }
       const clone: unknown[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
@@ -178,7 +206,12 @@ function cloneFrozenTransportValue(
 
     const clone: Record<string, unknown> = {};
     for (const key of Object.keys(value)) {
-      clone[key] = cloneFrozenTransportValue(value[key], ancestors);
+      Object.defineProperty(clone, key, {
+        value: cloneFrozenTransportValue(value[key], ancestors),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return Object.freeze(clone);
   } finally {
@@ -194,9 +227,14 @@ function cloneWorkerContext(context: object): Readonly<Record<string, unknown>> 
   const clone: Record<string, unknown> = {};
   for (const key of Object.keys(context)) {
     if (key === "memory") continue;
-    clone[key] = cloneFrozenTransportValue(
-      (context as Record<string, unknown>)[key],
-    );
+    Object.defineProperty(clone, key, {
+      value: cloneFrozenTransportValue(
+        (context as Record<string, unknown>)[key],
+      ),
+      enumerable: true,
+      configurable: true,
+      writable: true,
+    });
   }
   return Object.freeze(clone);
 }

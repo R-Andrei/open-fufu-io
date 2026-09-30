@@ -100,6 +100,29 @@ const MAX_ENTITY_FIND_RESULTS = 128;
 export const CONTROLLER_TEAM_SIGNAL_PAYLOAD_BYTES = 1_024;
 const teamSignalUtf8Encoder = new TextEncoder();
 
+function isPlainJsonArray(value: unknown): value is unknown[] {
+  if (
+    !Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Array.prototype ||
+    Object.getOwnPropertySymbols(value).length !== 0
+  ) {
+    return false;
+  }
+  for (const key of Object.getOwnPropertyNames(value)) {
+    if (key === "length") continue;
+    const index = Number(key);
+    if (
+      !Number.isInteger(index) ||
+      index < 0 ||
+      index >= value.length ||
+      String(index) !== key
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function materializeControllerJsonValue(
   value: unknown,
   ancestors: Set<object>,
@@ -122,6 +145,11 @@ function materializeControllerJsonValue(
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
+      if (!isPlainJsonArray(value)) {
+        throw new TypeError(
+          "controller staged data arrays must be ordinary Arrays without extra own properties",
+        );
+      }
       const copy: JsonValue[] = [];
       for (let index = 0; index < value.length; index += 1) {
         if (!Object.prototype.hasOwnProperty.call(value, index)) {
@@ -140,10 +168,15 @@ function materializeControllerJsonValue(
     }
     const copy: Record<string, JsonValue> = {};
     for (const key of Object.keys(value).sort()) {
-      copy[key] = materializeControllerJsonValue(
-        (value as Record<string, unknown>)[key],
-        ancestors,
-      );
+      Object.defineProperty(copy, key, {
+        value: materializeControllerJsonValue(
+          (value as Record<string, unknown>)[key],
+          ancestors,
+        ),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
     }
     return Object.freeze(copy);
   } finally {

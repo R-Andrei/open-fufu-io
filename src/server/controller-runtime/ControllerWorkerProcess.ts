@@ -288,10 +288,14 @@ const hardenGlobalSource = `
 
     const __openFufuPrimordials = Object.freeze({
       freeze: Object.freeze,
+      defineProperty: __openFufuDefineProperty,
       keys: Object.keys,
       is: Object.is,
       isArray: Array.isArray,
+      arrayPrototype: Array.prototype,
       numberIsFinite: __openFufuNumberIsFinite,
+      numberIsInteger: Number.isInteger,
+      string: String,
       reflectOwnKeys: Reflect.ownKeys,
       getPrototypeOf: Object.getPrototypeOf,
       objectPrototype: Object.prototype,
@@ -395,6 +399,27 @@ const invokeEntrypointSource = `
 
     try {
       if (primordials.isArray(value)) {
+        if (
+          primordials.getPrototypeOf(value) !== primordials.arrayPrototype ||
+          primordials.getOwnPropertySymbols(value).length !== 0
+        ) {
+          throw new TypeError("result arrays must be ordinary Arrays without symbol keys");
+        }
+        for (const key of primordials.reflectOwnKeys(value)) {
+          if (key === "length") continue;
+          if (typeof key !== "string") {
+            throw new TypeError("result arrays must not have symbol keys");
+          }
+          const index = +key;
+          if (
+            !primordials.numberIsInteger(index) ||
+            index < 0 ||
+            index >= value.length ||
+            primordials.string(index) !== key
+          ) {
+            throw new TypeError("result arrays must not have extra own properties");
+          }
+        }
         const copy = [];
         for (let index = 0; index < value.length; index += 1) {
           if (!primordials.hasOwn(value, index)) {
@@ -415,7 +440,12 @@ const invokeEntrypointSource = `
 
       const copy = {};
       for (const key of primordials.keys(value)) {
-        copy[key] = materialize(value[key], ancestors);
+        primordials.defineProperty(copy, key, {
+          value: materialize(value[key], ancestors),
+          enumerable: true,
+          configurable: true,
+          writable: true
+        });
       }
       return copy;
     } finally {
