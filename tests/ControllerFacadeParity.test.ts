@@ -3556,6 +3556,125 @@ describe("issue #206 team.signal atomic rejection proof", () => {
   }, 20_000);
 });
 
+describe("issue #225 object-argument snapshot parity RED", () => {
+  it("snapshots getter-backed faction filters equivalently across normal hosts", async () => {
+    const seed = "issue225-getter-faction-filter";
+    const inSession = facadeSession(seed);
+    let inReads = 0;
+    const filter: Record<string, unknown> = {};
+    Object.defineProperty(filter, "status", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        inReads += 1;
+        return "ACTIVE";
+      },
+    });
+    const inViews = inSession.factions.find(filter as never);
+    const inProcess = {
+      reads: inReads,
+      count: inViews.length,
+    };
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let reads = 0;
+              const filter = {};
+              Object.defineProperty(filter, "status", {
+                enumerable: true,
+                configurable: true,
+                get() {
+                  reads += 1;
+                  return "ACTIVE";
+                },
+              });
+              const views = context.factions.find(filter);
+              return { log: JSON.stringify({ reads, count: views.length }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual(inProcess);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("snapshots getter-backed async cell selectors equivalently across normal hosts", async () => {
+    const seed = "issue225-getter-cell-selector";
+    const inSession = facadeSession(seed);
+    let inReads = 0;
+    const selector: Record<string, unknown> = {
+      ids: [0, 1],
+    };
+    Object.defineProperty(selector, "kind", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        inReads += 1;
+        return "CELLS";
+      },
+    });
+    const inResult = await inSession.cells.boundary(selector as never, 2);
+    const inProcess = {
+      reads: inReads,
+      ids: inResult.items.map((item) => item.id),
+    };
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export async function decide(context) {
+              let reads = 0;
+              const selector = { ids: [0, 1] };
+              Object.defineProperty(selector, "kind", {
+                enumerable: true,
+                configurable: true,
+                get() {
+                  reads += 1;
+                  return "CELLS";
+                },
+              });
+              const result = await context.cells.boundary(selector, 2);
+              return {
+                log: JSON.stringify({
+                  reads,
+                  ids: result.items.map((item) => item.id),
+                }),
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual(inProcess);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
+
 describe("issue #206 Tank build and strategic-move authoritative RED", () => {
   function tankBuildState(seed: string) {
     const base = createInitialMatchState(
