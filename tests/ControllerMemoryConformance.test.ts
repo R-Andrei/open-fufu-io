@@ -55,6 +55,28 @@ function symbolKeyedMemory(): ControllerMemory {
   return memory as ControllerMemory;
 }
 
+function symbolKeyedArray(): unknown[] {
+  const value: unknown[] = [1];
+  Object.defineProperty(value, Symbol("hidden"), {
+    value: 2,
+    enumerable: true,
+  });
+  return value;
+}
+
+function extraStringKeyedArray(): unknown[] {
+  const value: unknown[] = [1];
+  Object.defineProperty(value, "extra", {
+    value: 2,
+    enumerable: true,
+    configurable: true,
+    writable: true,
+  });
+  return value;
+}
+
+class ControllerMemoryArraySubclass extends Array<unknown> {}
+
 class RecordingPool implements ControllerWorkerPool {
   readonly requests: ControllerWorkerRequest[] = [];
 
@@ -121,6 +143,26 @@ describe("canonical controller-memory conformance", () => {
 
   it("rejects symbol-keyed memory instead of silently omitting non-string keys", () => {
     expect(() => canonicalizeControllerMemory(symbolKeyedMemory())).toThrow();
+  });
+
+  it("rejects symbol-keyed arrays instead of silently canonicalizing them", () => {
+    expect(() =>
+      canonicalizeControllerMemory({ bad: symbolKeyedArray() }),
+    ).toThrow();
+  });
+
+  it("rejects Array subclasses instead of silently canonicalizing class instances", () => {
+    expect(() =>
+      canonicalizeControllerMemory({
+        bad: new ControllerMemoryArraySubclass(1, 2),
+      }),
+    ).toThrow();
+  });
+
+  it("rejects extra string-keyed array properties instead of silently dropping them", () => {
+    expect(() =>
+      canonicalizeControllerMemory({ bad: extraStringKeyedArray() }),
+    ).toThrow();
   });
 
   it("rejects symbol-keyed memory through the in-process host without committing it", () => {

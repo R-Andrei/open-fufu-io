@@ -384,7 +384,11 @@ describe("controller spatial API migration", () => {
     expect(await surface.units.get({ ref: enemyUnits.items[0]!.ref })).toEqual(
       enemyUnits.items[0],
     );
-    expect(await surface.units.get({ ref: "fabricated-unit-ref" })).toBeUndefined();
+    expect(
+      await surface.units.get({
+        ref: { type: "UNIT", token: "fabricated-unit-ref" },
+      }),
+    ).toBeUndefined();
     expect(await surface.units.count({ relation: "ENEMY" })).toBe(1);
 
     const firstUnit = await surface.units.find({ limit: 1 });

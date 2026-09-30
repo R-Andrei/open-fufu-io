@@ -472,7 +472,17 @@ function compilerOptions(): ts.CompilerOptions {
   return parsed.options;
 }
 
-function typecheckFixture(source: string): string {
+type VirtualTypeProgram = Readonly<{
+  program: ts.Program;
+  checker: ts.TypeChecker;
+  sourceFile: ts.SourceFile;
+}>;
+
+const virtualTypeProgramCache = new Map<string, VirtualTypeProgram>();
+
+function virtualTypeProgram(source: string): VirtualTypeProgram {
+  const cached = virtualTypeProgramCache.get(source);
+  if (cached !== undefined) return cached;
   const options = compilerOptions();
   const virtualPath = path.resolve(
     "tests/contracts/issue206-controller-facade.virtual.ts",
@@ -506,7 +516,126 @@ function typecheckFixture(source: string): string {
     },
   };
   const program = ts.createProgram({ rootNames: [virtualPath], options, host });
-  return formatDiagnostics(ts.getPreEmitDiagnostics(program));
+  const sourceFile = program.getSourceFile(virtualPath);
+  if (sourceFile === undefined) throw new Error("virtual controller fixture missing");
+  const result = Object.freeze({
+    program,
+    checker: program.getTypeChecker(),
+    sourceFile,
+  });
+  virtualTypeProgramCache.set(source, result);
+  return result;
+}
+
+function typecheckFixture(source: string): string {
+  return formatDiagnostics(
+    ts.getPreEmitDiagnostics(virtualTypeProgram(source).program),
+  );
+}
+
+function callablePathsFixture(
+  source: string,
+  aliasName: string,
+): readonly string[] {
+  const { program, checker, sourceFile } = virtualTypeProgram(source);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  if (diagnostics.length > 0) {
+    throw new Error(formatDiagnostics(diagnostics));
+  }
+
+  const alias = sourceFile.statements.find(
+    (statement): statement is ts.TypeAliasDeclaration =>
+      ts.isTypeAliasDeclaration(statement) && statement.name.text === aliasName,
+  );
+  if (alias === undefined) {
+    throw new Error(`missing callable fixture alias ${aliasName}`);
+  }
+
+  const defaultLibDirectory = path.dirname(
+    path.resolve(ts.getDefaultLibFilePath(program.getCompilerOptions())),
+  );
+  const isStandardLibraryDeclaration = (declaration: ts.Declaration): boolean => {
+    const fileName = path.resolve(declaration.getSourceFile().fileName);
+    return (
+      fileName === defaultLibDirectory ||
+      fileName.startsWith(defaultLibDirectory + path.sep)
+    );
+  };
+  const segmentFor = (property: ts.Symbol): string => {
+    const name = property.getName();
+    return name.startsWith("__@") ? `[symbol:${name}]` : name;
+  };
+  const paths = new Set<string>();
+  const stack = new Set<ts.Type>();
+  const primitiveFlags =
+    ts.TypeFlags.StringLike |
+    ts.TypeFlags.NumberLike |
+    ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.BigIntLike |
+    ts.TypeFlags.ESSymbolLike |
+    ts.TypeFlags.Null |
+    ts.TypeFlags.Undefined |
+    ts.TypeFlags.Never |
+    ts.TypeFlags.Void;
+
+  const visit = (type: ts.Type, prefix: string): void => {
+    if ((type.flags & ts.TypeFlags.Any) !== 0) {
+      paths.add(prefix === "" ? "[any]" : `${prefix}.[any]`);
+      return;
+    }
+    if ((type.flags & ts.TypeFlags.Unknown) !== 0) {
+      paths.add(prefix === "" ? "[unknown]" : `${prefix}.[unknown]`);
+      return;
+    }
+    if ((type.flags & primitiveFlags) !== 0 || stack.has(type)) return;
+
+    stack.add(type);
+    try {
+      if (type.isUnionOrIntersection()) {
+        for (const part of type.types) visit(part, prefix);
+      }
+
+      if (
+        checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0
+      ) {
+        paths.add(prefix === "" ? "[call]" : prefix);
+      }
+      if (
+        checker.getSignaturesOfType(type, ts.SignatureKind.Construct).length > 0
+      ) {
+        paths.add(prefix === "" ? "[construct]" : `${prefix}.[construct]`);
+      }
+
+      for (const property of checker.getPropertiesOfType(type)) {
+        const declarations = property.getDeclarations() ?? [];
+        if (
+          declarations.length > 0 &&
+          declarations.every(isStandardLibraryDeclaration)
+        ) {
+          continue;
+        }
+        const location = declarations[0] ?? sourceFile;
+        const propertyType = checker.getTypeOfSymbolAtLocation(
+          property,
+          location,
+        );
+        const segment = segmentFor(property);
+        visit(
+          propertyType,
+          prefix === "" ? segment : `${prefix}.${segment}`,
+        );
+      }
+
+      for (const indexInfo of checker.getIndexInfosOfType(type)) {
+        visit(indexInfo.type, prefix);
+      }
+    } finally {
+      stack.delete(type);
+    }
+  };
+
+  visit(checker.getTypeFromTypeNode(alias.type), "");
+  return Object.freeze([...paths].sort());
 }
 
 function workerArtifact(expression: string): ControllerRuntimeArtifact {
@@ -550,61 +679,15 @@ describe("issue #225 final ControllerContext RED", () => {
     const registeredContextKeys =
       ISSUE225_REQUIRED_CONTEXT_KEYS.map((name) => JSON.stringify(name)).join(" | ") ||
       "never";
-    const registeredCallableNames =
-      ISSUE225_PUBLIC_CALLABLE_NAMES.map((name) => JSON.stringify(name)).join(" | ") ||
-      "never";
-    const fixture = [
+    const contractFixture = [
       'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
       'type Context = Parameters<OpenFufuController["decide"]>[0];',
       `type RegisteredContextKey = ${registeredContextKeys};`,
-      `type RegisteredCallableName = ${registeredCallableNames};`,
       'type Exact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;',
       'type PublicContextKey = keyof Context & string;',
-      'type CallablePaths<T, Prefix extends string = "", Seen = never> =',
-      '  T extends unknown',
-      '    ? [T] extends [Seen] ? never',
-      '      : T extends (...args: any[]) => any ? Prefix',
-      '      : T extends string | number | boolean | bigint | symbol ? never',
-      '      : T extends readonly (infer Element)[]',
-      '        ? CallablePaths<NonNullable<Element>, Prefix, Seen | T>',
-      '      : T extends object',
-      '        ? string extends keyof T',
-      '          ? T extends { readonly [key: string]: infer Value }',
-      '            ? CallablePaths<NonNullable<Value>, Prefix, Seen | T>',
-      '            : never',
-      '          : {',
-      '              [K in keyof T & string]-?: CallablePaths<',
-      '                NonNullable<T[K]>,',
-      '                Prefix extends "" ? K : `${Prefix}.${K}`,',
-      '                Seen | T',
-      '              >;',
-      '            }[keyof T & string]',
-      '        : never',
-      '    : never;',
-      'type PublicCallableName = CallablePaths<Context>;',
-      'type SyntheticNestedContext = Context & {',
-      '  readonly me: Context["me"] & {',
-      '    readonly nestedProof: { deeper(): void };',
-      '  };',
-      '};',
-      'type SyntheticNestedCallableName = CallablePaths<SyntheticNestedContext>;',
-      'const syntheticNestedCallableIsDetected: "me.nestedProof.deeper" extends SyntheticNestedCallableName ? true : false = true;',
-      'type SyntheticArrayContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedList: readonly { deeper(): void }[];',
-      '  };',
-      '};',
-      'type SyntheticArrayCallableName = CallablePaths<SyntheticArrayContext>;',
-      'const syntheticArrayCallableIsDetected: "events.nestedList.deeper" extends SyntheticArrayCallableName ? true : false = true;',
-      'type SyntheticDictionaryContext = Context & {',
-      '  readonly events: Context["events"] & {',
-      '    readonly nestedDictionary: Readonly<Record<string, { deeper(): void }>>;',
-      '  };',
-      '};',
-      'type SyntheticDictionaryCallableName = CallablePaths<SyntheticDictionaryContext>;',
-      'const syntheticDictionaryCallableIsDetected: "events.nestedDictionary.deeper" extends SyntheticDictionaryCallableName ? true : false = true;',
+      'type NonStringContextKey = Exclude<keyof Context, string>;',
       'const contextKeysAreExact: Exact<PublicContextKey, RegisteredContextKey> = true;',
-      'const callableRegistryIsExact: Exact<PublicCallableName, RegisteredCallableName> = true;',
+      'const nonStringContextKeysAreAbsent: Exact<NonStringContextKey, never> = true;',
       'declare const context: Context;',
       'void context.tick;',
       'void context.me.populationState.capacity;',
@@ -632,9 +715,128 @@ describe("issue #225 final ControllerContext RED", () => {
       'void context.me.effectiveModifiers;',
       '// @ts-expect-error incoming hostile operation discovery is event-driven.',
       'void context.operations.incoming();',
-      'void contextKeysAreExact; void callableRegistryIsExact;',
+      'void contextKeysAreExact; void nonStringContextKeysAreAbsent;',
     ].join("\n");
-    expect(typecheckFixture(fixture)).toBe("");
+    expect(typecheckFixture(contractFixture)).toBe("");
+
+    const callableFixture = [
+      'import type { OpenFufuController } from "../../src/core/controller/ControllerApi";',
+      'type Context = Parameters<OpenFufuController["decide"]>[0];',
+      'type SyntheticNestedContext = Context & {',
+      '  readonly me: Context["me"] & {',
+      '    readonly nestedProof: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticArrayContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedList: readonly { deeper(): void }[];',
+      '  };',
+      '};',
+      'type SyntheticDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedDictionary: Readonly<Record<string, { deeper(): void }>>;',
+      '  };',
+      '};',
+      'type SyntheticNumericDictionaryContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedByIndex: { readonly [index: number]: { deeper(): void } };',
+      '  };',
+      '};',
+      'type SyntheticNumericPropertyContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedNumericProperty: { readonly 0: { deeper(): void } };',
+      '  };',
+      '};',
+      'declare const syntheticCallableSymbol: unique symbol;',
+      'declare const syntheticCallableSymbol2: unique symbol;',
+      'type SyntheticSymbolContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticTwoSymbolContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly [syntheticCallableSymbol]: { deeper(): void };',
+      '    readonly [syntheticCallableSymbol2]: { deeper(): void };',
+      '  };',
+      '};',
+      'type SyntheticCallableOwnedContext = Omit<Context, "random"> & {',
+      '  readonly random: Omit<Context["random"], "next"> & {',
+      '    readonly next: Context["random"]["next"] & { helper(): void };',
+      '  };',
+      '};',
+      'type SyntheticCustomArrayContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedCustomArray: (readonly { value: number }[]) & { helper(): void };',
+      '  };',
+      '};',
+      'type SyntheticIndexedExplicitContext = Context & {',
+      '  readonly events: Context["events"] & {',
+      '    readonly nestedIndexedExplicit: Readonly<Record<string, { value: number }>> & {',
+      '      readonly special: { value: number; helper(): void };',
+      '    };',
+      '  };',
+      '};',
+    ].join("\n");
+
+    const base = callablePathsFixture(callableFixture, "Context");
+    expect(base).toEqual([...ISSUE225_PUBLIC_CALLABLE_NAMES].sort());
+
+    const nested = callablePathsFixture(callableFixture, "SyntheticNestedContext");
+    expect(nested).toContain("me.nestedProof.deeper");
+
+    const array = callablePathsFixture(callableFixture, "SyntheticArrayContext");
+    expect(array).toContain("events.nestedList.deeper");
+
+    const dictionary = callablePathsFixture(
+      callableFixture,
+      "SyntheticDictionaryContext",
+    );
+    expect(dictionary).toContain("events.nestedDictionary.deeper");
+
+    const numericDictionary = callablePathsFixture(
+      callableFixture,
+      "SyntheticNumericDictionaryContext",
+    );
+    expect(numericDictionary).toContain("events.nestedByIndex.deeper");
+
+    const numericProperty = callablePathsFixture(
+      callableFixture,
+      "SyntheticNumericPropertyContext",
+    );
+    expect(numericProperty).toContain("events.nestedNumericProperty.0.deeper");
+
+    const oneSymbol = callablePathsFixture(
+      callableFixture,
+      "SyntheticSymbolContext",
+    );
+    const twoSymbols = callablePathsFixture(
+      callableFixture,
+      "SyntheticTwoSymbolContext",
+    );
+    expect(oneSymbol).not.toEqual(base);
+    expect(twoSymbols).not.toEqual(oneSymbol);
+    expect(twoSymbols.length).toBe(oneSymbol.length + 1);
+
+    const callableOwned = callablePathsFixture(
+      callableFixture,
+      "SyntheticCallableOwnedContext",
+    );
+    expect(callableOwned).toContain("random.next.helper");
+
+    const customArray = callablePathsFixture(
+      callableFixture,
+      "SyntheticCustomArrayContext",
+    );
+    expect(customArray).toContain("events.nestedCustomArray.helper");
+
+    const indexedExplicit = callablePathsFixture(
+      callableFixture,
+      "SyntheticIndexedExplicitContext",
+    );
+    expect(indexedExplicit).toContain(
+      "events.nestedIndexedExplicit.special.helper",
+    );
   });
 
   it("materializes the same agreed normal V1 context shape in-process and in the production isolate", async () => {
@@ -991,6 +1193,392 @@ describe("issue #225 host-boundary parity re-audit RED", () => {
       fault: { code: "RUNTIME_ERROR" },
     });
   });
+});
+
+
+describe("issue #225 malformed read/check parity RED", () => {
+  const caughtSync = (invoke: () => unknown): boolean => {
+    try {
+      invoke();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const caughtAsync = async (invoke: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await invoke();
+      return false;
+    } catch {
+      return true;
+    }
+  };
+  const workerLog = async (
+    seed: string,
+    moduleSource: string,
+  ): Promise<Record<string, unknown>> => {
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const host = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const result = await host.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected malformed-call probe to be caught");
+      return JSON.parse(result.output?.log ?? "{}") as Record<string, boolean>;
+    } finally {
+      await pool.close();
+    }
+  };
+
+  it("rejects malformed synchronous faction/operation reads identically", async () => {
+    const session = facadeSession("issue225-malformed-local-in");
+    const inProcess = {
+      factionGet: caughtSync(() => session.factions.get(123 as never)),
+      factionFind: caughtSync(() => session.factions.find(123 as never)),
+      factionProximity: caughtSync(() => session.factions.proximity(123 as never)),
+      factionAtWar: caughtSync(() => session.factions.atWar(123 as never, 456 as never)),
+      operationGet: caughtSync(() => session.operations.get("bad-ref" as never)),
+    };
+    expect(inProcess).toEqual({
+      factionGet: true,
+      factionFind: true,
+      factionProximity: true,
+      factionAtWar: true,
+      operationGet: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-local-worker",
+        `
+          export function decide(context) {
+            const caught = (fn) => {
+              try { fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                factionGet: caught(() => context.factions.get(123)),
+                factionFind: caught(() => context.factions.find(123)),
+                factionProximity: caught(() => context.factions.proximity(123)),
+                factionAtWar: caught(() => context.factions.atWar(123, 456)),
+                operationGet: caught(() => context.operations.get("bad-ref")),
+              }),
+            };
+          }
+        `,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("rejects malformed asynchronous cell/entity reads identically", async () => {
+    const session = facadeSession("issue225-malformed-async-in");
+    const inProcess = {
+      cellGet: await caughtAsync(() => session.cells.get("bad" as never)),
+      segmentGet: await caughtAsync(() => session.segments.get("bad" as never)),
+      unitGet: await caughtAsync(() => session.units.get("bad" as never)),
+      unitFind: await caughtAsync(() => session.units.find(123 as never)),
+      structureGet: await caughtAsync(() => session.structures.get("bad" as never)),
+      structureFind: await caughtAsync(() => session.structures.find(123 as never)),
+    };
+    expect(inProcess).toEqual({
+      cellGet: true,
+      segmentGet: true,
+      unitGet: true,
+      unitFind: true,
+      structureGet: true,
+      structureFind: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-async-worker",
+        `
+          export async function decide(context) {
+            const caught = async (fn) => {
+              try { await fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                cellGet: await caught(() => context.cells.get("bad")),
+                segmentGet: await caught(() => context.segments.get("bad")),
+                unitGet: await caught(() => context.units.get("bad")),
+                unitFind: await caught(() => context.units.find(123)),
+                structureGet: await caught(() => context.structures.get("bad")),
+                structureFind: await caught(() => context.structures.find(123)),
+              }),
+            };
+          }
+        `,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("preserves Promise rejection shape for every malformed asynchronous query family", async () => {
+    const inspectAsyncShape = async (invoke: () => unknown) => {
+      let value: unknown;
+      try {
+        value = invoke();
+      } catch {
+        return { syncThrew: true, thenable: false, rejected: false };
+      }
+      const thenable =
+        value !== null &&
+        (typeof value === "object" || typeof value === "function") &&
+        typeof (value as PromiseLike<unknown>).then === "function";
+      if (!thenable) {
+        return { syncThrew: false, thenable: false, rejected: false };
+      }
+      try {
+        await (value as PromiseLike<unknown>);
+        return { syncThrew: false, thenable: true, rejected: false };
+      } catch {
+        return { syncThrew: false, thenable: true, rejected: true };
+      }
+    };
+    const expected = {
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    };
+    const session = facadeSession("issue225-async-shape-in");
+    const inProcess = {
+      cellGet: await inspectAsyncShape(() => session.cells.get("bad" as never)),
+      cellQuery: await inspectAsyncShape(() => session.cells.query("bad" as never)),
+      cellCount: await inspectAsyncShape(() => session.cells.count("bad" as never)),
+      cellNeighbors: await inspectAsyncShape(() => session.cells.neighbors("bad" as never)),
+      cellBoundary: await inspectAsyncShape(() => session.cells.boundary("bad" as never)),
+      cellDistance: await inspectAsyncShape(() => session.cells.distance("bad" as never, 0)),
+      segmentGet: await inspectAsyncShape(() => session.segments.get("bad" as never)),
+      unitGet: await inspectAsyncShape(() => session.units.get("bad" as never)),
+      unitFind: await inspectAsyncShape(() => session.units.find(123 as never)),
+      unitCount: await inspectAsyncShape(() => session.units.count(123 as never)),
+      structureGet: await inspectAsyncShape(() => session.structures.get("bad" as never)),
+      structureFind: await inspectAsyncShape(() => session.structures.find(123 as never)),
+      structureCount: await inspectAsyncShape(() => session.structures.count(123 as never)),
+    };
+    expect(inProcess).toEqual(
+      Object.fromEntries(Object.keys(inProcess).map((key) => [key, expected])),
+    );
+
+    expect(
+      await workerLog(
+        "issue225-async-shape-worker",
+        `
+          export async function decide(context) {
+            const inspect = async (fn) => {
+              let value;
+              try {
+                value = fn();
+              } catch {
+                return { syncThrew: true, thenable: false, rejected: false };
+              }
+              const thenable =
+                value !== null &&
+                (typeof value === "object" || typeof value === "function") &&
+                typeof value.then === "function";
+              if (!thenable) {
+                return { syncThrew: false, thenable: false, rejected: false };
+              }
+              try {
+                await value;
+                return { syncThrew: false, thenable: true, rejected: false };
+              } catch {
+                return { syncThrew: false, thenable: true, rejected: true };
+              }
+            };
+            return {
+              log: JSON.stringify({
+                cellGet: await inspect(() => context.cells.get("bad")),
+                cellQuery: await inspect(() => context.cells.query("bad")),
+                cellCount: await inspect(() => context.cells.count("bad")),
+                cellNeighbors: await inspect(() => context.cells.neighbors("bad")),
+                cellBoundary: await inspect(() => context.cells.boundary("bad")),
+                cellDistance: await inspect(() => context.cells.distance("bad", 0)),
+                segmentGet: await inspect(() => context.segments.get("bad")),
+                unitGet: await inspect(() => context.units.get("bad")),
+                unitFind: await inspect(() => context.units.find(123)),
+                unitCount: await inspect(() => context.units.count(123)),
+                structureGet: await inspect(() => context.structures.get("bad")),
+                structureFind: await inspect(() => context.structures.find(123)),
+                structureCount: await inspect(() => context.structures.count(123)),
+              }),
+            };
+          }
+        `,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
+
+  it("keeps malformed async calls Promise-shaped through exact query-budget exhaustion", async () => {
+    const inspectAsyncShape = async (invoke: () => unknown) => {
+      let value: unknown;
+      try {
+        value = invoke();
+      } catch (error) {
+        return {
+          syncThrew: true,
+          thenable: false,
+          rejected: false,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+      const thenable =
+        value !== null &&
+        (typeof value === "object" || typeof value === "function") &&
+        typeof (value as PromiseLike<unknown>).then === "function";
+      if (!thenable) {
+        return { syncThrew: false, thenable: false, rejected: false, message: "" };
+      }
+      try {
+        await (value as PromiseLike<unknown>);
+        return { syncThrew: false, thenable: true, rejected: false, message: "" };
+      } catch (error) {
+        return {
+          syncThrew: false,
+          thenable: true,
+          rejected: true,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      }
+    };
+
+    const session = facadeSession("issue225-async-budget-in");
+    const first = await inspectAsyncShape(() => session.cells.get("bad" as never));
+    for (let index = 1; index < CONTROLLER_QUERY_LIMITS.queriesPerDecision; index += 1) {
+      await inspectAsyncShape(() => session.cells.get("bad" as never));
+    }
+    const exhausted = await inspectAsyncShape(() => session.cells.get("bad" as never));
+    expect(first).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    });
+    expect(exhausted).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+      message: "controller query budget exhausted",
+    });
+
+    const worker = await workerLog(
+      "issue225-async-budget-worker",
+      `
+        export async function decide(context) {
+          const inspect = async (fn) => {
+            let value;
+            try {
+              value = fn();
+            } catch (error) {
+              return {
+                syncThrew: true,
+                thenable: false,
+                rejected: false,
+                message: String(error?.message ?? error),
+              };
+            }
+            const thenable =
+              value !== null &&
+              (typeof value === "object" || typeof value === "function") &&
+              typeof value.then === "function";
+            if (!thenable) {
+              return { syncThrew: false, thenable: false, rejected: false, message: "" };
+            }
+            try {
+              await value;
+              return { syncThrew: false, thenable: true, rejected: false, message: "" };
+            } catch (error) {
+              return {
+                syncThrew: false,
+                thenable: true,
+                rejected: true,
+                message: String(error?.message ?? error),
+              };
+            }
+          };
+          const first = await inspect(() => context.cells.get("bad"));
+          for (let index = 1; index < 128; index += 1) {
+            await inspect(() => context.cells.get("bad"));
+          }
+          const exhausted = await inspect(() => context.cells.get("bad"));
+          return { log: JSON.stringify({ first, exhausted }) };
+        }
+      `,
+    );
+    expect(worker.first).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+    });
+    expect(worker.exhausted).toMatchObject({
+      syncThrew: false,
+      thenable: true,
+      rejected: true,
+      message: "controller query budget exhausted",
+    });
+  }, 20_000);
+
+  it("rejects malformed synchronous check calls identically", async () => {
+    const session = facadeSession("issue225-malformed-check-in");
+    const inProcess = {
+      structureBuild: caughtSync(() =>
+        session.structures.checkBuild("FORT", "bad" as never),
+      ),
+      structureUpgrade: caughtSync(() =>
+        session.structures.checkUpgrade("bad" as never),
+      ),
+      unitBuild: caughtSync(() =>
+        session.units.checkBuild("TANK", "bad" as never, 0),
+      ),
+      transportEmbark: caughtSync(() =>
+        session.transports.checkEmbark("bad" as never, 0, 1),
+      ),
+      weaponLaunch: caughtSync(() =>
+        session.weapons.checkLaunch("bad" as never, "ATOM_BOMB", 0),
+      ),
+      relinquish: caughtSync(() =>
+        session.territory.checkRelinquish("bad" as never),
+      ),
+    };
+    expect(inProcess).toEqual({
+      structureBuild: true,
+      structureUpgrade: true,
+      unitBuild: true,
+      transportEmbark: true,
+      weaponLaunch: true,
+      relinquish: true,
+    });
+
+    expect(
+      await workerLog(
+        "issue225-malformed-check-worker",
+        `
+          export function decide(context) {
+            const caught = (fn) => {
+              try { fn(); return false; } catch { return true; }
+            };
+            return {
+              log: JSON.stringify({
+                structureBuild: caught(() => context.structures.checkBuild("FORT", "bad")),
+                structureUpgrade: caught(() => context.structures.checkUpgrade("bad")),
+                unitBuild: caught(() => context.units.checkBuild("TANK", "bad", 0)),
+                transportEmbark: caught(() => context.transports.checkEmbark("bad", 0, 1)),
+                weaponLaunch: caught(() => context.weapons.checkLaunch("bad", "ATOM_BOMB", 0)),
+                relinquish: caught(() => context.territory.checkRelinquish("bad")),
+              }),
+            };
+          }
+        `,
+      ),
+    ).toEqual(inProcess);
+  }, 20_000);
 });
 
 describe("issue #225 authoritative self growth projection RED", () => {
@@ -2540,6 +3128,547 @@ describe("issue #206 team.signal atomic rejection proof", () => {
       });
       expect(production.acceptedInputs()).toHaveLength(productionInputs);
       expect(production.snapshot()).toEqual(productionBefore);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("throws an oversized team.signal before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-caught-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("oversize", "a".repeat(1_023));
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-caught-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let caught = false;
+              try {
+                context.team.signal("oversize", "a".repeat(1023));
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("preserves valid __proto__ payload keys in staged team.signal data in both normal hosts", async () => {
+    const makePayload = () => {
+      const payload: Record<string, unknown> = {};
+      Object.defineProperty(payload, "__proto__", {
+        value: { kept: true },
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+      return payload;
+    };
+
+    const inSession = facadeSession("issue225-proto-signal-in");
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.team.signal("proto", makePayload() as never);
+        return {};
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    const inPayload = stagedActions(inResult)[0]?.payload as
+      | Record<string, unknown>
+      | undefined;
+    expect(inPayload).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(inPayload, "__proto__")).toBe(true);
+    expect(inPayload?.["__proto__"]).toEqual({ kept: true });
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-proto-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = {};
+              Object.defineProperty(payload, "__proto__", {
+                value: { kept: true },
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              context.team.signal("proto", payload);
+              return {};
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      const workerPayload = stagedActions(workerResult)[0]?.payload as
+        | Record<string, unknown>
+        | undefined;
+      expect(workerPayload).toBeDefined();
+      expect(
+        Object.prototype.hasOwnProperty.call(workerPayload, "__proto__"),
+      ).toBe(true);
+      expect(workerPayload?.["__proto__"]).toEqual({ kept: true });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects symbol-keyed array team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-symbol-array-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        const payload: unknown[] = [1];
+        Object.defineProperty(payload, Symbol("hidden"), {
+          value: 2,
+          enumerable: true,
+        });
+        try {
+          context.team.signal("bad-array", payload as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-symbol-array-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = [1];
+              payload[Symbol("hidden")] = 2;
+              let caught = false;
+              try {
+                context.team.signal("bad-array", payload);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects extra string-keyed array team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    const makePayload = () => {
+      const payload: unknown[] = [1];
+      Object.defineProperty(payload, "extra", {
+        value: 2,
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+      return payload;
+    };
+
+    const inSession = facadeSession("issue225-extra-array-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("bad-extra-array", makePayload() as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-extra-array-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = [1];
+              Object.defineProperty(payload, "extra", {
+                value: 2,
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              let caught = false;
+              try {
+                context.team.signal("bad-extra-array", payload);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects Array subclass team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    class PayloadArray extends Array<unknown> {}
+
+    const inSession = facadeSession("issue225-array-subclass-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.team.signal("bad-array-subclass", new PayloadArray(1, 2) as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-array-subclass-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              class PayloadArray extends Array {}
+              let caught = false;
+              try {
+                context.team.signal("bad-array-subclass", new PayloadArray(1, 2));
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects malformed staged action data before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-malformed-action-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        try {
+          context.structures.build("FORT", Number.NaN as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-malformed-action-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let caught = false;
+              try {
+                context.structures.build("FORT", Number.NaN);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+});
+
+describe("issue #225 object-argument snapshot parity RED", () => {
+  it("snapshots getter-backed faction filters equivalently across normal hosts", async () => {
+    const seed = "issue225-getter-faction-filter";
+    const inSession = facadeSession(seed);
+    let inReads = 0;
+    const filter: Record<string, unknown> = {};
+    Object.defineProperty(filter, "status", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        inReads += 1;
+        return "ACTIVE";
+      },
+    });
+    const inViews = inSession.factions.find(filter as never);
+    const inProcess = {
+      reads: inReads,
+      count: inViews.length,
+    };
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              let reads = 0;
+              const filter = {};
+              Object.defineProperty(filter, "status", {
+                enumerable: true,
+                configurable: true,
+                get() {
+                  reads += 1;
+                  return "ACTIVE";
+                },
+              });
+              const views = context.factions.find(filter);
+              return { log: JSON.stringify({ reads, count: views.length }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual(inProcess);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("snapshots getter-backed async cell selectors equivalently across normal hosts", async () => {
+    const seed = "issue225-getter-cell-selector";
+    const inSession = facadeSession(seed);
+    let inReads = 0;
+    const selector: Record<string, unknown> = {
+      ids: [0, 1],
+    };
+    Object.defineProperty(selector, "kind", {
+      enumerable: true,
+      configurable: true,
+      get() {
+        inReads += 1;
+        return "CELLS";
+      },
+    });
+    const inResult = await inSession.cells.boundary(selector as never, 2);
+    const inProcess = {
+      reads: inReads,
+      ids: inResult.items.map((item) => item.id),
+    };
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export async function decide(context) {
+              let reads = 0;
+              const selector = { ids: [0, 1] };
+              Object.defineProperty(selector, "kind", {
+                enumerable: true,
+                configurable: true,
+                get() {
+                  reads += 1;
+                  return "CELLS";
+                },
+              });
+              const result = await context.cells.boundary(selector, 2);
+              return {
+                log: JSON.stringify({
+                  reads,
+                  ids: result.items.map((item) => item.id),
+                }),
+              };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        facadeSession(seed),
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual(inProcess);
     } finally {
       await pool.close();
     }

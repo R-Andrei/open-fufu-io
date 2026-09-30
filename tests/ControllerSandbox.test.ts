@@ -567,6 +567,166 @@ describe("production controller sandbox process", () => {
     });
   });
 
+  it("rejects canonically forbidden memory shapes inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const cases = [
+        {
+          name: "symbol-keyed",
+          source: `
+            const value = { visible: 1 };
+            value[Symbol("hidden")] = 2;
+            return { memory: { bad: value } };
+          `,
+        },
+        {
+          name: "class-instance",
+          source: `
+            class Box {
+              constructor() { this.visible = 1; }
+            }
+            return { memory: { bad: new Box() } };
+          `,
+        },
+        {
+          name: "Map",
+          source: `return { memory: { bad: new Map([["x", 1]]) } };`,
+        },
+        {
+          name: "Set",
+          source: `return { memory: { bad: new Set([1]) } };`,
+        },
+        {
+          name: "RegExp",
+          source: `return { memory: { bad: /x/ } };`,
+        },
+        {
+          name: "typed-array",
+          source: `return { memory: { bad: new Uint8Array([1, 2]) } };`,
+        },
+        {
+          name: "symbol-keyed-array",
+          source: `
+            const value = [1];
+            value[Symbol("hidden")] = 2;
+            return { memory: { bad: value } };
+          `,
+        },
+      ] as const;
+
+      for (const entry of cases) {
+        const host = new ProductionControllerHost(pool, {
+          alpha: artifact(`
+            export function decide() {
+              ${entry.source}
+            }
+          `),
+        });
+        const result = await host.invoke("alpha", ordinaryObservation());
+        expect(result.ok, entry.name + " must be rejected").toBe(false);
+      }
+
+      expect(
+        await healthyHost(pool, "after-forbidden-memory-shapes").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-forbidden-memory-shapes" },
+      });
+    });
+  }, 20_000);
+
+  it("rejects Array subclass memory inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            class Box extends Array {}
+            return { memory: { bad: new Box(1, 2) } };
+          }
+        `),
+      });
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+      expect(
+        await healthyHost(pool, "after-array-subclass").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-array-subclass" },
+      });
+    });
+  }, 20_000);
+
+  it("rejects extra string-keyed Array properties inside the real production isolate", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide() {
+            const value = [1];
+            Object.defineProperty(value, "extra", {
+              value: 2,
+              enumerable: true,
+              configurable: true,
+              writable: true,
+            });
+            return { memory: { bad: value } };
+          }
+        `),
+      });
+      expect(await host.invoke("alpha", ordinaryObservation())).toEqual({
+        ok: false,
+        fault: { code: "RUNTIME_ERROR" },
+      });
+      expect(
+        await healthyHost(pool, "after-extra-array-key").invoke(
+          "alpha",
+          ordinaryObservation(),
+        ),
+      ).toEqual({
+        ok: true,
+        output: { log: "after-extra-array-key" },
+      });
+    });
+  }, 20_000);
+
+  it("preserves valid __proto__ JSON keys through real-isolate output materialization", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            if (context.memory.step !== 1) {
+              const nested = {};
+              Object.defineProperty(nested, "__proto__", {
+                value: { kept: true },
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              return { memory: { step: 1, nested } };
+            }
+            return { log: JSON.stringify(context.memory) };
+          }
+        `),
+      });
+
+      const first = await host.invoke("alpha", ordinaryObservation());
+      expect(first.ok).toBe(true);
+
+      const second = await host.invoke("alpha", ordinaryObservation());
+      expect(second.ok).toBe(true);
+      if (!second.ok) throw new Error("expected persisted memory readback");
+      expect(JSON.parse(second.output?.log ?? "{}")).toEqual(
+        JSON.parse('{"nested":{"__proto__":{"kept":true}},"step":1}'),
+      );
+    });
+  }, 20_000);
+
   it("rejects module imports and malformed non-data output without exposing host references", async () => {
     await withPool(async (pool) => {
       const importing = new ProductionControllerHost(pool, {
