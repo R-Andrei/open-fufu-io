@@ -603,6 +603,21 @@ describe("production controller sandbox process", () => {
           name: "typed-array",
           source: `return { memory: { bad: new Uint8Array([1, 2]) } };`,
         },
+        {
+          name: "symbol-keyed-array",
+          source: `
+            const value = [1];
+            value[Symbol("hidden")] = 2;
+            return { memory: { bad: value } };
+          `,
+        },
+        {
+          name: "Array-subclass",
+          source: `
+            class Box extends Array {}
+            return { memory: { bad: new Box(1, 2) } };
+          `,
+        },
       ] as const;
 
       for (const entry of cases) {
@@ -626,6 +641,38 @@ describe("production controller sandbox process", () => {
         ok: true,
         output: { log: "after-forbidden-memory-shapes" },
       });
+    });
+  }, 20_000);
+
+  it("preserves valid __proto__ JSON keys through real-isolate output materialization", async () => {
+    await withPool(async (pool) => {
+      const host = new ProductionControllerHost(pool, {
+        alpha: artifact(`
+          export function decide(context) {
+            if (context.memory.step !== 1) {
+              const nested = {};
+              Object.defineProperty(nested, "__proto__", {
+                value: { kept: true },
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              return { memory: { step: 1, nested } };
+            }
+            return { log: JSON.stringify(context.memory) };
+          }
+        `),
+      });
+
+      const first = await host.invoke("alpha", ordinaryObservation());
+      expect(first.ok).toBe(true);
+
+      const second = await host.invoke("alpha", ordinaryObservation());
+      expect(second.ok).toBe(true);
+      if (!second.ok) throw new Error("expected persisted memory readback");
+      expect(JSON.parse(second.output?.log ?? "{}")).toEqual(
+        JSON.parse('{"nested":{"__proto__":{"kept":true}},"step":1}'),
+      );
     });
   }, 20_000);
 

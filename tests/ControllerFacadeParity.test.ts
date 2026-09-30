@@ -3017,6 +3017,147 @@ describe("issue #206 team.signal atomic rejection proof", () => {
     }
   }, 20_000);
 
+  it("preserves valid __proto__ payload keys in staged team.signal data in both normal hosts", async () => {
+    const makePayload = () => {
+      const payload: Record<string, unknown> = {};
+      Object.defineProperty(payload, "__proto__", {
+        value: { kept: true },
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+      return payload;
+    };
+
+    const inSession = facadeSession("issue225-proto-signal-in");
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        context.team.signal("proto", makePayload() as never);
+        return {};
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    const inPayload = stagedActions(inResult)[0]?.payload as
+      | Record<string, unknown>
+      | undefined;
+    expect(inPayload).toBeDefined();
+    expect(Object.prototype.hasOwnProperty.call(inPayload, "__proto__")).toBe(true);
+    expect(inPayload?.["__proto__"]).toEqual({ kept: true });
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-proto-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = {};
+              Object.defineProperty(payload, "__proto__", {
+                value: { kept: true },
+                enumerable: true,
+                configurable: true,
+                writable: true,
+              });
+              context.team.signal("proto", payload);
+              return {};
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      const workerPayload = stagedActions(workerResult)[0]?.payload as
+        | Record<string, unknown>
+        | undefined;
+      expect(workerPayload).toBeDefined();
+      expect(
+        Object.prototype.hasOwnProperty.call(workerPayload, "__proto__"),
+      ).toBe(true);
+      expect(workerPayload?.["__proto__"]).toEqual({ kept: true });
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
+  it("rejects symbol-keyed array team.signal payloads before consuming an ActionRef in both normal hosts", async () => {
+    const inSession = facadeSession("issue225-symbol-array-signal-in");
+    let inCaught = false;
+    let inCapRef: unknown;
+    const inHost = new InProcessTestControllerHost({
+      alpha(context) {
+        const payload: unknown[] = [1];
+        Object.defineProperty(payload, Symbol("hidden"), {
+          value: 2,
+          enumerable: true,
+        });
+        try {
+          context.team.signal("bad-array", payload as never);
+        } catch {
+          inCaught = true;
+        }
+        inCapRef = context.capitulate();
+        return { log: JSON.stringify({ caught: inCaught, capRef: inCapRef }) };
+      },
+    });
+    const inResult = await Promise.resolve(
+      inHost.invoke("alpha", Object.freeze({}) as never, inSession),
+    );
+    expect(inResult.ok).toBe(true);
+    expect(inCaught).toBe(true);
+    expect(inCapRef).toBe("action_1");
+    expect(stagedActions(inResult)).toEqual([
+      { kind: "CAPITULATE", actionRef: "action_1" },
+    ]);
+
+    const pool = new ControllerProcessWorkerPool({ size: 1 });
+    try {
+      const workerSession = facadeSession("issue225-symbol-array-signal-worker");
+      const worker = new ProductionControllerHost(pool, {
+        alpha: Object.freeze({
+          moduleSource: `
+            export function decide(context) {
+              const payload = [1];
+              payload[Symbol("hidden")] = 2;
+              let caught = false;
+              try {
+                context.team.signal("bad-array", payload);
+              } catch {
+                caught = true;
+              }
+              const capRef = context.capitulate();
+              return { log: JSON.stringify({ caught, capRef }) };
+            }
+          `,
+          entrypoints: Object.freeze({ decide: "decide" }),
+        }),
+      });
+      const workerResult = await worker.invoke(
+        "alpha",
+        Object.freeze({}) as never,
+        workerSession,
+      );
+      expect(workerResult.ok).toBe(true);
+      if (!workerResult.ok) throw new Error("expected worker success");
+      expect(JSON.parse(workerResult.output?.log ?? "{}")).toEqual({
+        caught: true,
+        capRef: "action_1",
+      });
+      expect(stagedActions(workerResult)).toEqual([
+        { kind: "CAPITULATE", actionRef: "action_1" },
+      ]);
+    } finally {
+      await pool.close();
+    }
+  }, 20_000);
+
   it("rejects malformed staged action data before consuming an ActionRef in both normal hosts", async () => {
     const inSession = facadeSession("issue225-malformed-action-in");
     let inCaught = false;
